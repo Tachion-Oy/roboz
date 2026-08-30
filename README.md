@@ -50,16 +50,19 @@ runtime primitives. `roboz.standard` provides the ready-made standard library:
 - guarded `apply_patch` file editing;
 - agent-runtime and conversation-memory tools.
 
-Core provider support lives with the LLM primitives. It includes a typed
-OpenRouter model catalog backed by the OpenAI SDK:
+Provider-neutral catalog support lives with the LLM primitives. The standard
+library includes an explicitly illustrative OpenRouter catalog backed by the
+OpenAI SDK:
 
 ```python
-from roboz.standard.providers import openrouter
+from roboz.standard.providers import example_openrouter
 
-endpoint = openrouter.z_ai__glm_5_3_flash
+endpoint = example_openrouter.example__mock_chat_model
 ```
 
-The catalog resolves `OPENROUTER_API_KEY` only when an endpoint is materialized.
+The placeholder model is documentation, not a production route. Copy the catalog
+pattern with a real model id and verified context limit in application-owned code.
+The example resolves `OPENROUTER_API_KEY` only when an endpoint is materialized.
 
 Provider SDKs and application-specific integrations beyond OpenAI/OpenRouter are intentionally not part of the lean first release.
 

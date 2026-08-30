@@ -27,7 +27,17 @@ def get_file_count(p: Path | None) -> int | None:
 
 
 def delete_agent_context(*, root: Path, agent: str):
-    agent_path = root / agent
+    agent_name = Path(agent)
+    if (
+        agent_name.is_absolute()
+        or len(agent_name.parts) != 1
+        or agent_name.name in {"", ".", ".."}
+    ):
+        raise ValueError("agent must name one direct child of root")
+    resolved_root = root.resolve()
+    agent_path = (resolved_root / agent_name).resolve()
+    if agent_path.parent != resolved_root:
+        raise ValueError("agent must resolve to a direct child of root")
     if agent_path.is_dir():
         shutil.rmtree(agent_path)
         return

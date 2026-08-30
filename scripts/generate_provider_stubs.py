@@ -8,7 +8,7 @@ from pathlib import Path
 
 from roboz.llm.providers.catalog import model_attribute_name
 from roboz.llm.providers.model_types import ChatModelSpec
-from roboz.standard.providers.openrouter import OPENROUTER_MODELS
+from roboz.standard.providers.openrouter import EXAMPLE_OPENROUTER_MODELS
 
 CATALOG_PYI_PATH = (
     Path(__file__).resolve().parents[1]
@@ -36,7 +36,7 @@ from roboz.llm.providers.catalog import ProviderCatalog
 from roboz.llm.providers.model_types import ChatModelSpec
 
 OPENROUTER_BASE_URL: str
-OPENROUTER_MODELS: tuple[ChatModelSpec, ...]
+EXAMPLE_OPENROUTER_MODELS: tuple[ChatModelSpec, ...]
 
 class OpenRouterApiKey(StrEnum):
     API_KEY: OpenRouterApiKey
@@ -48,7 +48,7 @@ def openrouter_endpoint(model: ChatModelSpec, model_name: str) -> LLMEndpoint: .
 '''
 
 _FOOTER = """\
-openrouter: OpenRouterCatalog
+example_openrouter: ExampleOpenRouterCatalog
 
 __all__: list[str]
 """
@@ -73,7 +73,9 @@ def render_catalog_pyi() -> str:
     return "".join(
         [
             _HEADER,
-            _class_block("OpenRouterCatalog", OPENROUTER_MODELS, "LLMEndpoint"),
+            _class_block(
+                "ExampleOpenRouterCatalog", EXAMPLE_OPENROUTER_MODELS, "LLMEndpoint"
+            ),
             "\n",
             _FOOTER,
         ]

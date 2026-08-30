@@ -45,7 +45,7 @@ def get_finalized_message(
     )
     return Message(
         role=get_role(output),
-        content=reduce_escapes(json.dumps(dump, ensure_ascii=False)),
+        content=json.dumps(dump, ensure_ascii=False),
         truncation=output.truncation,
         message_kind=resolved_message_kind,
         **output.model_dump(

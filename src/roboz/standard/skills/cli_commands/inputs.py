@@ -12,7 +12,7 @@ class RunFileCommand(BaseModel):
 
     command: str = Field(
         ...,
-        description="Unix command: grep, cat, find, ls, tee, wc, git, etc.",
+        description="Unix command: grep, rg, cat, find, ls, tee, wc, etc.",
     )
     argv: list[str] = Field(
         default_factory=list,

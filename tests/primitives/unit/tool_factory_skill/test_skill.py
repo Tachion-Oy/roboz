@@ -86,9 +86,9 @@ def test_missing_in_json_skill_load_from_json(tmp_path):
 
     with pytest.raises(RuntimeError):
         _ = Skill.load_from_json(
-            skill_name="test_skill",
+            skill_name="missing_skill",
             location=json_file,
-            available_tools=[sample_tool_2],
+            available_tools=[sample_tool, sample_tool_2],
         )
 
 

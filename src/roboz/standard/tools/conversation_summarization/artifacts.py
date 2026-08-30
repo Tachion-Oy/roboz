@@ -49,9 +49,11 @@ def write_timestamped_file(
     suffix: str,
     replace: Path | None,
     pipe: EventPipe | None = None,
+    timestamp: datetime | None = None,
 ) -> Path:
     """Write ``body`` as a new timestamp-named file, then drop ``replace``."""
-    path = folder / f"{utc_now().strftime(TIMESTAMP_STEM_FORMAT)}{suffix}"
+    stamp = timestamp or utc_now()
+    path = folder / f"{stamp.strftime(TIMESTAMP_STEM_FORMAT)}{suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
     if pipe is not None:
         pipe.raise_if_cancelled()

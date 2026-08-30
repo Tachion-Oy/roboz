@@ -99,21 +99,20 @@ def test_sleep_returns_early_when_active_run_becomes_terminal(
     assert out.value == "sleep_between_runs: active run ended"
 
 
-def test_sleep_retries_torn_write_until_terminal_document_is_valid(
+def test_sleep_continues_while_marker_exists_then_returns_when_cleared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    path = _write_run(tmp_path, status=RunStatus.RUNNING)
+    _write_run(tmp_path, status=RunStatus.RUNNING)
+    marker = active_marker_paths(tmp_path, {"orchestrator"})[0]
     sleeps = 0
 
-    def rewrite(_: float) -> None:
+    def update_marker(_: float) -> None:
         nonlocal sleeps
         sleeps += 1
-        if sleeps == 1:
-            path.write_text("{not-json", encoding="utf-8")
-        else:
-            _write_run(tmp_path, status=RunStatus.FAILED)
+        if sleeps == 2:
+            marker.unlink()
 
-    monkeypatch.setattr(sleep_module, "sleep", rewrite)
+    monkeypatch.setattr(sleep_module, "sleep", update_marker)
     tool = sleep_between_runs(_ctx(tmp_path))
 
     out = tool(input=Empty(), messages=[])

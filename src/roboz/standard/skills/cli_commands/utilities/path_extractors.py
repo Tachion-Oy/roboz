@@ -6,6 +6,17 @@ from collections.abc import Callable
 
 type PathExtractor = Callable[[list[str]], list[int]]
 
+_SEARCH_COUNT_OPTIONS = {
+    "-A",
+    "--after-context",
+    "-B",
+    "--before-context",
+    "-C",
+    "--context",
+    "-m",
+    "--max-count",
+}
+
 
 def resolve_path_indices(
     argv: list[str],
@@ -24,7 +35,7 @@ def grep_path_args(argv: list[str]) -> list[int]:
     then optional paths. The first non-flag token is the pattern, and any later
     non-flag tokens are treated as paths to resolve and permission-check.
     """
-    return _positionals_after_first_non_flag(argv)
+    return _search_path_args(argv)
 
 
 def rg_path_args(argv: list[str]) -> list[int]:
@@ -34,7 +45,7 @@ def rg_path_args(argv: list[str]) -> list[int]:
     tokens are paths. This intentionally keeps ripgrep extraction simple for the
     subset of argv shapes allowed by the guarded CLI specs.
     """
-    return _positionals_after_first_non_flag(argv)
+    return _search_path_args(argv)
 
 
 def cat_path_args(argv: list[str]) -> list[int]:
@@ -129,18 +140,20 @@ def gio_trash_path_args(argv: list[str]) -> list[int]:
     return [i + 1 for i in _trailing_non_flag_indices(argv[1:])]
 
 
-def _positionals_after_first_non_flag(argv: list[str]) -> list[int]:
-    """Return every non-flag token after the first non-flag token."""
-    positional = [i for i, tok in enumerate(argv) if not tok.startswith("-")]
+def _search_path_args(argv: list[str]) -> list[int]:
+    """Return positional search operands after the pattern.
+
+    Context and match-count options consume a separate numeric token. Pattern
+    options such as ``-e`` need no special case: their value naturally occupies
+    the pattern position.
+    """
+    positional = _positional_excluding_option_values(argv, _SEARCH_COUNT_OPTIONS)
     return positional[1:]
 
 
 def _trailing_non_flag_indices(argv: list[str]) -> list[int]:
-    """Return the final contiguous run of tokens that are not options."""
-    for i in range(len(argv) - 1, -1, -1):
-        if argv[i].startswith("-"):
-            return list(range(i + 1, len(argv)))
-    return list(range(len(argv)))
+    """Return every positional token, including operands before later options."""
+    return _positional_excluding_option_values(argv, options_with_values=set())
 
 
 def _leading_non_flag_indices(argv: list[str]) -> list[int]:

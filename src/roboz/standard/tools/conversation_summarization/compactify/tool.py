@@ -153,6 +153,7 @@ def compactify_messages_when_needed(
             message_kind=COMPACTED_CONTEXT_KIND,
         ),
     ]
+    consumed = estimate_conversation_tokens(messages)
     compactions += 1
     ctx.state.count = compactions
     return _status(

@@ -107,3 +107,10 @@ def test_catalog_reports_unknown_model_attributes() -> None:
 
     with pytest.raises(AttributeError, match="chat_model"):
         getattr(provider, "missing")
+
+
+def test_catalog_internal_attribute_probe_does_not_recurse_before_init() -> None:
+    provider = object.__new__(ProviderCatalog)
+
+    with pytest.raises(AttributeError, match="_lock"):
+        getattr(provider, "_lock")

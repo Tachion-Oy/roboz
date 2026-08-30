@@ -930,6 +930,24 @@ def test_resolve_paths_glob_star_no_matches(tmp_path: Path) -> None:
     assert result == []
 
 
+def test_run_file_command_rejects_unmatched_path_glob(tmp_path: Path) -> None:
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[],
+        allow_rules=[PermissionRule(pattern="**", operations={Operation.READ})],
+    )
+    input_cmd = RunFileCommands(
+        chain="pipe",
+        file_commands=[RunFileCommand(command="cat", argv=["*.missing"])],
+    )
+
+    result = tools[0](input=input_cmd, messages=[])
+
+    assert isinstance(result, ParseError)
+    assert result.message == "No paths"
+
+
 def test_resolve_paths_glob_star_mixed_with_literal(tmp_path: Path) -> None:
     """One glob, one literal - both contribute."""
     (tmp_path / "a.py").write_text("")

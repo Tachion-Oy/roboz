@@ -8,6 +8,7 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+from roboz.exceptions import ExternalCallCancelledError
 from roboz.models import Empty, Str
 from roboz.runtime import (
     MessageDeltaEvent,
@@ -24,11 +25,24 @@ from roboz.standard.skills.cli_commands.tools.run_shell_script import (
     ShellScriptCtx,
     get_run_shell_script,
 )
+from roboz.standard.skills.cli_commands.runtime.runner import run_cli_argv_streamed
 
 
 def _write_script(path: Path, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!/usr/bin/env bash\n{body}\n")
+
+
+def test_streamed_runner_honors_cancellation_without_timeout(tmp_path: Path) -> None:
+    with pytest.raises(ExternalCallCancelledError):
+        run_cli_argv_streamed(
+            ["bash", "-c", "sleep 5"],
+            tmp_path,
+            lambda _: None,
+            "sleep 5",
+            timeout=None,
+            is_cancelled=lambda: True,
+        )
 
 
 def _tools(

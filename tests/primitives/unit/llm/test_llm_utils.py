@@ -27,7 +27,13 @@ from roboz.llm import estimate_conversation_tokens
 from roboz.llm._diagnostics import classify_llm_provider_error
 from roboz.llm._retry import RetryState, run_with_retry
 from roboz.llm.binding import LLMTelemetryDict
-from roboz.llm.calls import _call_chat_completion, call_llm_api, call_transcription_api
+from roboz.llm.calls import (
+    _call_chat_completion,
+    _call_non_streaming_llm_api,
+    _call_streaming_llm_api,
+    call_llm_api,
+    call_transcription_api,
+)
 from roboz.llm.completion import (
     _parse_response,
     _reprompt_on_error,
@@ -309,7 +315,6 @@ def test_get_tool_call_completion_retry_when_rationale_missing():
         "rationale": "retry with rationale",
         "arg": "val",
     }
-    # Current behavior bug: this is 1 (no retry). Expected after fix: 2.
     assert call_llm.call_count == 2
 
 
@@ -674,6 +679,50 @@ def _stream_chunk(delta: str = "", usage: object | None = None):
         choices=[SimpleNamespace(delta=SimpleNamespace(content=delta))],
         usage=usage,
     )
+
+
+def test_streaming_call_closes_stream_when_cancelled_before_first_chunk() -> None:
+    class ClosableStream:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __iter__(self):
+            return iter([_stream_chunk("unused")])
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = ClosableStream()
+    completions = SimpleNamespace(create=lambda **_: stream)
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+        model_name="stream-model",
+        api_name="test",
+    )
+    signal = ControlSignal()
+    signal.set()
+
+    content, _ = _call_streaming_llm_api(
+        endpoint, {}, lambda _: pytest.fail("cancelled stream emitted output"), (signal,)
+    )
+
+    assert content == ""
+    assert stream.closed is True
+
+
+def test_non_streaming_call_accepts_empty_choices() -> None:
+    response = SimpleNamespace(choices=[], usage=None)
+    completions = SimpleNamespace(create=lambda **_: response)
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+        model_name="filtered-model",
+        api_name="test",
+    )
+
+    content, telemetry = _call_non_streaming_llm_api(endpoint, {})
+
+    assert content == ""
+    assert telemetry["model"] == "filtered-model"
 
 
 def test_call_llm_api_streams_provider_chunks_and_usage() -> None:

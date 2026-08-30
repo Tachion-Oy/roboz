@@ -1,7 +1,7 @@
 """Reference output for the memory consolidation tool."""
 
 CONSOLIDATE_MEMORY_EXAMPLE = """## Standing instructions
-- Never refer to items in user-facing messages with only a code/ID etc. that is not informative; always show at least a some description.
+- Never refer to items in user-facing messages with only a code/ID etc. that is not informative; always show at least some description.
 - Do not start with a greeting, get to the point immediately without wasting a message on ceremony.
 - If the user rejects or doubts a selected external item, discard that candidate and re-query the source of truth before any further mutation.
 

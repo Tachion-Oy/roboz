@@ -221,6 +221,7 @@ def consolidate_memory(
         suffix=".md",
         replace=None,
         pipe=ctx.pipe,
+        timestamp=pending[-1][0],
     )
     event_data = {
         "tool": CONSOLIDATE_MEMORY_TOOL_NAME,

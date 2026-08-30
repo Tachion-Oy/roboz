@@ -123,7 +123,7 @@ def get_run_file_command(
         "Allow/deny/ask permission patterns are evaluated relative to base. "
         "A separate default verdict applies when no rule matches. "
         "For find, place start directories before predicates/flags in argv. "
-        "chain is required on every call: use chain='pipe' or chain='and'. These map to normal shell behavior ('|' and '&&'). "
+        "chain is required on every call: use chain='pipe' or chain='and'. These map to normal shell behavior ('|' and '&&'), including stopping an 'and' chain after failure. "
         "Use 'pipe' only when the next command reads stdin; otherwise use 'and'. "
         "No shell syntax (|, ;, &&) in command strings. "
     )

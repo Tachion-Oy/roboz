@@ -2,23 +2,9 @@
 
 from pathlib import Path
 
-from roboz.standard.sandbox import ActionVerdict, PermissionRule
+from roboz.standard.sandbox import ActionVerdict
 from roboz.standard.skills.cli_commands.runtime.types import GuardCtx
-
-
-def _resolved_rule_pattern(rule: PermissionRule) -> str:
-    pattern = rule.pattern
-    if isinstance(pattern, str):
-        return pattern
-    return pattern()
-
-
-def _rule_bullets(rules: list[PermissionRule]) -> list[str]:
-    return [
-        f"- {_resolved_rule_pattern(rule)} -> "
-        f"{', '.join(sorted(op.name for op in rule.operations))}"
-        for rule in rules
-    ] or ["- (none)"]
+from roboz.standard.skills.cli_commands.utilities.formatting import _rule_bullets
 
 
 def format_guard_constraints(ctx: GuardCtx) -> str:

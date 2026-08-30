@@ -83,9 +83,9 @@ with `import roboz.standard` or through its individual subpackages.
 The provider primitives belong to the LLM layer at `roboz.llm.providers`. Its
 provider-neutral `ProviderCatalog` accepts endpoint and model-name factories.
 The concrete `roboz.standard.providers.openrouter` implementation owns
-OpenRouter's credentials, client setup, route naming, single supported model,
-and generated typing surface, providing a small template for integrations
-maintained by other packages.
+OpenRouter's credentials, client setup, route naming, and an explicitly fake
+example model with a generated typing surface. It is a template, not a maintained
+production model inventory; applications own their real model ids and limits.
 
 Larger integrations—such as Codex, Proton, Firecrawl, Office/PDF tooling,
 timesheets, additional model providers, composite agents, and the Hub UI—are

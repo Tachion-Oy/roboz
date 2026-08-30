@@ -69,8 +69,9 @@ behavior with the smallest clear set of cases.
   side effects that are part of the tool's promise.
 - For runtime/event code, assert emitted event shape and ordering only where the
   order is contractual.
-- For type behavior, add cases under `tests/type_tests/` instead of encoding type
-  checker expectations into runtime tests.
+- For primitive type behavior, add cases under `tests/primitives/type_tests/`.
+  Keep provider-specific cases under `tests/type_tests/` instead of encoding
+  type-checker expectations into runtime tests.
 - Keep tests under `tests/unit/` fast and deterministic. Anything requiring real
   network, provider credentials, or long-running processes does not belong in
   the default pytest path.

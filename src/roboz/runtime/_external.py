@@ -118,7 +118,11 @@ class _ExternalCallRunner[T]:
     def run(self) -> T:
         self._log_started()
         self._acquire_slot()
-        self._start_worker()
+        try:
+            self._start_worker()
+        except BaseException:
+            _external_call_slots.release()
+            raise
         return self._await_result()
 
     def _log_started(self) -> None:

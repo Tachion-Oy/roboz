@@ -21,6 +21,7 @@ from roboz.standard.skills.cli_commands.utilities.constants import (
     ERR_FORBIDDEN_PATTERN,
     ERR_HINT_USE_HELP,
     ERR_MISSING_WHITELISTED_SUBCOMMAND,
+    ERR_NO_PATHS,
     ERR_SOURCE_DESTINATION_PATHS,
     GLOB_CHARS,
 )
@@ -385,6 +386,10 @@ def resolve_input(
         return invalid_input
 
     spec = _specs_by_name(specs)[input.file_commands[0].command.strip().lower()]
-    return ResolvedFileCommand(
-        original_input=input, items=_guard_items(input, base, spec)
-    )
+    items = _guard_items(input, base, spec)
+    if not items:
+        return ParseError(
+            message=ERR_NO_PATHS,
+            truncation=Truncation(threshold=0, severity=Severity.LIGHT),
+        )
+    return ResolvedFileCommand(original_input=input, items=items)

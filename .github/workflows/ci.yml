@@ -71,4 +71,4 @@ jobs:
         run: |
           uv venv --python 3.13 "$RUNNER_TEMP/roboz-wheel-test"
           uv pip install --python "$RUNNER_TEMP/roboz-wheel-test/bin/python" dist/*.whl
-          "$RUNNER_TEMP/roboz-wheel-test/bin/python" -c "import roboz; import roboz.shed; from roboz.shed.providers import openrouter"
+          "$RUNNER_TEMP/roboz-wheel-test/bin/python" -c "import roboz; from roboz.standard.providers import example_openrouter"

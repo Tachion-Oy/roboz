@@ -275,11 +275,11 @@ def test_check_allow_deny_permission_operation_type_matters(tmp_path: Path) -> N
         takes_precedence=ActionVerdict.allow,
         allow_rules=allow_rules,
         deny_rules=deny_rules,
-        default_verdict=ActionVerdict.allow,
+        default_verdict=ActionVerdict.deny,
         base_path=tmp_path,
     )
 
-    assert result == ActionVerdict.allow
+    assert result == ActionVerdict.deny
 
 
 def test_check_ask_permission_no_ask_rules_returns_allow(tmp_path: Path) -> None:

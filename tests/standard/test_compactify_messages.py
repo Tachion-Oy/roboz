@@ -106,6 +106,7 @@ def test_compactify_messages_rewrites_list_in_place_above_threshold(
     # get_finalized_message + Agent.append_and_pipe), since only the return
     # value is ever piped to disk, never in-place list mutations.
     assert out.compaction_summary == compacted["summary_markdown"]
+    assert out.to_compaction != "0"
 
 
 def test_compactify_messages_preserves_bootstrap_prefix_without_skill_args() -> None:

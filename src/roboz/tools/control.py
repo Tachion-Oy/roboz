@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from typing import Sequence
 
 from roboz.models import Empty, Invoke, Message, Stop, Str
@@ -25,15 +26,18 @@ def stop_after(
         else Tool.to_tool_list(cleanup_tools)
     )
 
-    original_stop_value = ""
+    pending_stop_value: ContextVar[str | None] = ContextVar(
+        "stop_after_pending_value", default=None
+    )
 
     @tool
     def stop_after_entry(input: Str, messages: list[Message]) -> Str:
-        nonlocal original_stop_value
-        original_stop_value = input.value
+        pending_stop_value.set(input.value)
         return Str(value=input.value)
 
-    stop_entry = stop_after_entry.copy(name=stop.name, description=stop.description)
+    stop_entry = stop_after_entry.copy(
+        name=final_stop_tool.name, description=final_stop_tool.description
+    )
     chained_cleanup: list[Tool] = []
     previous: Tool = stop_entry
     for cleanup in flattened:
@@ -45,6 +49,10 @@ def stop_after(
     def stop_after_finalize(
         input: Empty, messages: list[Message]
     ) -> Empty | Invoke | Stop:
-        return final_stop_tool(Str(value=original_stop_value), messages)
+        value = pending_stop_value.get()
+        if value is None:
+            raise RuntimeError("stop_after finalized without an active stop value")
+        pending_stop_value.set(None)
+        return final_stop_tool(Str(value=value), messages)
 
     return [stop_entry, *chained_cleanup, stop_after_finalize]

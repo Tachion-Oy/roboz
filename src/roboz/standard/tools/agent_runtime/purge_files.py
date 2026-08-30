@@ -19,10 +19,14 @@ class PurgeFilesCtx(FactoryCtx):
 
 def collect_matching_files(*, folders: list[Path], pattern: str) -> list[Path]:
     matches: list[Path] = []
+    seen: set[Path] = set()
     for folder in folders:
         if not folder.is_dir():
             continue
-        matches.extend((p for p in folder.rglob(pattern) if p.is_file()))
+        for path in folder.rglob(pattern):
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                matches.append(path)
     return matches
 
 

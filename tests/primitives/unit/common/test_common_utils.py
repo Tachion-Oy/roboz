@@ -1,6 +1,7 @@
 from enum import StrEnum
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
 from roboz.models._schema import (
@@ -10,7 +11,7 @@ from roboz.models._schema import (
 )
 from roboz.models._serialization import camel_to_snake, reduce_escapes
 from roboz.runtime import Output, bind_output, get_bound_output, load_key, reset_output
-from roboz.runtime._paths import get_file_count
+from roboz.runtime._paths import delete_agent_context, get_file_count
 
 
 class ExampleUnionModel(BaseModel):
@@ -94,6 +95,43 @@ def test_get_file_count_counts_only_files_and_handles_missing_path(
     (tmp_path / "subdir").mkdir()
 
     assert get_file_count(tmp_path) == 2
+
+
+@pytest.mark.parametrize("agent", ["../outside", "nested/agent", "/tmp/outside"])
+def test_delete_agent_context_rejects_non_child_paths(
+    tmp_path: Path, agent: str
+) -> None:
+    root = tmp_path / "agents"
+    root.mkdir()
+
+    with pytest.raises(ValueError, match="direct child"):
+        delete_agent_context(root=root, agent=agent)
+
+
+def test_delete_agent_context_deletes_only_named_direct_child(tmp_path: Path) -> None:
+    root = tmp_path / "agents"
+    target = root / "worker"
+    sibling = root / "other"
+    target.mkdir(parents=True)
+    sibling.mkdir()
+
+    delete_agent_context(root=root, agent="worker")
+
+    assert not target.exists()
+    assert sibling.is_dir()
+
+
+def test_delete_agent_context_rejects_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / "agents"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "worker").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="resolve to a direct child"):
+        delete_agent_context(root=root, agent="worker")
+
+    assert outside.is_dir()
 
 
 def test_bind_output_sets_current_context() -> None:

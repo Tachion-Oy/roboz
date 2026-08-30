@@ -21,16 +21,18 @@ def _get_available_tools_and_skills_section(
     tools = tools if tools is not None else []
     skills = skills if skills is not None else []
     skill_names = {s.name for s in skills if s is not None}
-    section = "## Available tools and skills\n\n"
+    entries: list[str] = []
     for t in tools:
         if t is None or t.chained_to or t.name in skill_names:
             continue
-        section += f"{_get_single_instruction(t)}\n\n"
+        entries.append(_get_single_instruction(t))
     for s in skills:
         if s is None:
             continue
-        section += f"{_get_single_instruction(s.get_skill_as_tool())}\n\n"
-    return section.rstrip()
+        entries.append(_get_single_instruction(s.get_skill_as_tool()))
+    if not entries:
+        return ""
+    return "## Available tools and skills\n\n" + "\n\n".join(entries)
 
 
 def get_example_agent_discussion() -> str:

@@ -114,5 +114,5 @@ def test_obsolete_modules_cannot_be_imported(module_name: str) -> None:
 
 def test_llm_source_does_not_import_agent() -> None:
     source_root = Path(inspect.getfile(roboz.llm)).parent
-    for source_path in source_root.glob("*.py"):
-        assert "roboz.agent" not in source_path.read_text()
+    for source_path in source_root.rglob("*.py"):
+        assert "roboz.agent" not in source_path.read_text(encoding="utf-8")

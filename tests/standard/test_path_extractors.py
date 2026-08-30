@@ -40,7 +40,7 @@ def test_trailing_path_commands_use_final_non_flag_tokens(
 ) -> None:
     """Commands like cat, ls, tee, and mkdir use trailing operands as paths."""
     assert extractor(["-a", "first.txt", "second.txt"]) == [1, 2]
-    assert extractor(["first.txt", "-a"]) == []
+    assert extractor(["first.txt", "-a"]) == [0]
 
 
 @pytest.mark.parametrize("extractor", [grep_path_args, rg_path_args])
@@ -48,6 +48,9 @@ def test_search_commands_skip_pattern_before_paths(extractor: PathExtractor) -> 
     """grep and rg treat the first positional as the pattern, not a path."""
     assert extractor(["-n", "TODO|FIXME", "src", "tests"]) == [2, 3]
     assert extractor(["TODO|FIXME"]) == []
+    assert extractor(["-m", "5", "TODO|FIXME", "src"]) == [3]
+    assert extractor(["--color", "TODO|FIXME", "src"]) == [2]
+    assert extractor(["-e", "TODO|FIXME", "src"]) == [2]
 
 
 def test_find_path_args_uses_leading_search_roots() -> None:

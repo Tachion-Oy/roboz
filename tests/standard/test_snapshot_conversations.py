@@ -28,10 +28,57 @@ from roboz.standard.tools.conversation_summarization.snapshot.tool import snapsh
 from roboz.standard.tools.conversation_summarization.snapshot.types import (
     SnapshotConversationsCtx,
 )
+from roboz.standard.tools.agent_runtime.conversation_logs import load_conversation_run
 
 snapshot_module = importlib.import_module(
     "roboz.standard.tools.conversation_summarization.snapshot.tool"
 )
+
+
+def test_load_conversation_run_skips_invalid_utf8(tmp_path: Path) -> None:
+    path = tmp_path / "corrupt.json"
+    path.write_bytes(b"\xff\xfe")
+
+    assert load_conversation_run(path) is None
+
+
+def test_snapshot_watermark_does_not_cover_rows_added_during_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    first_at = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    second_at = first_at + timedelta(minutes=1)
+    first = _row(sequence=1, created_at=first_at, content="first")
+    second = _row(sequence=2, created_at=second_at, content="second")
+    _write_run(conversation_root, messages=[first])
+    calls = 0
+
+    def summarize(**kwargs) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            _write_run(conversation_root, messages=[first, second])
+        return f"summary {calls}: {kwargs['conversation']}"
+
+    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", summarize)
+    tool = snapshot_conversations(
+        _ctx(
+            conversation_root=conversation_root,
+            snapshot_root=snapshot_root,
+            endpoint=MockLLMEndpoint([]),
+        )
+    )
+
+    tool(input=Empty(), messages=[])
+    tool(input=Empty(), messages=[])
+
+    snapshots = sorted(snapshot_root.rglob("*.md"))
+    assert [path.stem for path in snapshots] == [
+        first_at.strftime(TIMESTAMP_STEM_FORMAT),
+        second_at.strftime(TIMESTAMP_STEM_FORMAT),
+    ]
+    assert calls == 2
 
 
 def _row(
@@ -62,7 +109,7 @@ def _write_run(
     agent_name: str = "librarian",
     conversation_id: str = "conversation-1",
     parent_conversation_id: str | None = None,
-    status: RunStatus = "running",
+    status: RunStatus = RunStatus.RUNNING,
     agent_description: str | None = None,
     messages,
 ) -> None:
@@ -277,7 +324,7 @@ def test_snapshot_conversations_skips_cancelled_run_even_above_threshold(
     snapshot_root = tmp_path / "snapshots"
     _write_run(
         conversation_root,
-        status="cancelled",
+        status=RunStatus.CANCELLED,
         messages=[
             _row(
                 sequence=1,
@@ -866,7 +913,7 @@ def test_snapshot_conversations_excludes_messages_the_agent_never_saw(
     base = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
     _write_run(
         conversation_root,
-        status="completed",
+        status=RunStatus.COMPLETED,
         messages=[
             _row(
                 sequence=1,
@@ -925,7 +972,7 @@ def test_snapshot_conversations_appends_without_deleting_previous_snapshot(
     _write_run(
         conversation_root,
         conversation_id=conversation_id,
-        status="completed",
+        status=RunStatus.COMPLETED,
         messages=[
             _row(sequence=1, created_at=base, content="Already covered earlier."),
             _row(
@@ -1007,7 +1054,7 @@ def test_snapshot_conversations_prompt_contract_for_overlapping_user_preference(
         conversation_root,
         agent_name="orchestrator",
         conversation_id=conversation_id,
-        status="completed",
+        status=RunStatus.COMPLETED,
         messages=[
             _row(sequence=1, created_at=base, content="Old setup context."),
             _row(

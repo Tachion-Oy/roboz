@@ -63,11 +63,11 @@ class LLMClientError(LLMError):
 
 
 class RateLimitExceededError(LLMRateLimitExceededError):
-    """Raised when there is not enough funds for API call."""
+    """Compatibility alias for provider rate-limit failures."""
 
 
 class ContextLimitExceededError(LLMContextLimitExceededError):
-    """Raised when input is too long."""
+    """Compatibility alias for provider/model context-limit failures."""
 
 
 class LLMOutputFormatError(LLMError):

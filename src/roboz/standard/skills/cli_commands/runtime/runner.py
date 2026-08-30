@@ -232,6 +232,7 @@ def run_cli_argv_streamed(
     command_line: str,
     *,
     timeout: float | None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[bool, str]:
     """Run argv, streaming merged stdout/stderr line-by-line to ``on_output``.
 
@@ -250,7 +251,7 @@ def run_cli_argv_streamed(
         timeout=timeout,
         poll_interval_seconds=_STREAM_POLL_INTERVAL_SECONDS,
         terminate_grace_seconds=_TERMINATE_GRACE_SECONDS,
-        is_cancelled=lambda: False,
+        is_cancelled=is_cancelled or (lambda: False),
         on_output=on_output,
     )
     return _format_run_result(result.returncode, result.stdout or "", command_line)
@@ -284,16 +285,11 @@ def _accumulate_error(
     message: str,
     truncation: TruncationSpec,
 ) -> Str | RunFileCommands:
-    """Stop on pipe failures; accumulate and continue for AND chains."""
+    """Stop the chain on failure, retaining prior AND-chain output."""
     if new_input.chain != "and":
         return Str(value=message, truncation=truncation)
     framed = _framed_cli_output(command_line, message)
     combined = (new_input.accumulated_output or "") + framed + "\n"
-    if len(new_input.file_commands) > 1:
-        new_input.file_commands = new_input.file_commands[1:]
-        new_input.accumulated_output = combined
-        new_input.truncation = Truncation(threshold=0, severity=Severity.REMOVE)
-        return new_input
     return Str(value=combined.strip(), truncation=truncation)
 
 

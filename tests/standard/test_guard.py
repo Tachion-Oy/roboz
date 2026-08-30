@@ -19,10 +19,28 @@ from roboz.standard.models import (
     PermissionRule,
 )
 from roboz.standard.skills.cli_commands.runtime.guard import resolve_allow_verdict
+from roboz.standard.skills.cli_commands.runtime.guard_formatting import (
+    format_guard_constraints,
+)
 from roboz.standard.skills.cli_commands.runtime.types import GuardCtx
 
 CREATE = Operation.CREATE
 PATTERN = "shared/**"
+
+
+def test_guard_constraints_tolerate_failing_dynamic_patterns(tmp_path: Path) -> None:
+    def unavailable_pattern() -> str:
+        raise RuntimeError("not available")
+
+    ctx = _ctx(
+        base=tmp_path,
+        takes_precedence=ActionVerdict.allow,
+        allow=[PermissionRule(pattern=unavailable_pattern, operations={CREATE})],
+        deny=[],
+        ask=[],
+    )
+
+    assert "<unresolved dynamic path>" in format_guard_constraints(ctx)
 
 
 def _ctx(

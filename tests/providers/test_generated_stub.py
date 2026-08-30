@@ -48,7 +48,7 @@ def test_generated_stub_contains_only_openrouter_catalog() -> None:
     stub = stub_path.read_text(encoding="utf-8")
 
     assert "from roboz.llm import LLMEndpoint" in stub
-    assert "z_ai__glm_5_3_flash: LazyExternalDependency[LLMEndpoint]" in stub
+    assert "example__mock_chat_model: LazyExternalDependency[LLMEndpoint]" in stub
     assert stub.count("LazyExternalDependency[LLMEndpoint]") == 1
     assert "CerebrasCatalog" not in stub
     assert "GroqCatalog" not in stub

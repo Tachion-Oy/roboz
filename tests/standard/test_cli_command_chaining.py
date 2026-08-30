@@ -758,18 +758,12 @@ def test_single_command_with_explicit_pipe_chain(tmp_path: Path) -> None:
     )
     input_cmd = RunFileCommands(
         chain="pipe",
-        file_commands=[
-            RunFileCommand(command="cat", argv=["data"]),
-            RunFileCommand(command="grep", argv=["a"]),
-        ],
+        file_commands=[RunFileCommand(command="cat", argv=["data"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
     result = _last_execute_file_command_value(messages)
-    _assert_framed_output(result, sections=2)
-    assert result.index("--- begin: cat") < result.index("--- begin: grep")
-    assert PIPE_STDIN_FROM_PREVIOUS_COMMAND in result
-    assert "grep" in result
-    assert "a" in result
+    _assert_framed_output(result, sections=1)
+    assert "a\nb\na" in result
 
 
 # -----------------------------------------------------------------------------
@@ -874,11 +868,11 @@ def test_pipe_first_command_fails_stops_chain(tmp_path: Path) -> None:
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
     result = _last_execute_file_command_value(messages)
-    assert "exit" in result.lower() or "non-zero" in result.lower() or "1" in result
+    assert "[error] Command failed (exit 1)" in result
 
 
-def test_and_first_command_fails_continues_chain(tmp_path: Path) -> None:
-    """If first command fails in AND chain, accumulate error and run the next command."""
+def test_and_first_command_failure_short_circuits_chain(tmp_path: Path) -> None:
+    """A failed AND step reports the error and skips all later commands."""
     (tmp_path / "f.txt").write_text("x")
     tools = get_run_file_command(
         base=tmp_path,
@@ -896,9 +890,9 @@ def test_and_first_command_fails_continues_chain(tmp_path: Path) -> None:
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
     result = _last_execute_file_command_value(messages)
-    assert "exit" in result.lower() or "non-zero" in result.lower() or "1" in result
-    assert "second_step_ran" in result
-    _assert_framed_output(result, sections=2)
+    assert "[error] Command failed (exit 1)" in result
+    assert "second_step_ran" not in result
+    _assert_framed_output(result, sections=1)
 
 
 def test_and_success_then_second_fails_returns_combined(tmp_path: Path) -> None:
@@ -920,7 +914,7 @@ def test_and_success_then_second_fails_returns_combined(tmp_path: Path) -> None:
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
     result = _last_execute_file_command_value(messages)
     assert "hello" in result
-    assert "exit" in result.lower() or "non-zero" in result.lower() or "1" in result
+    assert "[error] Command failed (exit 1)" in result
     _assert_framed_output(result, sections=2)
 
 

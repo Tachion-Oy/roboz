@@ -230,12 +230,16 @@ def snapshot_conversations(
 
         if ctx.pipe is not None:
             ctx.pipe.raise_if_cancelled()
+        covered_through = datetime.fromisoformat(
+            uncovered[-1].created_at.replace("Z", "+00:00")
+        )
         snapshot_path = write_timestamped_file(
             snapshot_root / run.conversation_id,
             f"# Conversation Snapshot: {run.agent_name}\n\n{summary.strip()}\n",
             suffix=".md",
             replace=None,
             pipe=ctx.pipe,
+            timestamp=covered_through,
         )
         event_data = {
             "tool": SNAPSHOT_CONVERSATIONS_TOOL_NAME,

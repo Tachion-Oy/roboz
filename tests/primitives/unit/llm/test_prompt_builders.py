@@ -1,10 +1,11 @@
 """Unit tests for prompt building."""
 
 import json
+from pathlib import Path
 
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.llm import get_basic_system_prompt
-from roboz.models import BaseNames, Empty, Message, Str
+from roboz.models import BaseNames, Empty, Location, Message, Str
 from roboz.models._schema import extract_fields_and_type_names
 from roboz.tooling._prompts import (
     example_skill_tool,
@@ -90,6 +91,16 @@ def test_get_basic_system_prompt_uses_valid_schema_and_matching_example():
     assert "'properties'" not in prompt
     assert '"action"' not in prompt
     assert "selected tool" not in prompt
+
+
+def test_get_basic_system_prompt_serializes_validated_path_example() -> None:
+    prompt = get_basic_system_prompt(
+        OutputModel=Location,
+        output_example={"value": Path("docs/guide.md")},
+    )
+
+    example_block = prompt.split("```json\n")[-1].split("\n```", 1)[0]
+    assert json.loads(example_block) == {"value": "docs/guide.md"}
 
 
 def test_get_agentic_system_prompt_tools_before_skills():

@@ -382,9 +382,10 @@ def _call_non_streaming_llm_api(
     meta = _telemetry_from_usage(
         endpoint=endpoint, usage=getattr(response, "usage", None)
     )
-    if response.choices[0].message.content is None:  # type:ignore
+    choices = getattr(response, "choices", None)
+    if not choices or choices[0].message.content is None:  # type:ignore
         return "", meta
-    return response.choices[0].message.content, meta  # type:ignore
+    return choices[0].message.content, meta  # type:ignore
 
 
 def _call_streaming_llm_api(
@@ -406,19 +407,24 @@ def _call_streaming_llm_api(
 
     chunks: list[str] = []
     usage = None
-    for chunk in stream:
-        if _call_abandoned(call_abandoned) or _any_signal_set(control_signals):
-            break
-        usage = (
-            chunk.get("usage", usage)
-            if isinstance(chunk, dict)
-            else getattr(chunk, "usage", usage)
-        )
-        delta = _stream_delta_content(chunk)
-        if not delta:
-            continue
-        chunks.append(delta)
-        on_delta(delta)
+    try:
+        for chunk in stream:
+            if _call_abandoned(call_abandoned) or _any_signal_set(control_signals):
+                break
+            usage = (
+                chunk.get("usage", usage)
+                if isinstance(chunk, dict)
+                else getattr(chunk, "usage", usage)
+            )
+            delta = _stream_delta_content(chunk)
+            if not delta:
+                continue
+            chunks.append(delta)
+            on_delta(delta)
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
 
     return "".join(chunks), _telemetry_from_usage(endpoint=endpoint, usage=usage)
 

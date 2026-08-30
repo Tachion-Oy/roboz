@@ -1,7 +1,7 @@
 """Consumer-side autocomplete and static-type smoke test.
 
-Open this file in the editor and type ``openrouter.`` to inspect completions.
-The import must remain ``roboz.llm.providers``.
+Open this file in the editor and type ``example_openrouter.`` to inspect
+completions. The import must remain ``roboz.standard.providers``.
 """
 
 from typing import assert_type
@@ -9,9 +9,9 @@ from typing import assert_type
 from roboz.llm import LLMEndpoint
 from roboz.tooling import LazyExternalDependency
 
-from roboz.standard.providers import openrouter
+from roboz.standard.providers import example_openrouter
 
 assert_type(
-    openrouter.z_ai__glm_5_3_flash,
+    example_openrouter.example__mock_chat_model,
     LazyExternalDependency[LLMEndpoint],
 )

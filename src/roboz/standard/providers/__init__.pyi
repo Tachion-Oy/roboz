@@ -1,9 +1,9 @@
 """Typing surface for standard provider implementations."""
 
 from roboz.standard.providers.openrouter import (
-    OpenRouterCatalog as _OpenRouterCatalog,
+    ExampleOpenRouterCatalog as _ExampleOpenRouterCatalog,
 )
 
-openrouter: _OpenRouterCatalog
+example_openrouter: _ExampleOpenRouterCatalog
 
 __all__: list[str]

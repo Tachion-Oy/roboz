@@ -145,5 +145,21 @@ def test_factory_chain_list_valid():
         return Str(value=str(1))
 
     next_tool = next_factory(Context())
-    if next_tool.chained_to:
-        assert len(next_tool.chained_to) == 2
+    assert next_tool.chained_to is not None
+    assert len(next_tool.chained_to) == 2
+
+
+def test_factory_resolves_string_annotations_before_building_tool() -> None:
+    @dataclass(frozen=True)
+    class Context(FactoryCtx): ...
+
+    @factory
+    def string_annotated_factory(
+        *, input: "Str", messages: "list[Message]", ctx: "FactoryCtx"
+    ) -> "Str":
+        return Str(value=input.value)
+
+    resolved = string_annotated_factory(Context())
+
+    assert resolved.InputModel is Str
+    assert resolved.OutputModel is Str

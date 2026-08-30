@@ -16,7 +16,7 @@ def load_conversation_run(path: Path) -> ConversationRun | None:
     """Return a parsed conversation run, or ``None`` for torn/unreadable files."""
     try:
         return ConversationRun.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValidationError):
+    except (OSError, UnicodeDecodeError, ValidationError):
         return None
 
 

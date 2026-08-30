@@ -67,6 +67,8 @@ class ProviderCatalog:
         self._lock = RLock()
 
     def __getattr__(self, name: str) -> LazyExternalDependency[LLMEndpoint]:
+        if name.startswith("_"):
+            raise AttributeError(name)
         return self._dependency(name)
 
     def __dir__(self) -> list[str]:

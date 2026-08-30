@@ -133,6 +133,46 @@ def test_consolidate_prompt_turns_incidents_into_operational_safeguards() -> Non
     )
 
 
+def test_memory_watermark_does_not_cover_snapshot_added_during_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_root = tmp_path / "snapshots"
+    memory_root = tmp_path / "memory"
+    conversation_root = tmp_path / "runs"
+    _write_conversation(conversation_root, status=RunStatus.COMPLETED)
+    first_at = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    second_at = first_at + timedelta(minutes=1)
+    _write_snapshot(snapshot_root, at=first_at, conversation_id="first")
+    calls = 0
+
+    def summarize(**kwargs) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            _write_snapshot(snapshot_root, at=second_at, conversation_id="second")
+        return f"memory {calls}: {kwargs['conversation']}"
+
+    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", summarize)
+    tool = consolidate_memory(
+        _ctx(
+            snapshot_root=snapshot_root,
+            memory_root=memory_root,
+            conversation_root=conversation_root,
+            endpoint=MockLLMEndpoint([]),
+            min_pending_snapshots=1,
+        )
+    )
+
+    tool(input=Empty(), messages=[])
+    tool(input=Empty(), messages=[])
+
+    assert [path.stem for path in sorted(memory_root.glob("*.md"))] == [
+        first_at.strftime(TIMESTAMP_STEM_FORMAT),
+        second_at.strftime(TIMESTAMP_STEM_FORMAT),
+    ]
+    assert calls == 2
+
+
 def test_consolidate_memory_writes_first_memory_when_threshold_is_met(
     tmp_path: Path,
 ) -> None:

@@ -247,7 +247,7 @@ class Factory[
 
         _func_ctx.__name__ = self._func.__name__
         _func_ctx.__annotations__ = {
-            k: v for k, v in self._func.__annotations__.items() if k != "ctx"
+            k: v for k, v in get_type_hints(self._func).items() if k != "ctx"
         }
         dependencies, dependency_sources = factory_context_dependencies(ctx)
         t: Tool[TInput, TOutput] = Tool(

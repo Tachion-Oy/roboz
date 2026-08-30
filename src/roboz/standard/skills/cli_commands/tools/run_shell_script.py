@@ -178,6 +178,7 @@ def execute_shell_script(
             stream_to_user,
             input.display,
             timeout=input.timeout_seconds,
+            is_cancelled=lambda: ctx.pipe.cancelled or ctx.pipe.interrupted,
         )
     except subprocess.TimeoutExpired:
         return finalize_for_user(

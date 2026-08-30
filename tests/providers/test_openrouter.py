@@ -8,14 +8,17 @@ from roboz.llm.providers.model_types import (
     EndpointType,
     TranscriptionModelSpec,
 )
-from roboz.standard.providers import openrouter
-from roboz.standard.providers.openrouter import OpenRouterApiKey, OpenRouterCatalog
+from roboz.standard.providers import example_openrouter
+from roboz.standard.providers.openrouter import (
+    ExampleOpenRouterCatalog,
+    OpenRouterApiKey,
+)
 
 openrouter_module = import_module("roboz.standard.providers.openrouter")
 
 
 def test_package_exports_configured_catalogs() -> None:
-    assert openrouter is openrouter_module.openrouter
+    assert example_openrouter is openrouter_module.example_openrouter
 
 
 def test_generic_catalog_module_has_no_openrouter_configuration() -> None:
@@ -39,16 +42,16 @@ def test_openrouter_loads_its_credentials_only_when_materialized(monkeypatch) ->
         "openrouter_client",
         lambda api_key: {"api_key": api_key},
     )
-    provider = OpenRouterCatalog()
+    provider = ExampleOpenRouterCatalog()
 
-    dependency = provider.z_ai__glm_5_3_flash
+    dependency = provider.example__mock_chat_model
     assert key_loads == []
 
     endpoint = dependency.materialize()
 
     assert endpoint.client == {"api_key": "secret"}
     assert endpoint.api_name == "openrouter"
-    assert endpoint.model_name == "z-ai/glm-5.3-flash:nitro"
+    assert endpoint.model_name == "example/mock-chat-model:nitro"
     assert key_loads == [OpenRouterApiKey.API_KEY]
 
 
@@ -74,13 +77,15 @@ def test_model_specs_declare_endpoint_types() -> None:
 
 
 def test_openrouter_runtime_names_use_nitro_suffix() -> None:
-    for attribute, model in openrouter.models_by_attribute.items():
-        dependency = getattr(openrouter, attribute)
+    for attribute, model in example_openrouter.models_by_attribute.items():
+        dependency = getattr(example_openrouter, attribute)
         assert dependency.redacted_metadata()["model_name"] == f"{model.model_id}:nitro"
 
 
 def test_openrouter_catalog_attributes_remain_unsuffixed() -> None:
-    assert tuple(openrouter.models_by_attribute) == ("z_ai__glm_5_3_flash",)
-    glm_flash = openrouter.models_by_attribute["z_ai__glm_5_3_flash"]
-    assert glm_flash.max_context_tokens == 1_310_720
-    assert "z_ai__glm_5_3_flash_nitro" not in openrouter.models_by_attribute
+    assert tuple(example_openrouter.models_by_attribute) == (
+        "example__mock_chat_model",
+    )
+    model = example_openrouter.models_by_attribute["example__mock_chat_model"]
+    assert model.max_context_tokens == 128_000
+    assert "example__mock_chat_model_nitro" not in example_openrouter.models_by_attribute

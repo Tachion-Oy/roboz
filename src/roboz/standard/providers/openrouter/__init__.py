@@ -45,31 +45,31 @@ def openrouter_endpoint(model: ChatModelSpec, model_name: str) -> LLMEndpoint:
     )
 
 
-OPENROUTER_MODELS: tuple[ChatModelSpec, ...] = (
-    ChatModelSpec("z-ai/glm-5.3-flash", 1_310_720),
+EXAMPLE_OPENROUTER_MODELS: tuple[ChatModelSpec, ...] = (
+    ChatModelSpec("example/mock-chat-model", 128_000),
 )
 
 
-class OpenRouterCatalog(ProviderCatalog):
-    """OpenRouter chat-model catalog."""
+class ExampleOpenRouterCatalog(ProviderCatalog):
+    """Illustrative OpenRouter catalog containing no production model pins."""
 
     def __init__(self) -> None:
         super().__init__(
             api_name="openrouter",
             endpoint_factory=openrouter_endpoint,
-            models=OPENROUTER_MODELS,
+            models=EXAMPLE_OPENROUTER_MODELS,
             model_name_factory=openrouter_model_name,
         )
 
 
-openrouter = OpenRouterCatalog()
+example_openrouter = ExampleOpenRouterCatalog()
 
 __all__ = [
     "OPENROUTER_BASE_URL",
-    "OPENROUTER_MODELS",
+    "EXAMPLE_OPENROUTER_MODELS",
+    "ExampleOpenRouterCatalog",
     "OpenRouterApiKey",
-    "OpenRouterCatalog",
-    "openrouter",
+    "example_openrouter",
     "openrouter_client",
     "openrouter_endpoint",
     "openrouter_model_name",

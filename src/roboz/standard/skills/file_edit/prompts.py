@@ -8,7 +8,7 @@ This workflow assumes you already know **`__RC__`** from the **`__ST__`** skill:
 
 Use this decision rule:
 
-1. **Small files (roughly <200-300 lines):** prefer rewriting the full file when many parts need to change, wither with **`__RC__`** or **`__AP__`**.
+1. **Small files (roughly <200-300 lines):** prefer rewriting the full file when many parts need to change, either with **`__RC__`** or **`__AP__`**.
 2. **Find/replace edits (single region or repeated exact text):** use **`__AP__`**.
 3. **Large files or risky targeted edits:** use **`__AP__`** with strong context.
 

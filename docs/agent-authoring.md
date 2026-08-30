@@ -118,7 +118,7 @@ from roboz import Agent, stop
 
 agent = Agent(
     name="my_agent",
-    agent_endpoint=...,             # endpoint or LazyExternalDependency
+    agent_endpoint=...,             # endpoint dependency or MockLLMEndpoint
     tools=[..., stop],              # active + chained
     default_tools=[...],            # startup/default flow
     skills=[...],                   # optional on-demand skills
@@ -150,8 +150,9 @@ dependency source. Their wrapper Tools derive from the child's current Tool
 graph, so later `Agent.add()` calls remain visible without a parallel dependency
 snapshot.
 
-Endpoints must be concrete endpoint objects or `LazyExternalDependency`
-instances. Raw callable endpoints are not supported.
+`Agent.agent_endpoint` must be an endpoint dependency (`ExternalDependency` or
+`LazyExternalDependency`) or `MockLLMEndpoint`. Raw endpoint objects and callable
+endpoints are not supported.
 
 ## Operational Guardrails
 

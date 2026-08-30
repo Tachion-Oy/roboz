@@ -157,6 +157,7 @@ class Agent(ExternalDependencySource):
         self._skills: dict[str, Skill] = {}
         self._auto_loaded_skills: dict[str, Skill] = {}
         self._loaded_skills: set[Skill] = set()
+        self._ephemeral_default_tools: list[Tool] = []
 
         # Tools
         all_tools = self._append_tools_reducer(

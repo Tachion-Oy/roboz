@@ -13,7 +13,7 @@ from roboz.llm.providers.catalog import ProviderCatalog
 from roboz.llm.providers.model_types import ChatModelSpec
 
 OPENROUTER_BASE_URL: str
-OPENROUTER_MODELS: tuple[ChatModelSpec, ...]
+EXAMPLE_OPENROUTER_MODELS: tuple[ChatModelSpec, ...]
 
 class OpenRouterApiKey(StrEnum):
     API_KEY: OpenRouterApiKey
@@ -22,10 +22,10 @@ def openrouter_client(api_key: str) -> OpenAI: ...
 def openrouter_model_name(model: ChatModelSpec) -> str: ...
 def openrouter_endpoint(model: ChatModelSpec, model_name: str) -> LLMEndpoint: ...
 
-class OpenRouterCatalog(ProviderCatalog):
+class ExampleOpenRouterCatalog(ProviderCatalog):
     def __init__(self) -> None: ...
-    z_ai__glm_5_3_flash: LazyExternalDependency[LLMEndpoint]
+    example__mock_chat_model: LazyExternalDependency[LLMEndpoint]
 
-openrouter: OpenRouterCatalog
+example_openrouter: ExampleOpenRouterCatalog
 
 __all__: list[str]

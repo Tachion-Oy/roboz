@@ -86,3 +86,25 @@ def test_purge_files_by_threshold_ignores_missing_folders() -> None:
         folders=[Path("/definitely/missing/path")], pattern="*.md", max_files=1
     )
     assert out.value == "below threshold (0/1)"
+
+
+def test_purge_files_deduplicates_overlapping_folders_before_threshold(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "files"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    old = root / "old.md"
+    retained = nested / "retained.md"
+    old.write_text("old", encoding="utf-8")
+    retained.write_text("retained", encoding="utf-8")
+    os.utime(old, (1, 1))
+    os.utime(retained, (2, 2))
+
+    out = purge_files_by_threshold(
+        folders=[root, nested], pattern="*.md", max_files=1
+    )
+
+    assert "deleted 1, kept 1 of 2" in out.value
+    assert not old.exists()
+    assert retained.exists()

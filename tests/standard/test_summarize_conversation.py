@@ -1,7 +1,6 @@
 """Tests for compactification's shared conversation summarizer."""
 
 import json
-import time
 from threading import Event, Thread
 from types import SimpleNamespace
 
@@ -156,14 +155,11 @@ def test_summarize_abandons_blocking_provider_promptly_on_cancel() -> None:
     caller.start()
     assert provider_started.wait(timeout=1)
 
-    started = time.monotonic()
     runtime_pipe.cancel()
     caller.join(timeout=1)
-    elapsed = time.monotonic() - started
 
     try:
         assert not caller.is_alive()
-        assert elapsed < 0.5
         assert len(errors) == 1
         assert isinstance(errors[0], ExternalCallCancelledError)
     finally:

@@ -26,7 +26,7 @@ class LLMPricing(BaseModel):
     transcription_price_per_hour: float | None = Field(
         default=None,
         ge=0,
-        description="Cost for 1M cached input tokens in USD, if applicable.",
+        description="Cost for one hour of audio transcription in USD, if applicable.",
     )
 
 

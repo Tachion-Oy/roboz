@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Barrier, Thread
 from typing import Any
 
 import pytest
@@ -442,7 +443,10 @@ def test_invoke_provider_5xx_remains_terminal_failure(tmp_path: Path) -> None:
     assert failure["level"] == "error"
 
 
-def test_agent_without_persistence_sink_does_not_persist(tmp_path: Path) -> None:
+def test_agent_without_persistence_sink_does_not_persist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     script = [dict(action="stop", rationale="", value="done")]
 
     agent_1 = Agent(
@@ -579,19 +583,68 @@ def test_stop_after_custom_final_stop_tool_handles_empty_cleanup_output():
     def final_stop_from_empty(input: Empty, messages: list[Message]) -> Stop:
         return Stop(value="custom-final-stop")
 
+    stop_tools = stop_after(cleanup_empty, final_stop_tool=final_stop_from_empty)
+    assert stop_tools[0].name == "final_stop_from_empty"
+    assert stop_tools[0].description == final_stop_from_empty.description
+
     agent = Agent(
         interaction_mode=None,
         name="stop_after_empty_cleanup",
-        tools=[stop_after(cleanup_empty, final_stop_tool=final_stop_from_empty)],
+        tools=[stop_tools],
         system_prompt="prompt",
         agent_endpoint=MockLLMEndpoint(
-            [dict(action="stop", rationale="", value="preserved")]
+            [dict(action="final_stop_from_empty", rationale="", value="preserved")]
         ),
         initial_messages=None,
     )
 
     out, _ = agent.invoke()
     assert out.value == "custom-final-stop"
+
+
+def test_stop_after_clears_preserved_value_after_finalization() -> None:
+    @tool
+    def cleanup(input: Str, messages: list[Message]) -> Str:
+        return input
+
+    entry, _, finalize = stop_after(cleanup)
+    def run(value: str) -> Stop:
+        entry(input=Str(value=value), messages=[])
+        result = finalize(input=Empty(), messages=[])
+        assert isinstance(result, Stop)
+        return result
+
+    assert run("first").value == "first"
+    assert run("second").value == "second"
+
+    with pytest.raises(RuntimeError, match="without an active stop value"):
+        finalize(input=Empty(), messages=[])
+
+
+def test_stop_after_isolates_preserved_value_for_shared_concurrent_tools() -> None:
+    @tool
+    def cleanup(input: Str, messages: list[Message]) -> Str:
+        return input
+
+    entry, _, finalize = stop_after(cleanup)
+    rendezvous = Barrier(2)
+    results: dict[str, str | None] = {}
+
+    def run(value: str) -> None:
+        entry(input=Str(value=value), messages=[])
+        rendezvous.wait(timeout=1)
+        result = finalize(input=Empty(), messages=[])
+        assert isinstance(result, Stop)
+        results[value] = result.value
+
+    threads = [Thread(target=run, args=(value,)) for value in ("first", "second")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert results == {"first": "first", "second": "second"}
 
 
 def test_stop_after_cleanup_not_run_on_abrupt_cancellation():
@@ -1134,7 +1187,7 @@ def test_auto_loaded_skill_dependency_order():
         bad_agent.invoke()
 
 
-def test_agent_info(tmp_path):
+def test_agent_info(capsys: pytest.CaptureFixture[str]):
     tools = [tool_a, tool_b, tool_c, stop]
     skills = [skill]
     default_tool2 = default_tool.copy(name="other_default")
@@ -1153,4 +1206,6 @@ def test_agent_info(tmp_path):
     )
     agent.initial_messages = ["This is a test initial User message!"]
     agent.show_agent_info()
-    assert not any(p.is_file() for p in tmp_path.rglob("*"))
+    output = capsys.readouterr().out
+    assert "Tools" in output
+    assert "tool_a" in output
