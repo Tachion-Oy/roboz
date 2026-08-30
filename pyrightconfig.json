@@ -1,0 +1,9 @@
+{
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["src", "tests/type_tests"],
+  "extraPaths": ["src"],
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": "error"
+}

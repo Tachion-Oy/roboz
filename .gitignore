@@ -1,0 +1,46 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and local configuration
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Tests, coverage, and static analysis
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
+.tox/
+.nox/
+
+# Packaging and generated documentation
+build/
+dist/
+wheels/
+*.egg-info/
+site/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.VSCodeCounter/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Roboz local runtime output
+roboz_data/
+worktrees/

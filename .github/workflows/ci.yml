@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev
+      - run: uv run pytest
+      - run: uv run python examples/quickstart.py
+
+  quality:
+    name: Lint, typing, and generated files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --dev
+      - run: uv run ruff check
+      - run: uv run pyright
+      - run: bash scripts/run_type_tests.sh
+      - run: uv run python scripts/generate_provider_stubs.py --check
+
+  distribution:
+    name: Distribution and isolated install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --dev
+      - run: uv build
+      - run: uv run twine check dist/*
+      - name: Verify distribution contents and metadata
+        run: |
+          unzip -Z1 dist/*.whl | grep -Fx 'roboz/py.typed'
+          unzip -Z1 dist/*.whl | grep -Eq '\.dist-info/licenses/LICENSE$'
+          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'Name: roboz'
+          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'Import-Name: roboz'
+          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'License-Expression: Apache-2.0'
+      - name: Install and import wheel in isolation
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/roboz-wheel-test"
+          uv pip install --python "$RUNNER_TEMP/roboz-wheel-test/bin/python" dist/*.whl
+          "$RUNNER_TEMP/roboz-wheel-test/bin/python" -c "import roboz; import roboz.shed; from roboz.shed.providers import openrouter"
