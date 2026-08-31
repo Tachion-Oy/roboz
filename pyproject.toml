@@ -1,0 +1,56 @@
+[project]
+name = "roboz"
+version = "0.1.0"
+description = "Typed primitives for composable agentic workflows"
+readme = "README.md"
+authors = [{ name = "Tachion Oy" }]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+import-names = ["roboz"]
+requires-python = ">=3.13"
+keywords = ["agents", "llm", "tool-calling", "workflows", "typing"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.12.4",
+    "python-dotenv>=1.2.1",
+    "rich>=14.2.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.32"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roboz"]
+
+[project.urls]
+Homepage = "https://github.com/Tachion-Oy/roboz"
+Repository = "https://github.com/Tachion-Oy/roboz"
+Issues = "https://github.com/Tachion-Oy/roboz/issues"
+Documentation = "https://github.com/Tachion-Oy/roboz/tree/main/docs"
+
+[tool.pytest.ini_options]
+addopts = "--cov=roboz --cov-report=term-missing --ignore=tests/type_tests"
+python_files = ["test_*.py", "tests_*.py"]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.411",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5.0",
+    "twine>=6.2",
+]
