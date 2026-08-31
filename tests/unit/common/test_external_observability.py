@@ -147,6 +147,28 @@ def test_external_call_cancels_before_starting_worker_when_slots_are_full(
     assert "phase=waiting-for-slot" in caplog.text
 
 
+def test_external_call_releases_slot_when_worker_start_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slots = BoundedSemaphore(1)
+    real_thread = _external.Thread
+    monkeypatch.setattr(_external, "_external_call_slots", slots)
+
+    class FailingThread:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("thread startup failed")
+
+    monkeypatch.setattr(_external, "Thread", FailingThread)
+    with pytest.raises(RuntimeError, match="thread startup failed"):
+        run_cancellable_external_call(lambda: "unreachable")
+
+    monkeypatch.setattr(_external, "Thread", real_thread)
+    assert run_cancellable_external_call(lambda: "ok", timeout_s=1) == "ok"
+
+
 def test_cancelled_call_retains_slot_until_abandoned_worker_exits(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,

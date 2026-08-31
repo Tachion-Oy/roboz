@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Collection, Mapping
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 from uuid import uuid4
 
@@ -48,17 +48,39 @@ def active_agent_names(
     }
 
 
+def _conversation_marker_path(*, agent_dir: Path, conversation_id: str) -> Path:
+    if not isinstance(conversation_id, str):
+        raise TypeError("conversation_id must be a string")
+    if (
+        not conversation_id
+        or conversation_id in {".", ".."}
+        or "/" in conversation_id
+        or "\\" in conversation_id
+        or Path(conversation_id).is_absolute()
+        or PureWindowsPath(conversation_id).is_absolute()
+    ):
+        raise ValueError("conversation_id must be one non-empty path component")
+
+    marker_dir = agent_dir / _ACTIVE_RUNS_DIR
+    marker = marker_dir / f"{conversation_id}{_RUN_MARKER_SUFFIX}"
+    if marker.resolve().parent != marker_dir.resolve():
+        raise ValueError("conversation marker must remain beneath the marker directory")
+    return marker
+
+
 def mark_conversation_active(*, agent_dir: Path, conversation_id: str) -> Path:
-    marker = agent_dir / _ACTIVE_RUNS_DIR / f"{conversation_id}{_RUN_MARKER_SUFFIX}"
+    marker = _conversation_marker_path(
+        agent_dir=agent_dir, conversation_id=conversation_id
+    )
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.touch(exist_ok=False)
     return marker
 
 
 def clear_conversation_active(*, agent_dir: Path, conversation_id: str) -> None:
-    (agent_dir / _ACTIVE_RUNS_DIR / f"{conversation_id}{_RUN_MARKER_SUFFIX}").unlink(
-        missing_ok=True
-    )
+    _conversation_marker_path(
+        agent_dir=agent_dir, conversation_id=conversation_id
+    ).unlink(missing_ok=True)
 
 
 def clear_active_markers(conversation_root: Path) -> int:
@@ -66,9 +88,7 @@ def clear_active_markers(conversation_root: Path) -> int:
     root = conversation_root.resolve()
     if not root.is_dir():
         return 0
-    markers = tuple(
-        root.glob(f"*/{_ACTIVE_RUNS_DIR.as_posix()}/*{_RUN_MARKER_SUFFIX}")
-    )
+    markers = tuple(root.glob(f"*/{_ACTIVE_RUNS_DIR.as_posix()}/*{_RUN_MARKER_SUFFIX}"))
     for marker in markers:
         marker.unlink(missing_ok=True)
     return len(markers)

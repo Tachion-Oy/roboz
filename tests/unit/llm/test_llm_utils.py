@@ -91,7 +91,7 @@ def test_decode_raw_JSON_invalid():
         decode_raw_JSON("not json")
 
 
-@pytest.mark.parametrize("raw", ['[1, 2]', '"text"', "42", "true", "null"])
+@pytest.mark.parametrize("raw", ["[1, 2]", '"text"', "42", "true", "null"])
 def test_decode_raw_JSON_rejects_non_object_values(raw: str) -> None:
     with pytest.raises(json.JSONDecodeError, match="Expected a JSON object"):
         decode_raw_JSON(raw)
@@ -746,6 +746,41 @@ def test_call_llm_api_streams_provider_chunks_and_usage() -> None:
     call = client.chat.completions.calls[0]
     assert call["stream"] is True
     assert call["stream_options"] == {"include_usage": True}
+
+
+def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
+    signal = ControlSignal()
+
+    class ClosableStream:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __iter__(self):
+            yield _stream_chunk("before-cancel")
+            signal.set()
+            yield _stream_chunk("after-cancel")
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = ClosableStream()
+    endpoint = LLMEndpoint(
+        client=_FakeLLMClient(stream),
+        model_name="fake-model",
+        api_name="fake",
+    )
+    deltas: list[str] = []
+
+    content, _ = _call_chat_completion(
+        endpoint,
+        request={},
+        on_delta=deltas.append,
+        control_signals=(signal,),
+    )
+
+    assert content == "before-cancel"
+    assert deltas == ["before-cancel"]
+    assert stream.closed is True
 
 
 def test_interrupted_stream_cannot_emit_late_chunks_after_next_stream_starts() -> None:

@@ -1,4 +1,5 @@
 # ruff: noqa: F403, F405
+import logging
 import time
 from functools import partial
 from threading import Event
@@ -40,6 +41,8 @@ from roboz.llm.endpoints import (
     TranscriptionEndpoint,
     TranscriptionEndpointLike,
 )
+
+logger = logging.getLogger(__name__)
 
 _RETRYABLE_LLM_ERRORS: tuple[type[Exception], ...] = (
     LLMRateLimitExceededError,
@@ -406,19 +409,27 @@ def _call_streaming_llm_api(
 
     chunks: list[str] = []
     usage = None
-    for chunk in stream:
-        if _call_abandoned(call_abandoned) or _any_signal_set(control_signals):
-            break
-        usage = (
-            chunk.get("usage", usage)
-            if isinstance(chunk, dict)
-            else getattr(chunk, "usage", usage)
-        )
-        delta = _stream_delta_content(chunk)
-        if not delta:
-            continue
-        chunks.append(delta)
-        on_delta(delta)
+    try:
+        for chunk in stream:
+            if _call_abandoned(call_abandoned) or _any_signal_set(control_signals):
+                break
+            usage = (
+                chunk.get("usage", usage)
+                if isinstance(chunk, dict)
+                else getattr(chunk, "usage", usage)
+            )
+            delta = _stream_delta_content(chunk)
+            if not delta:
+                continue
+            chunks.append(delta)
+            on_delta(delta)
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - cleanup must not mask call outcome
+                logger.warning("Failed to close LLM provider stream", exc_info=True)
 
     return "".join(chunks), _telemetry_from_usage(endpoint=endpoint, usage=usage)
 

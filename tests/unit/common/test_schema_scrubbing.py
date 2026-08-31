@@ -161,6 +161,21 @@ def test_finalized_message_preserves_unicode_and_json_escaping() -> None:
     assert json.loads(message.content) == {"value": value}
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        r"\n",
+        r"\\n",
+        r'C:\new\folder\"quoted"',
+        "literal backslash before newline: \\n",
+    ],
+)
+def test_finalized_message_preserves_literal_escape_sequences(value: str) -> None:
+    message = get_finalized_message(Str(value=value))
+
+    assert json.loads(message.content) == {"value": value}
+
+
 def test_message_kind_is_not_agent_facing_in_scrubbed_messages():
     """`message_kind` is internal metadata and must be stripped before LLM calls."""
     message = get_finalized_message(

@@ -1,6 +1,7 @@
 from enum import StrEnum
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
 from roboz.models._schema import (
@@ -10,7 +11,7 @@ from roboz.models._schema import (
 )
 from roboz.models._serialization import camel_to_snake, reduce_escapes
 from roboz.runtime import Output, bind_output, get_bound_output, load_key, reset_output
-from roboz.runtime._paths import get_file_count
+from roboz.runtime._paths import delete_agent_context, get_file_count
 
 
 class ExampleUnionModel(BaseModel):
@@ -94,6 +95,47 @@ def test_get_file_count_counts_only_files_and_handles_missing_path(
     (tmp_path / "subdir").mkdir()
 
     assert get_file_count(tmp_path) == 2
+
+
+def test_delete_agent_context_removes_only_the_named_direct_child(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "contexts"
+    target = root / "agent_one"
+    sibling = root / "agent_two"
+    target.mkdir(parents=True)
+    sibling.mkdir()
+    (target / "conversation.json").write_text("{}", encoding="utf-8")
+
+    delete_agent_context(root=root, agent="agent_one")
+
+    assert not target.exists()
+    assert sibling.is_dir()
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "",
+        ".",
+        "..",
+        "../other",
+        "nested/agent",
+        "/tmp/agent",
+        r"..\other",
+        r"C:\tmp\agent",
+    ],
+)
+def test_delete_agent_context_rejects_unsafe_names(tmp_path: Path, agent: str) -> None:
+    root = tmp_path / "contexts"
+    root.mkdir()
+    sentinel = root / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="child name"):
+        delete_agent_context(root=root, agent=agent)
+
+    assert sentinel.read_text(encoding="utf-8") == "keep"
 
 
 def test_bind_output_sets_current_context() -> None:

@@ -153,11 +153,16 @@ class _ExternalCallRunner[T]:
                 return
 
     def _start_worker(self) -> None:
-        Thread(
+        worker = Thread(
             target=self._worker,
             daemon=True,
             name=self._worker_name,
-        ).start()
+        )
+        try:
+            worker.start()
+        except BaseException:
+            _external_call_slots.release()
+            raise
 
     def _worker(self) -> None:
         worker_started = time.monotonic()

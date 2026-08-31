@@ -1,6 +1,6 @@
 from datetime import datetime
 from logging import getLogger
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import shutil
 
 logger = getLogger(__name__)
@@ -26,8 +26,32 @@ def get_file_count(p: Path | None) -> int | None:
     return len([f for f in p.iterdir() if f.is_file()])
 
 
+def _direct_child_path(*, root: Path, name: str) -> Path:
+    if not isinstance(name, str):
+        raise TypeError("child name must be a string")
+    if (
+        not name
+        or name in {".", ".."}
+        or "/" in name
+        or "\\" in name
+        or Path(name).is_absolute()
+        or PureWindowsPath(name).is_absolute()
+    ):
+        raise ValueError("child name must be one non-empty path component")
+
+    resolved_root = root.resolve()
+    candidate = root / name
+    resolved_candidate = candidate.resolve()
+    if (
+        resolved_candidate == resolved_root
+        or resolved_candidate.parent != resolved_root
+    ):
+        raise ValueError("child path must resolve directly beneath root")
+    return candidate
+
+
 def delete_agent_context(*, root: Path, agent: str):
-    agent_path = root / agent
+    agent_path = _direct_child_path(root=root, name=agent)
     if agent_path.is_dir():
         shutil.rmtree(agent_path)
         return
