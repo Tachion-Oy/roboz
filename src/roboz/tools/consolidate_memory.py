@@ -41,6 +41,7 @@ _SNAPSHOT_TITLE_PREFIX: Final[str] = "# Conversation Snapshot: "
 _TOOL_KEY: Final[str] = "tool"
 _PENDING_SNAPSHOTS_KEY: Final[str] = "pending_snapshots"
 _ARTIFACT_FILE_KEY: Final[str] = "artifact_file"
+_MIN_PENDING_SNAPSHOTS: Final[int] = 1
 
 
 @dataclass(frozen=True)
@@ -193,7 +194,7 @@ def consolidate_memory(
     project_idle = not active_marker_paths(ctx.conversation_root, ctx.agent_names)
     if not _should_consolidate(
         pending=pending,
-        min_pending=max(1, ctx.min_pending_snapshots),
+        min_pending=max(_MIN_PENDING_SNAPSHOTS, ctx.min_pending_snapshots),
         max_age_seconds=ctx.max_pending_age_seconds,
         now=utc_now(),
         project_idle=project_idle,

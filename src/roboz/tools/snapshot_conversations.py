@@ -53,6 +53,7 @@ _CONVERSATION_ID_KEY: Final[str] = "conversation_id"
 _ARTIFACT_FILE_KEY: Final[str] = "artifact_file"
 _NEW_TOKENS_KEY: Final[str] = "new_tokens"
 _TOOL_KEY: Final[str] = "tool"
+_MIN_TOKEN_THRESHOLD: Final[int] = 0
 
 
 class SnapshotMode(StrEnum):
@@ -158,7 +159,8 @@ def _should_snapshot(*, run: ConversationRun, threshold: int, new_tokens: int) -
     if run.status is RunStatus.CANCELLED:
         return False
     return new_tokens >= threshold or (
-        run.status in TERMINAL_SYNCABLE_STATUSES and new_tokens > 0
+        run.status in TERMINAL_SYNCABLE_STATUSES
+        and new_tokens > _MIN_TOKEN_THRESHOLD
     )
 
 
@@ -255,7 +257,7 @@ def snapshot_conversations(
     del input, messages
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
-    threshold = max(0, ctx.token_growth_threshold)
+    threshold = max(_MIN_TOKEN_THRESHOLD, ctx.token_growth_threshold)
     source_files = list(ctx.conversation_root.rglob(f"*{JSON_SUFFIX}"))
 
     scanned = len(source_files)

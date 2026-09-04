@@ -11,6 +11,7 @@ SUMMARY_OUTPUT_EXAMPLE: Final[Mapping[str, str]] = {
 
 _PERCENT_SCALE: Final[int] = 100
 _MINIMUM_OVERAGE_PERCENT: Final[int] = 1
+_MIN_CHARACTER_BUDGET: Final[int] = 0
 
 
 def build_summary_user_prompt(
@@ -41,7 +42,7 @@ def build_summary_length_feedback(*, response_chars: int, max_chars: int) -> str
             _MINIMUM_OVERAGE_PERCENT,
             round((response_chars - max_chars) / max_chars * _PERCENT_SCALE),
         )}% over"
-        if max_chars > 0
+        if max_chars > _MIN_CHARACTER_BUDGET
         else "over"
     )
     return (

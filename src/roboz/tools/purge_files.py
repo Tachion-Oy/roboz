@@ -11,6 +11,7 @@ from roboz.tools.memory_contexts import PurgeFilesCtx
 _BENIGN_RMDIR_ERRNOS: Final[frozenset[int]] = frozenset(
     {errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST}
 )
+_MIN_FILE_LIMIT: Final[int] = 0
 
 
 def collect_matching_files(*, folders: list[Path], pattern: str) -> list[Path]:
@@ -59,8 +60,8 @@ def purge_files_by_threshold(
         collect_matching_files(folders=folders, pattern=pattern),
         key=lambda path: (path.stat().st_mtime_ns, str(path)),
     )
-    limit = max(0, max_files)
-    delete_count = max(0, len(files) - limit)
+    limit = max(_MIN_FILE_LIMIT, max_files)
+    delete_count = max(_MIN_FILE_LIMIT, len(files) - limit)
     for file_path in files[:delete_count]:
         file_path.unlink(missing_ok=True)
 

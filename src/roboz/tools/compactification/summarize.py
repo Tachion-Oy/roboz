@@ -29,6 +29,7 @@ DEFAULT_MAX_CHARS_TOLERANCE_PERCENT: Final[float] = 15.0
 
 _PERCENT_SCALE: Final[int] = 100
 _FIRST_ATTEMPT: Final[int] = 1
+_MIN_TOLERANCE_PERCENT: Final[float] = 0.0
 _OUTPUT_FORMAT_FIELD: Final[str] = "output_format"
 _JSON_OUTPUT_FORMAT: Final[str] = "json"
 _RESPONSE_CHARS_KEY: Final[str] = "response_chars"
@@ -42,7 +43,10 @@ _SHORTEST_CHARS_KEY: Final[str] = "shortest_chars"
 
 
 def _validate_tolerance_percent(tolerance_percent: float) -> None:
-    if not math.isfinite(tolerance_percent) or tolerance_percent < 0:
+    if (
+        not math.isfinite(tolerance_percent)
+        or tolerance_percent < _MIN_TOLERANCE_PERCENT
+    ):
         raise ValueError("max_chars_tolerance_percent must be finite and non-negative")
 
 
