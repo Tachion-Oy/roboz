@@ -57,17 +57,7 @@ jobs:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --locked --dev
-      - run: uv build
-      - run: uv run twine check dist/*
-      - name: Verify distribution contents and metadata
-        run: |
-          unzip -Z1 dist/*.whl | grep -Fx 'roboz/py.typed'
-          unzip -Z1 dist/*.whl | grep -Eq '\.dist-info/licenses/LICENSE$'
-          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'Name: roboz'
-          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'Import-Name: roboz'
-          unzip -p dist/*.whl '*/METADATA' | grep -Fx 'License-Expression: Apache-2.0'
-      - name: Install and import wheel in isolation
-        run: |
-          uv venv --python 3.13 "$RUNNER_TEMP/roboz-wheel-test"
-          uv pip install --python "$RUNNER_TEMP/roboz-wheel-test/bin/python" dist/*.whl
-          "$RUNNER_TEMP/roboz-wheel-test/bin/python" -c "import roboz as rz; assert rz.Agent"
+      - run: uv build --all-packages --out-dir dist/first-slice
+      - run: uv run twine check dist/first-slice/*
+      - name: Verify metadata, isolated installs, and the installed assistant
+        run: uv run python scripts/check_distributions.py --dist dist/first-slice
