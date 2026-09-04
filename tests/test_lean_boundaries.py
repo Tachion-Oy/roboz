@@ -17,6 +17,9 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "peffahub",
     "peffashed",
     "shed",
+    "roboz_shed",
+    "roboz_openai",
+    "roboz_proton_bridge",
 }
 
 
@@ -56,4 +59,9 @@ def test_base_dependency_set_is_primitive_only() -> None:
         for requirement in metadata["project"]["dependencies"]
     }
     assert names == {"pydantic", "python-dotenv", "rich"}
-    assert "optional-dependencies" not in metadata["project"]
+    extras = metadata["project"]["optional-dependencies"]
+    assert extras == {
+        "shed": ["roboz-shed>=0.1.0a1,<0.2.0"],
+        "openai": ["roboz-openai>=0.1.0a1,<0.2.0"],
+        "proton-bridge-beta": ["roboz-proton-bridge>=0.1.0b1,<0.2.0"],
+    }
