@@ -12,9 +12,11 @@ from roboz.tools.interaction import (
 from roboz.tools.memory_contexts import (
     ConsolidateMemoryCtx,
     PurgeFilesCtx,
+    SleepBetweenRunsCtx,
     SnapshotConversationsCtx,
 )
 from roboz.tools.purge_files import purge_files, purge_files_by_threshold
+from roboz.tools.sleep_between_runs import sleep_between_runs
 from roboz.tools.snapshot_conversations import SnapshotMode, snapshot_conversations
 
 __all__ = [
@@ -26,6 +28,7 @@ __all__ = [
     "ConsolidateMemoryCtx",
     "SnapshotConversationsCtx",
     "SnapshotMode",
+    "SleepBetweenRunsCtx",
     "message_user",
     "consolidate_memory",
     "prompt_user",
@@ -33,6 +36,7 @@ __all__ = [
     "purge_files",
     "purge_files_by_threshold",
     "snapshot_conversations",
+    "sleep_between_runs",
     "stop",
     "stop_after",
 ]

@@ -1,6 +1,7 @@
 """Typed factory contexts for dependency-free memory maintenance tools."""
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from roboz.llm import EndpointBinding
@@ -52,8 +53,19 @@ class PurgeFilesCtx(FactoryCtx):
     prune_empty_directories: bool = False
 
 
+@dataclass(frozen=True)
+class SleepBetweenRunsCtx(FactoryCtx):
+    """Configuration for the cancellable wait at the end of a memory cycle."""
+
+    seconds: float
+    is_cancelled: Callable[[], bool] | None = None
+    conversation_root: Path | None = None
+    agent_names: set[str] = field(default_factory=set)
+
+
 __all__ = [
     "ConsolidateMemoryCtx",
     "PurgeFilesCtx",
+    "SleepBetweenRunsCtx",
     "SnapshotConversationsCtx",
 ]
