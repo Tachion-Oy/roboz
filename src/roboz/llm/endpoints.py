@@ -1,10 +1,43 @@
 import json
-from typing import Any, Callable, Literal, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any, Final, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from roboz.models import Message, Role
 from roboz.tooling.dependencies import LazyExternalDependency, ModelEndpointDependency
+
+type JSONValue = (
+    None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+)
+type RequestOptions = dict[str, JSONValue]
+
+_EXTRA_BODY_FIELD: Final[str] = "extra_body"
+_FRAMEWORK_OWNED_REQUEST_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "messages",
+        "model",
+        "response_format",
+        "stream",
+        "stream_options",
+        "temperature",
+    }
+)
+
+
+def copy_request_options(extra_body: Mapping[str, object]) -> RequestOptions:
+    """Validate and defensively copy provider-specific request options."""
+    protected = _FRAMEWORK_OWNED_REQUEST_KEYS.intersection(extra_body)
+    if protected:
+        keys = ", ".join(sorted(protected))
+        raise ValueError(f"extra_body cannot override framework-owned keys: {keys}")
+    try:
+        return cast(
+            RequestOptions,
+            json.loads(json.dumps(dict(extra_body), allow_nan=False)),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extra_body must be JSON-compatible") from exc
 
 
 class LLMPricing(BaseModel):
@@ -85,6 +118,11 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
         default=True,
         description="Whether this endpoint supports streamed chat completions.",
     )
+    extra_body: RequestOptions | None = Field(
+        default=None,
+        exclude=True,
+        description="Provider-specific request options forwarded to the LLM SDK.",
+    )
 
     rate_limit_error: type[Exception] = Field(
         default=Exception, description="Client's rate limit error."
@@ -92,6 +130,15 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
     context_length_error: type[Exception] = Field(
         default=Exception, description="Client's error for context length issues."
     )
+
+    @field_validator(_EXTRA_BODY_FIELD, mode="before")
+    @classmethod
+    def _validate_extra_body(cls, value: object) -> RequestOptions | None:
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise TypeError("extra_body must be a mapping")
+        return copy_request_options(value)
 
     @property
     def dependency_id(self) -> str:

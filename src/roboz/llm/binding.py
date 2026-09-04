@@ -1,4 +1,5 @@
-from typing import TypedDict, cast
+from collections.abc import Mapping
+from typing import Final, TypedDict, cast, overload
 
 from roboz.llm.endpoints import (
     EndpointLike,
@@ -7,10 +8,63 @@ from roboz.llm.endpoints import (
     MockTranscriptionEndpoint,
     TranscriptionEndpoint,
     TranscriptionEndpointLike,
+    copy_request_options,
 )
-from roboz.tooling.dependencies import ExternalDependency, ToolDependency
+from roboz.tooling.dependencies import (
+    ExternalDependency,
+    LazyExternalDependency,
+    ToolDependency,
+)
+
+_EXTRA_BODY_FIELD: Final[str] = "extra_body"
 
 EndpointBinding = ToolDependency[ExternalDependency] | MockLLMEndpoint
+
+
+@overload
+def with_request_options(
+    endpoint: LLMEndpoint, *, extra_body: Mapping[str, object]
+) -> LLMEndpoint: ...
+
+
+@overload
+def with_request_options(
+    endpoint: LazyExternalDependency[LLMEndpoint],
+    *,
+    extra_body: Mapping[str, object],
+) -> LazyExternalDependency[LLMEndpoint]: ...
+
+
+def with_request_options(
+    endpoint: LLMEndpoint | LazyExternalDependency[LLMEndpoint],
+    *,
+    extra_body: Mapping[str, object],
+) -> LLMEndpoint | LazyExternalDependency[LLMEndpoint]:
+    """Copy an endpoint resource with per-use provider request options.
+
+    Lazy resources remain lazy and retain their canonical dependency identity.
+    The supplied mapping is validated and copied before it is captured.
+    """
+    options = copy_request_options(extra_body)
+    if isinstance(endpoint, LLMEndpoint):
+        return endpoint.model_copy(update={_EXTRA_BODY_FIELD: options})
+    if not isinstance(endpoint, LazyExternalDependency):
+        raise TypeError("endpoint must be an LLMEndpoint or lazy LLM dependency")
+
+    def configured_endpoint() -> LLMEndpoint:
+        materialized = endpoint.materialize()
+        if not isinstance(materialized, LLMEndpoint):
+            raise TypeError("LLM dependency did not materialize an LLMEndpoint")
+        return materialized.model_copy(
+            update={_EXTRA_BODY_FIELD: copy_request_options(options)}
+        )
+
+    return LazyExternalDependency(
+        dependency_id_value=endpoint.dependency_id,
+        dependency_kind=endpoint.kind,
+        metadata=endpoint.redacted_metadata(),
+        resolver=configured_endpoint,
+    )
 
 
 def bind_endpoint(endpoint: EndpointLike) -> EndpointBinding:

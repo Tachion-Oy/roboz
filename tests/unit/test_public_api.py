@@ -46,8 +46,17 @@ def test_domain_ownership_exports() -> None:
     assert roboz.llm.estimate_conversation_tokens is not None
     assert roboz.llm.get_truncated_messages_for_context is not None
     assert roboz.llm.resolve_endpoint is not None
+    assert roboz.llm.with_request_options is not None
+    assert roboz.llm.JSONValue is not None
+    assert roboz.llm.RequestOptions is not None
     assert roboz.agent.get_active_agent_stack is not None
     assert roboz.runtime.load_key is not None
+    assert roboz.runtime.LOG_DATA_ATTRIBUTE == "roboz_data"
+    assert roboz.runtime.LOG_FORMAT is not None
+    assert roboz.runtime.LOG_DATE_FORMAT is not None
+    assert roboz.runtime.LogScalar is not None
+    assert roboz.runtime.log_with_data is not None
+    assert roboz.runtime.reset_logging_config is not None
     assert roboz.runtime.persistence.logged_row_to_message is not None
     assert roboz.tools.NO_REPLY == "The user did not respond"
     assert not hasattr(roboz.agent, "stop")
@@ -76,6 +85,7 @@ def test_private_helpers_are_absent_from_public_facades() -> None:
     assert not hasattr(roboz.models, "LLMTelemetry")
     assert not hasattr(roboz.models, "schema_scrubber")
     assert not hasattr(roboz.llm, "classify_llm_provider_error")
+    assert not hasattr(roboz.llm, "copy_request_options")
 
 
 def test_downstream_model_contracts() -> None:

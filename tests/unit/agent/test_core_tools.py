@@ -72,7 +72,7 @@ def test_tool_name_matches_identifier(tool_obj, identifier):
     assert tool_obj.name == identifier
 
 
-def test_prompt_agent_logs_agent_and_tool_context(caplog):
+def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
     caplog.set_level(logging.INFO, logger="roboz.agent.prompt_agent_tool")
     agent = Agent(
         interaction_mode=Output.API,
@@ -86,9 +86,8 @@ def test_prompt_agent_logs_agent_and_tool_context(caplog):
 
     agent.invoke()
 
-    assert any(
-        "Calling llm (agent=logger_agent, tool=prompt_agent)" in record.message
-        for record in caplog.records
+    assert not any(
+        record.name == "roboz.agent.prompt_agent_tool" for record in caplog.records
     )
 
 

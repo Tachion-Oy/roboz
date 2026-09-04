@@ -70,18 +70,66 @@ The `roboz.llm` facade exposes the operations needed to assemble and host an age
 - completion and structured-completion helpers
 - conversation token estimation and context truncation
 - endpoint binding, resource access, and resolution
+- per-use endpoint request options through `with_request_options`
+
+`with_request_options(endpoint, extra_body=...)` creates an independent endpoint
+configuration for provider-specific JSON options such as routing or reasoning
+effort. A lazy endpoint remains lazy and keeps its canonical dependency identity.
+The options are defensively copied, are excluded from endpoint serialization and
+redacted metadata, and replace any options already attached to that endpoint copy.
+
+For OpenRouter, keep catalog model names canonical (for example
+`z-ai/glm-5.3`, never `z-ai/glm-5.3:nitro`) and attach routing policy where the
+endpoint is composed:
+
+```python
+from roboz.llm import with_openrouter_policy
+
+orchestrator_endpoint = with_openrouter_policy(
+    canonical_endpoint,
+    reasoning_effort="low",
+)
+memory_endpoint = with_openrouter_policy(
+    canonical_endpoint,
+    reasoning_effort="high",
+)
+planner_endpoint = with_openrouter_policy(canonical_endpoint)
+```
+
+The helper sends OpenRouter's throughput sort with required-parameter routing,
+the request-level equivalent of the former `:nitro` model suffix. An optional
+provider ignore list can be supplied with `ignored_providers=`.
+
+The framework rejects request keys it owns (`messages`, `model`,
+`response_format`, `stream`, `stream_options`, and `temperature`). Provider
+options must be finite, JSON-compatible values. Keep credentials and other secrets
+out of these options even though Roboz does not serialize them.
 
 Prompt fragments used to implement those operations live together in `roboz.llm.prompts`. Companion-facing model, runtime, tool, and persistence contracts are likewise exported from their corresponding package facades rather than requiring private-module imports.
 
 ## Companion Packages
 
-The `roboz` package contains primitives only. Optional companion packages are separate distributions and depend on `roboz`; primitives never import or depend on them. The planned `shed` package will provide prebuilt skills, tools, provider endpoint catalogs, composite agents, shared identifiers, models, and permission guards.
+The `roboz` package includes its typed primitives and dependency-free reference
+tools, including the Librarian memory pipeline. Optional companion distributions
+depend on `roboz` and provide integrations that require provider SDKs, guarded
+system tools, or application-specific services; Roboz never imports those
+companions.
 
 ## Runtime Event Bus
 
 Main package: [`../src/roboz/runtime`](../src/roboz/runtime)
 
 `EventPipe` emits one structured stream per invoke. Built-in consumers include CLI/API output and persistence sinks; external hosts can subscribe to the same stream.
+
+The `roboz.runtime` facade also exposes `log_with_data` and
+`LOG_DATA_ATTRIBUTE`. The helper writes a self-contained human message and places
+optional scalar metadata on the log record under the `roboz_data` attribute so a
+host can render concise console logs and structured technical logs independently.
+It forwards caller-supplied scalar metadata and `exc_info` to Python logging, so
+callers remain responsible for the sensitivity of those values. Roboz's built-in
+tool observer and LLM diagnostics emit operational identifiers, types, counts,
+durations, and statuses; they do not include provider bodies, exception messages
+or tracebacks, prompts, results, or reasoning text.
 
 Event classes:
 

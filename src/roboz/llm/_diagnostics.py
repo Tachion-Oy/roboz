@@ -1,9 +1,12 @@
 # ruff: noqa: F403, F405
 import logging
 import time
+from dataclasses import dataclass
 from enum import StrEnum, auto
+from typing import Final, Self
 
 from roboz.exceptions import *  # noqa: F403
+from roboz.runtime._logging import LogScalar, log_with_data
 from roboz.runtime.observability import (
     ObservedFailure,
     RuntimeEventCategory,
@@ -20,7 +23,159 @@ from roboz.llm.endpoints import (
 
 logger = logging.getLogger(__name__)
 
-type LLMEventData = dict[str, str | int | float | bool | None]
+type LLMEventData = dict[str, LogScalar]
+type _AnyEndpoint = (
+    LLMEndpoint
+    | MockLLMEndpoint
+    | TranscriptionEndpoint
+    | MockTranscriptionEndpoint
+)
+
+_CHOICES_FIELD: Final[str] = "choices"
+_MESSAGE_FIELD: Final[str] = "message"
+_DELTA_FIELD: Final[str] = "delta"
+_FINISH_REASON_FIELD: Final[str] = "finish_reason"
+_GENERATION_ID_FIELD: Final[str] = "id"
+_COMPLETION_TOKEN_DETAILS_FIELD: Final[str] = "completion_tokens_details"
+_REASONING_TOKENS_FIELD: Final[str] = "reasoning_tokens"
+_REASONING_DIRECT_FIELDS: Final[tuple[str, ...]] = (
+    "reasoning",
+    "reasoning_content",
+)
+_REASONING_DETAILS_FIELD: Final[str] = "reasoning_details"
+_REASONING_DETAIL_TEXT_FIELDS: Final[tuple[str, ...]] = ("text", "summary")
+
+_REASONING_CHARS_KEY: Final[str] = "reasoning_chars"
+_REASONING_CHUNKS_KEY: Final[str] = "reasoning_chunks"
+_REASONING_TOKENS_KEY: Final[str] = "reasoning_tokens"
+_FINISH_REASON_KEY: Final[str] = "finish_reason"
+_PROVIDER_GENERATION_ID_KEY: Final[str] = "provider_generation_id"
+_STREAM_CHUNKS_KEY: Final[str] = "stream_chunks"
+_CONTENT_CHUNKS_KEY: Final[str] = "content_chunks"
+_CALL_ID_KEY: Final[str] = "call_id"
+_ENDPOINT_KEY: Final[str] = "endpoint"
+_MODEL_KEY: Final[str] = "model"
+_TIMEOUT_SECONDS_KEY: Final[str] = "timeout_s"
+_DURATION_MS_KEY: Final[str] = "duration_ms"
+_ERROR_KIND_KEY: Final[str] = "error_kind"
+_ERROR_TYPE_KEY: Final[str] = "error_type"
+_OPERATION_KEY: Final[str] = "operation"
+_ATTEMPT_KEY: Final[str] = "attempt"
+_PROVIDER_ERROR_TYPE_KEY: Final[str] = "provider_error_type"
+_STATUS_CODE_KEY: Final[str] = "status_code"
+_REQUEST_ID_KEY: Final[str] = "request_id"
+_MILLISECONDS_PER_SECOND: Final[int] = 1_000
+
+_RESPONSE_ATTRIBUTE: Final[str] = "response"
+_STATUS_ATTRIBUTES: Final[tuple[str, ...]] = ("status_code", "status")
+_REQUEST_ID_ATTRIBUTE: Final[str] = "request_id"
+_HEADERS_ATTRIBUTE: Final[str] = "headers"
+_REQUEST_ID_HEADERS: Final[tuple[str, ...]] = (
+    "x-request-id",
+    "request-id",
+    "x-correlation-id",
+)
+
+
+@dataclass
+class LLMResponseDiagnostics:
+    """Safe provider-response metadata that never retains response text."""
+
+    reasoning_chars: int = 0
+    reasoning_chunks: int = 0
+    reasoning_tokens: int | None = None
+    finish_reason: str | None = None
+    provider_generation_id: str | None = None
+    stream_chunks: int | None = None
+    content_chunks: int | None = None
+
+    @classmethod
+    def from_response(cls, response: object, usage: object) -> Self:
+        diagnostics = cls()
+        choice = cls._first_choice(response)
+        diagnostics._observe_reasoning(cls._field(choice, _MESSAGE_FIELD))
+        diagnostics.observe_usage(usage)
+
+        finish_reason = cls._field(choice, _FINISH_REASON_FIELD)
+        if isinstance(finish_reason, str) and finish_reason:
+            diagnostics.finish_reason = finish_reason
+
+        generation_id = cls._field(response, _GENERATION_ID_FIELD)
+        if isinstance(generation_id, str) and generation_id:
+            diagnostics.provider_generation_id = generation_id
+        return diagnostics
+
+    @classmethod
+    def for_stream(cls) -> Self:
+        return cls(stream_chunks=0, content_chunks=0)
+
+    def observe_chunk(self, chunk: object, *, has_content: bool) -> None:
+        assert self.stream_chunks is not None
+        assert self.content_chunks is not None
+        self.stream_chunks += 1
+        self.content_chunks += int(has_content)
+
+        if self.provider_generation_id is None:
+            generation_id = self._field(chunk, _GENERATION_ID_FIELD)
+            if isinstance(generation_id, str) and generation_id:
+                self.provider_generation_id = generation_id
+
+        choice = self._first_choice(chunk)
+        finish_reason = self._field(choice, _FINISH_REASON_FIELD)
+        if isinstance(finish_reason, str) and finish_reason:
+            self.finish_reason = finish_reason
+
+        self._observe_reasoning(self._field(choice, _DELTA_FIELD))
+
+    def observe_usage(self, usage: object) -> None:
+        details = self._field(usage, _COMPLETION_TOKEN_DETAILS_FIELD)
+        reasoning_tokens = self._field(details, _REASONING_TOKENS_FIELD)
+        if isinstance(reasoning_tokens, int) and not isinstance(reasoning_tokens, bool):
+            self.reasoning_tokens = reasoning_tokens
+
+    def event_data(self) -> LLMEventData:
+        return {
+            _REASONING_CHARS_KEY: self.reasoning_chars,
+            _REASONING_CHUNKS_KEY: self.reasoning_chunks,
+            _REASONING_TOKENS_KEY: self.reasoning_tokens,
+            _FINISH_REASON_KEY: self.finish_reason,
+            _PROVIDER_GENERATION_ID_KEY: self.provider_generation_id,
+            _STREAM_CHUNKS_KEY: self.stream_chunks,
+            _CONTENT_CHUNKS_KEY: self.content_chunks,
+        }
+
+    def _observe_reasoning(self, value: object) -> None:
+        for field_name in _REASONING_DIRECT_FIELDS:
+            direct = self._field(value, field_name)
+            if isinstance(direct, str) and direct:
+                self.reasoning_chars += len(direct)
+                self.reasoning_chunks += 1
+                return
+
+        details = self._field(value, _REASONING_DETAILS_FIELD)
+        if not isinstance(details, (list, tuple)) or not details:
+            return
+
+        self.reasoning_chunks += 1
+        for detail in details:
+            for field_name in _REASONING_DETAIL_TEXT_FIELDS:
+                part = self._field(detail, field_name)
+                if isinstance(part, str) and part:
+                    self.reasoning_chars += len(part)
+                    break
+
+    @staticmethod
+    def _field(value: object, name: str) -> object:
+        if isinstance(value, dict):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    @classmethod
+    def _first_choice(cls, response: object) -> object | None:
+        choices = cls._field(response, _CHOICES_FIELD)
+        if not isinstance(choices, (list, tuple)) or not choices:
+            return None
+        return choices[0]
 
 
 class LLMErrorKind(StrEnum):
@@ -44,18 +199,11 @@ def emit_llm_runtime_event(
     message: str,
     data: LLMEventData,
 ) -> None:
-    """Emit an LLM lifecycle event containing deliberate metadata only.
+    """Emit an LLM lifecycle event through the supplied event pipe.
 
     No sanitization is attempted here. Callers must not pass prompts, responses,
     URLs, headers, exception messages, or other provider-controlled text.
     """
-    logger.log(
-        level.logging_level,
-        "%s (kind=%s, data=%s)",
-        message,
-        kind,
-        data,
-    )
     if pipe is None:
         return
     pipe.emit_runtime_event(
@@ -67,19 +215,26 @@ def emit_llm_runtime_event(
     )
 
 
+def log_llm_call(
+    *,
+    level: RuntimeEventLevel,
+    message: str,
+    data: LLMEventData,
+) -> None:
+    """Write an LLM operational diagnostic."""
+    log_with_data(logger, level.logging_level, message, data)
+
+
 def emit_llm_failure_event(
     pipe: EventPipe | None,
-    endpoint: (
-        LLMEndpoint
-        | MockLLMEndpoint
-        | TranscriptionEndpoint
-        | MockTranscriptionEndpoint
-    ),
+    endpoint: _AnyEndpoint,
     call_id: str,
     started: float,
     error: LLMError,
 ) -> None:
-    duration_ms = round((time.monotonic() - started) * 1000)
+    duration_ms = round(
+        (time.monotonic() - started) * _MILLISECONDS_PER_SECOND
+    )
     failure = observed_llm_failure(error)
     emit_llm_runtime_event(
         pipe,
@@ -88,81 +243,93 @@ def emit_llm_failure_event(
         message=(f"LLM call {failure.kind}: {endpoint.api_name}/{endpoint.model_name}"),
         data=llm_event_data(endpoint, call_id=call_id)
         | {
-            "duration_ms": duration_ms,
-            "error_kind": error_kind(error).value,
-            "error_type": type(error).__name__,
+            _DURATION_MS_KEY: duration_ms,
+            _ERROR_KIND_KEY: error_kind(error).value,
+            _ERROR_TYPE_KEY: type(error).__name__,
+        },
+    )
+
+
+def log_llm_failure(
+    endpoint: _AnyEndpoint,
+    call_id: str,
+    started: float,
+    error: LLMError,
+) -> None:
+    duration_ms = round((time.monotonic() - started) * 1000)
+    failure = observed_llm_failure(error)
+    log_llm_call(
+        level=failure.level,
+        message=f"LLM call {failure.kind}: {endpoint.api_name}/{endpoint.model_name}",
+        data=llm_event_data(endpoint, call_id=call_id)
+        | {
+            _DURATION_MS_KEY: duration_ms,
+            _ERROR_KIND_KEY: error_kind(error).value,
+            _ERROR_TYPE_KEY: type(error).__name__,
         },
     )
 
 
 def log_llm_provider_error(
-    endpoint: (
-        LLMEndpoint
-        | MockLLMEndpoint
-        | TranscriptionEndpoint
-        | MockTranscriptionEndpoint
-    ),
+    endpoint: _AnyEndpoint,
     *,
     operation: str,
     call_id: str,
     attempt: int,
     error: Exception,
 ) -> None:
-    """Log raw provider diagnostics without putting them on the runtime event pipe.
-
-    Provider responses are operationally useful but may contain sensitive text. This
-    function is therefore intentionally server-log-only: callers must never copy its
-    raw fields into persisted/runtime events.
-    """
-    response = _safe_attr(error, "response")
-    status_code = _safe_attr(error, "status_code", "status")
+    """Log provider failure metadata without provider-controlled text."""
+    response = _safe_attr(error, _RESPONSE_ATTRIBUTE)
+    status_code = _safe_attr(error, *_STATUS_ATTRIBUTES)
     if status_code is None:
-        status_code = _safe_attr(response, "status_code", "status")
+        status_code = _safe_attr(response, *_STATUS_ATTRIBUTES)
 
-    request_id = _safe_attr(error, "request_id")
+    request_id = _safe_attr(error, _REQUEST_ID_ATTRIBUTE)
     if request_id is None:
         request_id = _response_request_id(response)
 
-    provider_body = _safe_attr(error, "body")
-    if provider_body is None:
-        provider_body = _safe_attr(response, "text")
-
-    logger.error(
-        "Raw LLM provider error (operation=%s, endpoint=%s, model=%s, "
-        "call_id=%s, attempt=%d, provider_error_type=%s, status_code=%s, "
-        "request_id=%s, provider_message=%s, provider_body=%r)",
-        operation,
-        endpoint.api_name,
-        endpoint.model_name,
-        call_id,
-        attempt,
-        type(error).__name__,
-        status_code,
-        request_id,
-        str(error),
-        provider_body,
-        exc_info=(type(error), error, error.__traceback__),
+    safe_status = _metadata_scalar(status_code)
+    safe_request_id = _metadata_scalar(request_id)
+    log_with_data(
+        logger,
+        logging.DEBUG,
+        (
+            f"LLM provider attempt failed: {endpoint.api_name}/{endpoint.model_name} "
+            f"(attempt={attempt}, error_type={type(error).__name__}, "
+            f"status={safe_status}, request_id={safe_request_id})"
+        ),
+        {
+            _OPERATION_KEY: operation,
+            _ENDPOINT_KEY: endpoint.api_name,
+            _MODEL_KEY: endpoint.model_name,
+            _CALL_ID_KEY: call_id,
+            _ATTEMPT_KEY: attempt,
+            _PROVIDER_ERROR_TYPE_KEY: type(error).__name__,
+            _STATUS_CODE_KEY: safe_status,
+            _REQUEST_ID_KEY: safe_request_id,
+        },
     )
 
 
+def _metadata_scalar(value: object) -> LogScalar:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return type(value).__name__
+
+
 def llm_event_data(
-    endpoint: (
-        LLMEndpoint
-        | MockLLMEndpoint
-        | TranscriptionEndpoint
-        | MockTranscriptionEndpoint
-    ),
+    endpoint: _AnyEndpoint,
     *,
     call_id: str,
     timeout_s: float | None = None,
 ) -> LLMEventData:
     data: LLMEventData = {
-        "call_id": call_id,
-        "endpoint": endpoint.api_name,
-        "model": endpoint.model_name,
+        _CALL_ID_KEY: call_id,
+        _ENDPOINT_KEY: endpoint.api_name,
+        _MODEL_KEY: endpoint.model_name,
     }
     if timeout_s is not None:
-        data["timeout_s"] = timeout_s
+        data[_TIMEOUT_SECONDS_KEY] = timeout_s
     return data
 
 
@@ -209,12 +376,7 @@ def error_kind(error: LLMError) -> LLMErrorKind:
 
 def classify_llm_provider_error(
     error: Exception,
-    endpoint: (
-        LLMEndpoint
-        | MockLLMEndpoint
-        | TranscriptionEndpoint
-        | MockTranscriptionEndpoint
-    ),
+    endpoint: _AnyEndpoint,
 ) -> LLMError:
     if isinstance(error, LLMError):
         return error
@@ -272,9 +434,13 @@ def _has_any(haystack: str, *needles: str) -> bool:
 # it maps to the retryable LLMProviderUnavailableError. Detected structurally
 # (exception module + OS errno) rather than by message so roboz core stays
 # provider-agnostic and never imports httpx/httpcore.
-_TRANSPORT_ERROR_MODULES = ("httpx", "httpcore")
-_TRANSPORT_ERROR_NAMES = ("TransportError", "NetworkError", "TimeoutException")
-_TRANSIENT_OS_ERRNOS = frozenset(
+_TRANSPORT_ERROR_MODULES: Final[tuple[str, ...]] = ("httpx", "httpcore")
+_TRANSPORT_ERROR_NAMES: Final[tuple[str, ...]] = (
+    "TransportError",
+    "NetworkError",
+    "TimeoutException",
+)
+_TRANSIENT_OS_ERRNOS: Final[frozenset[int]] = frozenset(
     {
         32,  # EPIPE (broken pipe)
         54,  # ECONNRESET (BSD/macOS)
@@ -336,11 +502,11 @@ def _safe_attr(value: object, *names: str) -> object:
 
 
 def _response_request_id(response: object) -> object:
-    headers = _safe_attr(response, "headers")
+    headers = _safe_attr(response, _HEADERS_ATTRIBUTE)
     get_header = getattr(headers, "get", None)
     if not callable(get_header):
         return None
-    for name in ("x-request-id", "request-id", "x-correlation-id"):
+    for name in _REQUEST_ID_HEADERS:
         try:
             value = get_header(name)
         except Exception:  # noqa: BLE001 - malformed headers are non-essential

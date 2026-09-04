@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -25,7 +26,7 @@ from roboz.runtime.pipe import EventPipe
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.sinks import CliSink, PersistenceSink, default_event_sinks
 from roboz.models.truncation import NO_MESSAGE
-from roboz.runtime import Output
+from roboz.runtime import LOG_DATA_ATTRIBUTE, Output
 from roboz.models import Role
 from roboz.tooling.decorators import tool
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -66,6 +67,33 @@ def test_datapipe_emits_lifecycle_and_message_events_in_order() -> None:
     assert events[3].kind == "stopped"
     assert events[3].parent_agent_name is None
     assert events[3].status == "completed"
+
+
+def test_lifecycle_log_messages_are_self_contained(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pipe = EventPipe()
+
+    with caplog.at_level(logging.INFO, logger="roboz.runtime.pipe"):
+        pipe.initialize(dry_run=False, agent_name="event_agent")
+        pipe.finalize_run(status=RunStatus.COMPLETED)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages == [
+        "Agent started: event_agent (parent=-)",
+        "Agent finished: event_agent (status=completed)",
+    ]
+    assert getattr(caplog.records[0], LOG_DATA_ATTRIBUTE) == {
+        "agent": "event_agent",
+        "parent": None,
+        "endpoint": None,
+        "model": None,
+    }
+    assert getattr(caplog.records[1], LOG_DATA_ATTRIBUTE) == {
+        "agent": "event_agent",
+        "status": "completed",
+        "sequence": 2,
+    }
 
 
 def test_datapipe_constructor_event_sinks_receive_events() -> None:
@@ -315,7 +343,10 @@ def test_persistence_sink_always_persists_lifecycle(tmp_path) -> None:
     sink(RunLifecycleEvent(kind="started", agent_name="agent", sequence=1))
     sink(
         RunLifecycleEvent(
-            kind="stopped", agent_name="agent", sequence=2, status="completed"
+            kind="stopped",
+            agent_name="agent",
+            sequence=2,
+            status=RunStatus.COMPLETED,
         )
     )
 

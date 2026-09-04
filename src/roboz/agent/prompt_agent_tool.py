@@ -1,17 +1,12 @@
-import logging
 from dataclasses import dataclass
 from typing import Any
 
-from roboz.agent._identifiers import PROMPT_AGENT_TOOL_NAME
 from roboz.llm import EndpointLike, call_llm_api, get_completion
 from roboz.models import Empty, Invoke, Message
 from roboz.runtime.pipe import EventPipe
 from roboz.tooling.core import Tool
 from roboz.tooling.decorators import factory
 from roboz.tooling.dependencies import FactoryCtx, ToolDependency
-
-logger = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class PromptAgentCtx(FactoryCtx):
@@ -31,11 +26,6 @@ def prompt_agent(input: Empty, messages: list[Message], ctx: PromptAgentCtx) -> 
     def start_stream_attempt() -> None:
         ctx.pipe.start_message()
 
-    logger.info(
-        "Calling llm (agent=%s, tool=%s)",
-        getattr(ctx.pipe, "_current_agent_name", None),
-        PROMPT_AGENT_TOOL_NAME,
-    )
     response = get_completion(
         messages=messages,
         active_tools=list(ctx.active_tools),

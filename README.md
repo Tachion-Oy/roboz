@@ -61,11 +61,11 @@ The same program is available in [`examples/quickstart.py`](examples/quickstart.
 | `rz.Skill` | Packages reusable instructions and optional tools. |
 | `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
 
-The package contains only primitives: agent and LLM abstractions, models, runtime
-and persistence infrastructure, skills, tooling, and foundational control and
-interaction tools. Provider catalogs, provider SDK integrations, guarded file and
-CLI tools, composite agents, and application integrations belong in companion
-packages and are not dependencies of Roboz.
+The package contains agent and LLM primitives, models, runtime and persistence
+infrastructure, skills, tooling, foundational control/interaction tools, and
+dependency-free reference tools such as the Librarian memory pipeline. Provider
+catalogs and SDK integrations, guarded file and CLI tools, and application
+integrations belong in companion packages and are not dependencies of Roboz.
 
 ## Documentation
 
@@ -76,6 +76,7 @@ packages and are not dependencies of Roboz.
 | [`docs/tool-authoring.md`](docs/tool-authoring.md) | Tools, factories, dependencies, and chaining |
 | [`docs/testing-practices.md`](docs/testing-practices.md) | Test design and review expectations |
 | [`docs/build-and-test.md`](docs/build-and-test.md) | Local setup and CI-equivalent validation |
+| [`docs/port-parity.md`](docs/port-parity.md) | Audited source-commit parity and deliberate exclusions |
 
 ## Development
 

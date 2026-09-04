@@ -24,7 +24,10 @@ from roboz.exceptions import (
     NonexistentTool,
 )
 from roboz.llm import estimate_conversation_tokens
-from roboz.llm._diagnostics import classify_llm_provider_error
+from roboz.llm._diagnostics import (
+    classify_llm_provider_error,
+    emit_llm_runtime_event,
+)
 from roboz.llm._retry import RetryState, run_with_retry
 from roboz.llm.binding import LLMTelemetryDict
 from roboz.llm.calls import _call_chat_completion, call_llm_api, call_transcription_api
@@ -49,6 +52,8 @@ from roboz.runtime._external import (
     run_cancellable_external_call,
 )
 from roboz.runtime.events import MessageDeltaEvent, RuntimeEvent
+from roboz.runtime import LOG_DATA_ATTRIBUTE
+from roboz.runtime.observability import LifecycleKind, RuntimeEventLevel
 from roboz.runtime.pipe import EventPipe
 from roboz.runtime.sinks import PersistenceSink
 from roboz.tooling.core import Tool
@@ -705,9 +710,29 @@ class _FakeLLMClient:
         self.chat = _FakeChat(response)
 
 
-def _stream_chunk(delta: str = "", usage: object | None = None):
+def _stream_chunk(
+    delta: str = "",
+    usage: object | None = None,
+    *,
+    reasoning: str | None = None,
+    reasoning_content: str | None = None,
+    reasoning_details: list[object] | None = None,
+    finish_reason: str | None = None,
+    generation_id: str | None = None,
+):
     return SimpleNamespace(
-        choices=[SimpleNamespace(delta=SimpleNamespace(content=delta))],
+        id=generation_id,
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(
+                    content=delta,
+                    reasoning=reasoning,
+                    reasoning_content=reasoning_content,
+                    reasoning_details=reasoning_details,
+                ),
+                finish_reason=finish_reason,
+            )
+        ],
         usage=usage,
     )
 
@@ -726,6 +751,10 @@ def test_call_llm_api_streams_provider_chunks_and_usage() -> None:
         model_name="fake-model",
         api_name="fake",
         output_format="json",
+        extra_body={
+            "provider": {"sort": "throughput", "require_parameters": True},
+            "reasoning": {"effort": "low"},
+        },
     )
     deltas: list[str] = []
 
@@ -746,6 +775,65 @@ def test_call_llm_api_streams_provider_chunks_and_usage() -> None:
     call = client.chat.completions.calls[0]
     assert call["stream"] is True
     assert call["stream_options"] == {"include_usage": True}
+    assert call["extra_body"] == {
+        "provider": {"sort": "throughput", "require_parameters": True},
+        "reasoning": {"effort": "low"},
+    }
+
+
+def test_stream_retains_object_usage_when_a_later_chunk_has_none() -> None:
+    usage = SimpleNamespace(prompt_tokens=3, completion_tokens=5)
+    client = _FakeLLMClient(
+        [
+            _stream_chunk('{"arg":"ok"}'),
+            _stream_chunk(usage=usage),
+            _stream_chunk(),
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+    )
+
+    content, meta = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+    )
+
+    assert content == '{"arg":"ok"}'
+    assert meta["token_input"] == 3
+    assert meta["token_output"] == 5
+
+
+def test_stream_retains_dict_usage_when_a_later_chunk_has_none() -> None:
+    usage = {
+        "prompt_tokens": 2,
+        "completion_tokens": 6,
+    }
+    client = _FakeLLMClient(
+        [
+            {"choices": [], "usage": usage},
+            {"choices": [], "usage": None},
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+    )
+
+    _, meta = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+    )
+
+    assert meta["token_input"] == 2
+    assert meta["token_output"] == 6
 
 
 def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
@@ -771,16 +859,217 @@ def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
     )
     deltas: list[str] = []
 
-    content, _ = _call_chat_completion(
+    result = _call_chat_completion(
         endpoint,
         request={},
         on_delta=deltas.append,
         control_signals=(signal,),
     )
 
-    assert content == "before-cancel"
+    assert result.content == "before-cancel"
     assert deltas == ["before-cancel"]
     assert stream.closed is True
+
+
+def test_call_llm_api_persists_reasoning_only_stream_diagnostics_without_text(
+    tmp_path,
+) -> None:
+    first_reasoning = "private analysis"
+    second_reasoning = " before answering"
+    usage = SimpleNamespace(
+        prompt_tokens=3,
+        completion_tokens=9,
+        completion_tokens_details=SimpleNamespace(reasoning_tokens=9),
+    )
+    client = _FakeLLMClient(
+        [
+            _stream_chunk(
+                reasoning=first_reasoning,
+                generation_id="generation-123",
+            ),
+            _stream_chunk(
+                reasoning_content=second_reasoning,
+                generation_id="generation-123",
+            ),
+            _stream_chunk(
+                usage=usage,
+                finish_reason="stop",
+                generation_id="generation-123",
+            ),
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="reasoning-model",
+        api_name="fake",
+        output_format="json",
+    )
+    sink = PersistenceSink.for_path(tmp_path)
+    pipe = EventPipe(event_sinks=(sink,))
+    pipe.initialize(dry_run=False, agent_name="agent")
+    deltas: list[str] = []
+
+    content, meta = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=deltas.append,
+        pipe=pipe,
+    )
+
+    assert content == ""
+    assert deltas == []
+    assert meta.get("token_output") == 9
+    assert sink.conversations_location is not None
+    persisted = json.loads(sink.conversations_location.read_text(encoding="utf-8"))
+    succeeded = next(
+        event
+        for event in persisted["runtime_events"]
+        if event["category"] == "llm" and event["kind"] == "succeeded"
+    )
+    assert succeeded["data"] == {
+        "call_id": succeeded["data"]["call_id"],
+        "endpoint": "fake",
+        "model": "reasoning-model",
+        "duration_ms": succeeded["data"]["duration_ms"],
+        "response_chars": 0,
+        "token_input": 3,
+        "token_output": 9,
+        "reasoning_chars": len(first_reasoning + second_reasoning),
+        "reasoning_chunks": 2,
+        "reasoning_tokens": 9,
+        "finish_reason": "stop",
+        "provider_generation_id": "generation-123",
+        "stream_chunks": 3,
+        "content_chunks": 0,
+    }
+    serialized = json.dumps(persisted)
+    assert first_reasoning not in serialized
+    assert second_reasoning not in serialized
+
+
+def test_call_llm_api_counts_one_reasoning_representation_per_stream_chunk() -> None:
+    content = '{"arg":"ok"}'
+    client = _FakeLLMClient(
+        [
+            _stream_chunk(
+                reasoning="canonical",
+                reasoning_content="duplicate alias",
+                reasoning_details=[
+                    {"type": "reasoning.text", "text": "duplicate detail"}
+                ],
+                generation_id="generation-456",
+            ),
+            _stream_chunk(
+                content,
+                reasoning_details=[
+                    SimpleNamespace(type="reasoning.summary", summary="summary")
+                ],
+                finish_reason="stop",
+                generation_id="generation-456",
+            ),
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="reasoning-model",
+        api_name="fake",
+        output_format="json",
+    )
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+    deltas: list[str] = []
+
+    response, _ = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=deltas.append,
+        pipe=pipe,
+    )
+
+    succeeded = next(
+        event
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == "succeeded"
+    )
+    assert response == content
+    assert deltas == [content]
+    assert succeeded.data is not None
+    assert succeeded.data["reasoning_chars"] == len("canonicalsummary")
+    assert succeeded.data["reasoning_chunks"] == 2
+    assert succeeded.data["stream_chunks"] == 2
+    assert succeeded.data["content_chunks"] == 1
+
+
+def test_call_llm_api_collects_diagnostics_from_dict_stream_chunks() -> None:
+    hidden = "dict reasoning"
+    usage = {
+        "prompt_tokens": 2,
+        "completion_tokens": 6,
+        "completion_tokens_details": {"reasoning_tokens": 4},
+    }
+    content = '{"arg":"ok"}'
+    client = _FakeLLMClient(
+        [
+            {
+                "id": "generation-dict",
+                "choices": [
+                    {
+                        "delta": {
+                            "content": "",
+                            "reasoning_details": [
+                                {"type": "reasoning.text", "text": hidden}
+                            ],
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+                "usage": None,
+            },
+            {
+                "id": "generation-dict",
+                "choices": [
+                    {
+                        "delta": {"content": content},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": usage,
+            },
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="reasoning-model",
+        api_name="fake",
+        output_format="json",
+    )
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+
+    response, _ = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+        pipe=pipe,
+    )
+
+    succeeded = next(
+        event
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == "succeeded"
+    )
+    assert response == content
+    assert succeeded.data is not None
+    assert succeeded.data["reasoning_chars"] == len(hidden)
+    assert succeeded.data["reasoning_chunks"] == 1
+    assert succeeded.data["reasoning_tokens"] == 4
+    assert succeeded.data["finish_reason"] == "stop"
+    assert succeeded.data["provider_generation_id"] == "generation-dict"
+    assert hidden not in str(succeeded.data)
 
 
 def test_interrupted_stream_cannot_emit_late_chunks_after_next_stream_starts() -> None:
@@ -895,6 +1184,7 @@ def test_call_llm_api_falls_back_when_endpoint_stream_is_false() -> None:
         api_name="fake",
         output_format="json",
         stream=False,
+        extra_body={"reasoning": {"effort": "high"}},
     )
     deltas: list[str] = []
 
@@ -915,6 +1205,92 @@ def test_call_llm_api_falls_back_when_endpoint_stream_is_false() -> None:
     call = client.chat.completions.calls[0]
     assert "stream" not in call
     assert "stream_options" not in call
+    assert call["extra_body"] == {"reasoning": {"effort": "high"}}
+
+
+def test_call_llm_api_omits_extra_body_when_unconfigured() -> None:
+    response = SimpleNamespace(
+        usage=None,
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+    )
+    client = _FakeLLMClient(response)
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        stream=False,
+    )
+
+    call_llm_api(endpoint, [Message(role=Role.USER, content="hello")])
+
+    assert "extra_body" not in client.chat.completions.calls[0]
+
+
+def test_call_llm_api_collects_non_streaming_reasoning_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    hidden = "non-streaming private analysis"
+    content = '{"arg":"ok"}'
+    response = SimpleNamespace(
+        id="generation-non-streaming",
+        usage=SimpleNamespace(
+            prompt_tokens=2,
+            completion_tokens=7,
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=5),
+        ),
+        choices=[
+            SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(
+                    content=content,
+                    reasoning_content=hidden,
+                ),
+            )
+        ],
+    )
+    endpoint = LLMEndpoint(
+        client=_FakeLLMClient(response),
+        model_name="reasoning-model",
+        api_name="fake",
+        output_format="json",
+        stream=False,
+    )
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+
+    with caplog.at_level(logging.INFO, logger="roboz.llm._diagnostics"):
+        returned, _ = call_llm_api(
+            endpoint,
+            [Message(role=Role.USER, content="hello")],
+            pipe=pipe,
+        )
+
+    succeeded = next(
+        event
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == "succeeded"
+    )
+    assert returned == content
+    assert succeeded.data is not None
+    assert succeeded.data["reasoning_chars"] == len(hidden)
+    assert succeeded.data["reasoning_chunks"] == 1
+    assert succeeded.data["reasoning_tokens"] == 5
+    assert succeeded.data["finish_reason"] == "stop"
+    assert succeeded.data["provider_generation_id"] == "generation-non-streaming"
+    assert succeeded.data["stream_chunks"] is None
+    assert succeeded.data["content_chunks"] is None
+    assert hidden not in str(succeeded.data)
+    assert succeeded.message == "LLM call succeeded: fake/reasoning-model"
+    assert any(
+        record.getMessage()
+        == (
+            "LLM call succeeded: fake/reasoning-model "
+            "(tokens_in=2, tokens_out=7, reasoning_tokens=5)"
+        )
+        for record in caplog.records
+    )
 
 
 def test_cancellable_external_call_stops_waiting_on_cancel() -> None:
@@ -935,7 +1311,27 @@ def test_cancellable_external_call_stops_waiting_on_cancel() -> None:
     assert time.monotonic() - started < 0.5
 
 
-def test_call_llm_api_emits_runtime_events_for_success() -> None:
+def test_emit_llm_runtime_event_does_not_write_a_python_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pipe = MagicMock(spec=EventPipe)
+
+    with caplog.at_level(logging.DEBUG, logger="roboz.llm._diagnostics"):
+        emit_llm_runtime_event(
+            pipe,
+            kind=LifecycleKind.SUCCEEDED,
+            level=RuntimeEventLevel.INFO,
+            message="LLM call succeeded: fake/model",
+            data={"token_input": 2, "token_output": 4},
+        )
+
+    pipe.emit_runtime_event.assert_called_once()
+    assert caplog.records == []
+
+
+def test_call_llm_api_emits_runtime_events_for_success(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     response = SimpleNamespace(
         usage=SimpleNamespace(prompt_tokens=2, completion_tokens=4),
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"arg":"ok"}'))],
@@ -953,11 +1349,12 @@ def test_call_llm_api_emits_runtime_events_for_success() -> None:
     pipe.add_sink(events.append)
     pipe.initialize(dry_run=False, agent_name="agent")
 
-    content, _ = call_llm_api(
-        endpoint,
-        [Message(role=Role.USER, content="hello")],
-        pipe=pipe,
-    )
+    with caplog.at_level(logging.INFO, logger="roboz.llm._diagnostics"):
+        content, _ = call_llm_api(
+            endpoint,
+            [Message(role=Role.USER, content="hello")],
+            pipe=pipe,
+        )
 
     assert content == '{"arg":"ok"}'
     runtime_events = [event for event in events if isinstance(event, RuntimeEvent)]
@@ -968,10 +1365,56 @@ def test_call_llm_api_emits_runtime_events_for_success() -> None:
     assert llm_events[1].data is not None
     assert "duration_ms" in llm_events[1].data
     assert llm_events[1].data["response_chars"] == len('{"arg":"ok"}')
+    assert llm_events[1].data["reasoning_chars"] == 0
+    assert llm_events[1].data["reasoning_chunks"] == 0
+    assert llm_events[1].data["reasoning_tokens"] is None
+    assert llm_events[1].data["finish_reason"] is None
+    assert llm_events[1].data["provider_generation_id"] is None
+    assert llm_events[1].data["stream_chunks"] is None
+    assert llm_events[1].data["content_chunks"] is None
     assert "response_preview" not in llm_events[1].data
+    assert llm_events[1].message == "LLM call succeeded: fake/fake-model"
+    assert any(
+        record.getMessage()
+        == "LLM call succeeded: fake/fake-model (tokens_in=2, tokens_out=4)"
+        for record in caplog.records
+    )
 
 
-def test_call_llm_api_logs_raw_provider_error_but_persists_only_safe_metadata(
+@pytest.mark.parametrize(
+    ("usage", "expected_message"),
+    [
+        (
+            SimpleNamespace(prompt_tokens=2),
+            "LLM call succeeded: fake/fake-model (tokens_in=2)",
+        ),
+        (None, "LLM call succeeded: fake/fake-model"),
+    ],
+)
+def test_call_llm_api_omits_unavailable_tokens_from_success_log(
+    usage: object,
+    expected_message: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    response = SimpleNamespace(
+        usage=usage,
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{ "arg": "ok" }'))],
+    )
+    endpoint = LLMEndpoint(
+        client=_FakeLLMClient(response),
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+        stream=False,
+    )
+
+    with caplog.at_level(logging.INFO, logger="roboz.llm._diagnostics"):
+        call_llm_api(endpoint, [Message(role=Role.USER, content="hello")])
+
+    assert any(record.getMessage() == expected_message for record in caplog.records)
+
+
+def test_call_llm_api_logs_provider_error_as_safe_structured_metadata(
     tmp_path, caplog: pytest.LogCaptureFixture
 ) -> None:
     class ProviderError(Exception):
@@ -999,7 +1442,7 @@ def test_call_llm_api_logs_raw_provider_error_but_persists_only_safe_metadata(
     pipe.initialize(dry_run=False, agent_name="agent")
 
     with (
-        caplog.at_level(logging.ERROR, logger="roboz.llm._diagnostics"),
+        caplog.at_level(logging.DEBUG, logger="roboz.llm._diagnostics"),
         pytest.raises(LLMAuthError),
     ):
         call_llm_api(endpoint, [Message(role=Role.USER, content="hello")], pipe=pipe)
@@ -1019,26 +1462,28 @@ def test_call_llm_api_logs_raw_provider_error_but_persists_only_safe_metadata(
     assert llm_events[1]["data"]["error_kind"] == "auth"
     assert llm_events[1]["level"] == "warning"
 
-    raw_records = [
+    provider_records = [
         record
         for record in caplog.records
         if record.name == "roboz.llm._diagnostics"
-        and record.getMessage().startswith("Raw LLM provider error")
+        and record.getMessage().startswith("LLM provider attempt failed:")
     ]
-    assert len(raw_records) == 1
-    raw_record = raw_records[0]
-    raw_message = raw_record.getMessage()
-    assert "operation=chat" in raw_message
-    assert "endpoint=fake" in raw_message
-    assert "model=fake-model" in raw_message
-    assert "attempt=1" in raw_message
-    assert "provider_error_type=ProviderError" in raw_message
-    assert "status_code=401" in raw_message
-    assert "request_id=request-123" in raw_message
-    assert "provider_message=bad api key" in raw_message
-    assert "provider account key disabled" in raw_message
-    assert llm_events[0]["data"]["call_id"] in raw_message
-    assert raw_record.exc_info is not None
+    assert len(provider_records) == 1
+    provider_record = provider_records[0]
+    provider_data = getattr(provider_record, LOG_DATA_ATTRIBUTE)
+    assert provider_data == {
+        "operation": "chat",
+        "endpoint": "fake",
+        "model": "fake-model",
+        "call_id": llm_events[0]["data"]["call_id"],
+        "attempt": 1,
+        "provider_error_type": "ProviderError",
+        "status_code": 401,
+        "request_id": "request-123",
+    }
+    assert "bad api key" not in caplog.text
+    assert "provider account key disabled" not in caplog.text
+    assert provider_record.exc_info is None
 
 
 def test_call_llm_api_classifies_mock_provider_error_and_emits_runtime_event(
@@ -1391,7 +1836,7 @@ def test_call_llm_api_retries_transient_rate_limit_then_succeeds(
         stream=False,
     )
 
-    with caplog.at_level(logging.INFO, logger="roboz.runtime._external"):
+    with caplog.at_level(logging.DEBUG):
         content, _ = call_llm_api(
             endpoint,
             [Message(role=Role.USER, content="hello")],
@@ -1401,14 +1846,36 @@ def test_call_llm_api_retries_transient_rate_limit_then_succeeds(
 
     assert content == '{"arg":"ok"}'
     assert len(client.chat.completions.calls) == 2
-    started_records = [
+    external_records = [
         record
         for record in caplog.records
         if record.name == "roboz.runtime._external"
-        and record.getMessage().startswith("External call started")
     ]
-    assert [record.args[2] for record in started_records] == [1, 2]
-    assert len({record.args[1] for record in started_records}) == 1
+    assert external_records == []
+    llm_records = [
+        record for record in caplog.records if record.name == "roboz.llm._diagnostics"
+    ]
+    assert (
+        sum(
+            record.getMessage().startswith("LLM call started:")
+            for record in llm_records
+        )
+        == 1
+    )
+    assert (
+        sum(
+            record.getMessage().startswith("LLM call retrying:")
+            for record in llm_records
+        )
+        == 1
+    )
+    assert (
+        sum(
+            record.getMessage().startswith("LLM call succeeded:")
+            for record in llm_records
+        )
+        == 1
+    )
 
 
 def test_call_llm_api_logs_each_failed_provider_attempt(
@@ -1429,7 +1896,7 @@ def test_call_llm_api_logs_each_failed_provider_attempt(
     )
 
     with (
-        caplog.at_level(logging.ERROR, logger="roboz.llm._diagnostics"),
+        caplog.at_level(logging.DEBUG, logger="roboz.llm._diagnostics"),
         pytest.raises(LLMRateLimitExceededError),
     ):
         call_llm_api(
@@ -1441,22 +1908,21 @@ def test_call_llm_api_logs_each_failed_provider_attempt(
         )
 
     assert len(client.chat.completions.calls) == 2
-    raw_records = [
+    provider_records = [
         record
         for record in caplog.records
         if record.name == "roboz.llm._diagnostics"
-        and record.getMessage().startswith("Raw LLM provider error")
+        and record.getMessage().startswith("LLM provider attempt failed:")
     ]
-    raw_messages = [record.getMessage() for record in raw_records]
-    assert len(raw_messages) == 2
-    assert "attempt=1" in raw_messages[0]
-    assert "attempt=2" in raw_messages[1]
-    call_ids = {
-        message.partition("call_id=")[2].partition(",")[0] for message in raw_messages
-    }
+    provider_data = [
+        getattr(record, LOG_DATA_ATTRIBUTE) for record in provider_records
+    ]
+    assert len(provider_data) == 2
+    assert [data["attempt"] for data in provider_data] == [1, 2]
+    call_ids = {data["call_id"] for data in provider_data}
     assert len(call_ids) == 1
-    assert "provider_message=slow down" in raw_messages[0]
-    assert "provider_message=still slow" in raw_messages[1]
+    assert "slow down" not in caplog.text
+    assert "still slow" not in caplog.text
 
 
 def test_call_llm_api_does_not_retry_non_retryable_error() -> None:
@@ -1539,6 +2005,60 @@ def test_call_llm_api_streaming_retries_before_first_chunk() -> None:
     assert content == '{"arg":"ok"}'
     assert deltas == ['{"arg":', '"ok"}']
     assert len(client.chat.completions.calls) == 2
+
+
+def test_call_llm_api_retry_discards_failed_attempt_reasoning_diagnostics() -> None:
+    class ProviderUnavailable(Exception):
+        status_code = 503
+
+    class ReasoningThenFailureStream:
+        def __iter__(self):
+            yield _stream_chunk(reasoning="abandoned reasoning")
+            raise ProviderUnavailable("overloaded")
+
+    content = '{"arg":"ok"}'
+    client = _ScriptedLLMClient(
+        [
+            ReasoningThenFailureStream(),
+            [
+                _stream_chunk(content, generation_id="successful-generation"),
+                _stream_chunk(finish_reason="stop"),
+            ],
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+    )
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+
+    response, _ = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+        pipe=pipe,
+        retry_base_delay_s=0.01,
+        retry_max_delay_s=0.01,
+    )
+
+    succeeded = next(
+        event
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == "succeeded"
+    )
+    assert response == content
+    assert len(client.chat.completions.calls) == 2
+    assert succeeded.data is not None
+    assert succeeded.data["reasoning_chars"] == 0
+    assert succeeded.data["reasoning_chunks"] == 0
+    assert succeeded.data["provider_generation_id"] == "successful-generation"
+    assert succeeded.data["stream_chunks"] == 2
+    assert succeeded.data["content_chunks"] == 1
 
 
 def test_call_llm_api_streaming_does_not_retry_after_first_chunk() -> None:
@@ -1696,7 +2216,7 @@ def test_call_transcription_api_timeout_is_not_retried() -> None:
     assert calls == 1
 
 
-def test_call_transcription_api_logs_raw_provider_error_before_retry(
+def test_call_transcription_api_logs_safe_provider_metadata_before_retry(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     class ProviderUnavailable(Exception):
@@ -1713,7 +2233,7 @@ def test_call_transcription_api_logs_raw_provider_error_before_retry(
         client=client, model_name="whisper-test", api_name="test-provider"
     )
 
-    with caplog.at_level(logging.ERROR, logger="roboz.llm._diagnostics"):
+    with caplog.at_level(logging.DEBUG, logger="roboz.llm._diagnostics"):
         text = call_transcription_api(
             endpoint,
             b"audio-bytes",
@@ -1725,22 +2245,22 @@ def test_call_transcription_api_logs_raw_provider_error_before_retry(
 
     assert text == "hello world"
     assert len(client.audio.transcriptions.calls) == 2
-    raw_records = [
+    provider_records = [
         record
         for record in caplog.records
         if record.name == "roboz.llm._diagnostics"
-        and record.getMessage().startswith("Raw LLM provider error")
+        and record.getMessage().startswith("LLM provider attempt failed:")
     ]
-    assert len(raw_records) == 1
-    raw_message = raw_records[0].getMessage()
-    assert "operation=transcription" in raw_message
-    assert "endpoint=test-provider" in raw_message
-    assert "model=whisper-test" in raw_message
-    assert "attempt=1" in raw_message
-    assert "status_code=503" in raw_message
-    assert "request_id=transcription-request-123" in raw_message
-    assert "provider_message=overloaded" in raw_message
-    assert "provider overload response body" in raw_message
+    assert len(provider_records) == 1
+    provider_data = getattr(provider_records[0], LOG_DATA_ATTRIBUTE)
+    assert provider_data["operation"] == "transcription"
+    assert provider_data["endpoint"] == "test-provider"
+    assert provider_data["model"] == "whisper-test"
+    assert provider_data["attempt"] == 1
+    assert provider_data["status_code"] == 503
+    assert provider_data["request_id"] == "transcription-request-123"
+    assert "overloaded" not in caplog.text
+    assert "provider overload response body" not in caplog.text
 
 
 def test_call_transcription_api_does_not_retry_non_retryable_error() -> None:

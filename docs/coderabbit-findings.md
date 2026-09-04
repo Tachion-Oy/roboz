@@ -16,6 +16,18 @@ invalid-sequence test comment. The standalone layout correctly uses `tests/unit`
 so the earlier path finding no longer applies. Shell-script and compactification
 test cleanups remain deferred because those add-on modules are not included.
 
+The later Peffa parity port resolved finding 13 at Roboz's built-in diagnostic
+call sites by replacing raw provider diagnostics with DEBUG-level, scalar
+structured metadata. Those call sites do not log provider bodies, exception
+strings, or tracebacks; the public `log_with_data` helper intentionally leaves
+caller-provided logging policy to its caller.
+
+The parity port also resolved finding 2 with a versioned message-sequence cursor
+stored in each new snapshot. Artifact timestamps remain file-ordering metadata;
+they are only a compatibility fallback for snapshots written before the cursor
+was introduced. Invalid cursors and naive or invalid legacy timestamps are
+reprocessed conservatively instead of risking silent message loss.
+
 ## Handle in the smaller PR only if included
 
 - Validate decoded LLM JSON is an object before model construction.
@@ -33,12 +45,6 @@ test cleanups remain deferred because those add-on modules are not included.
 
 - Validate that completion JSON is an object before constructing output models.
 - Handle non-object JSON in `remind_agent` without raising `TypeError`.
-
-### 2. Make conversation snapshot coverage sequence-aware
-
-- Store sequence information in the snapshot watermark.
-- Prevent later messages created in the same millisecond from being skipped.
-- Validate `created_at` before making the provider call.
 
 ### 3. Constrain persisted conversation identifiers
 
@@ -102,27 +108,21 @@ The current Hub catalog is curated and does not contain affected model IDs.
 PeffaHub uses API I/O and passes an absolute sandbox scripts directory, so the first
 two items do not currently affect it.
 
-### 11. Harden librarian filesystem concurrency
+### 11. Harden generic librarian filesystem concurrency
 
 - Handle files disappearing while purge candidates are being sorted.
-- Make the consolidation watermark claim and write atomic.
+- Make the consolidation watermark claim and write atomic if multi-process
+  Librarians become a supported Roboz use case.
 
-PeffaHub normally runs one librarian per project, but multi-process and orphaned
-librarian races remain possible.
+PeffaHub constructs one Librarian per project and its maintenance stages execute
+sequentially, so these races do not affect that integration. The generic Roboz
+constructor accepts caller-provided paths and does not enforce singleton ownership;
+cross-process hardening therefore remains a defensive library follow-up.
 
 ### 12. Clarify dry-run event semantics
 
 - Decide whether complete messages and script output should be suppressed.
 - Apply the decision consistently across all EventPipe emitters.
-
-### 13. Bound raw provider diagnostics
-
-- Cap the size of logged provider bodies.
-- Decide whether production logs should redact bodies, exception strings, and
-  tracebacks.
-
-Raw provider logging is currently an explicit server-log policy, so redaction is a
-policy decision rather than a direct correctness fix.
 
 ### 14. Minor cleanup bundle
 

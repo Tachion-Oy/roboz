@@ -3,7 +3,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -23,6 +23,7 @@ from roboz.llm.prompts import (
 from roboz.models import BaseNames, Invoke, Message, Role
 from roboz.models._serialization import reduce_escapes
 from roboz.models.truncation import ERROR_RETRY
+from roboz.runtime._logging import LogScalar, log_with_data
 from roboz.runtime.pipe import EventPipe
 from roboz.tooling.core import Tool
 
@@ -34,12 +35,25 @@ type JSONDict = dict[str, JSONValue]
 type AnyTool = Tool[Any, Any]
 
 
-_THINK_TAGS = ("</think>", "◁/think▷")
+_THINK_TAGS: Final[tuple[str, ...]] = ("</think>", "◁/think▷")
+
+_ATTEMPT_KEY: Final[str] = "attempt"
+_MAX_ATTEMPTS_KEY: Final[str] = "max_attempts"
+_ERROR_TYPE_KEY: Final[str] = "error_type"
+_RESPONSE_CHARS_KEY: Final[str] = "response_chars"
+_LINE_KEY: Final[str] = "line"
+_COLUMN_KEY: Final[str] = "column"
+_POSITION_KEY: Final[str] = "position"
+_VALIDATION_ERRORS_KEY: Final[str] = "validation_errors"
 
 
-_FENCE = r"(?:`{3}|´{3})"
-_OPEN_FENCE = re.compile(rf"^\s*{_FENCE}(?:json)?\s*\n?", re.IGNORECASE)
-_CLOSE_FENCE = re.compile(rf"(?:\n)?(?:json)?{_FENCE}\s*$", re.IGNORECASE)
+_FENCE: Final[str] = r"(?:`{3}|´{3})"
+_OPEN_FENCE: Final[re.Pattern[str]] = re.compile(
+    rf"^\s*{_FENCE}(?:json)?\s*\n?", re.IGNORECASE
+)
+_CLOSE_FENCE: Final[re.Pattern[str]] = re.compile(
+    rf"(?:\n)?(?:json)?{_FENCE}\s*$", re.IGNORECASE
+)
 
 
 def _strip_outer_code_fences(s: str) -> str:
@@ -124,20 +138,36 @@ def get_completion(
             raise
         except Exception as e:
             if isinstance(e, (NonexistentTool, JSONDecodeError, ValidationError)):
-                diagnostic_data = {
-                    "attempt": retry_count,
-                    "max_attempts": tries,
-                    "error_type": type(e).__name__,
-                    "response_chars": len(raw_response),
+                diagnostic_data: dict[str, LogScalar] = {
+                    _ATTEMPT_KEY: retry_count,
+                    _MAX_ATTEMPTS_KEY: tries,
+                    _ERROR_TYPE_KEY: type(e).__name__,
+                    _RESPONSE_CHARS_KEY: len(raw_response),
                 }
                 if isinstance(e, JSONDecodeError):
                     diagnostic_data.update(
-                        {"line": e.lineno, "column": e.colno, "position": e.pos}
+                        {
+                            _LINE_KEY: e.lineno,
+                            _COLUMN_KEY: e.colno,
+                            _POSITION_KEY: e.pos,
+                        }
                     )
                 elif isinstance(e, ValidationError):
-                    diagnostic_data["validation_errors"] = e.error_count()
-                logger.warning(
-                    "LLM response validation failed (data=%s)", diagnostic_data
+                    diagnostic_data[_VALIDATION_ERRORS_KEY] = e.error_count()
+                content_state = (
+                    ", response_chars=0"
+                    if diagnostic_data[_RESPONSE_CHARS_KEY] == 0
+                    else ""
+                )
+                log_with_data(
+                    logger,
+                    logging.WARNING,
+                    (
+                        "LLM response validation failed: "
+                        f"attempt={retry_count}/{tries}, error={type(e).__name__}"
+                        f"{content_state}"
+                    ),
+                    diagnostic_data,
                 )
             updated_messages += _reprompt_on_error(
                 raw_response=raw_response,

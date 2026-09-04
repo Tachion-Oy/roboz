@@ -153,6 +153,22 @@ snapshot.
 Endpoints must be concrete endpoint objects or `LazyExternalDependency`
 instances. Raw callable endpoints are not supported.
 
+Keep catalog endpoints canonical and attach provider request policy at the use
+site:
+
+```python
+from roboz.llm import with_request_options
+
+planning_endpoint = with_request_options(
+    catalog_endpoint,
+    extra_body={"reasoning": {"effort": "high"}},
+)
+```
+
+This returns a distinct endpoint configuration. Lazy catalog dependencies remain
+unresolved until the configured endpoint is materialized, while preserving their
+dependency ID and redacted metadata.
+
 ## Operational Guardrails
 
 - Keep active tool names action-oriented (verb-first).
