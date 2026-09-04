@@ -30,7 +30,7 @@ SNAPSHOT_CONVERSATION_EXAMPLE: Final[str] = """## Goals and intent
 
 ## Facts and references
 - Librarian must never snapshot itself; it only processes agents in its allow-list.
-- Key files: `src/roboz/agents/librarian/agent.py`, `src/roboz/tools/snapshot_conversations.py`, `src/roboz/tools/utils.py`.
+- Key files: `src/roboz/tools/librarian.py`, `src/roboz/tools/snapshot_conversations.py`, `src/roboz/tools/memory_files.py`.
 - Prompt examples live in separate modules from prompt constants.
 - User asked to remember: orchestrator consumes memory through `Agent` `initial_messages` pointing at the memory folder.
 """
