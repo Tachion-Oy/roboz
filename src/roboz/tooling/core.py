@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from logging import getLogger
 from typing import Any, Callable, Sequence, Type, get_type_hints
 
@@ -188,12 +189,18 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         return inputModel, outputModel
 
     def __call__(self, input: Invoke | Empty, messages: list[Message]) -> TOutput:
+        # Chaining is an in-memory operation. Serializing nested models here
+        # erases concrete payload types behind generic/base-model fields.
+        # Preserve the existing field projection/exclusions, but validate a
+        # detached copy of the Python values instead of their wire encoding.
         reduced_input = self.InputModel(
-            **{
-                k: v
-                for k, v in input.model_dump().items()
-                if k in set(self.InputModel.model_fields)
-            }
+            **deepcopy(
+                {
+                    k: getattr(input, k)
+                    for k in input.model_dump()
+                    if k in set(self.InputModel.model_fields)
+                }
+            )
         )
         return self.caller(input=reduced_input, messages=messages)  # type: ignore[return-value]
 
