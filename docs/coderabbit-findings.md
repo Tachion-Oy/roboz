@@ -108,6 +108,17 @@ The current Hub catalog is curated and does not contain affected model IDs.
 PeffaHub uses API I/O and passes an absolute sandbox scripts directory, so the first
 two items do not currently affect it.
 
+### 11. Harden generic librarian filesystem concurrency
+
+- Handle files disappearing while purge candidates are being sorted.
+- Make the consolidation watermark claim and write atomic if multi-process
+  Librarians become a supported Roboz use case.
+
+PeffaHub constructs one Librarian per project and its maintenance stages execute
+sequentially, so these races do not affect that integration. The generic Roboz
+constructor accepts caller-provided paths and does not enforce singleton ownership;
+cross-process hardening therefore remains a defensive library follow-up.
+
 ### 12. Clarify dry-run event semantics
 
 - Decide whether complete messages and script output should be suppressed.
@@ -141,10 +152,6 @@ two items do not currently affect it.
 - **Expand arbitrary dependency sequences.** Tuple expansion is intentional and
   tested; arbitrary mutable sequences conflict with the frozen factory-context
   contract.
-- **Add multi-Librarian artifact locking and concurrent-removal recovery.** Each
-  orchestrator/project has exactly one Librarian, its maintenance stages execute
-  sequentially, and it exclusively owns its snapshot, memory, and retention
-  artifacts. Cross-process mutation is outside that ownership contract.
 
 ## Validation summary
 
