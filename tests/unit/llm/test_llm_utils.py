@@ -781,6 +781,61 @@ def test_call_llm_api_streams_provider_chunks_and_usage() -> None:
     }
 
 
+def test_stream_retains_object_usage_when_a_later_chunk_has_none() -> None:
+    usage = SimpleNamespace(prompt_tokens=3, completion_tokens=5)
+    client = _FakeLLMClient(
+        [
+            _stream_chunk('{"arg":"ok"}'),
+            _stream_chunk(usage=usage),
+            _stream_chunk(),
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+    )
+
+    content, meta = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+    )
+
+    assert content == '{"arg":"ok"}'
+    assert meta["token_input"] == 3
+    assert meta["token_output"] == 5
+
+
+def test_stream_retains_dict_usage_when_a_later_chunk_has_none() -> None:
+    usage = {
+        "prompt_tokens": 2,
+        "completion_tokens": 6,
+    }
+    client = _FakeLLMClient(
+        [
+            {"choices": [], "usage": usage},
+            {"choices": [], "usage": None},
+        ]
+    )
+    endpoint = LLMEndpoint(
+        client=client,
+        model_name="fake-model",
+        api_name="fake",
+        output_format="json",
+    )
+
+    _, meta = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda _: None,
+    )
+
+    assert meta["token_input"] == 2
+    assert meta["token_output"] == 6
+
+
 def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
     signal = ControlSignal()
 

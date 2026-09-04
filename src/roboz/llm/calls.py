@@ -497,6 +497,13 @@ def _call_non_streaming_llm_api(
     )
 
 
+def _stream_chunk_usage(chunk: object) -> object | None:
+    """Return usage supplied by one provider stream chunk, if any."""
+    if isinstance(chunk, dict):
+        return chunk.get(_USAGE_FIELD)
+    return getattr(chunk, _USAGE_FIELD, None)
+
+
 def _call_streaming_llm_api(
     endpoint: LLMEndpoint,
     request: ChaCompletionRequest,
@@ -515,17 +522,15 @@ def _call_streaming_llm_api(
         stream = endpoint.client.chat.completions.create(**stream_request)  # type:ignore
 
     chunks: list[str] = []
-    usage = None
+    usage: object | None = None
     diagnostics = LLMResponseDiagnostics.for_stream()
     try:
         for chunk in stream:
             if _call_abandoned(call_abandoned) or _any_signal_set(control_signals):
                 break
-            usage = (
-                chunk.get(_USAGE_FIELD, usage)
-                if isinstance(chunk, dict)
-                else getattr(chunk, _USAGE_FIELD, usage)
-            )
+            chunk_usage = _stream_chunk_usage(chunk)
+            if chunk_usage is not None:
+                usage = chunk_usage
             delta = _stream_delta_content(chunk)
             diagnostics.observe_chunk(chunk, has_content=bool(delta))
             if not delta:
