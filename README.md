@@ -24,6 +24,12 @@ Or with pip:
 python -m pip install roboz
 ```
 
+Optional tools and adapters are separate distributions in this repository:
+`roboz-shed`, `roboz-openai`, and `roboz-proton-bridge`. Start with the
+[installation and add-on guide](docs/addons.md) to build their wheels and run
+the assistant demo without credentials. These companion releases must be
+published before their named PyPI installs and convenience extras are usable.
+
 ## Quick start
 
 ```python
@@ -77,6 +83,8 @@ integrations belong in companion packages and are not dependencies of Roboz.
 | [`docs/testing-practices.md`](docs/testing-practices.md) | Test design and review expectations |
 | [`docs/build-and-test.md`](docs/build-and-test.md) | Local setup and CI-equivalent validation |
 | [`docs/port-parity.md`](docs/port-parity.md) | Audited source-commit parity and deliberate exclusions |
+| [`docs/addons.md`](docs/addons.md) | Optional packages, installed demo, composition, and releases |
+| [`docs/maintainer-basics.md`](docs/maintainer-basics.md) | Practical changelog, versioning, release, and open-source basics |
 
 ## Development
 
@@ -88,6 +96,8 @@ uv run pyright
 bash scripts/run_type_tests.sh
 uv build
 ```
+
+Build companions with `uv build --all-packages --out-dir dist/first-slice`.
 
 Roboz is typed and ships a PEP 561 `py.typed` marker.
 

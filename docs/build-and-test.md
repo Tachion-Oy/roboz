@@ -1,5 +1,24 @@
 # Build and Test Guide
 
+The root uv workspace includes all companion projects for development. The
+default pytest and Pyright commands cover core plus companion tests/source;
+runtime installs of core still include no companion dependencies.
+
+```bash
+uv sync --locked --dev
+uv run pytest
+uv run ruff check
+uv run pyright
+bash scripts/run_type_tests.sh
+uv build --all-packages --out-dir dist/first-slice
+uv run twine check dist/first-slice/*
+uv run python scripts/check_distributions.py --dist dist/first-slice
+```
+
+The last command installs built wheels into temporary environments outside the
+checkout and can download dependencies. It checks base/Shed isolation, the mock
+assistant, Proton without other SDKs, the model adapter, and extras resolution.
+
 This page centralizes local build/test validation for contributors.
 It mirrors the repository CI flow.
 

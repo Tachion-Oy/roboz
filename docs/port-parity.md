@@ -1,5 +1,23 @@
 # Source-history port audit
 
+## Optional package extraction
+
+The companion slice ports file commands, patch editing, guards, email tools,
+Proton Bridge, and their associated skills from PeffaShed
+`2c701486acd77baeaf80d6834d1f52d2cf08d5b3`. Its 246 selected regression cases
+are retained under the companion test directories. The SDK adapter uses explicit
+model configuration rather than porting the all-provider catalog.
+
+Shared guards now use generic payloads; their in-memory tool handoff requires
+core 0.1.1. Old email request-id headers remain compatible. The new environment
+prefix is `ROBOZ_PROTON_BRIDGE_`; signatures are caller-supplied.
+
+The exclusions below describe the core distribution. Companion packages now
+provide the scoped optional integrations; see [add-ons](addons.md). Codex,
+document backends, arbitrary shell/Git workflows, and Hub remain outside this
+slice. Automated coverage uses mock endpoints and IMAP; live account smoke tests
+remain user-run checks, with no live-service validation claimed by this ledger.
+
 Audit date: 2026-09-04
 
 This ledger records the post-`stable-2026-08-31` source changes reviewed while
