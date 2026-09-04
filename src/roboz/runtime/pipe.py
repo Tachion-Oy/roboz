@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from threading import Lock, current_thread
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Final, Literal, Sequence
 from uuid import uuid4
 
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
 )
+from roboz.runtime._logging import LogScalar, log_with_data
 from roboz.models import Message
 from roboz.runtime.observability import (
     RuntimeEventCategory,
@@ -38,6 +39,16 @@ def _get_active_agent_stack() -> tuple[str, ...]:
 
 
 logger = logging.getLogger(__name__)
+
+_AGENT_KEY: Final[str] = "agent"
+_PARENT_KEY: Final[str] = "parent"
+_ENDPOINT_KEY: Final[str] = "endpoint"
+_MODEL_KEY: Final[str] = "model"
+_STATUS_KEY: Final[str] = "status"
+_SEQUENCE_KEY: Final[str] = "sequence"
+_THREAD_KEY: Final[str] = "thread"
+_MESSAGE_ID_KEY: Final[str] = "message_id"
+_CHUNK_KEY: Final[str] = "chunk"
 
 
 class EventPipe:
@@ -127,13 +138,25 @@ class EventPipe:
         self._sequence += 1
         stack_before = _get_active_agent_stack()
         parent_agent_name = stack_before[-1] if stack_before else None
-        logger.info(
-            "Run started: agent=%s parent=%s api=%s model=%s (thread=%s)",
-            self._current_agent_name,
-            parent_agent_name,
-            api_name,
-            model_name,
-            current_thread().name,
+        log_data: dict[str, LogScalar] = {
+            _AGENT_KEY: self._current_agent_name,
+            _PARENT_KEY: parent_agent_name,
+            _ENDPOINT_KEY: api_name,
+            _MODEL_KEY: model_name,
+        }
+        target = (
+            f", endpoint={api_name}/{model_name}"
+            if api_name is not None and model_name is not None
+            else ""
+        )
+        log_with_data(
+            logger,
+            logging.INFO,
+            (
+                f"Agent started: {self._current_agent_name} "
+                f"(parent={parent_agent_name or '-'}{target})"
+            ),
+            log_data,
         )
         self._emit(
             RunLifecycleEvent(
@@ -157,12 +180,15 @@ class EventPipe:
         self._sequence += 1
         stack_before = _get_active_agent_stack()
         parent_agent_name = stack_before[-2] if len(stack_before) >= 2 else None
-        logger.info(
-            "Run stopped: agent=%s status=%s sequence=%d (thread=%s)",
-            self._current_agent_name,
-            status,
-            self._sequence,
-            current_thread().name,
+        log_with_data(
+            logger,
+            logging.INFO,
+            f"Agent finished: {self._current_agent_name} (status={status})",
+            {
+                _AGENT_KEY: self._current_agent_name,
+                _STATUS_KEY: str(status),
+                _SEQUENCE_KEY: self._sequence,
+            },
         )
         self._emit(
             RunLifecycleEvent(
@@ -261,11 +287,18 @@ class EventPipe:
         return self._cancel_signal.is_set
 
     def cancel(self) -> None:
-        logger.info(
-            "Cancel requested: agent=%s sequence=%d (thread=%s)",
-            self._current_agent_name,
-            self._sequence,
-            current_thread().name,
+        log_with_data(
+            logger,
+            logging.INFO,
+            (
+                f"Agent cancellation requested: {self._current_agent_name} "
+                f"(sequence={self._sequence})"
+            ),
+            {
+                _AGENT_KEY: self._current_agent_name,
+                _SEQUENCE_KEY: self._sequence,
+                _THREAD_KEY: current_thread().name,
+            },
         )
         self._cancel_signal.set()
 
@@ -281,14 +314,21 @@ class EventPipe:
         # exactly where the front-end/back-end index mismatch shows up: this is
         # the sequence/chunk the back-end believes it is at when the front-end
         # asks to interrupt.
-        logger.info(
-            "Interrupt requested: agent=%s sequence=%d message_id=%s chunk=%d "
-            "(thread=%s)",
-            self._current_agent_name,
-            self._sequence,
-            self._current_message_id,
-            self._current_message_chunk_index,
-            current_thread().name,
+        log_with_data(
+            logger,
+            logging.INFO,
+            (
+                f"Agent interrupt requested: {self._current_agent_name} "
+                f"(sequence={self._sequence}, "
+                f"chunk={self._current_message_chunk_index})"
+            ),
+            {
+                _AGENT_KEY: self._current_agent_name,
+                _SEQUENCE_KEY: self._sequence,
+                _MESSAGE_ID_KEY: self._current_message_id,
+                _CHUNK_KEY: self._current_message_chunk_index,
+                _THREAD_KEY: current_thread().name,
+            },
         )
         self._interrupt_signal.set()
 

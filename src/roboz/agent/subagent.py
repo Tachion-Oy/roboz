@@ -18,9 +18,9 @@ class SubagentCtx(FactoryCtx):
 @factory
 def run_subagent(input: Empty, messages: list[Message], ctx: SubagentCtx) -> Str:
     """Delegate to the sub-agent, passing along the current tool input."""
-    logger.info("Delegating to sub-agent '%s'", ctx.agent.name)
+    logger.debug("Delegating to sub-agent '%s'", ctx.agent.name)
     stop_out, _ = ctx.agent.invoke(input=input)
-    logger.info("Sub-agent '%s' returned", ctx.agent.name)
+    logger.debug("Sub-agent '%s' returned", ctx.agent.name)
     text = (
         stop_out.value
         if stop_out.value is not None

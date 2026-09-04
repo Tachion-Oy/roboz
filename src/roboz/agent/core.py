@@ -439,7 +439,10 @@ class Agent(ExternalDependencySource):
                     )
                 )
                 continue
-            logger.error(f"invalid type for initial message {i=} type {type(i)}")
+            logger.error(
+                "Invalid initial message type=%s",
+                type(i).__name__,
+            )
             raise ValueError
 
     def add(self, *, tools: list[Tool] | None = None, skill: Skill | None = None):
@@ -602,7 +605,7 @@ class Agent(ExternalDependencySource):
         stack_token = None
         output_token = None
         exit_status = RunStatus.FAILED
-        logger.info(
+        logger.debug(
             "Invoke start: agent='%s' stack=%s dry_run=%s",
             self.name,
             get_active_agent_stack(),
@@ -637,7 +640,7 @@ class Agent(ExternalDependencySource):
                 raise
             return Stop(), self.messages
         finally:
-            logger.info(
+            logger.debug(
                 "Invoke end: agent='%s' status=%s",
                 self.name,
                 exit_status,

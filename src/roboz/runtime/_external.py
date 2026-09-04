@@ -5,7 +5,8 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
-from threading import BoundedSemaphore, Event, Thread, current_thread
+from threading import BoundedSemaphore, Event, Thread
+from typing import Final
 from uuid import uuid4
 
 from roboz.exceptions import (
@@ -13,6 +14,7 @@ from roboz.exceptions import (
     ExternalCallInterruptedError,
     ExternalCallTimeoutError,
 )
+from roboz.runtime._logging import LogScalar, log_with_data
 from roboz.runtime.observability import (
     ExternalCallPhase,
     ObservedFailure,
@@ -21,9 +23,19 @@ from roboz.runtime.observability import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_WORKERS = 8
-_DEFAULT_POLL_INTERVAL_S = 0.05
-_DEFAULT_LABEL = "external-call"
+_DEFAULT_MAX_WORKERS: Final[int] = 8
+_DEFAULT_POLL_INTERVAL_S: Final[float] = 0.05
+_DEFAULT_LABEL: Final[str] = "external-call"
+_CALL_ID_KEY: Final[str] = "call_id"
+_LABEL_KEY: Final[str] = "label"
+_ATTEMPT_KEY: Final[str] = "attempt"
+_TIMEOUT_SECONDS_KEY: Final[str] = "timeout_s"
+_DURATION_MS_KEY: Final[str] = "duration_ms"
+_PHASE_KEY: Final[str] = "phase"
+_SIGNAL_KEY: Final[str] = "signal"
+_RAN_SECONDS_KEY: Final[str] = "ran_s"
+_ERROR_TYPE_KEY: Final[str] = "error_type"
+_WORKER_KEY: Final[str] = "worker"
 _external_call_slots = BoundedSemaphore(_DEFAULT_MAX_WORKERS)
 
 
@@ -92,7 +104,7 @@ class _ExternalCallRunner[T]:
         label: str,
         call_id: str | None,
         attempt: int,
-        log_data: dict[str, str | int | float | bool | None] | None,
+        log_data: dict[str, LogScalar] | None,
     ) -> None:
         self._fn = fn
         self._signals = tuple(control_signals or (ControlSignal(),))
@@ -106,31 +118,19 @@ class _ExternalCallRunner[T]:
         self._abandoned = Event()
         self._started = time.monotonic()
         self._worker_name = f"roboz-external-call:{label}"
-        self._base_data: dict[str, str | int | float | bool | None] = {
-            "call_id": self._call_id,
-            "label": label,
-            "attempt": attempt,
+        self._base_data: dict[str, LogScalar] = {
+            _CALL_ID_KEY: self._call_id,
+            _LABEL_KEY: label,
+            _ATTEMPT_KEY: attempt,
         }
         if timeout_s is not None:
-            self._base_data["timeout_s"] = timeout_s
+            self._base_data[_TIMEOUT_SECONDS_KEY] = timeout_s
         self._base_data.update(log_data or {})
 
     def run(self) -> T:
-        self._log_started()
         self._acquire_slot()
         self._start_worker()
         return self._await_result()
-
-    def _log_started(self) -> None:
-        logger.info(
-            "External call started (label=%s, call_id=%s, attempt=%d, "
-            "timeout_s=%s, data=%s)",
-            self._label,
-            self._call_id,
-            self._attempt,
-            self._timeout_s,
-            self._base_data,
-        )
 
     def _acquire_slot(self) -> None:
         while True:
@@ -138,13 +138,15 @@ class _ExternalCallRunner[T]:
             timeout_left = self._time_left()
             if timeout_left is not None and timeout_left <= 0:
                 self._abandoned.set()
-                logger.error(
-                    "External call timed out waiting for a slot (label=%s, "
-                    "call_id=%s, attempt=%d, duration_ms=%d)",
-                    self._label,
-                    self._call_id,
-                    self._attempt,
-                    self._duration_ms(),
+                duration_ms = self._duration_ms()
+                log_with_data(
+                    logger,
+                    logging.ERROR,
+                    (
+                        f"External call timed out waiting for slot: {self._label} "
+                        f"(duration_ms={duration_ms})"
+                    ),
+                    self._base_data | {_DURATION_MS_KEY: duration_ms},
                 )
                 raise ExternalCallTimeoutError(
                     "Timed out waiting for external call slot"
@@ -166,52 +168,37 @@ class _ExternalCallRunner[T]:
 
     def _worker(self) -> None:
         worker_started = time.monotonic()
-        logger.debug(
-            "External-call worker started (label=%s, call_id=%s, thread=%s)",
-            self._label,
-            self._call_id,
-            current_thread().name,
-        )
         try:
             result = self._fn()
         except BaseException as exc:  # noqa: BLE001 - propagate worker failures
             ran = time.monotonic() - worker_started
+            worker_data = self._base_data | {
+                _RAN_SECONDS_KEY: ran,
+                _ERROR_TYPE_KEY: type(exc).__name__,
+            }
             if self._abandoned.is_set():
-                logger.warning(
-                    "External-call worker raised after caller abandonment; error "
-                    "discarded (label=%s, call_id=%s, ran_s=%.3f, "
-                    "error_type=%s)",
-                    self._label,
-                    self._call_id,
-                    ran,
-                    type(exc).__name__,
-                )
-            else:
-                logger.debug(
-                    "External-call worker raised (label=%s, call_id=%s, "
-                    "ran_s=%.3f, error_type=%s)",
-                    self._label,
-                    self._call_id,
-                    ran,
-                    type(exc).__name__,
+                log_with_data(
+                    logger,
+                    logging.WARNING,
+                    (
+                        "External-call worker failed after caller abandonment: "
+                        f"{self._label} (error_type={type(exc).__name__})"
+                    ),
+                    worker_data,
                 )
             self._put_outcome(_CallFailed(exc))
         else:
             ran = time.monotonic() - worker_started
+            worker_data = self._base_data | {_RAN_SECONDS_KEY: ran}
             if self._abandoned.is_set():
-                logger.warning(
-                    "External-call worker finished after caller abandonment; result "
-                    "discarded (label=%s, call_id=%s, ran_s=%.3f)",
-                    self._label,
-                    self._call_id,
-                    ran,
-                )
-            else:
-                logger.debug(
-                    "External-call worker finished (label=%s, call_id=%s, ran_s=%.3f)",
-                    self._label,
-                    self._call_id,
-                    ran,
+                log_with_data(
+                    logger,
+                    logging.WARNING,
+                    (
+                        "External-call worker finished after caller abandonment: "
+                        f"{self._label}"
+                    ),
+                    worker_data,
                 )
             self._put_outcome(_CallSucceeded(result))
         finally:
@@ -226,14 +213,16 @@ class _ExternalCallRunner[T]:
             timeout_left = self._time_left()
             if timeout_left is not None and timeout_left <= 0:
                 self._abandoned.set()
-                logger.error(
-                    "External call timed out (label=%s, call_id=%s, attempt=%d, "
-                    "duration_ms=%d, worker=%s left running)",
-                    self._label,
-                    self._call_id,
-                    self._attempt,
-                    self._duration_ms(),
-                    self._worker_name,
+                duration_ms = self._duration_ms()
+                log_with_data(
+                    logger,
+                    logging.ERROR,
+                    f"External call timed out: {self._label} (duration_ms={duration_ms})",
+                    self._base_data
+                    | {
+                        _DURATION_MS_KEY: duration_ms,
+                        _WORKER_KEY: self._worker_name,
+                    },
                 )
                 raise ExternalCallTimeoutError("External call timed out")
             try:
@@ -243,17 +232,7 @@ class _ExternalCallRunner[T]:
             except Empty:
                 continue
             if isinstance(outcome, _CallFailed):
-                logger.error(
-                    "External call failed (label=%s, call_id=%s, attempt=%d, "
-                    "duration_ms=%d, error_type=%s)",
-                    self._label,
-                    self._call_id,
-                    self._attempt,
-                    self._duration_ms(),
-                    type(outcome.error).__name__,
-                )
                 raise outcome.error
-            self._log_succeeded(outcome.value)
             return outcome.value
 
     def _raise_if_any_signal_set(
@@ -271,7 +250,7 @@ class _ExternalCallRunner[T]:
                 if worker_name is None
                 else f"; worker thread {worker_name!r} left running"
             )
-            logger.info(
+            logger.debug(
                 "%s abandoning external call: %s set during %s after %.3fs%s",
                 self._label,
                 signal.label,
@@ -288,33 +267,17 @@ class _ExternalCallRunner[T]:
         signal_label: str,
         phase: ExternalCallPhase,
     ) -> None:
-        logger.warning(
-            "External call %s (label=%s, call_id=%s, attempt=%d, "
-            "duration_ms=%d, phase=%s, signal=%s)",
-            failure.kind,
-            self._label,
-            self._call_id,
-            self._attempt,
-            self._duration_ms(),
-            phase,
-            signal_label,
-        )
-
-    def _log_succeeded(self, result: T) -> None:
         duration_ms = self._duration_ms()
-        result_data: dict[str, str | int | float | bool | None] = self._base_data | {
-            "duration_ms": duration_ms,
-            "result_type": type(result).__name__,
-        }
-        logger.info(
-            "External call succeeded (label=%s, call_id=%s, attempt=%d, "
-            "duration_ms=%d, result_type=%s, data=%s)",
-            self._label,
-            self._call_id,
-            self._attempt,
-            duration_ms,
-            type(result).__name__,
-            result_data,
+        log_with_data(
+            logger,
+            logging.WARNING,
+            f"External call {failure.kind}: {self._label} (phase={phase})",
+            self._base_data
+            | {
+                _DURATION_MS_KEY: duration_ms,
+                _PHASE_KEY: str(phase),
+                _SIGNAL_KEY: signal_label,
+            },
         )
 
     def _put_outcome(self, outcome: _WorkerOutcome[T]) -> None:
@@ -349,7 +312,7 @@ def run_cancellable_external_call[T](
     label: str = _DEFAULT_LABEL,
     call_id: str | None = None,
     attempt: int = 1,
-    log_data: dict[str, str | int | float | bool | None] | None = None,
+    log_data: dict[str, LogScalar] | None = None,
 ) -> T:
     """Run blocking third-party code behind a cancellable wait boundary.
 

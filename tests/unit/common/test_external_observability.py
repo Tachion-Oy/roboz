@@ -7,7 +7,7 @@ from threading import BoundedSemaphore, Event, Thread
 import pytest
 
 from roboz.exceptions import ExternalCallCancelledError, ExternalCallTimeoutError
-from roboz.runtime import _external
+from roboz.runtime import LOG_DATA_ATTRIBUTE, _external
 from roboz.runtime._external import ControlSignal, run_cancellable_external_call
 from roboz.runtime.observability import (
     FailureKind,
@@ -23,12 +23,12 @@ def test_observed_failure_keeps_kind_and_severity_typed() -> None:
     assert failure.level is RuntimeEventLevel.WARNING
 
 
-def test_external_call_logs_metadata_without_result_content(
+def test_external_call_does_not_log_routine_lifecycle_or_result_content(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     secret = "secret-value-123456789"
 
-    with caplog.at_level(logging.INFO, logger="roboz.runtime._external"):
+    with caplog.at_level(logging.DEBUG, logger="roboz.runtime._external"):
         result = run_cancellable_external_call(
             lambda: f"answer api_key={secret}",
             call_id="call-123",
@@ -37,15 +37,11 @@ def test_external_call_logs_metadata_without_result_content(
         )
 
     assert result.endswith(secret)
-    assert "External call started" in caplog.text
-    assert "External call succeeded" in caplog.text
-    assert "call-123" in caplog.text
-    assert "'request_items': 2" in caplog.text
-    assert "result_type" in caplog.text
+    assert not caplog.records
     assert secret not in caplog.text
 
 
-def test_external_call_logs_failure_before_caller_can_handle_it(
+def test_external_call_leaves_ordinary_failure_logging_to_caller(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     secret = "secret-value-123456789"
@@ -54,13 +50,12 @@ def test_external_call_logs_failure_before_caller_can_handle_it(
         raise RuntimeError(f"provider rejected password={secret}")
 
     with (
-        caplog.at_level(logging.ERROR, logger="roboz.runtime._external"),
+        caplog.at_level(logging.DEBUG, logger="roboz.runtime._external"),
         pytest.raises(RuntimeError),
     ):
         run_cancellable_external_call(fail, label="test-provider")
 
-    assert "External call failed" in caplog.text
-    assert "error_type=RuntimeError" in caplog.text
+    assert not caplog.records
     assert "provider rejected" not in caplog.text
     assert secret not in caplog.text
 
@@ -78,7 +73,10 @@ def test_external_call_logs_timeout(
             label="slow-provider",
         )
 
-    assert "External call timed out" in caplog.text
+    record = next(
+        record for record in caplog.records if "timed out" in record.getMessage()
+    )
+    assert getattr(record, LOG_DATA_ATTRIBUTE)["label"] == "slow-provider"
 
 
 def test_external_call_times_out_before_starting_worker_when_slots_are_full(
@@ -112,7 +110,7 @@ def test_external_call_times_out_before_starting_worker_when_slots_are_full(
         slots.release()
 
     assert called is False
-    assert "timed out waiting for a slot" in caplog.text
+    assert "timed out waiting for slot" in caplog.text
 
 
 def test_external_call_cancels_before_starting_worker_when_slots_are_full(

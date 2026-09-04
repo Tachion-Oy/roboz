@@ -5,7 +5,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from threading import Event
-from typing import Literal
+from typing import Final, Literal
 
 from roboz.agent.core import Agent
 from roboz.models import Empty, Message
@@ -15,9 +15,14 @@ from roboz.tooling.decorators import factory
 from roboz.tooling.dependencies import FactoryCtx
 
 logger = logging.getLogger(__name__)
-BACKGROUND_START_TIMEOUT_S = 5.0
 
 type BackgroundAgentPhase = Literal["started", "alive", "restarted"]
+
+BACKGROUND_START_TIMEOUT_S: Final[float] = 5.0
+_STARTED_PHASE: Final[BackgroundAgentPhase] = "started"
+_ALIVE_PHASE: Final[BackgroundAgentPhase] = "alive"
+_RESTARTED_PHASE: Final[BackgroundAgentPhase] = "restarted"
+_RUN_STARTED_KIND: Final[Literal["started"]] = "started"
 
 
 @dataclass
@@ -55,7 +60,7 @@ def _fmt_uptime(seconds: float) -> str:
 
 def _invoke_agent(ctx: BackgroundAgentCtx) -> None:
     agent = ctx.agent
-    logger.info(
+    logger.debug(
         "Background agent invoke starting (name=%s, thread=%s)",
         agent.name,
         threading.current_thread().name,
@@ -69,7 +74,7 @@ def _invoke_agent(ctx: BackgroundAgentCtx) -> None:
             type(error).__name__,
         )
     finally:
-        logger.info("Background agent invoke returned (name=%s)", agent.name)
+        logger.debug("Background agent invoke returned (name=%s)", agent.name)
 
 
 def _status(
@@ -99,11 +104,14 @@ def run_background_agent(
     if thread is not None and thread.is_alive():
         started_monotonic = ctx.state.started_monotonic or time.monotonic()
         return _status(
-            ctx, status="alive", checks=checks, started_monotonic=started_monotonic
+            ctx,
+            status=_ALIVE_PHASE,
+            checks=checks,
+            started_monotonic=started_monotonic,
         )
 
     # First start, or the previous daemon thread has died and we respawn it.
-    status: BackgroundAgentPhase = "restarted" if thread is not None else "started"
+    status = _RESTARTED_PHASE if thread is not None else _STARTED_PHASE
     started_monotonic = time.monotonic()
     ctx.state.started_monotonic = started_monotonic
     thread = threading.Thread(
@@ -113,7 +121,7 @@ def run_background_agent(
         name=f"background-agent-{ctx.agent.name}",
     )
     ctx.state.thread = thread
-    logger.info(
+    logger.debug(
         "Spawning background agent thread (name=%s, status=%s, thread=%s)",
         ctx.agent.name,
         status,
@@ -122,7 +130,7 @@ def run_background_agent(
     started = Event()
 
     def signal_started(event: PipeEvent) -> None:
-        if isinstance(event, RunLifecycleEvent) and event.kind == "started":
+        if isinstance(event, RunLifecycleEvent) and event.kind == _RUN_STARTED_KIND:
             started.set()
 
     unsubscribe = ctx.agent.pipe.add_sink(signal_started)

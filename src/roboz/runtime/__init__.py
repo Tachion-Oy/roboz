@@ -19,6 +19,14 @@ from roboz.runtime.io import (
     reset_api_user_io,
     reset_output,
 )
+from roboz.runtime._logging import (
+    LOG_DATA_ATTRIBUTE,
+    LOG_DATE_FORMAT,
+    LOG_FORMAT,
+    LogScalar,
+    log_with_data,
+    reset_logging_config,
+)
 from roboz.runtime.observability import (
     ExternalCallPhase,
     FailureKind,
@@ -40,6 +48,10 @@ __all__ = [
     "ExternalCallPhase",
     "FailureKind",
     "LifecycleKind",
+    "LOG_DATA_ATTRIBUTE",
+    "LOG_DATE_FORMAT",
+    "LOG_FORMAT",
+    "LogScalar",
     "MessageDeltaEvent",
     "MessageEvent",
     "ObservedFailure",
@@ -60,7 +72,9 @@ __all__ = [
     "get_bound_output",
     "interact_with_user",
     "load_key",
+    "log_with_data",
     "reset_api_user_io",
     "reset_output",
+    "reset_logging_config",
     "run_cancellable_external_call",
 ]
