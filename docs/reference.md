@@ -125,8 +125,11 @@ The `roboz.runtime` facade also exposes `log_with_data` and
 `LOG_DATA_ATTRIBUTE`. The helper writes a self-contained human message and places
 optional scalar metadata on the log record under the `roboz_data` attribute so a
 host can render concise console logs and structured technical logs independently.
-Provider-controlled bodies, exception messages, prompts, results, and reasoning
-text are not included in Roboz operational logs.
+It forwards caller-supplied scalar metadata and `exc_info` to Python logging, so
+callers remain responsible for the sensitivity of those values. Roboz's built-in
+tool observer and LLM diagnostics emit operational identifiers, types, counts,
+durations, and statuses; they do not include provider bodies, exception messages
+or tracebacks, prompts, results, or reasoning text.
 
 Event classes:
 

@@ -16,9 +16,17 @@ invalid-sequence test comment. The standalone layout correctly uses `tests/unit`
 so the earlier path finding no longer applies. Shell-script and compactification
 test cleanups remain deferred because those add-on modules are not included.
 
-The later Peffa parity port resolved finding 13 by replacing raw provider
-diagnostics with DEBUG-level, scalar structured metadata. Provider bodies,
-exception strings, and tracebacks are no longer logged.
+The later Peffa parity port resolved finding 13 at Roboz's built-in diagnostic
+call sites by replacing raw provider diagnostics with DEBUG-level, scalar
+structured metadata. Those call sites do not log provider bodies, exception
+strings, or tracebacks; the public `log_with_data` helper intentionally leaves
+caller-provided logging policy to its caller.
+
+The parity port also resolved finding 2 with a versioned message-sequence cursor
+stored in each new snapshot. Artifact timestamps remain file-ordering metadata;
+they are only a compatibility fallback for snapshots written before the cursor
+was introduced. Invalid cursors and naive or invalid legacy timestamps are
+reprocessed conservatively instead of risking silent message loss.
 
 ## Handle in the smaller PR only if included
 
@@ -37,12 +45,6 @@ exception strings, and tracebacks are no longer logged.
 
 - Validate that completion JSON is an object before constructing output models.
 - Handle non-object JSON in `remind_agent` without raising `TypeError`.
-
-### 2. Make conversation snapshot coverage sequence-aware
-
-- Store sequence information in the snapshot watermark.
-- Prevent later messages created in the same millisecond from being skipped.
-- Validate `created_at` before making the provider call.
 
 ### 3. Constrain persisted conversation identifiers
 
@@ -106,14 +108,6 @@ The current Hub catalog is curated and does not contain affected model IDs.
 PeffaHub uses API I/O and passes an absolute sandbox scripts directory, so the first
 two items do not currently affect it.
 
-### 11. Harden librarian filesystem concurrency
-
-- Handle files disappearing while purge candidates are being sorted.
-- Make the consolidation watermark claim and write atomic.
-
-PeffaHub normally runs one librarian per project, but multi-process and orphaned
-librarian races remain possible.
-
 ### 12. Clarify dry-run event semantics
 
 - Decide whether complete messages and script output should be suppressed.
@@ -147,6 +141,10 @@ librarian races remain possible.
 - **Expand arbitrary dependency sequences.** Tuple expansion is intentional and
   tested; arbitrary mutable sequences conflict with the frozen factory-context
   contract.
+- **Add multi-Librarian artifact locking and concurrent-removal recovery.** Each
+  orchestrator/project has exactly one Librarian, its maintenance stages execute
+  sequentially, and it exclusively owns its snapshot, memory, and retention
+  artifacts. Cross-process mutation is outside that ownership contract.
 
 ## Validation summary
 
