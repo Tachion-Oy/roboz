@@ -16,6 +16,10 @@ invalid-sequence test comment. The standalone layout correctly uses `tests/unit`
 so the earlier path finding no longer applies. Shell-script and compactification
 test cleanups remain deferred because those add-on modules are not included.
 
+The later Peffa parity port resolved finding 13 by replacing raw provider
+diagnostics with DEBUG-level, scalar structured metadata. Provider bodies,
+exception strings, and tracebacks are no longer logged.
+
 ## Handle in the smaller PR only if included
 
 - Validate decoded LLM JSON is an object before model construction.
@@ -114,15 +118,6 @@ librarian races remain possible.
 
 - Decide whether complete messages and script output should be suppressed.
 - Apply the decision consistently across all EventPipe emitters.
-
-### 13. Bound raw provider diagnostics
-
-- Cap the size of logged provider bodies.
-- Decide whether production logs should redact bodies, exception strings, and
-  tracebacks.
-
-Raw provider logging is currently an explicit server-log policy, so redaction is a
-policy decision rather than a direct correctness fix.
 
 ### 14. Minor cleanup bundle
 

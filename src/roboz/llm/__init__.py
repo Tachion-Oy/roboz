@@ -8,16 +8,19 @@ from roboz.llm.binding import (
     bind_endpoint,
     endpoint_resource,
     resolve_endpoint,
+    with_request_options,
 )
 from roboz.llm.calls import call_llm_api, call_transcription_api
 from roboz.llm.completion import get_completion
 from roboz.llm.endpoints import (
     EndpointLike,
+    JSONValue,
     LLMEndpoint,
     LLMPricing,
     MockLLMEndpoint,
     MockProviderError,
     MockTranscriptionEndpoint,
+    RequestOptions,
     TranscriptionEndpoint,
     TranscriptionEndpointLike,
     role_to_user_mapper,
@@ -27,12 +30,14 @@ from roboz.llm.prompts import get_basic_system_prompt
 __all__ = [
     "EndpointBinding",
     "EndpointLike",
+    "JSONValue",
     "LLMEndpoint",
     "LLMPricing",
     "LLMTelemetryDict",
     "MockLLMEndpoint",
     "MockProviderError",
     "MockTranscriptionEndpoint",
+    "RequestOptions",
     "TranscriptionEndpoint",
     "TranscriptionEndpointLike",
     "bind_endpoint",
@@ -45,4 +50,5 @@ __all__ = [
     "get_truncated_messages_for_context",
     "resolve_endpoint",
     "role_to_user_mapper",
+    "with_request_options",
 ]

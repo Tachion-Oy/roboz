@@ -70,6 +70,18 @@ The `roboz.llm` facade exposes the operations needed to assemble and host an age
 - completion and structured-completion helpers
 - conversation token estimation and context truncation
 - endpoint binding, resource access, and resolution
+- per-use endpoint request options through `with_request_options`
+
+`with_request_options(endpoint, extra_body=...)` creates an independent endpoint
+configuration for provider-specific JSON options such as routing or reasoning
+effort. A lazy endpoint remains lazy and keeps its canonical dependency identity.
+The options are defensively copied, are excluded from endpoint serialization and
+redacted metadata, and replace any options already attached to that endpoint copy.
+
+The framework rejects request keys it owns (`messages`, `model`,
+`response_format`, `stream`, `stream_options`, and `temperature`). Provider
+options must be finite, JSON-compatible values. Keep credentials and other secrets
+out of these options even though Roboz does not serialize them.
 
 Prompt fragments used to implement those operations live together in `roboz.llm.prompts`. Companion-facing model, runtime, tool, and persistence contracts are likewise exported from their corresponding package facades rather than requiring private-module imports.
 
@@ -82,6 +94,13 @@ The `roboz` package contains primitives only. Optional companion packages are se
 Main package: [`../src/roboz/runtime`](../src/roboz/runtime)
 
 `EventPipe` emits one structured stream per invoke. Built-in consumers include CLI/API output and persistence sinks; external hosts can subscribe to the same stream.
+
+The `roboz.runtime` facade also exposes `log_with_data` and
+`LOG_DATA_ATTRIBUTE`. The helper writes a self-contained human message and places
+optional scalar metadata on the log record under the `roboz_data` attribute so a
+host can render concise console logs and structured technical logs independently.
+Provider-controlled bodies, exception messages, prompts, results, and reasoning
+text are not included in Roboz operational logs.
 
 Event classes:
 
