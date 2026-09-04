@@ -20,6 +20,12 @@ from roboz.runtime.persistence import (
     utc_iso_z,
 )
 from roboz.tools import SnapshotConversationsCtx, snapshot_conversations
+from roboz.tools._snapshot_metadata import (
+    SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
+    SNAPSHOT_COVERAGE_TAG,
+    SNAPSHOT_COVERAGE_VERSION,
+    parse_snapshot_document,
+)
 from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboz.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
@@ -126,9 +132,13 @@ def test_snapshot_writes_append_only_artifact_with_structured_log(
     artifacts = list(snapshot_root.rglob("*.md"))
     assert len(artifacts) == 1
     assert artifacts[0].parent == snapshot_root / _DEFAULT_CONVERSATION
-    assert artifacts[0].read_text(encoding="utf-8").startswith(
+    snapshot_document = parse_snapshot_document(
+        artifacts[0].read_text(encoding="utf-8")
+    )
+    assert snapshot_document.content.startswith(
         f"# Conversation Snapshot: {_DEFAULT_AGENT}"
     )
+    assert snapshot_document.covered_through_sequence == 1
     assert "created=1" in result.value
     record = next(
         item
@@ -307,6 +317,152 @@ def test_previous_snapshot_is_grounding_and_only_uncovered_rows_are_new(
     assert "Already covered" not in captured[0]
     assert previous.exists()
     assert len(list(previous.parent.glob("*.md"))) == 2
+
+
+def test_rows_appended_during_snapshot_are_covered_by_the_next_sequence_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    created_at = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    first_row = _row(
+        sequence=1,
+        created_at=created_at,
+        content="Visible to the first snapshot.",
+    )
+    appended_row = _row(
+        sequence=2,
+        created_at=created_at,
+        content="Appended while the first snapshot is generated.",
+    )
+    _write_run(conversation_root, rows=[first_row])
+    captured: list[str] = []
+
+    def append_during_first_summary(**kwargs):
+        captured.append(kwargs["conversation"])
+        if len(captured) == 1:
+            _write_run(conversation_root, rows=[first_row, appended_row])
+        return "## State of work\n- Recorded."
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "summarize_conversation_segment",
+        append_during_first_summary,
+    )
+    context = _ctx(
+        conversation_root=conversation_root,
+        snapshot_root=snapshot_root,
+        endpoint=MockLLMEndpoint([]),
+    )
+
+    first_result = snapshot_conversations(context)(input=Empty(), messages=[])
+    first_snapshot = max(snapshot_root.rglob("*.md"))
+    first_document = parse_snapshot_document(
+        first_snapshot.read_text(encoding="utf-8")
+    )
+    second_result = snapshot_conversations(context)(input=Empty(), messages=[])
+    snapshots = sorted(snapshot_root.rglob("*.md"))
+    latest_document = parse_snapshot_document(
+        snapshots[-1].read_text(encoding="utf-8")
+    )
+
+    assert "created=1" in first_result.value
+    assert first_document.covered_through_sequence == 1
+    assert "Visible to the first snapshot" in captured[0]
+    assert "Appended while the first snapshot" not in captured[0]
+    assert "created=1" in second_result.value
+    assert len(snapshots) == 2
+    assert "Appended while the first snapshot" in captured[1]
+    assert "Visible to the first snapshot" not in captured[1]
+    assert SNAPSHOT_COVERAGE_TAG not in captured[1]
+    assert latest_document.covered_through_sequence == 2
+
+
+def test_legacy_snapshot_treats_naive_row_timestamp_as_uncovered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    base = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    previous = (
+        snapshot_root
+        / _DEFAULT_CONVERSATION
+        / f"{(base + timedelta(minutes=5)).strftime(TIMESTAMP_STEM_FORMAT)}.md"
+    )
+    previous.parent.mkdir(parents=True)
+    previous.write_text("Legacy snapshot.", encoding="utf-8")
+    naive_row = _row(
+        sequence=1,
+        created_at=base,
+        content="Conservatively reprocess this row.",
+    ).model_copy(update={"created_at": "2026-01-01T12:00:00"})
+    _write_run(conversation_root, rows=[naive_row])
+    captured: list[str] = []
+
+    def fake_summary(**kwargs):
+        captured.append(kwargs["conversation"])
+        return "## State of work\n- Reprocessed."
+
+    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", fake_summary)
+    result = snapshot_conversations(
+        _ctx(
+            conversation_root=conversation_root,
+            snapshot_root=snapshot_root,
+            endpoint=MockLLMEndpoint([]),
+        )
+    )(input=Empty(), messages=[])
+
+    assert "created=1" in result.value
+    assert "Conservatively reprocess this row" in captured[0]
+
+
+def test_malformed_coverage_marker_reprocesses_rows_instead_of_skipping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    base = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    previous = (
+        snapshot_root
+        / _DEFAULT_CONVERSATION
+        / f"{(base + timedelta(minutes=5)).strftime(TIMESTAMP_STEM_FORMAT)}.md"
+    )
+    previous.parent.mkdir(parents=True)
+    malformed_marker = (
+        f"<!-- {SNAPSHOT_COVERAGE_TAG} v{SNAPSHOT_COVERAGE_VERSION} "
+        f"{SNAPSHOT_COVERAGE_SEQUENCE_FIELD}=invalid -->"
+    )
+    previous.write_text(
+        f"Legacy snapshot.\n\n{malformed_marker}\n",
+        encoding="utf-8",
+    )
+    _write_run(
+        conversation_root,
+        rows=[
+            _row(
+                sequence=1,
+                created_at=base,
+                content="Do not silently skip malformed coverage.",
+            )
+        ],
+    )
+    captured: list[str] = []
+
+    def fake_summary(**kwargs):
+        captured.append(kwargs["conversation"])
+        return "## State of work\n- Reprocessed."
+
+    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", fake_summary)
+    snapshot_conversations(
+        _ctx(
+            conversation_root=conversation_root,
+            snapshot_root=snapshot_root,
+            endpoint=MockLLMEndpoint([]),
+        )
+    )(input=Empty(), messages=[])
+
+    assert "Do not silently skip malformed coverage" in captured[0]
+    assert SNAPSHOT_COVERAGE_TAG not in captured[0]
 
 
 def test_bootstrap_payloads_are_normalized_before_thresholding(

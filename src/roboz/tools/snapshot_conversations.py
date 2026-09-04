@@ -21,6 +21,11 @@ from roboz.runtime.persistence import (
 )
 from roboz.tooling.decorators import factory
 from roboz.tools._identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
+from roboz.tools._snapshot_metadata import (
+    SnapshotDocument,
+    format_snapshot_document,
+    parse_snapshot_document,
+)
 from roboz.tools.compactification import summarize_conversation_segment
 from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboz.tools.memory_contexts import SnapshotConversationsCtx
@@ -65,9 +70,16 @@ class SnapshotMode(StrEnum):
 
 
 def _uncovered_rows(
-    rows: list[LoggedMessageRow], latest_snapshot_time: datetime | None
+    rows: list[LoggedMessageRow],
+    latest_snapshot_time: datetime | None,
+    snapshot_document: SnapshotDocument | None,
 ) -> list[LoggedMessageRow]:
-    """Return persisted rows newer than the latest snapshot, in sequence order."""
+    """Return rows beyond the stored cursor, with timestamp fallback for legacy files."""
+    if snapshot_document is not None and snapshot_document.coverage_marker_present:
+        covered_sequence = snapshot_document.covered_through_sequence
+        if covered_sequence is None:
+            return rows
+        return [row for row in rows if row.sequence > covered_sequence]
     if latest_snapshot_time is None:
         return rows
     for index, row in enumerate(rows):
@@ -76,6 +88,8 @@ def _uncovered_rows(
                 row.created_at.replace(_ISO_Z_SUFFIX, _ISO_UTC_OFFSET)
             )
         except ValueError:
+            return rows[index:]
+        if created_at.tzinfo is None:
             return rows[index:]
         if created_at > latest_snapshot_time:
             return rows[index:]
@@ -174,7 +188,19 @@ def _snapshot_one_run(
     snapshot_time, snapshot_location = latest_timestamped_file(
         snapshot_folder, suffix=MARKDOWN_SUFFIX
     )
-    uncovered_rows = _uncovered_rows(list(run.messages), snapshot_time)
+    snapshot_document = (
+        parse_snapshot_document(
+            snapshot_location.read_text(encoding=UTF8_ENCODING)
+        )
+        if snapshot_location is not None
+        else None
+    )
+    uncovered_rows = _uncovered_rows(
+        list(run.messages), snapshot_time, snapshot_document
+    )
+    if not uncovered_rows:
+        return False
+    covered_through_sequence = max(row.sequence for row in uncovered_rows)
     normalized = _normalize_temporal_messages(
         uncovered_rows,
         agent_name=run.agent_name,
@@ -195,8 +221,8 @@ def _snapshot_one_run(
             conversation=_summary_input(
                 run=run,
                 previous_snapshot=(
-                    snapshot_location.read_text(encoding=UTF8_ENCODING)
-                    if snapshot_location is not None
+                    snapshot_document.content
+                    if snapshot_document is not None
                     else None
                 ),
                 previous_snapshot_time=snapshot_time,
@@ -225,7 +251,10 @@ def _snapshot_one_run(
 
     snapshot_path = write_timestamped_file(
         snapshot_folder,
-        f"# Conversation Snapshot: {run.agent_name}\n\n{summary.strip()}\n",
+        format_snapshot_document(
+            f"# Conversation Snapshot: {run.agent_name}\n\n{summary.strip()}",
+            covered_through_sequence=covered_through_sequence,
+        ),
         suffix=MARKDOWN_SUFFIX,
         replace=None,
         pipe=ctx.pipe,

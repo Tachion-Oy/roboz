@@ -12,6 +12,10 @@ from roboz.models import Empty
 from roboz.runtime import EventPipe, LOG_DATA_ATTRIBUTE
 from roboz.runtime.persistence import mark_conversation_active
 from roboz.tools import ConsolidateMemoryCtx, consolidate_memory
+from roboz.tools._snapshot_metadata import (
+    SNAPSHOT_COVERAGE_TAG,
+    format_snapshot_document,
+)
 from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboz.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
@@ -244,6 +248,42 @@ def test_summary_receives_previous_memory_without_provenance_and_only_pending(
     assert "Already consolidated" not in conversation
     assert max_chars == _MAX_CHARS
     assert tolerance == 15.0
+
+
+def test_summary_does_not_receive_snapshot_coverage_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_root = tmp_path / "snapshots"
+    memory_root = tmp_path / "memory"
+    conversation_root = tmp_path / "runs"
+    snapshot_content = format_snapshot_document(
+        "# Conversation Snapshot: orchestrator\n\nFresh snapshot.",
+        covered_through_sequence=7,
+    )
+    _write_snapshot(
+        snapshot_root,
+        at=datetime.now(timezone.utc),
+        content=snapshot_content,
+    )
+    captured: list[str] = []
+
+    def fake_summary(**kwargs):
+        captured.append(kwargs["conversation"])
+        return "## Active work\n- Folded."
+
+    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", fake_summary)
+    consolidate_memory(
+        _ctx(
+            snapshot_root=snapshot_root,
+            memory_root=memory_root,
+            conversation_root=conversation_root,
+            endpoint=MockLLMEndpoint([]),
+            min_pending_snapshots=1,
+        )
+    )(input=Empty(), messages=[])
+
+    assert "Fresh snapshot" in captured[0]
+    assert SNAPSHOT_COVERAGE_TAG not in captured[0]
 
 
 def test_pending_snapshots_are_supplied_oldest_to_newest(

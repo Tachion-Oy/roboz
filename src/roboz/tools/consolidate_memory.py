@@ -13,6 +13,7 @@ from roboz.runtime import log_with_data
 from roboz.runtime.persistence import active_marker_paths
 from roboz.tooling.decorators import factory
 from roboz.tools._identifiers import CONSOLIDATE_MEMORY_TOOL_NAME
+from roboz.tools._snapshot_metadata import parse_snapshot_document
 from roboz.tools.compactification import summarize_conversation_segment
 from roboz.tools.consolidate_memory_prompts import (
     CONSOLIDATE_MEMORY_INSTRUCTIONS,
@@ -86,7 +87,7 @@ def _snapshot_text(
 ) -> str:
     return "\n\n".join(
         f"### Snapshot: {path.parent.relative_to(snapshot_root).as_posix()}\n\n"
-        f"{path.read_text(encoding=UTF8_ENCODING).strip()}"
+        f"{parse_snapshot_document(path.read_text(encoding=UTF8_ENCODING)).content}"
         for _, path in pending
     )
 
