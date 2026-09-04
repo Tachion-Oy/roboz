@@ -78,6 +78,28 @@ effort. A lazy endpoint remains lazy and keeps its canonical dependency identity
 The options are defensively copied, are excluded from endpoint serialization and
 redacted metadata, and replace any options already attached to that endpoint copy.
 
+For OpenRouter, keep catalog model names canonical (for example
+`z-ai/glm-5.3`, never `z-ai/glm-5.3:nitro`) and attach routing policy where the
+endpoint is composed:
+
+```python
+from roboz.llm import with_openrouter_policy
+
+orchestrator_endpoint = with_openrouter_policy(
+    canonical_endpoint,
+    reasoning_effort="low",
+)
+memory_endpoint = with_openrouter_policy(
+    canonical_endpoint,
+    reasoning_effort="high",
+)
+planner_endpoint = with_openrouter_policy(canonical_endpoint)
+```
+
+The helper sends OpenRouter's throughput sort with required-parameter routing,
+the request-level equivalent of the former `:nitro` model suffix. An optional
+provider ignore list can be supplied with `ignored_providers=`.
+
 The framework rejects request keys it owns (`messages`, `model`,
 `response_format`, `stream`, `stream_options`, and `temperature`). Provider
 options must be finite, JSON-compatible values. Keep credentials and other secrets
@@ -87,7 +109,11 @@ Prompt fragments used to implement those operations live together in `roboz.llm.
 
 ## Companion Packages
 
-The `roboz` package contains primitives only. Optional companion packages are separate distributions and depend on `roboz`; primitives never import or depend on them. The planned `shed` package will provide prebuilt skills, tools, provider endpoint catalogs, composite agents, shared identifiers, models, and permission guards.
+The `roboz` package includes its typed primitives and dependency-free reference
+tools, including the Librarian memory pipeline. Optional companion distributions
+depend on `roboz` and provide integrations that require provider SDKs, guarded
+system tools, or application-specific services; Roboz never imports those
+companions.
 
 ## Runtime Event Bus
 

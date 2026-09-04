@@ -26,6 +26,11 @@ from roboz.llm.endpoints import (
     role_to_user_mapper,
 )
 from roboz.llm.prompts import get_basic_system_prompt
+from roboz.llm.openrouter import (
+    OpenRouterReasoningEffort,
+    openrouter_request_options,
+    with_openrouter_policy,
+)
 
 __all__ = [
     "EndpointBinding",
@@ -37,6 +42,7 @@ __all__ = [
     "MockLLMEndpoint",
     "MockProviderError",
     "MockTranscriptionEndpoint",
+    "OpenRouterReasoningEffort",
     "RequestOptions",
     "TranscriptionEndpoint",
     "TranscriptionEndpointLike",
@@ -47,8 +53,10 @@ __all__ = [
     "estimate_conversation_tokens",
     "get_basic_system_prompt",
     "get_completion",
+    "openrouter_request_options",
     "get_truncated_messages_for_context",
     "resolve_endpoint",
     "role_to_user_mapper",
     "with_request_options",
+    "with_openrouter_policy",
 ]
