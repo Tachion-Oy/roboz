@@ -1,13 +1,32 @@
 # CI implementation verification — 2026-09-05
 
-## CI access correction — 2026-09-06
+## Current validation boundary — 2026-09-06
+
+Roboz CI validates its core primitives and companion distributions. Application
+integration testing belongs to consumer repositories. The RoboSprawl-specific
+job, archived source fixture, and application test scripts have been removed.
+All package test, coverage, typing, distribution, and portable-core gates remain
+required. No cross-repository checkout or application credential is needed.
+
+Local Linux validation of this boundary correction passed: 807 tests, all four
+package coverage floors, the quickstart, Ruff, Pyright, positive and negative
+typing contracts, fresh builds of all eight archives, Twine, and independent
+installations from original wheels and source-archive rebuilds. Workflow linting,
+shell syntax checking, and `git diff --check` also passed. The remaining CI jobs,
+aggregate CI and release callers, package source, and package tests are unchanged.
+This is repository maintenance and needs no distribution changelog entry.
+
+The records below describe earlier implementations. Their downstream checks and
+access prerequisites are superseded and are not current setup instructions.
+
+## Superseded archive workaround — 2026-09-06
 
 GitHub Actions confirmed that both repositories are private and the required
 downstream job failed during the cross-repository checkout, before executing
-tests. The repository-scoped workflow token cannot read RoboSprawl. The gate
-now extracts a checksum-verified source fixture from this repository at the
-same upstream revision. See the [fixture provenance and refresh procedure](../tests/fixtures/robosprawl/README.md).
-The required downstream composition and HTTP checks remain unchanged.
+tests. The repository-scoped workflow token could not read RoboSprawl. A
+workaround extracted a checksum-verified source fixture from this repository
+at the same upstream revision and retained the downstream composition and HTTP
+checks. That workaround has since been removed to restore the library boundary.
 
 Local validation of the correction passed: locked development sync with uv
 0.12.10, actionlint 1.7.12, Ruff, `git diff --check`, fixture checksum and
@@ -15,8 +34,8 @@ byte-for-byte comparison of all 38 archived files with the upstream commit,
 fresh builds of all eight Roboz archives, Twine, and the downstream gate
 (three composition tests plus installed HTTP create/stream/reply/completion).
 No distribution source, metadata, dependency range, or version changed; no
-package changelog entry is needed. The historical access prerequisite below
-describes the original implementation and is superseded by the fixture.
+package changelog entry was needed. These results establish what the archived
+copy passed at that time, not compatibility with the current application.
 
 ## Original local verification
 

@@ -89,8 +89,8 @@ The archive installation gate executes the same scenarios from original wheels
 and source-archive rebuilds, outside this checkout.
 
 PeffaHub's successor RoboSprawl owns browser and HTTP application behavior.
-Roboz tests the pinned successor's composition and HTTP run/reply/completion
-contract with candidate library wheels. RoboSprawl's own required Chromium,
-Firefox, and WebKit jobs cover the inherited UI journeys and backend restart
-recovery. This extends verification of retained behavior; it does not port the
-previously excluded integrations or claim credential-backed service parity.
+Application composition, HTTP, and browser integration checks belong in that
+repository. Roboz CI validates the primitives and companion distributions,
+including their installed workflows described above, without depending on an
+application checkout or archived source. This does not port the previously
+excluded integrations or claim credential-backed service parity.

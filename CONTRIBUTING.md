@@ -9,6 +9,7 @@ update affected public documentation and Unreleased changelogs when behavior
 changes. Do not bump versions or publish as part of ordinary development.
 
 Require the aggregate **CI** check before merging. It covers all library
-packages, independent installations, portable core smoke tests, and the pinned
-downstream application contract. Report local validation separately from
-GitHub-run results. No live credentials are needed by the default suite.
+packages, independent installations, and portable core smoke tests. Consumer
+applications own their integration checks in their respective repositories.
+Report local validation separately from GitHub-run results. No live credentials
+are needed by the default suite.

@@ -125,24 +125,21 @@ same validation. Only the separately triggered release job can publish.
 - Windows and macOS install the core wheel and run its portable workflows.
   Guarded Unix file-command E2E remains a Linux check; this does not claim all
   companion tools support Windows or macOS.
-- Downstream builds RoboSprawl at `7f956cb6cfd93db0cc1f95c7dcffc9eed0e7e8b5`,
-  installs it with candidate Roboz wheels, and exercises composition and a real
-  HTTP create/stream/reply/completion cycle. The checksum-verified
-  [source fixture](../tests/fixtures/robosprawl/README.md) preserves the upstream
-  Python source and composition test. A pin update needs review and the same
-  contract checks.
+
+Roboz CI validates the core primitives and companion distributions in this
+workspace. Consumer applications own their integration checks in their own
+repositories; Roboz validation requires no application checkout or source copy.
 
 CI pins uv 0.12.10 and full commit SHAs for actions. Dependabot maintains action
 pins. Workflow permissions are read-only, checkouts do not retain credentials,
 jobs have deadlines, and newer CI runs cancel superseded runs. These choices
 follow [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 No provider credentials or publication secrets are available to PR checks.
-The downstream source fixture requires no cross-repository credentials, so the
-same gate also runs for Dependabot and fork pull requests.
+No cross-repository credentials are required for Dependabot or fork pull requests.
 
-JUnit reports, coverage, candidate distributions, and downstream backend logs
-are retained for 14 days. Local logs and runner results are evidence of local
-checks, not evidence that GitHub Actions or nonlocal platforms have passed.
+JUnit reports, coverage, and candidate distributions are retained for 14 days.
+Local logs and runner results are evidence of local checks, not evidence that
+GitHub Actions or nonlocal platforms have passed.
 
 ## Coverage and deterministic end-to-end tests
 
@@ -166,27 +163,6 @@ escape denial, parent/child completion, and conversation → snapshot → memory
 retention. The same files are copied outside the checkout and executed by the
 installed interpreter, so source-tree imports cannot satisfy the install gate.
 
-To reproduce the downstream gate with the pinned fixture:
-
-```bash
-(cd tests/fixtures/robosprawl && sha256sum --check SHA256SUMS)
-downstream_dir="$(mktemp -d)"
-tar -xzf tests/fixtures/robosprawl/source.tar.gz --directory "$downstream_dir"
-uv run python scripts/check_downstream.py --source "$downstream_dir" --dist "$release_dir"
-```
-
-To test a reviewed RoboSprawl checkout before updating the fixture:
-
-```bash
-uv run python scripts/check_downstream.py --source ../robosprawl --dist "$release_dir"
-```
-
-The script installs candidates and the application wheel with pip, checks
-imports originate in that environment, and runs copied composition tests plus
-the HTTP contract in an isolated config/data directory. It uses pip's resolver
-to test declared consumer requirements; `uv.lock` governs development checks,
-not consumers' independent installations.
-
 ## Release artifacts and PyPI transition
 
 The release workflow calls the same reusable validation as CI, then selects the
@@ -202,10 +178,10 @@ uv run python scripts/release_package.py roboz-v0.1.1 --from-dist "$release_dir"
 output directory; it never rebuilds after verification. Tags and publication
 still require explicit maintainer action. This change creates neither.
 
-Python distribution is pip/PyPI. Local workspace/source overrides are temporary
-development scaffolding. Publish dependencies before removing RoboSprawl's
-three local source overrides, refresh its lock, and rerun the same archive and
-installation gates with the intended published artifacts. Do not rewrite source
-paths inside CI or replace wheel verification with editable installs. See
+Python distribution is pip/PyPI. Workspace source overrides support development;
+the distribution gate uses pip's resolver to test published requirement metadata
+with the freshly built packages. `uv.lock` governs development checks, not
+consumers' independent installations. Do not rewrite source paths inside CI or
+replace wheel verification with editable installs. See
 [uv packaging guidance](https://docs.astral.sh/uv/guides/package/) for checking
 builds with sources disabled. Containerization is outside this change.
