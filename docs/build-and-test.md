@@ -127,16 +127,18 @@ same validation. Only the separately triggered release job can publish.
   companion tools support Windows or macOS.
 - Downstream builds RoboSprawl at `7f956cb6cfd93db0cc1f95c7dcffc9eed0e7e8b5`,
   installs it with candidate Roboz wheels, and exercises composition and a real
-  HTTP create/stream/reply/completion cycle. A pin update needs review and the
-  same contract checks.
+  HTTP create/stream/reply/completion cycle. The checksum-verified
+  [source fixture](../tests/fixtures/robosprawl/README.md) preserves the upstream
+  Python source and composition test. A pin update needs review and the same
+  contract checks.
 
 CI pins uv 0.12.10 and full commit SHAs for actions. Dependabot maintains action
 pins. Workflow permissions are read-only, checkouts do not retain credentials,
 jobs have deadlines, and newer CI runs cancel superseded runs. These choices
 follow [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 No provider credentials or publication secrets are available to PR checks.
-Cross-repository checks require both repositories to be publicly accessible;
-see [local verification and access prerequisites](ci-verification.md).
+The downstream source fixture requires no cross-repository credentials, so the
+same gate also runs for Dependabot and fork pull requests.
 
 JUnit reports, coverage, candidate distributions, and downstream backend logs
 are retained for 14 days. Local logs and runner results are evidence of local
@@ -164,7 +166,16 @@ escape denial, parent/child completion, and conversation → snapshot → memory
 retention. The same files are copied outside the checkout and executed by the
 installed interpreter, so source-tree imports cannot satisfy the install gate.
 
-To reproduce the downstream gate with a reviewed RoboSprawl checkout:
+To reproduce the downstream gate with the pinned fixture:
+
+```bash
+(cd tests/fixtures/robosprawl && sha256sum --check SHA256SUMS)
+downstream_dir="$(mktemp -d)"
+tar -xzf tests/fixtures/robosprawl/source.tar.gz --directory "$downstream_dir"
+uv run python scripts/check_downstream.py --source "$downstream_dir" --dist "$release_dir"
+```
+
+To test a reviewed RoboSprawl checkout before updating the fixture:
 
 ```bash
 uv run python scripts/check_downstream.py --source ../robosprawl --dist "$release_dir"

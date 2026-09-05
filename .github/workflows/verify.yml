@@ -117,17 +117,18 @@ jobs:
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           version: "0.12.10"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: Tachion-Oy/robosprawl
-          ref: 7f956cb6cfd93db0cc1f95c7dcffc9eed0e7e8b5
-          path: downstream
-          persist-credentials: false
+      - name: Extract pinned downstream source
+        working-directory: tests/fixtures/robosprawl
+        run: |
+          sha256sum --check SHA256SUMS
+          downstream_dir="$(mktemp -d)"
+          tar -xzf source.tar.gz --directory "$downstream_dir"
+          echo "DOWNSTREAM_DIR=$downstream_dir" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: candidate-distributions
           path: candidate-dist
-      - run: python scripts/check_downstream.py --source downstream --dist candidate-dist
+      - run: python scripts/check_downstream.py --source "$DOWNSTREAM_DIR" --dist candidate-dist
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:

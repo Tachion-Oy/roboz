@@ -1,5 +1,25 @@
 # CI implementation verification — 2026-09-05
 
+## CI access correction — 2026-09-06
+
+GitHub Actions confirmed that both repositories are private and the required
+downstream job failed during the cross-repository checkout, before executing
+tests. The repository-scoped workflow token cannot read RoboSprawl. The gate
+now extracts a checksum-verified source fixture from this repository at the
+same upstream revision. See the [fixture provenance and refresh procedure](../tests/fixtures/robosprawl/README.md).
+The required downstream composition and HTTP checks remain unchanged.
+
+Local validation of the correction passed: locked development sync with uv
+0.12.10, actionlint 1.7.12, Ruff, `git diff --check`, fixture checksum and
+byte-for-byte comparison of all 38 archived files with the upstream commit,
+fresh builds of all eight Roboz archives, Twine, and the downstream gate
+(three composition tests plus installed HTTP create/stream/reply/completion).
+No distribution source, metadata, dependency range, or version changed; no
+package changelog entry is needed. The historical access prerequisite below
+describes the original implementation and is superseded by the fixture.
+
+## Original local verification
+
 These are local Linux results, not GitHub Actions results. Tooling: Python
 3.13.3 and stable 3.14.7, uv 0.12.10, and actionlint 1.7.12. All four Roboz
 distributions are affected by validation changes; no library runtime API,
