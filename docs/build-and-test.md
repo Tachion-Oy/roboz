@@ -10,14 +10,17 @@ uv run pytest
 uv run ruff check
 uv run pyright
 bash scripts/run_type_tests.sh
-uv build --all-packages --out-dir dist/first-slice
-uv run twine check dist/first-slice/*
-uv run python scripts/check_distributions.py --dist dist/first-slice
+release_dir="$(mktemp -d)"
+uv build --no-sources --all-packages --out-dir "$release_dir"
+uv run twine check "$release_dir"/*
+uv run python scripts/check_distributions.py --dist "$release_dir"
 ```
 
 The last command installs built wheels into temporary environments outside the
-checkout and can download dependencies. It checks base/Shed isolation, the mock
-assistant, Proton without other SDKs, the model adapter, and extras resolution.
+checkout and can download dependencies. It checks core, each companion, and combined extras in separate pip environments.
+It verifies import locations, dependency consistency, metadata, licenses, and
+`py.typed`, then repeats installations with wheels rebuilt from source archives
+using `uv build --no-sources`. Providers are scripted; no credentials are needed.
 
 This page centralizes local build/test validation for contributors.
 It mirrors the repository CI flow.
@@ -139,3 +142,15 @@ provider boundaries. They cover guarded read/edit/read, traversal and symlink
 escape denial, parent/child completion, and conversation → snapshot → memory →
 retention. The same files are copied outside the checkout and executed by the
 installed interpreter, so source-tree imports cannot satisfy the install gate.
+
+To reproduce the downstream gate with a reviewed RoboSprawl checkout:
+
+```bash
+uv run python scripts/check_downstream.py --source ../robosprawl --dist "$release_dir"
+```
+
+The script installs candidates and the application wheel with pip, checks
+imports originate in that environment, and runs copied composition tests plus
+the HTTP contract in an isolated config/data directory. It uses pip's resolver
+to test declared consumer requirements; `uv.lock` governs development checks,
+not consumers' independent installations.

@@ -3,6 +3,8 @@
 import argparse
 import email
 import os
+import shutil
+import tarfile
 from pathlib import Path
 import subprocess
 import sys
@@ -19,9 +21,11 @@ PROJECTS = {
 }
 
 
-def wheels_for(dist: Path) -> dict[str, Path]:
+def wheels_for(dist: Path, *, core_only: bool = False) -> dict[str, Path]:
     wheels = {}
     for name, root in PROJECTS.items():
+        if core_only and name != "roboz":
+            continue
         project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
         namespace = name.replace("-", "_")
         wheel = dist / f"{namespace}-{project['version']}-py3-none-any.whl"
@@ -32,6 +36,7 @@ def wheels_for(dist: Path) -> dict[str, Path]:
             )
             assert metadata["Name"] == name
             assert metadata["Version"] == project["version"]
+            assert metadata["Requires-Python"] == project["requires-python"]
             assert metadata["Import-Name"] == namespace
             assert metadata["License-Expression"] == "Apache-2.0"
             assert f"{namespace}/py.typed" in names
@@ -51,22 +56,38 @@ def wheels_for(dist: Path) -> dict[str, Path]:
     return wheels
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-    args = parser.parse_args()
-    wheels = wheels_for(args.dist.resolve())
+CORE_SMOKE = """
+from importlib.util import find_spec
+import roboz as rz
+from roboz.llm import MockLLMEndpoint
+assert all(find_spec(n) is None for n in ('roboz_shed', 'roboz_openai', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
+agent = rz.Agent(name='test', tools=[rz.stop], system_prompt='Stop.', agent_endpoint=MockLLMEndpoint([{'action': 'stop', 'rationale': 'test', 'value': 'ok'}]))
+assert agent.invoke()[0].value == 'ok'
+"""
+
+
+def check_installs(dist: Path, root: Path, *, core_only: bool = False) -> None:
+    wheels = wheels_for(dist, core_only=core_only)
     env = {
         key: value
         for key, value in os.environ.items()
-        if key not in {"PYTHONPATH", "VIRTUAL_ENV"}
+        if key not in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}
     }
-
-    with tempfile.TemporaryDirectory(prefix="roboz-wheel-check-") as directory:
-        root = Path(directory)
-        python = (
-            root / "venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-        )
+    # Each companion must work with only its own declared dependency closure.
+    cases = (
+        {"core": ["roboz"]}
+        if core_only
+        else {
+            "core": ["roboz"],
+            "shed": ["roboz", "roboz-shed"],
+            "openai": ["roboz", "roboz-openai"],
+            "proton": ["roboz", "roboz-shed", "roboz-proton-bridge"],
+            "extras": list(wheels),
+        }
+    )
+    for label, packages in cases.items():
+        venv = root / label
+        python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
         def run(*command: str) -> None:
             subprocess.run(command, cwd=root, env=env, check=True)
@@ -74,75 +95,115 @@ def main() -> None:
         def check(code: str) -> None:
             run(str(python), "-I", "-c", code)
 
-        def install(*requirements: str) -> None:
-            run("uv", "pip", "install", "--python", str(python), *requirements)
-
-        run("uv", "venv", "--python", sys.executable, str(root / "venv"))
-        install(str(wheels["roboz"]))
-        check("""
-from importlib.util import find_spec
-import roboz as rz
-from roboz.llm import MockLLMEndpoint
-assert all(find_spec(n) is None for n in ('roboz_shed', 'roboz_openai', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
-agent = rz.Agent(name='test', tools=[rz.stop], system_prompt='Stop.', agent_endpoint=MockLLMEndpoint([{'action': 'stop', 'rationale': 'test', 'value': 'ok'}]))
-assert agent.invoke()[0].value == 'ok'
+        run("uv", "venv", "--seed", "--python", sys.executable, str(venv))
+        requirements = [str(wheels[name]) for name in packages]
+        if label == "extras":
+            requirements[0] += "[shed,openai,proton-bridge-beta]"
+        run(str(python), "-I", "-m", "pip", "install", *requirements)
+        run(str(python), "-I", "-m", "pip", "check")
+        check(f"""
+import importlib, importlib.metadata as metadata, json, sys
+from pathlib import Path
+for name in {packages!r}:
+    module = importlib.import_module(name.replace('-', '_'))
+    assert Path(module.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()), module.__file__
+    source = json.loads(metadata.distribution(name).read_text('direct_url.json'))
+    assert 'dir_info' not in source and source['url'].endswith('.whl')
 """)
-        print("PASS core-only wheel installation", flush=True)
-
-        install(str(wheels["roboz-shed"]))
-        check("""
+        if label == "core":
+            check(CORE_SMOKE)
+            workflow = root / "core_workflows.py"
+            shutil.copyfile(ROOT / "tests/e2e/test_core_workflows.py", workflow)
+            run(str(python), "-I", str(workflow))
+        if label == "shed":
+            check("""
 from importlib.util import find_spec
 import importlib, pkgutil, roboz_shed
 for module in pkgutil.walk_packages(roboz_shed.__path__, roboz_shed.__name__ + '.'):
     importlib.import_module(module.name)
 assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_openai', 'roboz_proton_bridge'))
 """)
-        run(
-            str(python),
-            "-I",
-            "-m",
-            "roboz_shed.demo",
-            "--mock",
-            "--workspace",
-            str(root / "workspace"),
-            "--data-path",
-            str(root / "data"),
-        )
-        assert list((root / "workspace").glob("roboz-demo-*.txt"))
-        assert list((root / "data").rglob("*.json"))
-        print("PASS Shed-only installed demo", flush=True)
-
-        install(str(wheels["roboz-proton-bridge"]))
-        check("""
-from importlib.util import find_spec
-from roboz_proton_bridge import ProtonBridgeEmailService
-assert ProtonBridgeEmailService().dependency_id
-assert all(find_spec(n) is None for n in ('openai', 'firecrawl', 'pymupdf4llm', 'groq', 'cerebras'))
-""")
-        print("PASS Proton without unrelated integrations", flush=True)
-
-        install(str(wheels["roboz-openai"]))
-        check("""
+            workflow = root / "shed_workflows.py"
+            shutil.copyfile(ROOT / "tests/e2e/test_shed_workflows.py", workflow)
+            run(str(python), "-I", str(workflow))
+            # Verify the published console entry point too.
+            executable = python.parent / (
+                "roboz-demo.exe" if os.name == "nt" else "roboz-demo"
+            )
+            run(
+                str(executable),
+                "--mock",
+                "--workspace",
+                str(root / "workspace"),
+                "--data-path",
+                str(root / "data"),
+            )
+            assert list((root / "data").rglob("*.json"))
+        if label in {"openai", "extras"}:
+            check("""
 from roboz_openai import openrouter_endpoint
 endpoint = openrouter_endpoint(model='test/model', max_context_tokens=4096)
 assert endpoint.dependency_id == 'model:openrouter:test/model'
 assert 'materialized' not in endpoint.__dict__
 """)
-        run("uv", "pip", "check", "--python", str(python))
-        check("""
-import importlib.metadata as metadata, json
-for name in ('roboz', 'roboz-shed', 'roboz-openai', 'roboz-proton-bridge'):
-    source = json.loads(metadata.distribution(name).read_text('direct_url.json'))
-    assert 'dir_info' not in source
-    assert source['url'].endswith('.whl')
+        if label == "openai":
+            check(
+                "from importlib.util import find_spec; assert find_spec('roboz_shed') is None"
+            )
+        if label == "proton":
+            check("""
+from importlib.util import find_spec
+from roboz_proton_bridge import ProtonBridgeEmailService
+assert ProtonBridgeEmailService().dependency_id
+assert all(find_spec(n) is None for n in ('openai', 'roboz_openai', 'firecrawl', 'pymupdf4llm', 'groq', 'cerebras'))
 """)
-        # Re-resolve extras using exact local wheel references for all workspace
-        # projects; never accidentally substitute a same-version PyPI package.
-        install(
-            str(wheels["roboz"]) + "[shed,openai,proton-bridge-beta]",
-            *(str(wheel) for name, wheel in wheels.items() if name != "roboz"),
+        print(f"PASS {dist.name}: independent {label} pip installation", flush=True)
+
+
+def rebuild_sdists(dist: Path, root: Path) -> Path:
+    rebuilt = root / "rebuilt"
+    for name, project_root in PROJECTS.items():
+        project = tomllib.loads((project_root / "pyproject.toml").read_text())[
+            "project"
+        ]
+        stem = f"{name.replace('-', '_')}-{project['version']}"
+        with tarfile.open(dist / f"{stem}.tar.gz") as archive:
+            archive.extractall(root / "sources", filter="data")
+        subprocess.run(
+            [
+                "uv",
+                "build",
+                "--no-sources",
+                "--wheel",
+                "--out-dir",
+                str(rebuilt),
+                str(root / "sources" / stem),
+            ],
+            cwd=root,
+            check=True,
         )
-        print("PASS adapter, extras, metadata, and dependency consistency", flush=True)
+    wheels_for(rebuilt)
+    return rebuilt
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
+    parser.add_argument(
+        "--core-only", action="store_true", help="Portable core wheel contract"
+    )
+    args = parser.parse_args()
+    dist = args.dist.resolve()
+    with tempfile.TemporaryDirectory(prefix="roboz-wheel-check-") as directory:
+        root = Path(directory)
+        original = root / "original"
+        original.mkdir()
+        check_installs(dist, original, core_only=args.core_only)
+        if not args.core_only:
+            rebuilt = rebuild_sdists(dist, root)
+            installs = root / "sdist-installs"
+            installs.mkdir()
+            check_installs(rebuilt, installs)
 
 
 if __name__ == "__main__":
