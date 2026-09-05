@@ -110,16 +110,37 @@ verify that `import roboz` succeeds. The wheel must contain `roboz/py.typed` and
 license metadata, and its core metadata must include `Import-Name: roboz` and
 `License-File: LICENSE`.
 
-## CI Parity
+## CI parity and branch protection
 
-CI has three jobs:
+Use the aggregate **CI** status as the required branch-protection check in GitHub.
+It requires every job in `.github/workflows/verify.yml` to succeed; failures,
+cancellations, and skipped required jobs cannot produce a green aggregate.
+Pull requests (including forks), pushes to `main`, and manual dispatch run the
+same validation. Only the separately triggered release job can publish.
 
-- `tests`: runs pytest and the quick-start example on Python 3.13 and 3.14
-- `quality`: runs Ruff, the source check, and the dedicated type tests
-- `distribution`: builds and validates both artifacts on Python 3.13, then
-  installs the wheel into an isolated environment and smoke-tests `import roboz`
+- Python 3.13 and 3.14 run all core and companion tests and the quickstart.
+- Quality runs Ruff, Pyright, and positive/negative typing contracts once.
+- Distribution builds fresh wheels and source archives, checks them with Twine,
+  and verifies independent pip installs outside the checkout, including E2E.
+- Windows and macOS install the core wheel and run its portable workflows.
+  Guarded Unix file-command E2E remains a Linux check; this does not claim all
+  companion tools support Windows or macOS.
+- Downstream builds RoboSprawl at `7f956cb6cfd93db0cc1f95c7dcffc9eed0e7e8b5`,
+  installs it with candidate Roboz wheels, and exercises composition and a real
+  HTTP create/stream/reply/completion cycle. A pin update needs review and the
+  same contract checks.
 
-Reference workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+CI pins uv 0.12.10 and full commit SHAs for actions. Dependabot maintains action
+pins. Workflow permissions are read-only, checkouts do not retain credentials,
+jobs have deadlines, and newer CI runs cancel superseded runs. These choices
+follow [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
+No provider credentials or publication secrets are available to PR checks.
+Cross-repository checks require both repositories to be publicly accessible;
+see [local verification and access prerequisites](ci-verification.md).
+
+JUnit reports, coverage, candidate distributions, and downstream backend logs
+are retained for 14 days. Local logs and runner results are evidence of local
+checks, not evidence that GitHub Actions or nonlocal platforms have passed.
 
 ## Coverage and deterministic end-to-end tests
 
