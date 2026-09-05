@@ -69,6 +69,7 @@ def _conversation_marker_path(*, agent_dir: Path, conversation_id: str) -> Path:
 
 
 def mark_conversation_active(*, agent_dir: Path, conversation_id: str) -> Path:
+    """Create and return the exclusive activity marker for a conversation."""
     marker = _conversation_marker_path(
         agent_dir=agent_dir, conversation_id=conversation_id
     )
@@ -78,6 +79,7 @@ def mark_conversation_active(*, agent_dir: Path, conversation_id: str) -> Path:
 
 
 def clear_conversation_active(*, agent_dir: Path, conversation_id: str) -> None:
+    """Remove a conversation's activity marker if it exists."""
     _conversation_marker_path(
         agent_dir=agent_dir, conversation_id=conversation_id
     ).unlink(missing_ok=True)

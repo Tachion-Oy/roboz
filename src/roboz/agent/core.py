@@ -1,3 +1,5 @@
+"""Agent composition and synchronous tool-execution runtime."""
+
 from __future__ import annotations
 
 from logging import getLogger
@@ -104,6 +106,7 @@ class Agent(ExternalDependencySource):
         event_sinks: Sequence[EventSink] | None = None,
         event_pipe: EventPipe | None = None,
     ):
+        """Initialize and validate an agent's tools, skills, endpoint, and event pipe."""
         if event_pipe is not None and event_sinks is not None:
             raise ValueError("pass either event_pipe or event_sinks, not both")
         self.name = validate_agent_name(name)
@@ -214,6 +217,7 @@ class Agent(ExternalDependencySource):
         return self.system_prompt
 
     def copy(self, **overrides: Unpack[AgentInputs]) -> Agent:
+        """Copy this agent configuration while preserving its event pipe by default."""
         old_input: AgentInputs = {
             "interaction_mode": self.interaction_mode,
             "name": self.name,
@@ -281,7 +285,6 @@ class Agent(ExternalDependencySource):
         include_lazy_skills: bool = True,
     ) -> tuple[ExternalDependency, ...]:
         """Derive the agent's dependency catalog exclusively from its Tool graph."""
-
         tools: list[Tool] = [
             self.master_tool,
             self.prompt_user_tool,
@@ -336,7 +339,7 @@ class Agent(ExternalDependencySource):
             raise ValueError
 
     def _validate_tool_chains(self, tools: set[Tool]) -> None:
-        """This does the heavy lifting for tool chains"""
+        """This does the heavy lifting for tool chains."""
         active_names = [t.name for t in tools if not t.chained_to]
         if len(active_names) != len(set(active_names)):
             raise ValueError(f"Duplicate tool name {active_names=}")
@@ -361,6 +364,7 @@ class Agent(ExternalDependencySource):
     def get_next_tool(
         self, tool: Tool[Empty, Any] | None, output: Invoke | Empty | Stop | Stop
     ) -> Tool:
+        """Resolve the unique active, chained, or default tool for an output."""
         chained_tools = []
         if isinstance(output, Invoke):
             self._init_skill(output)
@@ -386,6 +390,7 @@ class Agent(ExternalDependencySource):
         raise RuntimeError
 
     def pop_ephemeral_default_tool(self):
+        """Pop the next per-run default tool, replenishing the sequence as needed."""
         try:
             return self._ephemeral_default_tools.pop(0)
         except IndexError:
@@ -395,6 +400,7 @@ class Agent(ExternalDependencySource):
             return self._ephemeral_default_tools.pop(0)
 
     def append_and_pipe(self, message: Message):
+        """Append a message to conversation state and emit it through the pipe."""
         self.messages += [message]
         self.pipe(message)
 
@@ -446,6 +452,7 @@ class Agent(ExternalDependencySource):
             raise ValueError
 
     def add(self, *, tools: list[Tool] | None = None, skill: Skill | None = None):
+        """Add tools or a loaded skill and regenerate model-facing instructions."""
         current_tools = list(self.active_tools.values()) + list(
             self.passive_tools.values()
         )
@@ -460,8 +467,11 @@ class Agent(ExternalDependencySource):
             )
 
     def _init_skill(self, output: Invoke | Empty | Stop) -> None:
-        """The tools associated with a skill are loaded
-        only after the skill is invoked."""
+        """Load a skill's tools only after the skill is invoked.
+
+        Enforce declared skill dependency order and avoid loading a skill more
+        than once during one run.
+        """
         if not isinstance(output, Invoke):
             return
         if (
@@ -480,6 +490,7 @@ class Agent(ExternalDependencySource):
             self.add(skill=skill)
 
     def auto_load_skills(self):
+        """Load configured automatic skills and emit their instruction messages."""
         if self._auto_loaded_skills:
             self.append_and_pipe(
                 get_finalized_message(
@@ -602,6 +613,7 @@ class Agent(ExternalDependencySource):
         input: Empty | None = None,
         dry_run: bool = False,
     ) -> tuple[Stop, list[Message]]:
+        """Run the agent synchronously until it stops or is cancelled."""
         stack_token = None
         output_token = None
         exit_status = RunStatus.FAILED
@@ -652,6 +664,7 @@ class Agent(ExternalDependencySource):
                 reset_output(output_token)
 
     def show_agent_info(self):
+        """Render configured tools, storage locations, and initial messages."""
         self.pipe.initialize(dry_run=True)
 
         console = Console()

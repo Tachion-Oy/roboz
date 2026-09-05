@@ -1,3 +1,5 @@
+"""Reusable prompt fragments for structured model output."""
+
 from __future__ import annotations
 
 import json
@@ -52,6 +54,7 @@ def get_basic_system_prompt(
     OutputModel: type[Empty],
     output_example: Mapping[str, object] | None = None,
 ) -> str:
+    """Build instructions for returning one validated structured model."""
     output_structure_instructions = (
         "## Output Pydantic model\n\nYour output "
         "must without exception follow the Pydantic schema"

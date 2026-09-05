@@ -1,3 +1,5 @@
+"""Runtime events, sinks, persistence, and interaction interfaces."""
+
 from roboz.runtime._environment import load_key
 from roboz.runtime._external import ControlSignal, run_cancellable_external_call
 from roboz.runtime.events import (

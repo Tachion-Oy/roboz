@@ -31,6 +31,8 @@ _FLAGS_PATTERN = re.compile(rb"\bFLAGS\s+\(([^)]*)\)", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class ImapSourceReference:
+    """Decoded stable reference to one IMAP message UID."""
+
     mailbox: str
     uid_validity: int
     uid: bytes
@@ -38,16 +40,20 @@ class ImapSourceReference:
 
 @dataclass(frozen=True)
 class ImapAttachmentReference:
+    """Decoded stable reference to an attachment within one message."""
+
     source_message_ref: str
     attachment_index: int
 
 
 def require_ok(status: str, failure_message: str) -> None:
+    """Require an IMAP OK response or raise a safe provider error."""
     if status.upper() != ImapResponseStatus.OK:
         raise EmailProviderError(failure_message)
 
 
 def uid_identifier(uid: bytes) -> str:
+    """Encode an IMAP UID as a displayable identifier."""
     try:
         value = uid.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -58,6 +64,7 @@ def uid_identifier(uid: bytes) -> str:
 
 
 def mailbox_name(list_response: str) -> str:
+    """Parse the terminal mailbox name from one IMAP LIST response."""
     match = _MAILBOX_NAME_PATTERN.search(list_response)
     if match is None:
         raise EmailProviderError("Could not parse the Proton Mail Bridge mailbox")
@@ -65,6 +72,7 @@ def mailbox_name(list_response: str) -> str:
 
 
 def append_uid(response: list[bytes]) -> str | None:
+    """Extract the appended message UID from an IMAP response when present."""
     for part in response:
         match = _APPEND_UID_PATTERN.search(part)
         if match is not None:
@@ -73,6 +81,7 @@ def append_uid(response: list[bytes]) -> str | None:
 
 
 def search_criteria(request: EmailSearchRequest) -> tuple[str | bytes, ...]:
+    """Encode a normalized email request as IMAP search criteria."""
     criteria: list[str | bytes] = []
     if request.from_address:
         criteria.extend((ImapSearchKey.FROM, imap_quote(request.from_address)))
@@ -90,6 +99,7 @@ def search_criteria(request: EmailSearchRequest) -> tuple[str | bytes, ...]:
 
 
 def imap_quote(value: str) -> bytes:
+    """Quote a safe text value for an IMAP command argument."""
     if any(character in value for character in ("\r", "\n", "\x00")):
         raise EmailProviderError("email search contains invalid control characters")
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -97,6 +107,7 @@ def imap_quote(value: str) -> bytes:
 
 
 def uid_validity(response: object) -> int:
+    """Parse a mailbox UIDVALIDITY value from an IMAP response."""
     value = response_value(response)
     match = _UIDVALIDITY_PATTERN.search(value)
     if match is None:
@@ -107,6 +118,7 @@ def uid_validity(response: object) -> int:
 
 
 def response_value(response: object) -> bytes:
+    """Flatten the data portion of a conventional IMAP response."""
     if not isinstance(response, tuple) or len(response) != 2:
         return b""
     data = response[1]
@@ -116,6 +128,7 @@ def response_value(response: object) -> bytes:
 
 
 def fetch_response_parts(response: object) -> tuple[bytes, bytes | None]:
+    """Separate metadata and payload bytes from an IMAP FETCH response."""
     if not isinstance(response, (list, tuple)):
         return b"", None
     metadata = b""
@@ -132,6 +145,7 @@ def fetch_response_parts(response: object) -> tuple[bytes, bytes | None]:
 
 
 def internal_date(metadata: bytes) -> datetime | None:
+    """Parse INTERNALDATE metadata when it is valid and present."""
     match = _INTERNALDATE_PATTERN.search(metadata)
     if match is None:
         return None
@@ -145,7 +159,6 @@ def uid_message_metadata(
     response: object,
 ) -> tuple[tuple[bytes, datetime, bool], ...]:
     """Parse UID, INTERNALDATE, and account-level Seen state."""
-
     if not isinstance(response, (list, tuple)):
         return ()
     parsed: list[tuple[bytes, datetime, bool]] = []
@@ -168,6 +181,7 @@ def uid_message_metadata(
 
 
 def encode_source_reference(mailbox: str, uid_validity: int, uid: bytes) -> str:
+    """Encode mailbox identity and UID state as an opaque source reference."""
     try:
         uid_text = uid.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -180,6 +194,7 @@ def encode_source_reference(mailbox: str, uid_validity: int, uid: bytes) -> str:
 
 
 def decode_source_reference(value: str) -> ImapSourceReference:
+    """Decode and validate an opaque IMAP source reference."""
     if not value.startswith(IMAP_SOURCE_REFERENCE_PREFIX):
         raise EmailProviderError("email source reference is invalid")
     encoded = value.removeprefix(IMAP_SOURCE_REFERENCE_PREFIX)
@@ -199,6 +214,7 @@ def decode_source_reference(value: str) -> ImapSourceReference:
 
 
 def encode_attachment_reference(source_message_ref: str, attachment_index: int) -> str:
+    """Encode a source reference and attachment index as an opaque reference."""
     if attachment_index < 0:
         raise ValueError("attachment_index must not be negative")
     payload = f"{source_message_ref}\x00{attachment_index}".encode()
@@ -207,6 +223,7 @@ def encode_attachment_reference(source_message_ref: str, attachment_index: int) 
 
 
 def decode_attachment_reference(value: str) -> ImapAttachmentReference:
+    """Decode and validate an opaque IMAP attachment reference."""
     if not value.startswith(IMAP_ATTACHMENT_REFERENCE_PREFIX):
         raise EmailProviderError("email attachment reference is invalid")
     encoded = value.removeprefix(IMAP_ATTACHMENT_REFERENCE_PREFIX)

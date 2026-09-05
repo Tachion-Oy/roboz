@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+"""Provider-response diagnostics with sensitive data redaction."""
+
 import logging
 import time
 from dataclasses import dataclass
@@ -466,8 +468,11 @@ def _is_transport_error(error: Exception) -> bool:
 
 
 def _cause_chain(error: BaseException):
-    """Yield ``error`` and each linked ``__cause__``/``__context__``, so an
-    OSError wrapped inside an httpx error is still inspected."""
+    """Yield an error followed by each linked cause or context.
+
+    This ensures that a transport ``OSError`` wrapped by an HTTP client remains
+    visible to retry classification.
+    """
     seen: set[int] = set()
     current: BaseException | None = error
     while current is not None and id(current) not in seen:

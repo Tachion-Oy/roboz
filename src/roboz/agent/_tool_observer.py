@@ -1,3 +1,5 @@
+"""Lifecycle observation around individual tool calls."""
+
 from __future__ import annotations
 
 import time

@@ -1,3 +1,5 @@
+"""Shared command, guard, and chaining models for Shed tools."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -132,16 +134,22 @@ class EmailAttachmentDownloadReady(ToolValueBase):
 
 
 class ActionVerdict(StrEnum):
+    """Permission decision applied by a matching guard rule."""
+
     deny = auto()
     allow = auto()
 
 
 class GuardStatus(StrEnum):
+    """Aggregate outcome of guarding a resolved operation."""
+
     ALLOWED = auto()
     DENIED = auto()
 
 
 class GuardDenyReason(StrEnum):
+    """Machine-readable reason a guarded operation was denied."""
+
     USER_DECLINED = auto()
     POLICY_DENIED = auto()
 
@@ -205,6 +213,8 @@ class ApplyPatch(Empty):
 
 
 class GuardFilesResult(Empty, Generic[TInput, TPayload]):
+    """Guard outcome retaining typed payloads and the originating tool input."""
+
     status: GuardStatus = Field(
         default=GuardStatus.ALLOWED, description="Guard outcome"
     )
@@ -228,6 +238,7 @@ class PermissionRule:
     operations: set[Operation]
 
     def __post_init__(self) -> None:
+        """Require at least one operation on every permission rule."""
         if not self.operations:
             raise ValueError("operations must not be empty")
 

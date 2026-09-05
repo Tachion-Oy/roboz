@@ -1,3 +1,5 @@
+"""Factory tool that asks a model to choose an agent action."""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +12,8 @@ from roboz.tooling.dependencies import FactoryCtx, ToolDependency
 
 @dataclass(frozen=True)
 class PromptAgentCtx(FactoryCtx):
+    """Endpoint, tools, and event pipe used for one model decision."""
+
     endpoint: ToolDependency[Any] | EndpointLike
     active_tools: tuple[Tool, ...]
     pipe: EventPipe
@@ -17,8 +21,7 @@ class PromptAgentCtx(FactoryCtx):
 
 @factory
 def prompt_agent(input: Empty, messages: list[Message], ctx: PromptAgentCtx) -> Invoke:
-    """To create an agent use this as the default tool."""
-
+    """Choose and prepare the next available agent action."""
     endpoint = ctx.endpoint
     if isinstance(endpoint, ToolDependency):
         endpoint = endpoint.resource

@@ -37,6 +37,8 @@ class ReplySourceHeaders:
 
 
 class ProtonBridgeTlsMode(StrEnum):
+    """Supported TLS negotiation modes for the local IMAP bridge."""
+
     SSL = "ssl"
     STARTTLS = "starttls"
 
@@ -58,10 +60,12 @@ class ProtonBridgeSettings(BaseSettings):
     @field_validator("certificate_sha256")
     @classmethod
     def normalize_fingerprint(cls, value: str | None) -> str | None:
+        """Normalize and validate an optional SHA-256 certificate fingerprint."""
         return _normalize_fingerprint(value)
 
     @classmethod
     def from_environment(cls) -> Self:
+        """Load settings from the environment and raise a safe configuration error."""
         try:
             # BaseSettings supplies required fields from its configured sources.
             return cls()  # pyright: ignore[reportCallIssue]

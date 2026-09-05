@@ -1,3 +1,5 @@
+"""Provider-neutral structured language-model operations."""
+
 from roboz.llm._truncation import (
     estimate_conversation_tokens,
     get_truncated_messages_for_context,

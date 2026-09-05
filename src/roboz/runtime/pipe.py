@@ -1,3 +1,5 @@
+"""Per-agent event dispatch, persistence, and run-control state."""
+
 from __future__ import annotations
 
 import logging
@@ -64,6 +66,7 @@ class EventPipe:
         *,
         event_sinks: Sequence[EventSink] | None = None,
     ):
+        """Initialize an idle pipe with explicit event sinks."""
         self.dry_run = False
         self._sinks: list[EventSink] = []
         self._sinks_lock = Lock()
@@ -119,6 +122,7 @@ class EventPipe:
         temperature: float | None = None,
         output_format: Literal["text", "json"] | None = None,
     ) -> None:
+        """Reset run state and emit the starting lifecycle event."""
         if dry_run is not None:
             self.dry_run = dry_run
         self._current_agent_name = agent_name or "unknown"
@@ -207,11 +211,13 @@ class EventPipe:
         )
 
     def start_message(self) -> str:
+        """Start streamed message correlation and return its identifier."""
         self._current_message_id = str(uuid4())
         self._current_message_chunk_index = 0
         return self._current_message_id
 
     def emit_message(self, message: Message) -> None:
+        """Emit one complete conversation message in sequence order."""
         self._sequence += 1
         message_id = self._current_message_id
         if message_id is not None:
@@ -220,6 +226,7 @@ class EventPipe:
         self._emit(MessageEvent(message, self._sequence, message_id=message_id))
 
     def emit_message_delta(self, delta: str) -> None:
+        """Emit a nonempty streamed assistant delta for the current message."""
         if self.dry_run:
             return
         if not delta:
@@ -242,6 +249,7 @@ class EventPipe:
         )
 
     def emit_script_output(self, content: str) -> None:
+        """Emit raw script output in sequence order."""
         self._sequence += 1
         self._emit(ScriptOutputEvent(content=content, sequence=self._sequence))
 
@@ -254,6 +262,7 @@ class EventPipe:
         message: str,
         data: dict[str, Any] | None = None,
     ) -> None:
+        """Emit one structured runtime observation unless this is a dry run."""
         if self.dry_run:
             return
         self._sequence += 1
@@ -270,6 +279,7 @@ class EventPipe:
         )
 
     def add_sink(self, sink: EventSink) -> Callable[[], None]:
+        """Attach an event sink and return an idempotent unsubscribe callback."""
         with self._sinks_lock:
             self._sinks.append(sink)
 
@@ -280,13 +290,16 @@ class EventPipe:
 
     @property
     def control_signals(self) -> tuple[ControlSignal, ControlSignal]:
+        """Return the cancellation and interruption signals."""
         return (self._cancel_signal, self._interrupt_signal)
 
     @property
     def cancelled(self) -> bool:
+        """Return whether cancellation has been requested."""
         return self._cancel_signal.is_set
 
     def cancel(self) -> None:
+        """Request cancellation of this agent's in-flight work."""
         log_with_data(
             logger,
             logging.INFO,
@@ -303,13 +316,16 @@ class EventPipe:
         self._cancel_signal.set()
 
     def raise_if_cancelled(self) -> None:
+        """Raise when cancellation has been requested."""
         self._cancel_signal.raise_if_set()
 
     @property
     def interrupted(self) -> bool:
+        """Return whether interruption has been requested."""
         return self._interrupt_signal.is_set
 
     def interrupt(self) -> None:
+        """Request interruption of the current model generation."""
         # The message-index state is logged here because interrupt ordering is
         # exactly where the front-end/back-end index mismatch shows up: this is
         # the sequence/chunk the back-end believes it is at when the front-end
@@ -333,6 +349,7 @@ class EventPipe:
         self._interrupt_signal.set()
 
     def clear_interrupt(self) -> None:
+        """Clear the current interruption request."""
         logger.debug(
             "Interrupt cleared: agent=%s sequence=%d",
             self._current_agent_name,
@@ -341,9 +358,11 @@ class EventPipe:
         self._interrupt_signal.clear()
 
     def raise_if_interrupted(self) -> None:
+        """Raise when interruption has been requested."""
         self._interrupt_signal.raise_if_set()
 
     def unsubscribe(self, sink: EventSink) -> None:
+        """Detach an event sink if currently subscribed."""
         with self._sinks_lock:
             try:
                 self._sinks.remove(sink)
@@ -357,6 +376,7 @@ class EventPipe:
             sink(event)
 
     def __call__(self, message: Message) -> None:
+        """Emit a complete message without altering its persisted content."""
         # The record (and every sink) gets the message verbatim. The message's
         # `truncation` is an agent-context concern, applied only when building the
         # LLM prompt in `get_completion` — it must not shape what is observed or

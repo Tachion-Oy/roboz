@@ -1,3 +1,5 @@
+"""Public data models shared across Roboz subsystems."""
+
 from roboz.models.core import (
     BOOTSTRAP_MESSAGE_KINDS,
     AgentBaseModel,

@@ -1,3 +1,5 @@
+"""Notification text produced while agents load skills and tools."""
+
 from __future__ import annotations
 
 from typing import Final

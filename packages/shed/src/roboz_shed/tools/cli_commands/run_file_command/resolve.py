@@ -367,7 +367,7 @@ def _move_destinations(
 def resolve_input(
     input: RunFileCommands, messages: list[Message], ctx: RunFileCommandsCtx
 ) -> ResolvedFileCommand | Help | ParseError:
-    """Resolve to one internal file-command envelope."""
+    """Prepare requested file commands for permission checks and execution."""
     specs = ctx.specs
     base = ctx.base
 

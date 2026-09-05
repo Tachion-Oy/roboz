@@ -125,6 +125,7 @@ def build_description(
     run_file_command_tool_name: str,
     apply_patch_tool_name: str,
 ) -> str:
+    """Build the file-editing skill's model-facing catalog description."""
     return (
         f"Applies precise, single-file code and text edits using the `{apply_patch_tool_name}` tool "
         "(literal find/replace under path guards). Explains structured input (`path`, `old_string`, "
@@ -140,6 +141,7 @@ def build_instructions(
     run_file_command_tool_name: str,
     apply_patch_tool_name: str,
 ) -> str:
+    """Build file-editing instructions with the configured public names."""
     return _expand_body(
         apply_patch_tool_name=apply_patch_tool_name,
         run_file_command_tool_name=run_file_command_tool_name,

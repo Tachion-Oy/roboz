@@ -1,3 +1,5 @@
+"""Cancellable boundaries for blocking third-party operations."""
+
 from __future__ import annotations
 
 import logging

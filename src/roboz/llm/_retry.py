@@ -1,3 +1,5 @@
+"""Retry orchestration for structured model calls."""
+
 from __future__ import annotations
 
 import logging
@@ -17,10 +19,10 @@ _DEFAULT_LABEL = "retry"
 
 
 class RetryState:
-    """Per-attempt token an attempt callable uses to report that it already
-    emitted externally-visible output (e.g. streamed a chunk to the caller),
-    so the retry loop normally must not retry that attempt on failure. Callers
-    that can explicitly supersede that output may opt in to retrying it.
+    """Track whether one attempt emitted externally visible output.
+
+    The retry loop normally must not retry an attempt after it streamed output.
+    Callers that can explicitly supersede that output may opt in to retrying it.
 
     Backed by a ``threading.Event`` rather than a plain bool: the mutation may
     happen on a worker thread (e.g. inside an ``on_delta`` callback running
@@ -52,8 +54,7 @@ def run_with_retry[T](
     label: str = _DEFAULT_LABEL,
     prepare_retry: Callable[[Exception, int, int, bool], bool] | None = None,
 ) -> T:
-    """Call ``fn`` with a fresh ``RetryState`` per attempt, retrying on
-    ``retryable_errors`` with capped exponential backoff.
+    """Call a function with fresh retry state and capped exponential backoff.
 
     An attempt is not retried once its ``RetryState`` reports emitted output
     unless ``prepare_retry`` confirms that output was superseded. The callback

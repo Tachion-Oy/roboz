@@ -1,3 +1,5 @@
+"""Conversation truncation helpers for bounded model requests."""
+
 from __future__ import annotations
 
 import json

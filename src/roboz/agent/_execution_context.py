@@ -1,3 +1,5 @@
+"""Context-local tracking of nested agent execution."""
+
 from __future__ import annotations
 
 import keyword

@@ -44,6 +44,7 @@ class ExternalDependency(ABC):
         """Safe, secret-free metadata for diagnostics and catalogs."""
 
     def materialize(self) -> ExternalDependency:
+        """Return this already-materialized dependency."""
         return self
 
 
@@ -63,18 +64,22 @@ class ExecutableDependency(ExternalDependency):
     display_name: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate the executable name."""
         if not self.executable.strip():
             raise ValueError("executable must be non-empty")
 
     @property
     def dependency_id(self) -> str:
+        """Return the executable's namespace-qualified identity."""
         return f"executable:{self.executable}"
 
     @property
     def kind(self) -> ExternalDependencyKind:
+        """Return the executable dependency category."""
         return ExternalDependencyKind.EXECUTABLE
 
     def redacted_metadata(self) -> Mapping[str, str]:
+        """Return safe executable metadata for inspection."""
         return {
             "executable": self.executable,
             "display_name": self.display_name or self.executable,
@@ -82,13 +87,11 @@ class ExecutableDependency(ExternalDependency):
 
     def resolve(self) -> Path | None:
         """Resolve the executable without starting a process."""
-
         resolved = shutil.which(self.executable)
         return Path(resolved) if resolved is not None else None
 
     def require(self) -> Path:
         """Resolve the executable or fail before command construction."""
-
         resolved = self.resolve()
         if resolved is None:
             raise FileNotFoundError(
@@ -102,6 +105,7 @@ class NetworkServiceDependency(ExternalDependency):
 
     @property
     def kind(self) -> ExternalDependencyKind:
+        """Return the network-service dependency category."""
         return ExternalDependencyKind.NETWORK_SERVICE
 
 
@@ -110,6 +114,7 @@ class ModelEndpointDependency(ExternalDependency):
 
     @property
     def kind(self) -> ExternalDependencyKind:
+        """Return the model-endpoint dependency category."""
         return ExternalDependencyKind.MODEL_ENDPOINT
 
 
@@ -123,28 +128,34 @@ class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
     resolver: Callable[[], TExternal]
 
     def __post_init__(self) -> None:
+        """Validate and freeze the lazy dependency's public metadata."""
         if not self.dependency_id_value.strip():
             raise ValueError("dependency_id must be non-empty")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     @property
     def dependency_id(self) -> str:
+        """Return the declared identity without resolving the dependency."""
         return self.dependency_id_value
 
     @property
     def kind(self) -> ExternalDependencyKind:
+        """Return the declared category without resolving the dependency."""
         return self.dependency_kind
 
     def redacted_metadata(self) -> Mapping[str, str]:
+        """Return a detached copy of safe dependency metadata."""
         return dict(self.metadata)
 
     @cached_property
     def materialized(self) -> TExternal:
+        """Resolve, validate, and cache the concrete dependency."""
         resource = self.resolver()
         self._validate_resolved(resource)
         return resource
 
     def materialize(self) -> TExternal:
+        """Return the cached concrete dependency, resolving it if needed."""
         return self.materialized
 
     def _validate_resolved(self, resource: TExternal) -> None:
@@ -167,6 +178,7 @@ class ToolDependency[TExternal: ExternalDependency]:
     resource: TExternal
 
     def __post_init__(self) -> None:
+        """Validate that the bound resource follows the dependency contract."""
         if not isinstance(self.resource, ExternalDependency):
             raise TypeError("ToolDependency.resource must be an ExternalDependency")
 
@@ -183,7 +195,6 @@ def factory_context_dependencies(
     tuple[ExternalDependencySource, ...],
 ]:
     """Extract direct bindings and live sources from a factory context."""
-
     dependencies: list[ToolDependency[Any]] = []
     sources: list[ExternalDependencySource] = []
     for field in fields(context):
@@ -201,7 +212,6 @@ def dedupe_external_dependencies(
     resources: Iterable[ExternalDependency],
 ) -> tuple[ExternalDependency, ...]:
     """Preserve the first resource for each globally unique ``dependency_id``."""
-
     unique: list[ExternalDependency] = []
     seen: set[str] = set()
     for resource in resources:

@@ -1,3 +1,5 @@
+"""System-prompt assembly for agentic and non-agentic runs."""
+
 from __future__ import annotations
 
 import json
@@ -137,9 +139,11 @@ def get_agentic_system_prompt(
     tools: Sequence[Tool] | None = None,
     skills: Sequence[Skill] | None = None,
 ) -> str:
-    """This is the main technical prompt builder. The system prompt
-    is intended not to have detailed tool/skill calling instructions as those
-    are always the same and can be generated as is done below."""
+    """Build the complete technical prompt for an agentic run.
+
+    Keep detailed tool and skill calling instructions out of the supplied
+    system prompt because this builder generates them consistently.
+    """
     parts = [
         system_prompt.strip(),
         AGENT_TOOL_USE_INSTRUCTIONS,

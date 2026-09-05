@@ -1,3 +1,5 @@
+"""Callable protocols used by tool and factory decorators."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol

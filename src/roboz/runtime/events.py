@@ -1,3 +1,5 @@
+"""Typed events emitted by the agent runtime."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,6 +17,8 @@ from roboz.models import Role
 
 @dataclass(frozen=True)
 class MessageEvent:
+    """Completed conversation message emitted in sequence order."""
+
     message: Message
     sequence: int
     message_id: str | None = None
@@ -22,6 +26,8 @@ class MessageEvent:
 
 @dataclass(frozen=True)
 class RunLifecycleEvent:
+    """Start or stop transition for one agent run."""
+
     kind: Literal["started", "stopped"]
     agent_name: str
     sequence: int
@@ -37,12 +43,16 @@ class RunLifecycleEvent:
 
 @dataclass(frozen=True)
 class ScriptOutputEvent:
+    """Raw output emitted by a script-oriented tool."""
+
     content: str
     sequence: int
 
 
 @dataclass(frozen=True)
 class MessageDeltaEvent:
+    """One streamed assistant-text fragment."""
+
     message_id: str
     delta: str
     chunk_index: int
@@ -53,6 +63,8 @@ class MessageDeltaEvent:
 
 @dataclass(frozen=True)
 class RuntimeEvent:
+    """Structured lifecycle observation for a tool or model call."""
+
     category: RuntimeEventCategory
     kind: RuntimeEventKind
     level: RuntimeEventLevel

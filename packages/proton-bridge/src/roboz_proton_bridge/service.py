@@ -37,6 +37,7 @@ class ProtonBridgeEmailService(EmailService):
         signature: EmailSignature | None = None,
         imap_factory: ImapFactory = default_imap_factory,
     ) -> None:
+        """Initialize the service with lazy settings and injectable IMAP transport."""
         self._settings = settings
         self._signature = signature
         self._imap_factory = imap_factory
@@ -47,6 +48,7 @@ class ProtonBridgeEmailService(EmailService):
         *,
         is_cancelled: Callable[[], bool],
     ) -> EmailDraftResult:
+        """Create but do not send a signed email draft."""
         settings = self._resolved_settings()
         signature = self._required_signature()
         message = build_draft_message(
@@ -72,6 +74,7 @@ class ProtonBridgeEmailService(EmailService):
         *,
         is_cancelled: Callable[[], bool],
     ) -> tuple[EmailSummary, ...]:
+        """Search the configured account for bounded message summaries."""
         settings = self._resolved_settings()
         return search_messages(
             self._sessions(settings), request, is_cancelled=is_cancelled
@@ -84,6 +87,7 @@ class ProtonBridgeEmailService(EmailService):
         *,
         is_cancelled: Callable[[], bool],
     ) -> EmailMessage:
+        """Read one referenced message from the configured account."""
         settings = self._resolved_settings()
         return read_message(
             self._sessions(settings),
@@ -98,6 +102,7 @@ class ProtonBridgeEmailService(EmailService):
         *,
         is_cancelled: Callable[[], bool],
     ) -> DownloadedEmailAttachment:
+        """Download one referenced attachment from the configured account."""
         settings = self._resolved_settings()
         return download_attachment(
             self._sessions(settings),
@@ -111,6 +116,7 @@ class ProtonBridgeEmailService(EmailService):
         *,
         is_cancelled: Callable[[], bool],
     ) -> EmailReplyDraftResult:
+        """Create but do not send a threaded and signed reply draft."""
         settings = self._resolved_settings()
         signature = self._required_signature()
         from_address = request.from_address or settings.account_address
@@ -151,9 +157,11 @@ class ProtonBridgeEmailService(EmailService):
 
     @property
     def dependency_id(self) -> str:
+        """Return the stable network-service dependency identity."""
         return "network:proton_bridge"
 
     def redacted_metadata(self) -> dict[str, str]:
+        """Return safe bridge connection metadata without credentials."""
         if self._settings is None:
             return {"provider": "proton_bridge"}
         return {
@@ -164,6 +172,7 @@ class ProtonBridgeEmailService(EmailService):
         }
 
     def probe(self) -> dict[str, object]:
+        """Probe authenticated access to the required mailboxes."""
         settings = self._resolved_settings()
         return probe_mailboxes(self._sessions(settings))
 

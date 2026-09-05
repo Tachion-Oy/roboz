@@ -1,3 +1,5 @@
+"""Telemetry metadata carried by tool and model outputs."""
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from roboz.models.core import MessageKind

@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+"""Cancellable streaming and non-streaming model API calls."""
+
 import logging
 import time
 from collections.abc import Callable
@@ -312,10 +314,14 @@ def _raise_for_mock_control_signal(
 
 
 class ResponseFormat(TypedDict):
+    """Provider request fragment selecting JSON or text output."""
+
     type: Literal["json_object", "text"]
 
 
 class ChaCompletionRequest(TypedDict):
+    """Normalized provider request for a chat completion."""
+
     model: str
     messages: list[dict]
     temperature: float

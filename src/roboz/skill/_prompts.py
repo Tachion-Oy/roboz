@@ -1,3 +1,5 @@
+"""Prompt fragments used to expose skills to an agent."""
+
 from __future__ import annotations
 
 import logging

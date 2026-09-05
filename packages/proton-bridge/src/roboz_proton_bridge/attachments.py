@@ -13,12 +13,14 @@ from .imap_codec import encode_attachment_reference
 
 
 def parse_message(raw_message: bytes) -> Message:
+    """Parse a complete RFC message using the standard email policy."""
     return BytesParser(policy=policy.default).parsebytes(raw_message)
 
 
 def attachment_metadata(
     message: Message, source_message_ref: str
 ) -> tuple[EmailMessageAttachment, ...]:
+    """Extract safe attachment metadata and opaque references from a message."""
     return tuple(
         EmailMessageAttachment(
             attachment_ref=encode_attachment_reference(source_message_ref, index),
@@ -31,6 +33,7 @@ def attachment_metadata(
 
 
 def downloaded_attachment(message: Message, index: int) -> DownloadedEmailAttachment:
+    """Decode one indexed attachment and its safe display metadata."""
     parts = _attachment_parts(message)
     if index >= len(parts):
         raise EmailProviderError("email attachment no longer exists")

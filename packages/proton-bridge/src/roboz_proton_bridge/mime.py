@@ -30,7 +30,6 @@ def build_draft_message(
     signature: EmailSignature,
 ) -> bytes:
     """Serialize a signed draft, optionally with file attachments."""
-
     from_address = request.from_address or default_from_address
     if not from_address:
         raise EmailProviderError("A sender address is required to create a draft")
@@ -61,7 +60,6 @@ def build_reply_draft_message(
     signature: EmailSignature,
 ) -> bytes:
     """Serialize a signed reply draft with source-derived thread headers."""
-
     from_address = request.from_address or default_from_address
     if not from_address:
         raise EmailProviderError("A sender address is required to create a draft")
@@ -198,6 +196,7 @@ def _html_lines(value: str) -> str:
 
 
 def reply_subject(subject: str) -> str:
+    """Normalize a subject and ensure it has a single reply prefix."""
     normalized = " ".join(subject.split()) or "(no subject)"
     if re.match(r"(?i)^re\s*:", normalized):
         return normalized[:998]

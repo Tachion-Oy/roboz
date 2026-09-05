@@ -34,6 +34,8 @@ APPLY_PATCH_NAME: str = APPLY_PATCH_TOOL_NAME
 
 @dataclass(frozen=True)
 class ExecuteApplyPatchCtx(FactoryCtx):
+    """Output truncation policy bound to literal patch execution."""
+
     truncation: TruncationSpec
 
 
@@ -41,7 +43,7 @@ class ExecuteApplyPatchCtx(FactoryCtx):
 def apply_patch(
     input: ApplyPatch, messages: list[Message], ctx: ApplyPatchCtx
 ) -> ResolvedFileCommand | ParseError:
-    """Convert apply_patch input into the guarded execution shape (string replace)."""
+    """Prepare an exact single-file string replacement for permission checking."""
     base = ctx.base.resolve()
     try:
         location = resolve_single_file_path(input.path, base=base)
@@ -112,7 +114,7 @@ def execute_apply_patch_replace(
     messages: list[Message],
     ctx: ExecuteApplyPatchCtx,
 ) -> Str:
-    """Apply literal string replacement on the guarded file (no subprocess)."""
+    """Apply a permitted exact string replacement to one file."""
     truncation = ctx.truncation
     if input.status != GuardStatus.ALLOWED:
         msg = input.message or f"apply_patch: unexpected guard status {input.status}"
@@ -152,6 +154,14 @@ def get_apply_patch(
     """Single-file apply_patch: same guard chain as CLI tools, Python replace executor.
 
     Args:
+        base: Absolute directory against which relative paths are resolved.
+        default_verdict: Decision used when no permission rule matches.
+        deny_rules: Rules that reject matching filesystem operations.
+        allow_rules: Rules that permit matching filesystem operations.
+        ask_rules: Rules that require interactive approval when matched.
+        takes_precedence: Verdict that wins when allow and deny rules both match.
+        execute_cli_truncation: Truncation policy for executor output.
+        pipe: Optional event pipe used for interactive guard prompts.
         file_editing_skill_name: Skill id (``Skill.name``) referenced in the tool
             description as the source of detailed file-editing usage instructions.
             Defaults to ``FILE_EDITING_SKILL_NAME``.

@@ -35,6 +35,7 @@ _FETCH_HEADERS = (
 
 
 def mailbox_for(connection: Any, mailbox: EmailMailbox) -> str:
+    """Resolve a logical mailbox to its unique physical IMAP name."""
     if mailbox is EmailMailbox.INBOX:
         return IMAP_INBOX_MAILBOX
     attribute = (
@@ -58,6 +59,7 @@ def mailbox_for(connection: Any, mailbox: EmailMailbox) -> str:
 
 
 def select_mailbox(connection: Any, mailbox: str, *, readonly: bool) -> int:
+    """Select a mailbox and return its current UIDVALIDITY value."""
     status, _ = connection.select(mailbox, readonly=readonly)
     require_ok(status, "Could not open the email mailbox")
     try:
@@ -74,6 +76,7 @@ def source_reference(
     logical_mailbox: EmailMailbox,
     source_message_ref: str,
 ) -> ImapSourceReference:
+    """Decode a source reference and require it to belong to the mailbox."""
     reference = decode_source_reference(source_message_ref)
     expected_mailbox = mailbox_for(connection, logical_mailbox)
     if reference.mailbox.casefold() != expected_mailbox.casefold():
@@ -84,11 +87,13 @@ def source_reference(
 
 
 def require_current_reference(actual: int, expected: int) -> None:
+    """Reject a source reference when mailbox UID validity has changed."""
     if actual != expected:
         raise EmailProviderError("email source is stale; search email again")
 
 
 def fetch_headers(connection: Any, uid: bytes) -> tuple[Message, datetime | None]:
+    """Fetch bounded reply-relevant headers and receive time for one UID."""
     status, response = connection.uid(
         ImapUidCommand.FETCH,
         uid,
@@ -102,6 +107,7 @@ def fetch_headers(connection: Any, uid: bytes) -> tuple[Message, datetime | None
 
 
 def fetch_full_message(connection: Any, uid: bytes) -> tuple[bytes, bytes]:
+    """Fetch one complete message while enforcing the configured size bound."""
     fetch_bytes = MAX_FULL_MESSAGE_BYTES + 1
     status, response = connection.uid(
         ImapUidCommand.FETCH,

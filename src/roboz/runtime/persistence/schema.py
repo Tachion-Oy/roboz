@@ -18,6 +18,8 @@ from roboz.models.truncation import TruncationSpec
 
 
 class RunStatus(StrEnum):
+    """Persisted lifecycle state of an agent run."""
+
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -87,6 +89,7 @@ class ConversationRun(BaseModel):
 
 
 def utc_iso_z(dt: datetime) -> str:
+    """Format a datetime as a millisecond UTC timestamp ending in ``Z``."""
     u = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     return (
         u.astimezone(timezone.utc)

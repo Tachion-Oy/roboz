@@ -35,6 +35,7 @@ def read_message(
     *,
     is_cancelled: Callable[[], bool],
 ) -> EmailMessage:
+    """Read one bounded message and mark inbox mail as seen."""
     ensure_not_cancelled(is_cancelled)
     with sessions.open() as connection:
         reference = source_reference(connection, mailbox, source_message_ref)
@@ -83,6 +84,7 @@ def download_attachment(
     *,
     is_cancelled: Callable[[], bool],
 ) -> DownloadedEmailAttachment:
+    """Resolve and download one attachment from a current message reference."""
     decoded = decode_attachment_reference(attachment_ref)
     ensure_not_cancelled(is_cancelled)
     with sessions.open() as connection:

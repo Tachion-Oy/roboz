@@ -1,3 +1,5 @@
+"""Opt-in logging configuration and structured metadata helpers."""
+
 import logging
 import sys
 from collections.abc import Mapping

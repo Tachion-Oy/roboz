@@ -60,7 +60,6 @@ def get_work_with_email(
 
     Inbox reads proceed directly unless ``prompt_before_inbox_read`` is enabled.
     """
-
     runtime = EmailRuntimeContext(
         service=ToolDependency(service),
         is_cancelled=is_cancelled,
@@ -188,7 +187,6 @@ def _get_create_email_draft_tools(
     ``attachment_paths`` are resolved like other structured file tools and gated
     by READ permission only.
     """
-
     allow = list(allow_rules if allow_rules else [])
     deny = list(deny_rules if deny_rules else [])
     ask = list(ask_rules if ask_rules else [])

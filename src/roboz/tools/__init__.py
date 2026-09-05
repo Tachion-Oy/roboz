@@ -1,3 +1,5 @@
+"""Built-in control, interaction, persistence, and memory tools."""
+
 from roboz.tools.control import stop, stop_after
 from roboz.tools.consolidate_memory import consolidate_memory
 from roboz.tools.interaction import (

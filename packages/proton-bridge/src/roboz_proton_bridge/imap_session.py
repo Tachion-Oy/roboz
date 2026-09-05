@@ -21,7 +21,6 @@ def default_imap_factory(
     settings: ProtonBridgeSettings, context: ssl.SSLContext
 ) -> imaplib.IMAP4:
     """Create the configured SSL or STARTTLS IMAP connection."""
-
     if settings.tls_mode is ProtonBridgeTlsMode.SSL:
         return imaplib.IMAP4_SSL(
             settings.imap_host,
@@ -47,11 +46,13 @@ class ImapSessionProvider:
         *,
         imap_factory: ImapFactory = default_imap_factory,
     ) -> None:
+        """Initialize a provider with settings and an injectable IMAP factory."""
         self.settings = settings
         self._imap_factory = imap_factory
 
     @contextmanager
     def open(self) -> Generator[Any]:
+        """Open, authenticate, yield, and safely close one IMAP session."""
         connection: Any | None = None
         try:
             active_connection = self._connect()
@@ -112,5 +113,6 @@ class ImapSessionProvider:
 
 
 def ensure_not_cancelled(is_cancelled: Callable[[], bool]) -> None:
+    """Raise a safe provider error when cancellation is requested."""
     if is_cancelled():
         raise EmailProviderError("email operation was cancelled")

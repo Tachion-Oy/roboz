@@ -1,3 +1,5 @@
+"""Skill definitions, loading contracts, and tool projection."""
+
 from __future__ import annotations
 
 import json
@@ -22,6 +24,8 @@ SKILL_INSTRUCTIONS_PREFIX: Final[str] = "# Instructions"
 
 
 class SkillModel(BaseModel):
+    """Serialized skill definition loaded from JSON."""
+
     name: str
     description: str
     prompt: str
@@ -29,6 +33,8 @@ class SkillModel(BaseModel):
 
 
 class Skill:
+    """Bundle reusable agent instructions with optional tools and dependency."""
+
     def __init__(
         self,
         *,
@@ -38,6 +44,7 @@ class Skill:
         tools: Sequence[Tool | Sequence[Tool]] | None = None,
         depends_on: Skill | None = None,
     ):
+        """Initialize a validated skill and its rendered instruction prompt."""
         self.name = name
         self.description = description
         self.instructions = instructions
@@ -52,6 +59,7 @@ class Skill:
 
     @property
     def name(self) -> str:
+        """Return the validated model-facing skill name."""
         return self._name
 
     @name.setter
@@ -76,6 +84,7 @@ class Skill:
     def load_from_json(
         cls, *, skill_name: str, location: Path, available_tools: Sequence[Tool]
     ) -> Skill:
+        """Load one named skill and resolve its declared available tools."""
         raw_skills = json.loads(location.read_text())
         try:
             raw_skill: dict = raw_skills[skill_name]
@@ -98,8 +107,10 @@ class Skill:
         )
 
     def get_skill_as_tool(self) -> Tool[Empty, Str]:
+        """Create the model-selectable tool that loads this skill."""
         @tool
         def show_skill_instructions(input: Empty, messages: list[Message]) -> Str:
+            """Load this skill's instructions and make its tools available."""
             return Str(value=self._loaded_message())
 
         show_skill_instructions.name = self.name
@@ -118,6 +129,7 @@ class Skill:
 def load_skills(
     *, skill_names: list[str], location: Path, available_tools: Sequence[Tool]
 ) -> list[Skill]:
+    """Load the requested skills from one JSON catalog."""
     return [
         Skill.load_from_json(
             skill_name=skill_name,

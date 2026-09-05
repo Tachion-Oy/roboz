@@ -14,6 +14,7 @@ _MESSAGE_ID_PATTERN = re.compile(r"<[^<>\s]+@[^<>\s]+>")
 
 
 def parse_headers(raw_headers: bytes) -> Message:
+    """Parse a bounded RFC header block into an email message."""
     if len(raw_headers) > MAX_FETCHED_HEADER_BYTES:
         raise EmailProviderError("email source headers are too large")
     return BytesParser(policy=policy.default).parsebytes(raw_headers, headersonly=True)
@@ -26,6 +27,7 @@ def display_header(
     default: str = "(unknown)",
     max_chars: int = 998,
 ) -> str:
+    """Return a normalized and bounded display value for one header."""
     value = message.get(name)
     if value is None:
         return default
@@ -35,14 +37,12 @@ def display_header(
 
 def reply_addresses(message: Message) -> tuple[str, ...]:
     """Return the explicit reply target, preferring Reply-To over From."""
-
     reply_to = header_addresses(message, EmailHeader.REPLY_TO)
     return reply_to or header_addresses(message, EmailHeader.FROM)
 
 
 def header_addresses(message: Message, name: EmailHeader) -> tuple[str, ...]:
     """Return the unique valid addresses in a message header."""
-
     addresses: list[str] = []
     for header in message.get_all(name, []):
         for address in getattr(header, "addresses", ()):
@@ -59,7 +59,6 @@ def reply_all_addresses(
     include_original_recipients: bool,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Derive safe To/Cc fields with stable ordering and no self-addresses."""
-
     reply_targets = reply_addresses(message)
     original_to = (
         header_addresses(message, EmailHeader.TO) if include_original_recipients else ()
@@ -77,6 +76,7 @@ def reply_all_addresses(
 
 
 def single_message_id(value: object) -> str | None:
+    """Return the sole valid message identifier in a header value."""
     if value is None:
         return None
     matches = _MESSAGE_ID_PATTERN.findall(str(value))
@@ -84,6 +84,7 @@ def single_message_id(value: object) -> str | None:
 
 
 def reply_references(message: Message, parent_message_id: str) -> tuple[str, ...]:
+    """Build a reply reference chain ending with the parent message."""
     references = _message_ids(message.get(EmailHeader.REFERENCES))
     if not references:
         in_reply_to = _message_ids(message.get(EmailHeader.IN_REPLY_TO))

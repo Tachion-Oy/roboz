@@ -1,3 +1,5 @@
+"""JSON persistence models and filesystem markers for runtime conversations."""
+
 from .activity import (
     active_agent_names,
     active_marker_paths,

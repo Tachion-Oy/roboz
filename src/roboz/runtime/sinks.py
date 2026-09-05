@@ -1,3 +1,5 @@
+"""Terminal, persistence, and callback sinks for runtime events."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -43,11 +45,14 @@ _ROLE_COLORS: dict[Role, str] = {
 
 
 class CliSink:
+    """Render selected pipe events to a Rich terminal console."""
+
     DEFAULT_TYPES_TO_PRINT: frozenset[Role] = frozenset(
         {Role.USER, Role.SYSTEM, Role.ASSISTANT, Role.ERROR}
     )
 
     def __init__(self, *, types_to_print: set[Role]):
+        """Initialize a terminal sink with the roles it should display."""
         self._types_to_print = types_to_print
 
     @classmethod
@@ -56,6 +61,7 @@ class CliSink:
         return cls(types_to_print=set(cls.DEFAULT_TYPES_TO_PRINT))
 
     def __call__(self, event: PipeEvent) -> None:
+        """Render one supported pipe event."""
         match event:
             case MessageEvent(message=message):
                 rich_print_message_to_terminal(message, self._types_to_print)
@@ -103,12 +109,15 @@ PersistenceDetailPredicate = Callable[[PersistenceDetail], bool]
 
 
 class PersistenceSink:
+    """Persist run lifecycle, messages, and runtime observations as JSON."""
+
     def __init__(
         self,
         data_path: Path,
         *,
         detail_predicate: PersistenceDetailPredicate | None = None,
     ):
+        """Initialize a sink rooted at a directory with an optional detail filter."""
         if data_path.exists() and not data_path.is_dir():
             raise ValueError("data_path must be a folder")
         self._data_path = data_path
@@ -131,9 +140,11 @@ class PersistenceSink:
 
     @property
     def data_path(self) -> Path:
+        """Return the persistence root directory."""
         return self._data_path
 
     def __call__(self, event: PipeEvent) -> None:
+        """Persist the applicable portion of one pipe event."""
         match event:
             case MessageEvent():
                 if not self._should_persist_detail(event):
@@ -154,6 +165,7 @@ class PersistenceSink:
         return self._detail_predicate is None or self._detail_predicate(event)
 
     def reset_run(self) -> None:
+        """Clear the currently active persisted run state."""
         self.conversations_location = None
         self._conversation_run = None
 
@@ -229,6 +241,7 @@ def rich_print_message_to_terminal(
     types_to_print: set[Role],
     console=Console(),
 ):
+    """Render a message when its role is enabled for terminal output."""
     if message.role not in types_to_print:
         return
     color = _ROLE_COLORS.get(message.role, "white")

@@ -1,3 +1,5 @@
+"""Schema transformation helpers for model-facing tool definitions."""
+
 from __future__ import annotations
 
 import types

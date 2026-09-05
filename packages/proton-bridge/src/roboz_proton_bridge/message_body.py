@@ -54,7 +54,6 @@ def extract_message_body(
     max_chars: int = MAX_QUOTED_BODY_CHARS,
 ) -> ExtractedMessageBody:
     """Prefer plain text, with a conservative HTML-to-text fallback."""
-
     message = BytesParser(policy=policy.default).parsebytes(raw_message)
     plain = _first_text_part(message, "text/plain")
     text = plain

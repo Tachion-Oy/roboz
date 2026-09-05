@@ -1,3 +1,5 @@
+"""Tools and chain helpers for graceful agent termination."""
+
 from typing import Sequence
 
 from roboz.models import Empty, Invoke, Message, Stop, Str
@@ -29,6 +31,7 @@ def stop_after(
 
     @tool
     def stop_after_entry(input: Str, messages: list[Message]) -> Str:
+        """Begin graceful shutdown while preserving the final response."""
         nonlocal original_stop_value
         original_stop_value = input.value
         return Str(value=input.value)
@@ -45,6 +48,7 @@ def stop_after(
     def stop_after_finalize(
         input: Empty, messages: list[Message]
     ) -> Empty | Invoke | Stop:
+        """Finish graceful shutdown after all configured cleanup completes."""
         return final_stop_tool(Str(value=original_stop_value), messages)
 
     return [stop_entry, *chained_cleanup, stop_after_finalize]

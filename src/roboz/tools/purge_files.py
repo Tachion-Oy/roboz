@@ -80,7 +80,7 @@ def purge_files_by_threshold(
 
 @factory
 def purge_files(input: All, messages: list[Message], ctx: PurgeFilesCtx) -> Str:
-    """Apply threshold retention to the files configured in this tool context."""
+    """Remove configured files that exceed the retention threshold."""
     del input, messages
     return purge_files_by_threshold(
         folders=ctx.folders,

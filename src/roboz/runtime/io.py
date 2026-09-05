@@ -1,3 +1,5 @@
+"""Pluggable user-interaction boundary for runtime tools."""
+
 from __future__ import annotations
 
 import select
@@ -8,6 +10,8 @@ from typing import Protocol
 
 
 class Output(Enum):
+    """Host channel used for user interaction."""
+
     CLI = auto()
     GUI = auto()
     BOT = auto()
@@ -33,22 +37,27 @@ _current_output: ContextVar[Output | None] = ContextVar("_current_output", defau
 
 
 def bind_api_user_io(user_io: UserIO) -> Token[UserIO | None]:
+    """Bind a host-provided API interaction adapter in the current context."""
     return _current_user_io.set(user_io)
 
 
 def reset_api_user_io(token: Token[UserIO | None]) -> None:
+    """Restore the API interaction binding represented by a context token."""
     _current_user_io.reset(token)
 
 
 def bind_output(output: Output) -> Token[Output | None]:
+    """Bind the active interaction channel in the current context."""
     return _current_output.set(output)
 
 
 def reset_output(token: Token[Output | None]) -> None:
+    """Restore the output binding represented by a context token."""
     _current_output.reset(token)
 
 
 def get_bound_output(default: Output | None = None) -> Output | None:
+    """Return the current interaction channel or the supplied default."""
     bound = _current_output.get()
     return default if bound is None else bound
 
@@ -81,6 +90,7 @@ def _read_line_with_timeout(timeout: float | None) -> str | None:
 def interact_with_user(
     message: str, with_reply: bool, timeout: float | None = None
 ) -> str | None:
+    """Send a host-routed message and optionally wait for a reply."""
     output = _require_bound_output()
     match output:
         case Output.CLI:

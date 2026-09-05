@@ -101,7 +101,6 @@ def check_ask_permission(
         - ActionVerdict.allow if user confirms, ActionVerdict.deny otherwise.
         - AskPermissionOutcome explaining ask-rule prompt result.
     """
-
     if not check_rule(location, op_type, ask_rules, base_path=base_path):
         return ActionVerdict.allow, "no_prompt"
 
@@ -174,6 +173,7 @@ def _require_absolute_base_path(base_path: Path | None) -> None:
 
 
 def resolve_tool_base(base: Path | None) -> Path:
+    """Resolve and validate the required absolute base directory for a tool."""
     if base is None:
         raise ValueError("Base is required")
     if not base.is_absolute():

@@ -50,6 +50,7 @@ def search_messages(
     *,
     is_cancelled: Callable[[], bool],
 ) -> tuple[EmailSummary, ...]:
+    """Search one mailbox and return newest-first bounded summaries."""
     ensure_not_cancelled(is_cancelled)
     with sessions.open() as connection:
         physical_mailbox = mailbox_for(connection, request.mailbox)

@@ -51,7 +51,6 @@ def resolve_draft_request(
     Header line breaks are rejected before MIME serialization, preventing an
     agent-provided field from adding arbitrary headers.
     """
-
     return EmailDraftRequest(
         to=_addresses(input.to, "to"),
         cc=_addresses(input.cc, "cc"),
@@ -67,7 +66,6 @@ def resolve_draft_request(
 
 def resolve_search_request(input: SearchEmail) -> EmailSearchRequest:
     """Normalize structured search fields without exposing raw IMAP syntax."""
-
     since = input.since
     before = input.before
     if since is not None and before is not None and since >= before:
@@ -92,7 +90,6 @@ def resolve_reply_draft_request(
     attachments: tuple[EmailDraftAttachment, ...] = (),
 ) -> EmailReplyDraftRequest:
     """Normalize a reply body while leaving all source-derived headers absent."""
-
     return EmailReplyDraftRequest(
         source_message_ref=_header(input.source_message_ref, "source_message_ref"),
         body_text=_body(input.body_text),
@@ -206,8 +203,7 @@ def _resolve_attachment_items(
 def resolve_email_input(
     input: CreateEmailDraft, messages: list[Message], ctx: EmailToolCtx
 ) -> ResolvedFileCommand | ParseError:
-    """Validate draft fields and resolve attachments for READ guard."""
-
+    """Prepare a new email draft and its attachments for permission checking."""
     del messages
     try:
         resolve_draft_request(input)
@@ -225,8 +221,7 @@ def resolve_email_input(
 def resolve_reply_draft_input(
     input: CreateReplyDraft, messages: list[Message], ctx: EmailToolCtx
 ) -> ResolvedFileCommand | ParseError:
-    """Validate reply fields and resolve attachments for the shared READ guard."""
-
+    """Prepare an email reply draft and its attachments for permission checking."""
     del messages
     try:
         resolve_reply_draft_request(input)
@@ -247,8 +242,7 @@ def resolve_attachment_download(
     messages: list[Message],
     ctx: EmailToolCtx,
 ) -> ResolvedFileCommand | ParseError:
-    """Resolve one explicit destination for the shared CREATE guard."""
-
+    """Prepare an email attachment destination for permission checking."""
     del messages
     try:
         destination = resolve_single_file_path(
@@ -302,6 +296,7 @@ def execute_email_operation(
     messages: list[Message],
     ctx: EmailRuntimeContext,
 ) -> Str:
+    """Create an approved email draft without sending it."""
     del messages
     try:
         original = input.original_input
@@ -361,6 +356,7 @@ def execute_reply_draft(
     messages: list[Message],
     ctx: EmailRuntimeContext,
 ) -> Str:
+    """Create an approved reply draft without sending it."""
     del messages
     try:
         original = input.original_input

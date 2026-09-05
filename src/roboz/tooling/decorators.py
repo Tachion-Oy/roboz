@@ -1,5 +1,8 @@
+"""Decorators that construct typed tools and context-bound factories."""
+
 from __future__ import annotations
 
+from inspect import cleandoc
 from typing import Callable, overload
 
 from roboz.models import Empty, Invoke, Stop
@@ -23,6 +26,11 @@ from roboz.tooling._typing import (
 
 def _always_chain(x: object) -> bool:
     return True
+
+
+def _description_from_docstring(func: Callable[..., object]) -> str:
+    """Return a prompt-ready description from a decorated callable."""
+    return cleandoc(func.__doc__) if func.__doc__ is not None else ""
 
 
 @overload
@@ -94,6 +102,7 @@ def tool[  # type: ignore[reportInconsistentOverload]
         Callable[[TInput], bool] | Callable[[TInput | TOther], bool]
     ) = _always_chain,
 ) -> Tool[TInput, TOutput] | ChainedToolDecoratorUnion[TInput, TOther]:
+    """Decorate a typed callable as a tool, optionally linked to parent tools."""
     def decorator[TOut: Empty | Invoke | Stop](
         func: (
             ToolFuncProtocol[TInput, TOut] | ToolFuncProtocol[TOther, TOut]  # type: ignore[type-var]
@@ -103,7 +112,7 @@ def tool[  # type: ignore[reportInconsistentOverload]
             caller=func,  # type: ignore[arg-type]
             chained_to=chained_to,
             chain_condition=chain_condition,
-            description=func.__doc__ if func.__doc__ is not None else "",
+            description=_description_from_docstring(func),
         )
         return t  # type: ignore[return-value]
 
@@ -113,7 +122,7 @@ def tool[  # type: ignore[reportInconsistentOverload]
         caller=func,
         chained_to=chained_to,
         chain_condition=chain_condition,
-        description=func.__doc__ if func.__doc__ is not None else "",
+        description=_description_from_docstring(func),
     )
     return t
 
@@ -197,6 +206,7 @@ def factory[  # type: ignore[reportInconsistentOverload]
         Callable[[TInput], bool] | Callable[[TInput | TOther], bool]
     ) = _always_chain,
 ) -> Factory[TInput, TOutput, TCtx] | ChainedFactoryDecoratorUnion[TInput, TOther]:
+    """Decorate a context-aware callable as a reusable tool factory."""
     def decorator[TOut: Empty | Invoke | Stop, TCtxOut: FactoryCtx](
         func: (
             FactoryToolFuncProtocol[TInput, TOut, TCtxOut]
@@ -207,7 +217,7 @@ def factory[  # type: ignore[reportInconsistentOverload]
             func=func,  # type: ignore[arg-type]
             chained_to=chained_to,  # type: ignore[arg-type]
             chain_condition=chain_condition,
-            description=func.__doc__ if func.__doc__ is not None else "",
+            description=_description_from_docstring(func),
         )
 
     if func is None:
@@ -217,7 +227,7 @@ def factory[  # type: ignore[reportInconsistentOverload]
         func=func,
         chained_to=chained_to,  # type: ignore[arg-type]
         chain_condition=chain_condition,
-        description=func.__doc__ if func.__doc__ is not None else "",
+        description=_description_from_docstring(func),
     )
 
 

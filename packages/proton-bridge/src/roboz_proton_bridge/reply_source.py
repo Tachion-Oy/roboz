@@ -40,6 +40,7 @@ def fetch_reply_source(
     include_quoted_original: bool,
     is_cancelled: Callable[[], bool],
 ) -> ReplySourceHeaders:
+    """Resolve safe recipients, threading headers, and optional quoted content."""
     ensure_not_cancelled(is_cancelled)
     with sessions.open() as connection:
         reference = source_reference(connection, EmailMailbox.INBOX, source_message_ref)

@@ -46,6 +46,35 @@ def test_get_agentic_system_prompt_with_empty_input():
     assert "empty_input_tool" in prompt
 
 
+def test_get_agentic_system_prompt_includes_complete_tool_docstring():
+    @tool
+    def documented_tool(input: Empty, messages: list[Message]) -> Str:
+        """Perform the documented action.
+
+        Preserve the second model-facing paragraph.
+        """
+        return Str(value="ok")
+
+    prompt = get_agentic_system_prompt(
+        system_prompt="Test.", tools=[documented_tool], skills=None
+    )
+    assert (
+        "description: Perform the documented action.\n\n"
+        "Preserve the second model-facing paragraph."
+    ) in prompt
+
+
+def test_get_agentic_system_prompt_uses_empty_description_fallback():
+    @tool
+    def undocumented_tool(input: Empty, messages: list[Message]) -> Str:
+        return Str(value="ok")
+
+    prompt = get_agentic_system_prompt(
+        system_prompt="Test.", tools=[undocumented_tool], skills=None
+    )
+    assert "description: Description evident from name." in prompt
+
+
 def test_get_agentic_system_prompt_contains_example_discussion():
     """Agentic prompt ends with Example discussion section."""
     prompt = get_agentic_system_prompt(

@@ -22,6 +22,8 @@ SEARCH_METADATA_BATCH_SIZE: Final = 500
 
 
 class EmailHeader(StrEnum):
+    """RFC header names used by the email integration."""
+
     FROM = "From"
     TO = "To"
     CC = "Cc"
@@ -46,16 +48,22 @@ class ImapResponseStatus(StrEnum):
 
 
 class ImapResponseCode(StrEnum):
+    """IMAP response codes parsed by the integration."""
+
     APPEND_UID = "APPENDUID"
 
 
 class ImapUidCommand(StrEnum):
+    """UID-scoped IMAP commands issued by the integration."""
+
     SEARCH = "SEARCH"
     FETCH = "FETCH"
     STORE = "STORE"
 
 
 class ImapSearchKey(StrEnum):
+    """IMAP search keys emitted from normalized requests."""
+
     ALL = "ALL"
     BEFORE = "BEFORE"
     FROM = "FROM"
@@ -67,10 +75,14 @@ class ImapSearchKey(StrEnum):
 
 
 class ImapSystemFlag(StrEnum):
+    """IMAP system flags read or written by the integration."""
+
     DRAFT = r"\Draft"
     SEEN = r"\Seen"
 
 
 class ImapMailboxAttribute(StrEnum):
+    """Special-use attributes used to discover mailboxes."""
+
     DRAFTS = r"\Drafts"
     SENT = r"\Sent"

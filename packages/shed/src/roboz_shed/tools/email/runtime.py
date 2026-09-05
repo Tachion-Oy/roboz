@@ -17,6 +17,8 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class EmailRuntimeContext(FactoryCtx):
+    """Provider binding, cancellation, timeout, and prompt policy for email tools."""
+
     service: ToolDependency[EmailService]
     is_cancelled: Callable[[], bool]
     timeout_s: float
@@ -31,6 +33,7 @@ def run_email_call(
     cancelled_message: str,
     operation: Callable[[], T],
 ) -> T:
+    """Run one email-provider operation behind shared cancellation and timeout."""
     if ctx.is_cancelled():
         raise ExternalCallCancelledError(cancelled_message)
     result = run_cancellable_external_call(

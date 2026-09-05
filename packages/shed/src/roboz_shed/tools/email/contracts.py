@@ -173,7 +173,9 @@ class EmailService(NetworkServiceDependency, ABC):
     @abstractmethod
     def create_draft(
         self, request: EmailDraftRequest, *, is_cancelled: Callable[[], bool]
-    ) -> EmailDraftResult: ...
+    ) -> EmailDraftResult:
+        """Create but do not send a new email draft."""
+        ...
 
     @abstractmethod
     def probe(self) -> dict[str, object]:
@@ -186,7 +188,9 @@ class EmailService(NetworkServiceDependency, ABC):
         request: EmailSearchRequest,
         *,
         is_cancelled: Callable[[], bool],
-    ) -> tuple[EmailSummary, ...]: ...
+    ) -> tuple[EmailSummary, ...]:
+        """Search one mailbox and return bounded message summaries."""
+        ...
 
     @abstractmethod
     def read_message(
@@ -195,7 +199,9 @@ class EmailService(NetworkServiceDependency, ABC):
         source_message_ref: str,
         *,
         is_cancelled: Callable[[], bool],
-    ) -> EmailMessage: ...
+    ) -> EmailMessage:
+        """Read one referenced message from its logical mailbox."""
+        ...
 
     @abstractmethod
     def download_attachment(
@@ -203,7 +209,9 @@ class EmailService(NetworkServiceDependency, ABC):
         attachment_ref: str,
         *,
         is_cancelled: Callable[[], bool],
-    ) -> DownloadedEmailAttachment: ...
+    ) -> DownloadedEmailAttachment:
+        """Download the bytes and safe metadata for one attachment reference."""
+        ...
 
     @abstractmethod
     def create_reply_draft(
@@ -211,4 +219,6 @@ class EmailService(NetworkServiceDependency, ABC):
         request: EmailReplyDraftRequest,
         *,
         is_cancelled: Callable[[], bool],
-    ) -> EmailReplyDraftResult: ...
+    ) -> EmailReplyDraftResult:
+        """Create but do not send a reply to one referenced message."""
+        ...

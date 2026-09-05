@@ -82,6 +82,7 @@ class LibrarianTuning:
     llm_timeout_s: float = DEFAULT_LLM_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
+        """Validate timeout and tolerance bounds."""
         if self.llm_timeout_s <= _MIN_TIMEOUT_SECONDS:
             raise ValueError("llm_timeout_s must be greater than zero")
         if not math.isfinite(self.max_chars_tolerance_percent) or (
@@ -96,12 +97,15 @@ class CancellationProbe:
     """Bind callbacks created before the owning Agent's pipe is available."""
 
     def __init__(self) -> None:
+        """Initialize an unbound cancellation probe."""
         self._pipe: EventPipe | None = None
 
     def is_cancelled(self) -> bool:
+        """Return whether the bound agent pipe has been cancelled."""
         return self._pipe is not None and self._pipe.cancelled
 
     def bind(self, pipe: EventPipe) -> None:
+        """Bind the probe to its owning agent's event pipe."""
         self._pipe = pipe
 
 
@@ -115,6 +119,7 @@ class LibrarianConstructor:
     agent_name: str = LIBRARIAN_AGENT_NAME
 
     def __post_init__(self) -> None:
+        """Require exactly one source for the snapshot endpoint."""
         if (self.snapshot_endpoint is None) == (self.endpoint_factory is None):
             raise ValueError(
                 "set exactly one of snapshot_endpoint or endpoint_factory"

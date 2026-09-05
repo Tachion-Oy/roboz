@@ -83,7 +83,6 @@ def argv_from_guard_result(
 
 def command_ready_from_guard_result(input: GuardFilesResult) -> CommandReady:
     """Return the resolver-validated command payload carried through the guard."""
-
     ready_value = input.items[0].value
     if not isinstance(ready_value, CommandReady):
         raise ValueError("expected CommandReady guard payload")
@@ -158,6 +157,7 @@ class ExecutableCommandCatalog(ExternalDependencySource):
     bindings: Mapping[str, ToolDependency[ExecutableDependency]]
 
     def __post_init__(self) -> None:
+        """Validate and freeze executable bindings by command name."""
         bindings = dict(self.bindings)
         for command_name, binding in bindings.items():
             if command_name != binding.resource.executable:
@@ -169,6 +169,7 @@ class ExecutableCommandCatalog(ExternalDependencySource):
 
     @classmethod
     def from_names(cls, names: Iterable[str]) -> "ExecutableCommandCatalog":
+        """Build a command catalog from unique executable names."""
         bindings: dict[str, ToolDependency[ExecutableDependency]] = {}
         for name in names:
             if name in bindings:
@@ -177,6 +178,7 @@ class ExecutableCommandCatalog(ExternalDependencySource):
         return cls(bindings)
 
     def binding_for(self, command_name: str) -> ToolDependency[ExecutableDependency]:
+        """Return the declared binding for a resolved command."""
         try:
             return self.bindings[command_name]
         except KeyError as error:
@@ -185,11 +187,14 @@ class ExecutableCommandCatalog(ExternalDependencySource):
             ) from error
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Return all executable dependencies in catalog order."""
         return tuple(binding.resource for binding in self.bindings.values())
 
 
 @dataclass(frozen=True)
 class ExecuteFileCommandCtx(FactoryCtx):
+    """Executable catalog and output policy bound to command execution."""
+
     truncation: TruncationSpec
     commands: ExecutableCommandCatalog
 
@@ -200,7 +205,7 @@ def execute_file_command(
     messages: list[Message],
     ctx: ExecuteFileCommandCtx,
 ) -> Str | RunFileCommands:
-    """Run a guarded command subprocess after path guards pass."""
+    """Run a permitted file command and return bounded output."""
     truncation = ctx.truncation
     if input.status != GuardStatus.ALLOWED:
         return Str(

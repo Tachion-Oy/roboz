@@ -1,3 +1,5 @@
+"""Agent construction, execution, and delegation interfaces."""
+
 from roboz.agent._execution_context import get_active_agent_stack
 from roboz.agent.background_agent import (
     BackgroundAgentCtx,

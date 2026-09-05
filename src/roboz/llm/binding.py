@@ -1,3 +1,5 @@
+"""Tool dependency bindings for language-model endpoints."""
+
 from collections.abc import Mapping
 from typing import Final, TypedDict, cast, overload
 
@@ -93,6 +95,7 @@ class LLMTelemetryDict(TypedDict, total=False):
 
 
 def resolve_endpoint(endpoint: EndpointLike) -> LLMEndpoint | MockLLMEndpoint:
+    """Materialize and validate a language-model endpoint dependency."""
     if isinstance(endpoint, ExternalDependency):
         materialized = endpoint.materialize()
         if not isinstance(materialized, LLMEndpoint):
@@ -106,6 +109,7 @@ def resolve_endpoint(endpoint: EndpointLike) -> LLMEndpoint | MockLLMEndpoint:
 def resolve_transcription_endpoint(
     endpoint: TranscriptionEndpointLike,
 ) -> TranscriptionEndpoint | MockTranscriptionEndpoint:
+    """Materialize and validate a transcription endpoint dependency."""
     if isinstance(endpoint, ExternalDependency):
         materialized = endpoint.materialize()
         if not isinstance(materialized, TranscriptionEndpoint):

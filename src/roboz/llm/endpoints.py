@@ -1,3 +1,5 @@
+"""Language-model endpoint contracts and deterministic test endpoint."""
+
 import json
 from collections.abc import Callable, Mapping
 from typing import Any, Final, Literal, cast
@@ -41,9 +43,7 @@ def copy_request_options(extra_body: Mapping[str, object]) -> RequestOptions:
 
 
 class LLMPricing(BaseModel):
-    """
-    Represents the pricing of an LLM per million tokens.
-    """
+    """Represents the pricing of an LLM per million tokens."""
 
     input_price_per_million_tokens: float | None = Field(
         default=None, ge=0, description="Cost for 1M input tokens in USD."
@@ -66,7 +66,7 @@ class LLMPricing(BaseModel):
 def role_to_user_mapper(
     messages: list[Message], mapped_roles: set[Role] | None = None
 ) -> list[Message]:
-    """Converts all designated roles to 'role=user'."""
+    """Convert all designated roles to user messages."""
     if mapped_roles is None:
         mapped_roles = {Role.ERROR}
     renamed_messages: list[Message] = []
@@ -79,9 +79,7 @@ def role_to_user_mapper(
 
 
 class LLMEndpoint(BaseModel, ModelEndpointDependency):
-    """
-    Specification for an LLM endpoint, containing all necessary details for a validated API call.
-    """
+    """Specification for an LLM endpoint, containing all necessary details for a validated API call."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -142,9 +140,11 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
 
     @property
     def dependency_id(self) -> str:
+        """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
 
     def redacted_metadata(self) -> Mapping[str, str]:
+        """Return safe model endpoint metadata for inspection."""
         return {
             "api_name": self.api_name,
             "model_name": self.model_name,
@@ -163,6 +163,7 @@ class MockLLMEndpoint:
         api_name: str = "mock",
         model_name: str = "mock",
     ):
+        """Initialize a deterministic endpoint from scripted responses."""
         self.mock_responses: list[str | Exception] = [
             r if isinstance(r, Exception) else json.dumps(r) for r in responses
         ]
@@ -177,6 +178,7 @@ class MockProviderError(Exception):
     """Scripted provider error for mock endpoints used in tests."""
 
     def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        """Initialize a scripted provider error with an optional status code."""
         super().__init__(message)
         self.status_code = status_code
 
@@ -206,9 +208,11 @@ class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
 
     @property
     def dependency_id(self) -> str:
+        """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
 
     def redacted_metadata(self) -> Mapping[str, str]:
+        """Return safe transcription endpoint metadata for inspection."""
         return {
             "api_name": self.api_name,
             "model_name": self.model_name,
@@ -226,6 +230,7 @@ class MockTranscriptionEndpoint:
         api_name: str = "mock",
         model_name: str = "mock",
     ):
+        """Initialize a deterministic endpoint from scripted transcripts."""
         self.mock_responses = responses
         self.api_name = api_name
         self.model_name = model_name

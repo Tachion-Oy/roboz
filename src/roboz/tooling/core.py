@@ -1,3 +1,5 @@
+"""Runtime tool and context-bound factory implementations."""
+
 from __future__ import annotations
 
 import uuid
@@ -22,6 +24,8 @@ logger = getLogger(__name__)
 
 
 class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
+    """Typed executable action that can participate in an agent tool graph."""
+
     def __init__[TOther: Empty | Stop](
         self,
         *,
@@ -41,6 +45,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         _dependencies: tuple[ToolDependency[Any], ...] = (),
         _dependency_sources: tuple[ExternalDependencySource, ...] = (),
     ):
+        """Initialize a tool from its callable, description, and chain edges."""
         self.caller: ToolFuncProtocol[TInput, Any] = caller
         self.name = caller.__name__
         self.InputModel, self.OutputModel = self._get_tool_signature(caller)
@@ -54,6 +59,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
 
     @property
     def name(self) -> str:
+        """Return the validated model-facing tool name."""
         return self._name
 
     @name.setter
@@ -61,6 +67,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         self._name = validate_public_name(value, kind="tool")
 
     def rename(self, name: str) -> Tool:
+        """Rename this tool in place and return it for fluent composition."""
         self.name = name
         return self
 
@@ -79,6 +86,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
             Callable[[TInput], bool] | Callable[[TInput | TOther], bool] | None
         ) = None,
     ) -> Tool[TInput, TOutput]:
+        """Append parent edges and optionally replace the chain predicate."""
         if chained_to is None:
             self.chained_to = None
         else:
@@ -97,14 +105,17 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
 
     @property
     def id(self) -> str:
+        """Return this tool instance's stable graph identity."""
         return self._id
 
     @property
     def dependencies(self) -> tuple[ToolDependency[Any], ...]:
+        """Return direct external-resource bindings captured by this tool."""
         return self._dependencies
 
     @property
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Return deduplicated direct and live graph dependencies."""
         candidates = [binding.resource for binding in self._dependencies]
         for source in self._dependency_sources:
             candidates.extend(source.external_dependencies())
@@ -128,6 +139,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         ) = None,
         description: str = "",
     ) -> Tool[TInput, TOutput]:
+        """Copy this tool with a fresh identity and optional graph overrides."""
         t: Tool[TInput, TOutput] = Tool(
             caller=self.caller,
             chained_to=chained_to if chained_to else self.chained_to,  # type: ignore[arg-type]
@@ -189,6 +201,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         return inputModel, outputModel
 
     def __call__(self, input: Invoke | Empty, messages: list[Message]) -> TOutput:
+        """Validate a detached projected input and invoke the tool callable."""
         # Chaining is an in-memory operation. Serializing nested models here
         # erases concrete payload types behind generic/base-model fields.
         # Preserve the existing field projection/exclusions, but validate a
@@ -210,6 +223,8 @@ class Factory[
     TOutput: Empty | Invoke | Stop,
     TCtx: FactoryCtx,
 ]:
+    """Context-bound constructor for typed tools and their dependencies."""
+
     def __init__[TOther: Empty | Stop](
         self,
         func: FactoryToolFuncProtocol[TInput, TOutput, TCtx],
@@ -226,6 +241,7 @@ class Factory[
         chain_condition: (Callable[[TInput], bool] | Callable[[TInput | TOther], bool]),
         description: str = "",
     ) -> None:
+        """Initialize a reusable factory from a typed context callable."""
         self._func = func
         self._chained_to = chained_to
         self._chain_condition = chain_condition
@@ -235,6 +251,7 @@ class Factory[
 
     @property
     def name(self) -> str:
+        """Return the validated model-facing factory name."""
         return self._name
 
     @name.setter
@@ -243,9 +260,11 @@ class Factory[
 
     @property
     def id(self) -> str:
+        """Return the identity shared by tools materialized from this factory."""
         return self._id
 
     def __call__(self, ctx: TCtx) -> Tool[TInput, TOutput]:
+        """Bind an immutable context and materialize its executable tool."""
         if not isinstance(ctx, FactoryCtx):
             raise TypeError("factory context must inherit FactoryCtx")
 

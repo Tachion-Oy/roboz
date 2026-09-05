@@ -1,3 +1,5 @@
+"""Truncation policies attached to model and tool outputs."""
+
 from dataclasses import dataclass
 from enum import IntEnum, auto
 from typing import Final, TypeAlias
@@ -23,6 +25,8 @@ class Severity(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class Truncation:
+    """Apply one severity after a message reaches a distance threshold."""
+
     threshold: int
     severity: Severity
 

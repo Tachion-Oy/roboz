@@ -1,3 +1,5 @@
+"""Structured completion parsing, validation, and retry prompting."""
+
 import json
 import logging
 import re
@@ -72,6 +74,7 @@ def decode_raw_JSON(
     raw_response: str,
     labels_to_ignore: Sequence[str] = _THINK_TAGS,
 ) -> JSONDict:
+    """Decode the first JSON object from a possibly fenced model response."""
     for tag in labels_to_ignore:
         raw_response = raw_response.split(tag)[-1]
     cleaned = _strip_outer_code_fences(raw_response).lstrip()
@@ -109,6 +112,7 @@ def get_completion(
         [list[Message]], list[Message]
     ] = get_truncated_messages_for_context,
 ) -> JSONDict:
+    """Request, parse, and validate a structured completion with retries."""
     if not messages:
         raise ValueError("Messages cannot be empty.")
     updated_messages = messages.copy()

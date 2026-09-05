@@ -1,3 +1,5 @@
+"""Filesystem layout resolution for persisted runtime data."""
+
 from datetime import datetime
 from logging import getLogger
 from pathlib import Path, PureWindowsPath

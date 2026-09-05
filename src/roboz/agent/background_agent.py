@@ -34,6 +34,8 @@ class BackgroundAgentState:
 
 @dataclass(frozen=True)
 class BackgroundAgentCtx(FactoryCtx):
+    """Agent and mutable heartbeat state bound to the background tool."""
+
     agent: Agent
     state: BackgroundAgentState = field(default_factory=BackgroundAgentState)
 

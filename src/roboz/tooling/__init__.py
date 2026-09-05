@@ -1,3 +1,5 @@
+"""Tool, factory, and external-dependency authoring interfaces."""
+
 from roboz.tooling.core import Factory, Tool
 from roboz.tooling.dependencies import (
     ExecutableDependency,

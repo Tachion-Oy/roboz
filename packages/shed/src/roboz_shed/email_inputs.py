@@ -8,6 +8,8 @@ from pydantic import ConfigDict, Field
 
 
 class CreateEmailDraft(Empty):
+    """Agent-supplied content and options for a new email draft."""
+
     to: list[str] = Field(..., min_length=1, max_length=50)
     cc: list[str] = Field(default_factory=list, max_length=50)
     bcc: list[str] = Field(default_factory=list, max_length=50)
@@ -21,6 +23,8 @@ class CreateEmailDraft(Empty):
 
 
 class SearchEmail(Empty):
+    """Agent-supplied mailbox filters for a bounded email search."""
+
     mailbox: Literal["inbox", "drafts", "sent"]
     from_address: str | None = Field(default=None, max_length=320)
     to_address: str | None = Field(default=None, max_length=320)
@@ -33,18 +37,24 @@ class SearchEmail(Empty):
 
 
 class ReadEmail(Empty):
+    """Reference to one email whose full content should be read."""
+
     mailbox: Literal["inbox", "drafts", "sent"]
     source_message_ref: str = Field(..., min_length=1, max_length=2_048)
     model_config = ConfigDict(extra="forbid")
 
 
 class DownloadEmailAttachment(Empty):
+    """Reference and guarded destination for an email attachment."""
+
     attachment_ref: str = Field(..., min_length=1, max_length=4_096)
     destination_path: str = Field(..., min_length=1)
     model_config = ConfigDict(extra="forbid")
 
 
 class CreateReplyDraft(Empty):
+    """Agent-supplied content and options for an email reply draft."""
+
     source_message_ref: str = Field(..., min_length=1, max_length=2_048)
     body_text: str = Field(..., min_length=1, max_length=100_000)
     include_quoted_original: bool = True

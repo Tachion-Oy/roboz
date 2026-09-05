@@ -59,6 +59,41 @@ def test_create_tool():
     assert isinstance(output, Invoke)
 
 
+def test_tool_description_normalizes_multiline_docstring():
+    @tool
+    def described_tool(input: Str, messages: list[Message]) -> Str:
+        """Use the requested value.
+
+        Preserve meaningful paragraph breaks without source indentation.
+        """
+        return input
+
+    assert described_tool.description == (
+        "Use the requested value.\n\n"
+        "Preserve meaningful paragraph breaks without source indentation."
+    )
+
+
+def test_factory_description_normalizes_multiline_docstring():
+    @dataclass(frozen=True)
+    class Context(FactoryCtx): ...
+
+    @factory
+    def described_factory(
+        input: Str, messages: list[Message], ctx: Context
+    ) -> Str:
+        """Use the configured operation.
+
+        Return its value without source indentation.
+        """
+        return input
+
+    assert described_factory.description == (
+        "Use the configured operation.\n\nReturn its value without source indentation."
+    )
+    assert described_factory(Context()).description == described_factory.description
+
+
 def test_tool_invalid_input():
     with pytest.raises(ValueError, match="input must be subclass"):
 

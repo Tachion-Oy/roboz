@@ -128,7 +128,7 @@ def guard_items(
 def operation_guard(
     input: ResolvedFileCommand, messages: list[Message], ctx: GuardCtx
 ) -> GuardFilesResult:
-    """Validate permissions for a resolved command payload."""
+    """Check whether the requested filesystem operations are permitted."""
     return guard_items(
         items_to_guard=input.items, original_input=input.original_input, ctx=ctx
     )

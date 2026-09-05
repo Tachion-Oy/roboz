@@ -19,6 +19,13 @@ def store_draft(
     request_id: str | None,
     is_cancelled: Callable[[], bool],
 ) -> tuple[str, tuple[str, ...]]:
+    """Store a draft and return its identifier and warnings.
+
+    Reuse an existing draft when a nonempty request ID matches one in the
+    Drafts mailbox. Without a request ID, each call appends a new draft.
+    The lookup and append are not atomic, so concurrent calls can still create
+    duplicates even with the same request ID.
+    """
     ensure_not_cancelled(is_cancelled)
     with sessions.open() as connection:
         drafts_mailbox = mailbox_for(connection, EmailMailbox.DRAFTS)
@@ -44,6 +51,7 @@ def store_draft(
 
 
 def probe_mailboxes(sessions: ImapSessionProvider) -> dict[str, object]:
+    """Probe authenticated access to the configured Drafts and Sent mailboxes."""
     settings = sessions.settings
     with sessions.open() as connection:
         return {

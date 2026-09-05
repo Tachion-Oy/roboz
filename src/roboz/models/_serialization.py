@@ -1,3 +1,5 @@
+"""Serialization helpers for values containing concrete nested models."""
+
 from __future__ import annotations
 
 import json

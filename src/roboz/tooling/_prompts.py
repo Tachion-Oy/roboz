@@ -1,3 +1,5 @@
+"""Model-facing instructions and schemas for invoking tools."""
+
 import logging
 from collections.abc import Sequence
 from typing import Final, Literal
@@ -70,13 +72,13 @@ AGENT_TOOL_USE_INSTRUCTIONS: Final[str] = f"""# Instructions on Tool Usage
 
 @tool
 def example_tool(input: Int, messages: list[Message]) -> Str:
-    """This is an EXAMPLE tool. Its ONLY purpose is to demonstrate the structure of a tool and how to call it. Call it with an integer value to see the format of tool invocation and response."""
+    """Call this example with an integer to inspect tool invocation formatting."""
     return Str(value=f"Example: {input.value}")
 
 
 @tool
 def example_skill_tool(input: Str, messages: list[Message]) -> Str:
-    """This is an EXAMPLE tool that is part of a skill."""
+    """Call this example after loading the skill that provides it."""
     return Str(value=f"Skill Tool Example: {input.value}")
 
 

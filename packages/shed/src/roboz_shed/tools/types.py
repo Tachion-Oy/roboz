@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RunFileCommandsCtx(FactoryCtx):
+    """Resolution and guard policy for constrained file commands."""
+
     base: Path
     specs: Sequence["CmdSpec"]
     allow_rules: list[PermissionRule]
@@ -31,11 +33,15 @@ class RunFileCommandsCtx(FactoryCtx):
 
 @dataclass(frozen=True)
 class ApplyPatchCtx(FactoryCtx):
+    """Filesystem base bound to literal patch resolution."""
+
     base: Path
 
 
 @dataclass(frozen=True)
 class EmailToolCtx(FactoryCtx):
+    """Filesystem base used to resolve email attachment paths."""
+
     base: Path
 
 
@@ -49,4 +55,5 @@ class ResolvedFileCommand(Empty, Generic[TInput, TPayload]):
 
     @property
     def locations(self) -> list[Path]:
+        """Return all filesystem locations requiring permission checks."""
         return [item.location for item in self.items]

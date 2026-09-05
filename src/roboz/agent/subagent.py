@@ -1,3 +1,5 @@
+"""Tool adapter for invoking one agent as another agent's sub-agent."""
+
 from dataclasses import dataclass
 from logging import getLogger
 
@@ -12,12 +14,14 @@ logger = getLogger(__name__)
 
 @dataclass(frozen=True)
 class SubagentCtx(FactoryCtx):
+    """Sub-agent bound as a live dependency of its wrapper tool."""
+
     agent: Agent
 
 
 @factory
 def run_subagent(input: Empty, messages: list[Message], ctx: SubagentCtx) -> Str:
-    """Delegate to the sub-agent, passing along the current tool input."""
+    """Delegate the current task to the configured sub-agent and return its result."""
     logger.debug("Delegating to sub-agent '%s'", ctx.agent.name)
     stop_out, _ = ctx.agent.invoke(input=input)
     logger.debug("Sub-agent '%s' returned", ctx.agent.name)

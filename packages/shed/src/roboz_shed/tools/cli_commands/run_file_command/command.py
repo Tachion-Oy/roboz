@@ -102,11 +102,19 @@ def get_run_file_command(
     allow/deny rules—not Git-specific tools (those get a separate entry point).
 
     Args:
+        base: Absolute directory against which relative paths are resolved.
+        default_verdict: Decision used when no permission rule matches.
+        deny_rules: Rules that reject matching filesystem operations.
+        allow_rules: Rules that permit matching filesystem operations.
+        ask_rules: Rules that require interactive approval when matched.
+        takes_precedence: Verdict that wins when allow and deny rules both match.
+        command_specs: Commands and operand policies exposed by the tool.
+        execute_cli_truncation: Truncation policy for command output.
+        pipe: Optional event pipe used for interactive guard prompts.
         cli_skill_name: Skill id (``Skill.name``) referenced in the tool description
             as the source of detailed CLI usage instructions; defaults to
             ``CLI_TOOLS_SKILL_NAME`` from ``roboz_shed.identifiers``.
     """
-
     cli_ctx, guard_ctx = _normalize_context(
         base=base,
         allow_rules=allow_rules,

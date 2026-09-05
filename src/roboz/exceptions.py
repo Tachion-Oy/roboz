@@ -1,3 +1,6 @@
+"""Exception types raised by Roboz runtime and integration boundaries."""
+
+
 class ExternalCallError(Exception):
     """Base exception for cancellable external-call boundary failures."""
 
