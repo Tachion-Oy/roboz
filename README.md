@@ -80,6 +80,7 @@ integrations belong in companion packages and are not dependencies of Roboz.
 | [`docs/reference.md`](docs/reference.md) | Concise API and runtime reference |
 | [`docs/agent-authoring.md`](docs/agent-authoring.md) | Agent composition and prompt policy |
 | [`docs/tool-authoring.md`](docs/tool-authoring.md) | Tools, factories, dependencies, and chaining |
+| [`docs/docstrings.md`](docs/docstrings.md) | Python and agent-facing tool docstring conventions |
 | [`docs/testing-practices.md`](docs/testing-practices.md) | Test design and review expectations |
 | [`docs/build-and-test.md`](docs/build-and-test.md) | Local setup and CI-equivalent validation |
 | [`docs/port-parity.md`](docs/port-parity.md) | Audited source-commit parity and deliberate exclusions |

@@ -6,6 +6,7 @@ Primary references:
 
 - Core reference: [`reference.md`](reference.md)
 - Agent composition guide: [`agent-authoring.md`](agent-authoring.md)
+- Docstring conventions: [`docstrings.md`](docstrings.md)
 
 ## Tool vs Factory
 
@@ -23,6 +24,8 @@ For both `@tool` and `@factory` callables:
 - function args are `input` and `messages` (factory adds `ctx`)
 - input model subclasses `Empty`
 - outputs resolve to permitted model constituents (`Empty | Invoke | Stop` family)
+- docstrings give concise agent-facing instructions under the
+  [docstring conventions](docstrings.md)
 
 Start with strong typing early. It prevents chain mismatch issues later.
 
@@ -35,6 +38,7 @@ import roboz as rz
 
 @rz.tool
 def summarize(input: rz.Empty, messages: list[rz.Message]) -> rz.Str:
+    """Summarize the available conversation material."""
     return rz.Str(value="done")
 ```
 
@@ -47,12 +51,15 @@ import roboz as rz
 
 @dataclass(frozen=True)
 class PrefixCtx(rz.FactoryCtx):
+    """Presentation prefix bound to the summary tool."""
+
     prefix: str
 
 @rz.factory
 def summarize_with_prefix(
     input: rz.Empty, messages: list[rz.Message], ctx: PrefixCtx
 ) -> rz.Str:
+    """Summarize the conversation using the configured presentation style."""
     return rz.Str(value=f"{ctx.prefix} done")
 
 tool_instance = summarize_with_prefix(PrefixCtx(prefix="[agent]"))
@@ -75,12 +82,15 @@ import roboz as rz
 
 @dataclass(frozen=True)
 class ConvertCtx(rz.FactoryCtx):
+    """Executable dependency used to perform the conversion."""
+
     converter: rz.ToolDependency[rz.ExecutableDependency]
 
 @rz.factory
 def convert(
     input: rz.Str, messages: list[rz.Message], ctx: ConvertCtx
 ) -> rz.Str:
+    """Run the configured converter and return the supplied value on success."""
     executable = ctx.converter.resource.require()
     run([executable, input.value], check=True)
     return input
@@ -123,12 +133,15 @@ from roboz.llm import (
 
 @dataclass(frozen=True)
 class SummarizeCtx(rz.FactoryCtx):
+    """Model endpoint bound to conversation summarization."""
+
     endpoint: EndpointBinding
 
 @rz.factory
 def summarize_with_llm(
     input: rz.Str, messages: list[rz.Message], ctx: SummarizeCtx
 ) -> rz.Str:
+    """Summarize the conversation using the configured model."""
     result = get_completion(
         messages=messages,
         LlmOutputModel=rz.Str,

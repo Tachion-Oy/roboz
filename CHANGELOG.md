@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Define and enforce Google-style source docstrings, and normalize tool
+  docstrings before including them in agent prompts.
+
 ## 0.1.1
 
 - Preserve concrete nested model types across in-memory tool handoffs while

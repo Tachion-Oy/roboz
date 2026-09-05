@@ -58,6 +58,8 @@ Notes:
 
 - pytest configuration lives in `pyproject.toml`
 - type tests are excluded from default pytest run and are executed separately
+- Ruff enforces the [docstring guide](docstrings.md) on shipped source; tests,
+  examples, and maintenance scripts are exempt from docstring-only rules
 
 ### Type tests
 
