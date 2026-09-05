@@ -1,58 +1,52 @@
 name: Release one Python package
-
 on:
   push:
-    tags:
-      - 'roboz-v*'
-      - 'roboz-shed-v*'
-      - 'roboz-openai-v*'
-      - 'roboz-proton-bridge-v*'
-
+    tags: ['roboz-v*', 'roboz-shed-v*', 'roboz-openai-v*', 'roboz-proton-bridge-v*']
 permissions:
   contents: read
-
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  verify:
+    uses: ./.github/workflows/verify.yml
+  select:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v7
-      - run: uv sync --locked --dev
-      - name: Validate package and version
-        env:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.10"
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: candidate-distributions
+          path: candidate-dist
+      - env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: uv run python scripts/release_package.py "$RELEASE_TAG" --check
-      - run: uv run pytest
-      - run: uv run ruff check
-      - run: uv run pyright
-      - run: bash scripts/run_type_tests.sh
-      - run: uv build --all-packages --out-dir dist/verification
-      - run: uv run python scripts/check_distributions.py --dist dist/verification
-      - name: Build only the tagged package for publication
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: uv run python scripts/release_package.py "$RELEASE_TAG"
-      - run: uv run twine check dist/release/*
-      - uses: actions/upload-artifact@v5
+        run: python scripts/release_package.py "$RELEASE_TAG" --from-dist candidate-dist
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: tagged-package
           path: dist/release/
           if-no-files-found: error
-
+          retention-days: 14
   publish:
-    needs: build
-    runs-on: ubuntu-latest
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: tagged-package
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598 # v1.13.0

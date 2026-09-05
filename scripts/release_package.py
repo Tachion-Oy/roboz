@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import subprocess
+import shutil
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,17 +33,37 @@ def main() -> None:
     parser.add_argument(
         "--check", action="store_true", help="Validate without building"
     )
+    parser.add_argument(
+        "--from-dist",
+        type=Path,
+        help="Select already verified artifacts; do not rebuild",
+    )
     args = parser.parse_args()
     name = resolve_tag(args.tag)
     if not args.check:
         output = ROOT / "dist" / "release"
         if output.exists() and any(output.iterdir()):
             parser.error(f"Release output must be empty: {output}")
-        subprocess.run(
-            ["uv", "build", "--package", name, "--out-dir", str(output)],
-            cwd=ROOT,
-            check=True,
-        )
+        if args.from_dist:
+            project = tomllib.loads((PROJECTS[name] / "pyproject.toml").read_text())[
+                "project"
+            ]
+            stem = f"{name.replace('-', '_')}-{project['version']}"
+            artifacts = [
+                args.from_dist / f"{stem}{suffix}"
+                for suffix in ("-py3-none-any.whl", ".tar.gz")
+            ]
+            if not all(path.is_file() for path in artifacts):
+                parser.error("Both verified wheel and source distribution are required")
+            output.mkdir(parents=True, exist_ok=True)
+            for artifact in artifacts:
+                shutil.copyfile(artifact, output / artifact.name)
+        else:
+            subprocess.run(
+                ["uv", "build", "--package", name, "--out-dir", str(output)],
+                cwd=ROOT,
+                check=True,
+            )
     print(name)
 
 

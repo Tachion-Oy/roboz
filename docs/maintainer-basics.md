@@ -118,7 +118,8 @@ the current `<0.2.0` bounds intentionally exclude core 0.2.
 4. Tag the reviewed commit with `<distribution>-v<version>` and push that tag.
    **This is the publication trigger**, once PyPI trust is configured.
    The [release workflow](../.github/workflows/release.yml) checks the workspace
-   and publishes only the tagged package.
+   and publishes only the tagged package, selected byte-for-byte from the shared
+   CI validation artifact. It does not rebuild the publication artifacts.
 5. Verify a fresh installation from PyPI. Optionally create a GitHub Release
    using the same changelog notes. A Git tag identifies source; a GitHub Release
    presents notes; a PyPI release holds installable artifacts. They are distinct.

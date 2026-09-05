@@ -175,3 +175,26 @@ imports originate in that environment, and runs copied composition tests plus
 the HTTP contract in an isolated config/data directory. It uses pip's resolver
 to test declared consumer requirements; `uv.lock` governs development checks,
 not consumers' independent installations.
+
+## Release artifacts and PyPI transition
+
+The release workflow calls the same reusable validation as CI, then selects the
+tagged distribution from the exact verified artifact bundle using:
+
+```bash
+uv run python scripts/release_package.py roboz-v0.1.1 --check
+# On an explicitly authorized release only, with already verified artifacts:
+uv run python scripts/release_package.py roboz-v0.1.1 --from-dist "$release_dir"
+```
+
+`--from-dist` copies both archives byte-for-byte and refuses an occupied release
+output directory; it never rebuilds after verification. Tags and publication
+still require explicit maintainer action. This change creates neither.
+
+Python distribution is pip/PyPI. Local workspace/source overrides are temporary
+development scaffolding. Publish dependencies before removing RoboSprawl's
+three local source overrides, refresh its lock, and rerun the same archive and
+installation gates with the intended published artifacts. Do not rewrite source
+paths inside CI or replace wheel verification with editable installs. See
+[uv packaging guidance](https://docs.astral.sh/uv/guides/package/) for checking
+builds with sources disabled. Containerization is outside this change.
