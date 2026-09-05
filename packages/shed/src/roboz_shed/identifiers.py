@@ -1,4 +1,4 @@
-"""Names shared by the basic file and email tools and skills."""
+"""Names shared by Shed tools and skills."""
 
 from typing import Final
 
@@ -13,3 +13,5 @@ CREATE_REPLY_DRAFT_TOOL_NAME: Final[str] = "create_reply_draft"
 CLI_TOOLS_SKILL_NAME: Final[str] = "cli_tools"
 FILE_EDITING_SKILL_NAME: Final[str] = "file_editing"
 EMAIL_TOOLS_SKILL_NAME: Final[str] = "email_tools"
+
+COMPACTIFY_MESSAGES_TOOL_NAME: Final[str] = "compactify_messages_when_needed"
