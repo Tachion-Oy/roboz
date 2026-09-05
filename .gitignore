@@ -45,3 +45,6 @@ Thumbs.db
 # Robozium local runtime output
 rbz_data/
 worktrees/
+
+# CI diagnostics
+reports/

@@ -117,3 +117,25 @@ CI has three jobs:
   installs the wheel into an isolated environment and smoke-tests `import roboz`
 
 Reference workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+
+## Coverage and deterministic end-to-end tests
+
+Run the statement coverage gates independently for each distribution:
+
+```bash
+uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge \
+  --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json \
+  --junitxml=reports/pytest.xml
+uv run python scripts/check_coverage.py reports/coverage.json
+uv run pytest tests/e2e --no-cov
+```
+
+Floors are core 95%, Shed 90%, OpenAI 90%, and Proton Bridge 89%. They are
+statement coverage, compared without rounding; high coverage in another package
+cannot compensate for a failure. Missing package coverage also fails.
+
+`tests/e2e/` scripts exercise real agents/tools/events/persistence with scripted
+provider boundaries. They cover guarded read/edit/read, traversal and symlink
+escape denial, parent/child completion, and conversation → snapshot → memory →
+retention. The same files are copied outside the checkout and executed by the
+installed interpreter, so source-tree imports cannot satisfy the install gate.

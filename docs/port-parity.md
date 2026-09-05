@@ -79,3 +79,11 @@ retention, cancellable waits, and the deterministic Librarian composition.
 Roboz deliberately does not add OpenAI, Cerebras, Groq, FastAPI, or UI
 dependencies. Provider catalogs and application wiring remain companion-layer
 code; the typed, dependency-free request policy and runtime contracts live here.
+
+## Installed successor contracts
+
+The release-quality CI additions identify `tests/e2e/` as the Linux workflow
+layer for retained PeffaShed behavior: guarded read/edit/read, filesystem escape
+denial, subagent completion, and conversation → snapshot → memory → retention.
+The archive installation gate executes the same scenarios from original wheels
+and source-archive rebuilds, outside this checkout.
