@@ -45,7 +45,11 @@ and email flags require the separately installed adapters. See the repository's
 [installation guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/addons.md)
 for local wheel installation before these packages are published.
 
-### Conversation compaction
+## Conversation compaction
+
+The following fragment belongs inside an agent or tool builder. `endpoint` is
+the agent's configured endpoint, and `agent_pipe` is its owning event pipe
+(supplied to `tool_builders` by `build_assistant`).
 
 ```python
 from roboz_shed.tools import get_compactify_messages_when_needed_tool
@@ -62,6 +66,13 @@ The tool preserves the contiguous bootstrap prefix and folds the remaining
 history, including previous summaries, into a new continuation message. Its
 status also carries the summary for event persistence. Each constructed tool
 owns its compaction count; constructing one per agent keeps counters independent.
+
+Successful status reports describe the compacted history's current usage and
+headroom. Summaries are budgeted below the configured threshold and endpoint
+capacity, including the preserved prefix and continuation payload. If there is
+no room for a summary, or the returned replacement still exceeds the budget
+after summarization retries, the tool returns `blocked` without changing history
+or the counter. The continuation payload retains `percent_used_before`.
 
 Cancellation and interruption propagate through the existing Roboz summarizer.
 An optional positive, finite `timeout_s` bounds each provider attempt, not the

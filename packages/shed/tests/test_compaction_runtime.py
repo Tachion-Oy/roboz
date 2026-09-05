@@ -13,7 +13,12 @@ from roboz.exceptions import (
     LLMCallTimeoutError,
     LLMError,
 )
-from roboz.llm import LLMEndpoint, MockLLMEndpoint, bind_endpoint
+from roboz.llm import (
+    LLMEndpoint,
+    MockLLMEndpoint,
+    bind_endpoint,
+    estimate_conversation_tokens,
+)
 from roboz.models import MessageKind
 from roboz.runtime import EventPipe
 from roboz.runtime.events import MessageEvent, RuntimeEvent
@@ -74,7 +79,14 @@ def test_threshold_boundary(tokens, status):
     messages = [Message(role=Role.USER, content="u" * (tokens * 4))]
     output = tool(input=All(), messages=messages)
     assert output.status == status
-    assert output.to_compaction == ("1" if status == "ok" else "0")
+    current_tokens = estimate_conversation_tokens(messages)
+    assert output.to_compaction == str(800 - current_tokens)
+    if status == "compacted":
+        assert current_tokens < 800
+        assert output.context == f"{current_tokens} / 1.0k ({current_tokens / 10:.0f}%)"
+        assert json.loads(messages[-1].content)["percent_used_before"] == pytest.approx(
+            tokens / 10
+        )
     assert len(endpoint.mock_responses) == (1 if status == "ok" else 0)
 
 
@@ -94,6 +106,82 @@ def test_bootstrap_only_is_blocked_without_calling_provider():
     assert output.compactions == 0
     assert output.compaction_summary is None
     assert messages == original
+
+
+@pytest.mark.parametrize("prefix_chars", [3100, 3200])
+def test_prefix_and_payload_leave_no_summary_budget(prefix_chars):
+    endpoint = MockLLMEndpoint([{"value": "unused"}], max_context_tokens=1000)
+    ctx = _ctx(endpoint)
+    ctx.state.count = 2
+    messages = [
+        Message(
+            role=Role.SYSTEM,
+            content="s" * prefix_chars,
+            message_kind=MessageKind.SYSTEM_MESSAGE,
+        ),
+        *_messages(),
+    ]
+    original = list(messages)
+    output = compactify_messages_when_needed(ctx)(input=All(), messages=messages)
+    assert output.status == "blocked"
+    assert output.compaction_summary is None
+    assert output.compactions == ctx.state.count == 2
+    assert all(actual is previous for actual, previous in zip(messages, original, strict=True))
+    assert len(endpoint.mock_responses) == 1
+
+
+def test_oversized_summary_retries_then_preserves_history_and_counter():
+    calls = []
+
+    def create(**request):
+        calls.append(request)
+        return _response("x" * 5000)
+
+    ctx = _ctx(_endpoint(create))
+    ctx.state.count = 2
+    messages = _messages()
+    original = list(messages)
+    output = compactify_messages_when_needed(ctx)(input=All(), messages=messages)
+    assert len(calls) == 3
+    assert output.status == "blocked"
+    assert output.compaction_summary is None
+    assert output.compactions == ctx.state.count == 2
+    assert messages == original
+    assert messages[0] is original[0]
+    assert output.context == "1.2k / 1.0k (120%)"
+    assert output.to_compaction == "0"
+
+
+def test_summary_over_budget_retries_even_within_default_length_tolerance():
+    endpoint = MockLLMEndpoint(
+        [{"value": "x" * 3100}, {"value": "continue"}], max_context_tokens=1000
+    )
+    messages = _messages()
+    output = get_compactify_messages_when_needed_tool(endpoint=endpoint)(
+        input=All(), messages=messages
+    )
+    assert endpoint.mock_responses == []
+    assert output.status == "compacted"
+    assert output.compaction_summary == "continue"
+    assert output.compactions == 1
+    assert estimate_conversation_tokens(messages) < 800
+
+
+def test_json_escaping_cannot_exceed_replacement_budget():
+    endpoint = MockLLMEndpoint(
+        [{"value": "\U0001f600" * 300}], max_context_tokens=1000
+    )
+    ctx = _ctx(endpoint)
+    ctx.state.count = 2
+    messages = _messages()
+    original = list(messages)
+    output = compactify_messages_when_needed(ctx)(input=All(), messages=messages)
+    assert endpoint.mock_responses == []
+    assert output.status == "blocked"
+    assert output.compaction_summary is None
+    assert output.compactions == ctx.state.count == 2
+    assert messages == original
+    assert messages[0] is original[0]
 
 
 def test_repeated_compaction_uses_previous_summary_and_preserves_only_prefix():

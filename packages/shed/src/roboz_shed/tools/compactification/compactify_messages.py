@@ -58,6 +58,8 @@ class CompactifyMessagesCtx(FactoryCtx):
 
 DEFAULT_THRESHOLD_PERCENT: Final[float] = 80.0
 COMPACTED_CONTEXT_KIND: Final[MessageKind] = MessageKind.COMPACTED_CONTEXT
+# Match estimate_conversation_tokens; validate the serialized candidate as well.
+_ESTIMATED_CHARS_PER_TOKEN: Final[int] = 4
 
 
 class CompactifyStatus(Empty):
@@ -93,6 +95,23 @@ def _bootstrap_prefix_len(messages: list[Message]) -> int:
     while idx < len(messages) and messages[idx].message_kind in BOOTSTRAP_MESSAGE_KINDS:
         idx += 1
     return idx
+
+
+def _compacted_message(
+    summary: str, *, percent_used_before: float, threshold_percent: float
+) -> Message:
+    """Build the persisted continuation payload, including its JSON overhead."""
+    return Message(
+        role=Role.USER,
+        content=json.dumps({
+            BaseNames.CALLER_FIELD: COMPACTIFY_MESSAGES_TOOL_NAME,
+            BaseNames.VALUE_FIELD: "Context compactified for continuation.",
+            "summary_markdown": summary,
+            "percent_used_before": percent_used_before,
+            "threshold_percent": threshold_percent,
+        }),
+        message_kind=COMPACTED_CONTEXT_KIND,
+    )
 
 
 def _status(
@@ -134,7 +153,8 @@ def compactify_messages_when_needed(
 
     Preserve startup instructions and replace the remaining history with a
     continuation handoff. Return context usage and the number of successful
-    compactions; report blocked when only startup instructions remain.
+    compactions. Report blocked without changing history when only startup
+    instructions remain or no replacement fits below the context budget.
     """
     threshold_percent = ctx.threshold_percent
     if not math.isfinite(threshold_percent) or threshold_percent <= 0:
@@ -158,46 +178,58 @@ def compactify_messages_when_needed(
             compactions=compactions,
         )
     prefix_len = _bootstrap_prefix_len(messages)
+    blocked = _status(
+        "blocked",
+        consumed=consumed,
+        threshold_tokens=threshold_tokens,
+        max_tokens=max_tokens,
+        compactions=compactions,
+    )
     if prefix_len >= len(messages):
-        return _status(
-            "blocked",
-            consumed=consumed,
-            threshold_tokens=threshold_tokens,
-            max_tokens=max_tokens,
-            compactions=compactions,
-        )
+        return blocked
     skill_message = ctx.skill_message.strip()
     if not skill_message:
         raise ValueError("skill_message must be a non-empty string")
+    # Measure at the replacement's length: truncation of preserved messages can
+    # depend on their distance from the end of the conversation.
+    candidate = [
+        *messages[:prefix_len],
+        _compacted_message(
+            "", percent_used_before=percent_used, threshold_percent=threshold_percent
+        ),
+    ]
+    target_tokens = min(threshold_tokens, max_tokens) - 1
+    max_chars = (
+        target_tokens - estimate_conversation_tokens(candidate)
+    ) * _ESTIMATED_CHARS_PER_TOKEN
+    if max_chars <= 0:
+        return blocked
     summary = summarize_conversation_segment(
         endpoint=endpoint_like,
         system_prompt=ctx.system_prompt,
         instructions=skill_message,
         conversation=_conversation_text(messages[prefix_len:]),
+        max_chars=max_chars,
+        max_chars_tolerance_percent=0,
         pipe=ctx.pipe,
         timeout_s=ctx.timeout_s,
     )
-    compacted_payload = {
-        BaseNames.CALLER_FIELD: COMPACTIFY_MESSAGES_TOOL_NAME,
-        BaseNames.VALUE_FIELD: "Context compactified for continuation.",
-        "summary_markdown": summary,
-        "percent_used_before": percent_used,
-        "threshold_percent": threshold_percent,
-    }
     _check_controls(ctx.pipe)
-    messages[:] = [
-        *messages[:prefix_len],
-        Message(
-            role=Role.USER,
-            content=json.dumps(compacted_payload),
-            message_kind=COMPACTED_CONTEXT_KIND,
-        ),
-    ]
+    candidate[-1] = _compacted_message(
+        summary, percent_used_before=percent_used, threshold_percent=threshold_percent
+    )
+    compacted_tokens = estimate_conversation_tokens(candidate)
+    # The summarizer returns its shortest attempt even when none meets the
+    # character limit. JSON escaping can also exhaust the remaining headroom.
+    if len(summary) > max_chars or compacted_tokens > target_tokens:
+        return blocked
+    _check_controls(ctx.pipe)
+    messages[:] = candidate
     compactions += 1
     ctx.state.count = compactions
     return _status(
         "compacted",
-        consumed=consumed,
+        consumed=compacted_tokens,
         threshold_tokens=threshold_tokens,
         max_tokens=max_tokens,
         compactions=compactions,
@@ -222,6 +254,10 @@ def get_compactify_messages_when_needed_tool(
     leaves attempts unbounded. Cancellation or timeout stops waiting for the
     provider, without forcibly terminating its worker. Failed attempts preserve
     the conversation and success counter.
+
+    Summaries are budgeted below the context threshold and endpoint capacity.
+    If the preserved prefix leaves no room, or no returned replacement fits,
+    return ``blocked`` with the conversation and success counter unchanged.
     """
     if not math.isfinite(threshold_percent) or threshold_percent <= 0:
         raise ValueError("threshold_percent must be finite and greater than 0")
