@@ -118,7 +118,7 @@ jobs:
         with:
           name: testpypi-upload
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         if: needs.select.outputs.upload_needed == 'true'
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -160,7 +160,7 @@ jobs:
         with:
           name: tagged-package
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
   check-pypi:
     needs: [preparation, publish]
     runs-on: ubuntu-24.04
