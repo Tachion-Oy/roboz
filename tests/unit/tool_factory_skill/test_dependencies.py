@@ -115,7 +115,10 @@ def test_lazy_dependency_is_not_resolved_during_binding_and_resolves_once() -> N
     def lazy_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return input
 
-    bound = lazy_factory(Ctx(dependency=lazy))
+    ctx = Ctx(dependency=lazy)
+    assert ctx.external_dependencies()[0] is lazy
+    assert calls == 0
+    bound = lazy_factory(ctx)
     assert bound.external_dependencies == (lazy,)
     assert calls == 0
 

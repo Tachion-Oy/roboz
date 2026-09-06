@@ -12,8 +12,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, Mapping
 
-from roboz.tooling.context import Ctx
-
 
 class ExternalDependencyKind(StrEnum):
     """Stable categories understood by deployment-level dependency catalogs."""
@@ -52,6 +50,8 @@ class ExternalDependency(ABC):
 
 class ExternalDependencySource(ABC):
     """An object whose current graph exposes external dependencies."""
+
+    __slots__ = ()
 
     @abstractmethod
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
@@ -171,25 +171,6 @@ class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
                 "lazy dependency resolver returned a different dependency kind: "
                 f"{resource.kind!r} != {self.kind!r}"
             )
-
-
-def factory_context_dependencies(
-    context: Ctx,
-) -> tuple[
-    tuple[ExternalDependency, ...],
-    tuple[ExternalDependencySource, ...],
-]:
-    """Extract direct resources and live sources without materializing either."""
-    dependencies: list[ExternalDependency] = []
-    sources: list[ExternalDependencySource] = []
-    for value in context._values.values():
-        candidates = value if isinstance(value, tuple) else (value,)
-        for candidate in candidates:
-            if isinstance(candidate, ExternalDependency):
-                dependencies.append(candidate)
-            elif isinstance(candidate, ExternalDependencySource):
-                sources.append(candidate)
-    return tuple(dependencies), tuple(sources)
 
 
 def dedupe_external_dependencies(

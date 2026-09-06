@@ -5,8 +5,14 @@ from keyword import iskeyword
 from types import MappingProxyType
 from typing import Any
 
+from roboz.tooling.dependencies import (
+    ExternalDependency,
+    ExternalDependencySource,
+    dedupe_external_dependencies,
+)
 
-class Ctx:
+
+class Ctx(ExternalDependencySource):
     """Named values bound to a tool without a user-defined context class.
 
     Construct with keyword arguments and read values as attributes. Bindings are
@@ -28,6 +34,34 @@ class Ctx:
             ):
                 raise ValueError(f"invalid context field name: {key!r}")
         object.__setattr__(self, "_values", MappingProxyType(values))
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Inspect direct resources and the current dependencies of live sources.
+
+        Direct fields and direct tuple entries precede live-source resources.
+        Deduplicate by dependency ID, retaining the first object. Inspection
+        never copies or materializes resources or runs health checks.
+        """
+        dependencies, sources = self._collect_dependencies()
+        candidates = list(dependencies)
+        for source in sources:
+            candidates.extend(source.external_dependencies())
+        return dedupe_external_dependencies(candidates)
+
+    def _collect_dependencies(
+        self,
+    ) -> tuple[tuple[ExternalDependency, ...], tuple[ExternalDependencySource, ...]]:
+        """Separate direct resources from live sources without inspecting sources."""
+        dependencies: list[ExternalDependency] = []
+        sources: list[ExternalDependencySource] = []
+        for value in self._values.values():
+            candidates = value if isinstance(value, tuple) else (value,)
+            for candidate in candidates:
+                if isinstance(candidate, ExternalDependency):
+                    dependencies.append(candidate)
+                elif isinstance(candidate, ExternalDependencySource):
+                    sources.append(candidate)
+        return tuple(dependencies), tuple(sources)
 
     def __getattr__(self, name: str) -> Any:
         """Read a supplied field or report its missing name."""

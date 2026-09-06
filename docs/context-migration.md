@@ -118,13 +118,32 @@ the already-bound callable and state; a copy does not allocate new default state
 
 `ExternalDependency` retains `dependency_id`, `kind`, `redacted_metadata()`, and
 `materialize()`. `Tool.external_dependencies` and `Agent.external_dependencies()`
-continue returning resource objects deduplicated by ID. No registry or health
-response format changes are required by this migration.
+continue returning resource objects deduplicated by ID. Contexts now also
+implement `ExternalDependencySource` and expose `ctx.external_dependencies()`,
+including before binding a tool. No registry or health response format changes
+are required by this migration.
+
+```python
+ctx = rz.Ctx(
+    prefix="[agent]",
+    converter=rz.ExecutableDependency("my-converter"),
+    endpoint=endpoint,
+)
+dependencies = ctx.external_dependencies()
+```
+
+The return type is `tuple[ExternalDependency, ...]`. Direct resources precede
+live-source resources, with the first object retained for each dependency ID.
+The method name `external_dependencies` is reserved: rename any configuration
+field using that name. Fields named `dependencies` and `values` remain supported.
 
 Contexts recognize direct resources and direct tuple entries, plus live
-`ExternalDependencySource` values. Subagent graphs remain live after binding;
-configured but unloaded skills remain included by default. Collection does not
-inspect arbitrary nested objects, run checkers, or materialize resources.
+`ExternalDependencySource` values, including nested contexts, agents, and
+catalogs. Factories retain their bound context as a live source; inspection
+recomputes source results through contexts, tools, copied tools, and agents.
+Subagent graphs remain live after binding; configured but unloaded skills remain
+included by default. Collection does not inspect arbitrary nested objects, run
+checkers, or materialize resources.
 
 Keep application-level exact registration matching, safe health probes, timeout
 policy, and cached health endpoints in the application. Custom endpoint routes

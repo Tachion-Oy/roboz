@@ -96,9 +96,19 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     child = _agent()
     expected = _ids(child)
 
-    subagent_tool = run_subagent(Ctx(agent=child))
+    ctx = Ctx(agent=child)
+    nested = Ctx(child=ctx)
+    assert {d.dependency_id for d in ctx.external_dependencies()} == expected
+    subagent_tool = run_subagent(ctx)
     background_tool = run_background_agent(Ctx(agent=child))
     copied_subagent_tool = subagent_tool.copy()
+    nested_tool = uses_executable(nested)
+    parent = Agent(
+        name="parent",
+        system_prompt="Use the child.",
+        tools=[subagent_tool],
+        agent_endpoint=MockLLMEndpoint(responses=[]),
+    )
 
     assert {
         dependency.dependency_id for dependency in subagent_tool.external_dependencies
@@ -110,7 +120,10 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     child.add(tools=[_bound("added_after_wrapping")])
     updated = expected | {"executable:added_after_wrapping"}
 
-    for wrapper in (subagent_tool, background_tool, copied_subagent_tool):
+    assert {d.dependency_id for d in ctx.external_dependencies()} == updated
+    assert {d.dependency_id for d in nested.external_dependencies()} == updated
+    assert _ids(parent) == updated
+    for wrapper in (subagent_tool, background_tool, copied_subagent_tool, nested_tool):
         assert {
             dependency.dependency_id for dependency in wrapper.external_dependencies
         } == updated

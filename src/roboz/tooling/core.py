@@ -16,7 +16,6 @@ from roboz.tooling.dependencies import (
     ExternalDependency,
     ExternalDependencySource,
     dedupe_external_dependencies,
-    factory_context_dependencies,
 )
 
 logger = getLogger(__name__)
@@ -277,7 +276,7 @@ class Factory[
         _func_ctx.__annotations__ = {
             k: v for k, v in self._func.__annotations__.items() if k != "ctx"
         }
-        dependencies, dependency_sources = factory_context_dependencies(ctx)
+        dependencies, _ = ctx._collect_dependencies()
         t: Tool[TInput, TOutput] = Tool(
             caller=_func_ctx,
             chained_to=self._chained_to,
@@ -285,6 +284,6 @@ class Factory[
             description=self.description,
             _id=self.id,
             _dependencies=dependencies,
-            _dependency_sources=dependency_sources,
+            _dependency_sources=(ctx,),
         )
         return t

@@ -46,11 +46,13 @@ def use_resources(input: rz.Empty, messages: list[rz.Message], ctx: rz.Ctx) -> r
 def test_discovery_binds_exact_resource_to_checker_without_running_it() -> None:
     checks = []
     dependency = rz.ExecutableDependency(sys.executable)
-    bound = use_resources(rz.Ctx(executable=dependency))
+    ctx = rz.Ctx(executable=dependency)
+    bound = use_resources(ctx)
     registration = Registration(
         dependency.dependency_id, dependency.kind, checks.append
     )
-    pairs = bind_checks(bound.copy().external_dependencies, [registration])
+    pairs = bind_checks(ctx.external_dependencies(), [registration])
+    assert pairs == bind_checks(bound.copy().external_dependencies, [registration])
     assert checks == []
     resource, check = pairs[0]
     assert resource is dependency
@@ -114,12 +116,17 @@ def test_endpoint_route_is_retained_and_materializes_the_current_selection() -> 
     ) -> rz.Str:
         return rz.Str(value=resolve_endpoint(ctx.endpoint).model_name)
 
-    bound = inspect_selected(rz.Ctx(endpoint=route))
+    ctx = rz.Ctx(endpoint=route)
+    assert ctx.external_dependencies()[0] is route
+    assert calls == []
+    bound = inspect_selected(ctx)
     copied = bound.copy()
     assert copied.external_dependencies[0] is route
     assert calls == []
     assert bound(rz.Empty(), []).value == "first"
     selected = second
+    assert ctx.external_dependencies()[0] is route
+    assert calls == ["first"]
     assert copied(rz.Empty(), []).value == "second"
     assert bound.external_dependencies[0].dependency_id == first.dependency_id
     assert calls == ["first", "second"]

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Inspect resources before binding tools with `Ctx.external_dependencies()`.
+  Contexts implement `ExternalDependencySource`, preserving resource identity
+  and reflecting live nested contexts, agents, and catalogs without resolving
+  lazy resources. `external_dependencies` is now a reserved context field name;
+  see `docs/context-migration.md`.
+
 ### Changed
 
 - **Breaking:** Construct tool contexts with `Ctx(**values)` and pass resources

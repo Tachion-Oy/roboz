@@ -60,7 +60,8 @@ tool_instance = add_prefix(rz.Ctx(prefix="[agent] "))
 ```
 
 `Ctx` accepts keyword fields and exposes them as attributes. Names must be public
-Python identifiers and cannot be keywords or reserved implementation attributes.
+Python identifiers and cannot be keywords or reserved API/implementation names.
+`external_dependencies` is reserved; `dependencies` and `values` remain valid fields.
 Bindings cannot be reassigned or deleted, but contained objects keep their
 identity and may be mutable. A missing field raises `AttributeError`. Contexts
 are runtime configuration, outside the model's input schema and prompts.
@@ -90,9 +91,9 @@ def convert(
     run([ctx.converter.require(), input.value], check=True)
     return input
 
-tool_instance = convert(
-    rz.Ctx(converter=rz.ExecutableDependency("my-converter"))
-)
+ctx = rz.Ctx(prefix="[agent]", converter=rz.ExecutableDependency("my-converter"))
+dependencies = ctx.external_dependencies()  # Inspect before building a tool.
+tool_instance = convert(ctx)
 ```
 
 `require()` resolves the configured executable using `shutil.which()` and returns
@@ -106,7 +107,8 @@ Factories that independently require several resources use several context
 fields. Direct tuple entries are also collected. Ordinary configuration values
 are ignored; arbitrary nested containers and object attributes are not walked.
 Aggregate catalogs and agents expose their current dependencies through
-`ExternalDependencySource`.
+`ExternalDependencySource`. `Ctx` also implements this interface, so contexts
+can contain other contexts as live sources.
 
 Every `ExternalDependency` supports `materialize()`. Eager dependencies return
 themselves; `LazyExternalDependency` carries inspectable identity and caches its
@@ -115,10 +117,16 @@ inspection do not materialize resources, contact services, or execute processes.
 Custom resource implementations retain control over `materialize()`, including
 endpoint routes that select a different resource for subsequent calls.
 
+`Ctx.external_dependencies()` returns a `tuple[ExternalDependency, ...]`: direct
+resources first, then live-source resources, deduplicated by ID while retaining
+the first object. Each inspection reads the current source graphs without
+copying resources or running health checkers.
+
 `Tool.dependencies` contains direct resources in field/tuple order, including
 repeated resources. `Tool.external_dependencies` adds live source dependencies
-and deduplicates by `dependency_id`, retaining the first resource. Copies keep
-the original callable, resource identities, and captured state.
+from its bound context and deduplicates by `dependency_id`, retaining the first
+resource. Copies keep the original callable, resource identities, and captured
+state.
 
 ## Standalone LLM-backed tools
 
