@@ -116,7 +116,9 @@ Use the aggregate **CI** status as the required branch-protection check in GitHu
 It requires every job in `.github/workflows/verify.yml` to succeed; failures,
 cancellations, and skipped required jobs cannot produce a green aggregate.
 Pull requests (including forks), pushes to `main`, and manual dispatch run the
-same validation. Only the separately triggered release job can publish.
+same validation. The shared workflow is named **Tests and packaging**. Only the
+separately triggered release workflow can publish; its manual runs publish to
+TestPyPI only, while package tags can proceed to production approval.
 
 - Python 3.13 and 3.14 run all core and companion tests and the quickstart.
 - Quality runs Ruff, Pyright, and positive/negative typing contracts once.
@@ -163,20 +165,100 @@ escape denial, parent/child completion, and conversation → snapshot → memory
 retention. The same files are copied outside the checkout and executed by the
 installed interpreter, so source-tree imports cannot satisfy the install gate.
 
-## Release artifacts and PyPI transition
+## Release preparation and TestPyPI rehearsals
 
-The release workflow calls the same reusable validation as CI, then selects the
-tagged distribution from the exact verified artifact bundle using:
+Prepare the repository before tagging or starting a rehearsal. Choose the version
+in the selected distribution's `pyproject.toml`, update affected dependency bounds,
+write the release notes, run `uv lock`, and commit the reviewed preparation.
+Version choice and the accuracy of release notes remain maintainer judgments.
+The workflow never changes versions or infers patch/minor/major compatibility.
+
+The selected changelog must start with an empty `## Unreleased` section, followed
+by `## <version> - YYYY-MM-DD` and nonempty release notes. Brackets around the
+version are also accepted. Dates must be valid and not in the future (UTC).
+Other packages may still have Unreleased changes. Historical undated entries do
+not need rewriting, but the selected release must have a date. Existing staged
+versions are not automatically release-prepared by this tooling change.
+
+Check preparation locally before committing or tagging (use the version you
+actually prepared):
 
 ```bash
-uv run python scripts/release_package.py roboz-v0.1.1 --check
-# On an explicitly authorized release only, with already verified artifacts:
-uv run python scripts/release_package.py roboz-v0.1.1 --from-dist "$release_dir"
+uv run python scripts/release_package.py --package roboz-openai --check
+uv lock --check
+# Example after preparing version 0.1.0a2:
+uv run python scripts/release_package.py roboz-openai-v0.1.0a2 --check
 ```
 
-`--from-dist` copies both archives byte-for-byte and refuses an occupied release
-output directory; it never rebuilds after verification. Tags and publication
-still require explicit maintainer action. This change creates neither.
+The release workflow first checks preparation and lockfile consistency. For a
+tagged release it also rejects a version already present on PyPI. Only then does
+it call the complete shared verification workflow. It selects the package from
+the verified candidate bundle with `release_package.py <tag> --from-dist <dir>`.
+Selection copies its wheel and source archive byte-for-byte, refuses an occupied
+output directory, and does not rebuild them.
+
+To rehearse without production publication, open **Actions → Release one Python
+package → Run workflow**, choose the prepared branch/ref and one package, and
+start the run. The workflow must first be present on the default branch for the
+manual run button to appear. The run uploads only that package to TestPyPI,
+downloads and checks it, then ends. It has no input that enables production.
+
+Rehearsals use declared versions, including explicitly chosen development or
+prerelease versions on a rehearsal branch. They do not generate temporary versions.
+Stage the required Roboz packages first, at the versions declared in the rehearsal
+checkout: core before Shed/OpenAI, then core and Shed before Proton Bridge.
+The checker downloads those dependency wheels explicitly from TestPyPI and uses
+PyPI only for third-party dependencies. It does not use a combined index search
+or the candidate bundle to satisfy Roboz dependencies. Pip still checks that
+the staged versions satisfy the selected package's declared bounds.
+
+Tagged releases follow this route:
+
+```text
+Preparation → full verification → select package → TestPyPI upload
+  → download/install/contracts with real PyPI dependencies
+  → pypi environment approval → PyPI upload → download/install/contracts
+```
+
+Before production upload, the selected TestPyPI wheel must install and pass its
+contracts with dependencies from real PyPI. For example, OpenAI cannot rely on
+an unpublished core API. Publish required dependency releases first. The final
+upload uses the same selected wheel and source archive, with no intervening build.
+
+Both index checks download the exact wheel and source archive and compare their
+SHA-256 hashes with the verified candidates. The wheel is installed into a new
+environment outside the checkout, with pip configuration/source overrides cleared.
+Checks cover `pip check`, version/import locations, core or Shed workflows and
+the Shed CLI, or the OpenAI/Proton adapter contracts using fake HTTP/IMAP services.
+The dependency installation is independent of `uv.lock`; default development
+and CI tests continue to use the lockfile.
+
+Index availability is retried for up to three minutes. Hash conflicts and failed
+package contracts fail immediately. An existing TestPyPI archive is reused only
+when its hash matches; missing archives in a matching partial upload are staged
+for upload. Both files are downloaded and verified afterward, including when no
+upload was needed. Changed contents under an existing filename require a new
+version, even if the old file was deleted. Production duplicates fail instead of
+being skipped. After a successful upload followed by a failed check, rerun the
+failed verification job; do not start another production release of that version.
+
+The index checker can also be run against saved candidate artifacts:
+
+```bash
+# Anonymous read-only checks; these commands never upload.
+uv run python -m scripts.check_published_package --package roboz-openai \
+  --index testpypi --dependency-index testpypi --candidates "$release_dir"
+uv run python -m scripts.check_published_package --package roboz-openai \
+  --index pypi --dependency-index pypi --candidates "$release_dir"
+```
+
+Run `actionlint .github/workflows/*.yml` when editing workflows. The focused
+regression tests are `tests/test_release_package.py`,
+`tests/test_published_package.py`, and `tests/test_release_workflows.py`.
+They use simulated network/process boundaries and require no live services.
+Passing these tests does not establish that account permissions or actual
+publication work: complete an explicitly initiated TestPyPI rehearsal after the
+[one-time publisher setup](maintainer-basics.md#publisher-setup).
 
 Python distribution is pip/PyPI. Workspace source overrides support development;
 the distribution gate uses pip's resolver to test published requirement metadata

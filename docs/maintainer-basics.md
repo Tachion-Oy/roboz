@@ -114,23 +114,55 @@ the current `<0.2.0` bounds intentionally exclude core 0.2.
    the installed package works.
 3. Review and merge the release preparation. Validate the intended tag with
    `uv run python scripts/release_package.py roboz-proton-bridge-v0.1.0b2 --check`
-   (example: requires that package's version to have been changed to `0.1.0b2`).
+   (example: requires that package's version to be `0.1.0b2`, with dated release
+   notes and an empty Unreleased section). Also run `uv lock --check`.
 4. Tag the reviewed commit with `<distribution>-v<version>` and push that tag.
-   **This is the publication trigger**, once PyPI trust is configured.
-   The [release workflow](../.github/workflows/release.yml) checks the workspace
-   and publishes only the tagged package, selected byte-for-byte from the shared
-   CI validation artifact. It does not rebuild the publication artifacts.
-5. Verify a fresh installation from PyPI. Optionally create a GitHub Release
+   The [release workflow](../.github/workflows/release.yml) first checks preparation
+   and version availability, then validates the whole workspace. It publishes
+   only the tagged package to TestPyPI and checks installation with real PyPI
+   dependencies. If successful, it waits at the configured production approval.
+5. Review the verified package/version and choose **Approve and deploy** in the
+   GitHub run's **Review deployments** dialog. Production uses the same verified
+   archives, without rebuilding. The workflow checks a fresh download and
+   installation from PyPI afterward; a failed post-publication check reports a
+   problem but cannot undo an upload. Optionally create a GitHub Release
    using the same changelog notes. A Git tag identifies source; a GitHub Release
    presents notes; a PyPI release holds installable artifacts. They are distinct.
 
 A wheel (`.whl`) is the built installation artifact; a source distribution
 (`.tar.gz`) allows building from source. See [PyPA's packaging flow](https://packaging.python.org/en/latest/flow/).
 
-One-time setup: establish ownership of each PyPI name and configure its trusted
-publisher for this repository, `release.yml`, and environment `pypi`. Configure
-environment approval separately if you want a human publication gate—the name
-`pypi` alone does not provide one. Nothing has been published by this implementation.
+Use the manual TestPyPI route to exercise uploading and installing before the
+first production release. Choose one package in **Actions → Release one Python
+package → Run workflow**; manual runs end after TestPyPI checks and cannot publish
+to production. See [the rehearsal guide](build-and-test.md#release-preparation-and-testpypi-rehearsals)
+for version preparation, dependency ordering, and retry behavior.
+
+### Publisher setup
+
+TestPyPI and PyPI have separate accounts, projects, and Trusted Publisher settings.
+Establish ownership (or pending publishers for new projects) for each of the four
+distribution names on each index. Configure each publisher for owner
+`Tachion-Oy`, repository `roboz`, workflow `release.yml`, and the matching GitHub
+environment: `testpypi` for TestPyPI, `pypi` for production.
+
+In GitHub **Settings → Environments**, create those environments. Configure
+`pypi` with the maintainer as a required reviewer; leave self-approval available
+if that maintainer also initiates releases. Restrict production deployments to
+the four package release tag patterns and protect those tags with repository
+rulesets. TestPyPI does not need a second approval after manually starting a
+rehearsal. Protect any branches permitted to publish to TestPyPI as appropriate.
+
+**The environment name in YAML does not enforce approval by itself.** Required
+reviewers must be configured in GitHub before enabling production publishing.
+If the repository's visibility/plan does not support required reviewers, keep
+production publishing disabled until an explicit approval mechanism is available.
+These account settings cannot be established by local repository checks.
+
+The workflow gives OIDC permission only to the two publishing jobs; those jobs
+download artifacts and upload them without checking out or building source.
+Configure production trust only after a TestPyPI rehearsal succeeds. These
+workflow changes themselves create no tags and publish no packages.
 See [PyPA's publishing walkthrough](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/).
 
 For a bad release, publish a corrected version. Consider **yanking** the bad one:

@@ -2,18 +2,68 @@ name: Release one Python package
 on:
   push:
     tags: ['roboz-v*', 'roboz-shed-v*', 'roboz-openai-v*', 'roboz-proton-bridge-v*']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to rehearse on TestPyPI (never publishes to PyPI)
+        required: true
+        type: choice
+        options:
+          - roboz
+          - roboz-shed
+          - roboz-openai
+          - roboz-proton-bridge
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ inputs.package }}
   cancel-in-progress: false
 jobs:
+  preparation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.prepare.outputs.package }}
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Check selected version and release notes
+        id: prepare
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REHEARSAL_PACKAGE: ${{ inputs.package }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            python scripts/release_package.py --package "$REHEARSAL_PACKAGE" --check --github-output "$GITHUB_OUTPUT"
+          else
+            python scripts/release_package.py "$RELEASE_TAG" --check --github-output "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.12.10"
+      - name: Check lockfile without updating it
+        run: uv lock --check
+      - name: Reject an existing production version
+        if: github.event_name == 'push'
+        env:
+          PACKAGE: ${{ steps.prepare.outputs.package }}
+        run: python -m scripts.check_published_package --package "$PACKAGE" --check-unpublished
   verify:
+    needs: preparation
     uses: ./.github/workflows/verify.yml
   select:
-    needs: verify
+    needs: [preparation, verify]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      upload_needed: ${{ steps.upload.outputs.upload_needed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,16 +79,77 @@ jobs:
           name: candidate-distributions
           path: candidate-dist
       - env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.preparation.outputs.tag }}
         run: python scripts/release_package.py "$RELEASE_TAG" --from-dist candidate-dist
+      - name: Check existing TestPyPI files and stage missing archives
+        id: upload
+        env:
+          PACKAGE: ${{ needs.preparation.outputs.package }}
+        run: >-
+          python -m scripts.check_published_package --package "$PACKAGE"
+          --candidates dist/release --prepare-upload dist/testpypi-upload
+          --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: tagged-package
           path: dist/release/
           if-no-files-found: error
           retention-days: 14
-  publish:
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: steps.upload.outputs.upload_needed == 'true'
+        with:
+          name: testpypi-upload
+          path: dist/testpypi-upload/
+          if-no-files-found: error
+          retention-days: 14
+  publish-testpypi:
     needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Reuse matching staged archives
+        if: needs.select.outputs.upload_needed != 'true'
+        run: echo "Both archives already exist with matching hashes; the next job will download and verify them."
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.select.outputs.upload_needed == 'true'
+        with:
+          name: testpypi-upload
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        if: needs.select.outputs.upload_needed == 'true'
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A concurrent matching upload is harmless only because the next job
+          # downloads both files and checks their hashes against our candidates.
+          skip-existing: true
+  check-testpypi:
+    needs: [preparation, publish-testpypi]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tagged-package
+          path: candidate-dist/
+      - name: Download and test the staged package
+        env:
+          PACKAGE: ${{ needs.preparation.outputs.package }}
+          DEPENDENCY_INDEX: ${{ github.event_name == 'push' && 'pypi' || 'testpypi' }}
+        run: >-
+          python -m scripts.check_published_package --package "$PACKAGE"
+          --index testpypi --dependency-index "$DEPENDENCY_INDEX" --candidates candidate-dist
+  publish:
+    needs: check-testpypi
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: pypi
@@ -50,3 +161,24 @@ jobs:
           name: tagged-package
           path: dist/
       - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+  check-pypi:
+    needs: [preparation, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tagged-package
+          path: candidate-dist/
+      - name: Download and test the production package
+        env:
+          PACKAGE: ${{ needs.preparation.outputs.package }}
+        run: >-
+          python -m scripts.check_published_package --package "$PACKAGE"
+          --index pypi --dependency-index pypi --candidates candidate-dist

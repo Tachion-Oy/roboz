@@ -1,4 +1,4 @@
-name: Release validation
+name: Tests and packaging
 on:
   workflow_call:
 permissions:
