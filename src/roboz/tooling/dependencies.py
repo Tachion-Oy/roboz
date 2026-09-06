@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import shutil
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, fields
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
-from collections.abc import Iterable
-from typing import Any, Callable, Mapping
+from typing import Callable, Mapping
+
+from roboz.tooling.context import Ctx
 
 
 class ExternalDependencyKind(StrEnum):
@@ -171,37 +173,19 @@ class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
             )
 
 
-@dataclass(frozen=True)
-class ToolDependency[TExternal: ExternalDependency]:
-    """One Tool's binding to an injected external dependency."""
-
-    resource: TExternal
-
-    def __post_init__(self) -> None:
-        """Validate that the bound resource follows the dependency contract."""
-        if not isinstance(self.resource, ExternalDependency):
-            raise TypeError("ToolDependency.resource must be an ExternalDependency")
-
-
-@dataclass(frozen=True)
-class FactoryCtx:
-    """Immutable marker base required by every ``@factory`` context."""
-
-
 def factory_context_dependencies(
-    context: FactoryCtx,
+    context: Ctx,
 ) -> tuple[
-    tuple[ToolDependency[Any], ...],
+    tuple[ExternalDependency, ...],
     tuple[ExternalDependencySource, ...],
 ]:
-    """Extract direct bindings and live sources from a factory context."""
-    dependencies: list[ToolDependency[Any]] = []
+    """Extract direct resources and live sources without materializing either."""
+    dependencies: list[ExternalDependency] = []
     sources: list[ExternalDependencySource] = []
-    for field in fields(context):
-        value = getattr(context, field.name)
+    for value in context._values.values():
         candidates = value if isinstance(value, tuple) else (value,)
         for candidate in candidates:
-            if isinstance(candidate, ToolDependency):
+            if isinstance(candidate, ExternalDependency):
                 dependencies.append(candidate)
             elif isinstance(candidate, ExternalDependencySource):
                 sources.append(candidate)

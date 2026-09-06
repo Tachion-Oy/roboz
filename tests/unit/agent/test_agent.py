@@ -1,11 +1,11 @@
 import json
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from roboz import Ctx
 from roboz.agent._notifications import (
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
@@ -34,7 +34,6 @@ from roboz.models.truncation import ERROR_RETRY, NO_MESSAGE, Severity
 from roboz.runtime import EventPipe, Output, PersistenceSink, RuntimeEvent
 from roboz.skill.core import Skill
 from roboz.tooling.decorators import factory, tool
-from roboz.tooling.dependencies import FactoryCtx
 from roboz.tools import stop, stop_after
 
 call_counts = defaultdict(list)
@@ -92,15 +91,8 @@ def noop_entry(input: Empty, messages: list[Message]) -> Str:
     return Str(value="ok")
 
 
-@dataclass(frozen=True)
-class _DefaultEmitCtx(FactoryCtx):
-    counter: list[int]
-
-
 @factory
-def default_emit_integration(
-    input: Empty, messages: list[Message], ctx: _DefaultEmitCtx
-) -> Str:
+def default_emit_integration(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
     """Default-tool stub: alternates truncation severities so the loop can be asserted."""
     box = ctx.counter
     box[0] += 1
@@ -924,7 +916,7 @@ def test_default_tool_integration_mixed_truncation():
         dict(action="stop", rationale="", value="done"),
     ]
     endpoint = MockLLMEndpoint(scripted)
-    emitter = default_emit_integration(_DefaultEmitCtx(counter=[0]))
+    emitter = default_emit_integration(Ctx(counter=[0]))
     agent = Agent(
         interaction_mode=None,
         name="mixed_truncation",

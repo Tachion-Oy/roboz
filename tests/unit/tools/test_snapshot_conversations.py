@@ -7,10 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
-from roboz.llm import MockLLMEndpoint, bind_endpoint
-from roboz.models import BaseNames, DEFAULT, Empty, Message, MessageKind, Role
-from roboz.runtime import EventPipe, LOG_DATA_ATTRIBUTE
+from roboz.llm import MockLLMEndpoint
+from roboz.models import DEFAULT, BaseNames, Empty, Message, MessageKind, Role
+from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import (
     ConversationRun,
     LoggedMessageRow,
@@ -19,7 +20,7 @@ from roboz.runtime.persistence import (
     message_to_logged_row,
     utc_iso_z,
 )
-from roboz.tools import SnapshotConversationsCtx, snapshot_conversations
+from roboz.tools import snapshot_conversations
 from roboz.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
     SNAPSHOT_COVERAGE_TAG,
@@ -90,9 +91,9 @@ def _ctx(
     agent_names: set[str] | None = None,
     threshold: int = 1,
     pipe: EventPipe | None = None,
-) -> SnapshotConversationsCtx:
-    return SnapshotConversationsCtx(
-        endpoint=bind_endpoint(endpoint),
+) -> Ctx:
+    return Ctx(
+        endpoint=endpoint,
         conversation_root=conversation_root,
         snapshot_root=snapshot_root,
         memory_root=snapshot_root.parent / "memory",
@@ -357,14 +358,10 @@ def test_rows_appended_during_snapshot_are_covered_by_the_next_sequence_cursor(
 
     first_result = snapshot_conversations(context)(input=Empty(), messages=[])
     first_snapshot = max(snapshot_root.rglob("*.md"))
-    first_document = parse_snapshot_document(
-        first_snapshot.read_text(encoding="utf-8")
-    )
+    first_document = parse_snapshot_document(first_snapshot.read_text(encoding="utf-8"))
     second_result = snapshot_conversations(context)(input=Empty(), messages=[])
     snapshots = sorted(snapshot_root.rglob("*.md"))
-    latest_document = parse_snapshot_document(
-        snapshots[-1].read_text(encoding="utf-8")
-    )
+    latest_document = parse_snapshot_document(snapshots[-1].read_text(encoding="utf-8"))
 
     assert "created=1" in first_result.value
     assert first_document.covered_through_sequence == 1
@@ -524,7 +521,9 @@ def test_bootstrap_payloads_are_normalized_before_thresholding(
     )(input=Empty(), messages=[])
 
     conversation = captured[0]
-    assert "[system prompt omitted] code_task_executor: Coordinates work." in conversation
+    assert (
+        "[system prompt omitted] code_task_executor: Coordinates work." in conversation
+    )
     assert "[startup context omitted: persistent memory injected]" in conversation
     assert "[auto-loaded skill omitted: cli_tools]" in conversation
     assert "raw system prompt" not in conversation
@@ -555,7 +554,9 @@ def test_snapshot_rechecks_cancellation_before_write(
         pipe.cancel()
         return "late summary"
 
-    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", cancel_summary)
+    monkeypatch.setattr(
+        snapshot_module, "summarize_conversation_segment", cancel_summary
+    )
     with pytest.raises(ExternalCallCancelledError):
         snapshot_conversations(
             _ctx(
@@ -596,7 +597,9 @@ def test_snapshot_skips_redundant_twin_when_watermark_advances(
         competing.write_text("competing snapshot", encoding="utf-8")
         return "redundant snapshot"
 
-    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", racing_summary)
+    monkeypatch.setattr(
+        snapshot_module, "summarize_conversation_segment", racing_summary
+    )
     result = snapshot_conversations(
         _ctx(
             conversation_root=conversation_root,
@@ -631,7 +634,9 @@ def test_snapshot_translates_provider_request_failure(
         del kwargs
         raise LLMProviderRequestError("bad request")
 
-    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", failing_summary)
+    monkeypatch.setattr(
+        snapshot_module, "summarize_conversation_segment", failing_summary
+    )
     with pytest.raises(LibrarianProviderRequestFailure):
         snapshot_conversations(
             _ctx(

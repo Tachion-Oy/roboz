@@ -145,8 +145,8 @@ By default the view includes tools from configured but not-yet-loaded skills so
 deployment preflight can report potential requirements. Pass
 `include_lazy_skills=False` for only the currently composed graph.
 
-Subagent and background-agent contexts bind the child agent itself as a live
-dependency source. Their wrapper Tools derive from the child's current Tool
+Subagent and background-agent tools bind `rz.Ctx(agent=child)` as a live
+dependency source through the child agent. Their wrapper Tools derive from the child's current Tool
 graph, so later `Agent.add()` calls remain visible without a parallel dependency
 snapshot.
 

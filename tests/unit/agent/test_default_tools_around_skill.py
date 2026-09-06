@@ -9,29 +9,22 @@ a skill was loaded*.
 These tests close that gap and pin the exact firing order.
 """
 
-from dataclasses import dataclass
-
+from roboz import Ctx
 from roboz.agent.core import Agent
-from roboz.tools import stop
-from roboz.models import Empty, Message, Str
-from roboz.tooling.decorators import factory, tool
-from roboz.tooling.dependencies import FactoryCtx
 from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.models import Empty, Message, Str
 from roboz.skill.core import Skill
-
-
-@dataclass(frozen=True)
-class _LogCtx(FactoryCtx):
-    log: list[str]
+from roboz.tooling.decorators import factory, tool
+from roboz.tools import stop
 
 
 def _default_tool(log: list[str]):
     @factory
-    def dflt(input: Empty, messages: list[Message], ctx: _LogCtx) -> Empty:
+    def dflt(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
         ctx.log.append("dflt")
         return Empty()
 
-    return dflt(_LogCtx(log=log))
+    return dflt(Ctx(log=log))
 
 
 def _recording_tool(name: str, log: list[str]):
@@ -106,12 +99,12 @@ def test_two_default_tools_fire_in_order_after_skill_load():
     )
 
     @factory
-    def d1(input: Empty, messages: list[Message], ctx: _LogCtx) -> Empty:
+    def d1(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
         ctx.log.append("d1")
         return Empty()
 
     @factory
-    def d2(input: Empty, messages: list[Message], ctx: _LogCtx) -> Empty:
+    def d2(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
         ctx.log.append("d2")
         return Empty()
 
@@ -126,7 +119,7 @@ def test_two_default_tools_fire_in_order_after_skill_load():
         name="two_default_skill_agent",
         tools=[stop],
         system_prompt="prompt",
-        default_tools=[d1(_LogCtx(log=log)), d2(_LogCtx(log=log))],
+        default_tools=[d1(Ctx(log=log)), d2(Ctx(log=log))],
         agent_endpoint=MockLLMEndpoint(script),
         skills=[skill],
         initial_messages=None,

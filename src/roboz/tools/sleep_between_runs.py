@@ -1,16 +1,17 @@
 """Cancellable wait between deterministic Librarian maintenance cycles."""
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from time import sleep
 from typing import Final
 
 from roboz.exceptions import ExternalCallCancelledError
-from roboz.models import All, Message, NO_MESSAGE, Stop, Str
+from roboz.models import NO_MESSAGE, All, Message, Stop, Str
 from roboz.runtime.persistence import active_marker_paths
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
 from roboz.tools._identifiers import SLEEP_BETWEEN_RUNS_TOOL_NAME
-from roboz.tools.memory_contexts import SleepBetweenRunsCtx
 
 SLEEP_POLL_SECONDS: Final[float] = 1.0
 
@@ -25,9 +26,7 @@ def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
 
 
 @factory
-def sleep_between_runs(
-    input: All, messages: list[Message], ctx: SleepBetweenRunsCtx
-) -> Str | Stop:
+def sleep_between_runs(input: All, messages: list[Message], ctx: Ctx) -> Str | Stop:
     """Wait for the next cycle, or stop once the watched project becomes idle."""
     del input, messages
     seconds = max(_MIN_SLEEP_SECONDS, float(ctx.seconds))
@@ -35,13 +34,9 @@ def sleep_between_runs(
 
     active_markers: tuple[Path, ...] = ()
     if ctx.conversation_root is not None:
-        active_markers = active_marker_paths(
-            ctx.conversation_root, ctx.agent_names
-        )
+        active_markers = active_marker_paths(ctx.conversation_root, ctx.agent_names)
         if not active_markers:
-            return Stop(
-                value=f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_PROJECT_IDLE_STATUS}"
-            )
+            return Stop(value=f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_PROJECT_IDLE_STATUS}")
 
     slept = _MIN_SLEEP_SECONDS
     while slept < seconds:
@@ -52,9 +47,7 @@ def sleep_between_runs(
         _raise_if_cancelled(ctx.is_cancelled)
         if any(not marker.exists() for marker in active_markers):
             return Str(
-                value=(
-                    f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_ACTIVE_RUN_ENDED_STATUS}"
-                ),
+                value=(f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_ACTIVE_RUN_ENDED_STATUS}"),
                 truncation=NO_MESSAGE,
             )
     return Str(
@@ -64,3 +57,11 @@ def sleep_between_runs(
 
 
 __all__ = ["SLEEP_POLL_SECONDS", "sleep_between_runs"]
+
+
+sleep_between_runs._prepare_ctx = partial(
+    _prepare_context,
+    required=("seconds",),
+    defaults={"is_cancelled": None, "conversation_root": None},
+    default_factories={"agent_names": set},
+)

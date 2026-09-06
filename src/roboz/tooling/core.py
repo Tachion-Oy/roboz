@@ -5,20 +5,19 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from logging import getLogger
-from typing import Any, Callable, Sequence, Type, get_type_hints
+from typing import Any, Callable, Sequence, Type, cast, get_type_hints
 
 from roboz._naming import validate_public_name
 from roboz.models import Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
+from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
+from roboz.tooling.context import Ctx
 from roboz.tooling.dependencies import (
     ExternalDependency,
     ExternalDependencySource,
-    FactoryCtx,
-    ToolDependency,
     dedupe_external_dependencies,
     factory_context_dependencies,
 )
-from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
 
 logger = getLogger(__name__)
 
@@ -42,7 +41,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         chain_condition: (Callable[[TInput], bool] | Callable[[TInput | TOther], bool]),
         description: str = "",
         _id: str | None = None,
-        _dependencies: tuple[ToolDependency[Any], ...] = (),
+        _dependencies: tuple[ExternalDependency, ...] = (),
         _dependency_sources: tuple[ExternalDependencySource, ...] = (),
     ):
         """Initialize a tool from its callable, description, and chain edges."""
@@ -109,14 +108,14 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         return self._id
 
     @property
-    def dependencies(self) -> tuple[ToolDependency[Any], ...]:
+    def dependencies(self) -> tuple[ExternalDependency, ...]:
         """Return direct external-resource bindings captured by this tool."""
         return self._dependencies
 
     @property
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Return deduplicated direct and live graph dependencies."""
-        candidates = [binding.resource for binding in self._dependencies]
+        candidates = list(self._dependencies)
         for source in self._dependency_sources:
             candidates.extend(source.external_dependencies())
         return dedupe_external_dependencies(candidates)
@@ -221,7 +220,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
 class Factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: FactoryCtx,
+    TCtx: Ctx,
 ]:
     """Context-bound constructor for typed tools and their dependencies."""
 
@@ -243,6 +242,7 @@ class Factory[
     ) -> None:
         """Initialize a reusable factory from a typed context callable."""
         self._func = func
+        self._prepare_ctx: Callable[[Ctx], Ctx] = lambda ctx: ctx
         self._chained_to = chained_to
         self._chain_condition = chain_condition
         self.name = func.__name__
@@ -265,8 +265,10 @@ class Factory[
 
     def __call__(self, ctx: TCtx) -> Tool[TInput, TOutput]:
         """Bind an immutable context and materialize its executable tool."""
-        if not isinstance(ctx, FactoryCtx):
-            raise TypeError("factory context must inherit FactoryCtx")
+        if not isinstance(ctx, Ctx):
+            raise TypeError("factory context must be a Ctx")
+
+        ctx = cast(TCtx, self._prepare_ctx(ctx))
 
         def _func_ctx(input: TInput, messages: list[Message]) -> TOutput:
             return self._func(input=input, messages=messages, ctx=ctx)

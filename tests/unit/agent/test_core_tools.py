@@ -4,28 +4,28 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from roboz.agent.background_agent import run_background_agent
-from roboz.agent.core import Agent
-from roboz.agent.prompt_agent_tool import prompt_agent
-from roboz.tools import (
-    MessageCtx,
-    PromptUser,
-    PromptUserCtx,
-    message_user,
-    prompt_user,
-    prompt_user_at_start,
-    stop,
-)
-from roboz.agent.subagent import run_subagent
-from roboz.runtime import io as utils
-from roboz.models import Empty, Message, Stop, Str
-from roboz.models.truncation import NO_MESSAGE
-from roboz.runtime import Output
-from roboz.models import Role
+from roboz import Ctx
 from roboz.agent._identifiers import (
     PROMPT_AGENT_TOOL_NAME,
     RUN_BACKGROUND_AGENT_TOOL_NAME,
     RUN_SUBAGENT_TOOL_NAME,
+)
+from roboz.agent.background_agent import run_background_agent
+from roboz.agent.core import Agent
+from roboz.agent.prompt_agent_tool import prompt_agent
+from roboz.agent.subagent import run_subagent
+from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.models import Empty, Message, Role, Stop, Str
+from roboz.models.truncation import NO_MESSAGE
+from roboz.runtime import Output
+from roboz.runtime import io as utils
+from roboz.tooling.decorators import tool
+from roboz.tools import (
+    PromptUser,
+    message_user,
+    prompt_user,
+    prompt_user_at_start,
+    stop,
 )
 from roboz.tools._identifiers import (
     MESSAGE_USER_TOOL_NAME,
@@ -33,12 +33,10 @@ from roboz.tools._identifiers import (
     PROMPT_USER_TOOL_NAME,
     STOP_TOOL_NAME,
 )
-from roboz.tooling.decorators import tool
-from roboz.llm.endpoints import MockLLMEndpoint
 
 
 def test_prompt_user_at_start_skips_if_assistant_present():
-    tool = prompt_user_at_start(MessageCtx(message="m"))
+    tool = prompt_user_at_start(Ctx(message="m"))
     result = tool(
         input=Str(value="prompt text"),
         messages=[Message(role=Role.ASSISTANT, content="{}")],
@@ -48,7 +46,7 @@ def test_prompt_user_at_start_skips_if_assistant_present():
 
 
 def test_prompt_user_at_start_returns_interaction_reply(bind_user_io):
-    tool = prompt_user_at_start(MessageCtx(message="m"))
+    tool = prompt_user_at_start(Ctx(message="m"))
     io = bind_user_io(["from user"])
     out = tool(input=Str(value="question"), messages=[])
     assert out.value == "from user"
@@ -92,7 +90,7 @@ def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
 
 
 def test_prompt_user_returns_reply(bind_user_io):
-    tool = prompt_user(PromptUserCtx(timeout_reply="continuing"))
+    tool = prompt_user(Ctx(timeout_reply="continuing"))
     io = bind_user_io(["hi"])
     out = tool(input=PromptUser(value="q?"), messages=[])
     assert out.value == "hi"
@@ -101,7 +99,7 @@ def test_prompt_user_returns_reply(bind_user_io):
 
 
 def test_prompt_user_forwards_timeout(bind_user_io):
-    tool = prompt_user(PromptUserCtx(timeout_reply="continuing"))
+    tool = prompt_user(Ctx(timeout_reply="continuing"))
     io = bind_user_io(["hi"])
     out = tool(input=PromptUser(value="q?", timeout_seconds=0.5), messages=[])
     assert out.value == "hi"
@@ -109,7 +107,7 @@ def test_prompt_user_forwards_timeout(bind_user_io):
 
 
 def test_prompt_user_uses_timeout_reply_when_no_response(bind_user_io):
-    tool = prompt_user(PromptUserCtx(timeout_reply="continuing"))
+    tool = prompt_user(Ctx(timeout_reply="continuing"))
     bind_user_io([None])
     out = tool(input=PromptUser(value="q?", timeout_seconds=0.01), messages=[])
     assert out.value == "continuing"
@@ -141,7 +139,7 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
             {"action": "stop", "rationale": "done", "value": "ok"},
         ]
     )
-    start_only = prompt_user_at_start(MessageCtx(message="m"))
+    start_only = prompt_user_at_start(Ctx(message="m"))
     agent = Agent(
         interaction_mode=Output.CLI,
         name="ask_default_tool",

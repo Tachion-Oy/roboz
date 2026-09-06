@@ -1,31 +1,25 @@
-from dataclasses import dataclass
-
 import pytest
 
-from roboz.agent.background_agent import BackgroundAgentCtx, run_background_agent
+from roboz import Ctx
+from roboz.agent.background_agent import run_background_agent
 from roboz.agent.core import Agent
-from roboz.agent.subagent import SubagentCtx, run_subagent
-from roboz.models import Empty, Message
-from roboz.tooling.decorators import factory
-from roboz.tooling.dependencies import ExecutableDependency, FactoryCtx, ToolDependency
+from roboz.agent.subagent import run_subagent
 from roboz.llm.endpoints import LLMEndpoint, MockLLMEndpoint
+from roboz.models import Empty, Message
 from roboz.skill.core import Skill
-
-
-@dataclass(frozen=True)
-class ExecutableCtx(FactoryCtx):
-    executable: ToolDependency[ExecutableDependency]
+from roboz.tooling.decorators import factory
+from roboz.tooling.dependencies import ExecutableDependency
 
 
 @factory
-def uses_executable(input: Empty, messages: list[Message], ctx: ExecutableCtx) -> Empty:
+def uses_executable(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
     return input
 
 
 def _bound(name: str):
-    return uses_executable(
-        ExecutableCtx(ToolDependency(ExecutableDependency(name)))
-    ).copy(name=f"use_{name}")
+    return uses_executable(Ctx(executable=ExecutableDependency(name))).copy(
+        name=f"use_{name}"
+    )
 
 
 def _agent(*, endpoint=None) -> Agent:
@@ -102,8 +96,8 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     child = _agent()
     expected = _ids(child)
 
-    subagent_tool = run_subagent(SubagentCtx(child))
-    background_tool = run_background_agent(BackgroundAgentCtx(child))
+    subagent_tool = run_subagent(Ctx(agent=child))
+    background_tool = run_background_agent(Ctx(agent=child))
     copied_subagent_tool = subagent_tool.copy()
 
     assert {

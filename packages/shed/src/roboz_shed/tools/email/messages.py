@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from roboz import Ctx
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -10,7 +11,6 @@ from roboz.exceptions import (
 from roboz.models import Message, Str
 from roboz.runtime import interact_with_user
 from roboz.tooling.decorators import factory
-
 from roboz_shed.email_inputs import (
     DownloadEmailAttachment,
     ReadEmail,
@@ -23,14 +23,14 @@ from roboz_shed.models import (
 
 from .contracts import EmailMailbox, EmailProviderError, EmailSummary
 from .drafts import resolve_search_request
-from .runtime import EmailRuntimeContext, run_email_call
+from .runtime import _prepare_email_context, run_email_call
 
 
 @factory
 def search_email(
     input: SearchEmail,
     messages: list[Message],
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
 ) -> Str:
     """Search email metadata and previews without opening full message bodies."""
     del messages
@@ -40,7 +40,7 @@ def search_email(
             ctx,
             label="email-search",
             cancelled_message="Email search was cancelled",
-            operation=lambda: ctx.service.resource.search_messages(
+            operation=lambda: ctx.service.search_messages(
                 request, is_cancelled=ctx.is_cancelled
             ),
         )
@@ -98,7 +98,7 @@ def _format_search_results(results: tuple[EmailSummary, ...]) -> str:
 def read_email(
     input: ReadEmail,
     messages: list[Message],
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
 ) -> Str:
     """Open one referenced email.
 
@@ -119,7 +119,7 @@ def read_email(
             ctx,
             label="email-read",
             cancelled_message="Email read was cancelled",
-            operation=lambda: ctx.service.resource.read_message(
+            operation=lambda: ctx.service.read_message(
                 mailbox,
                 input.source_message_ref,
                 is_cancelled=ctx.is_cancelled,
@@ -196,7 +196,7 @@ def _confirm_inbox_read(source_message_ref: str, *, pipe: object | None) -> bool
 def execute_attachment_download(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
 ) -> Str:
     """Download an approved email attachment to its guarded destination."""
     del messages
@@ -214,7 +214,7 @@ def execute_attachment_download(
             ctx,
             label="email-download-attachment",
             cancelled_message="Email attachment download was cancelled",
-            operation=lambda: ctx.service.resource.download_attachment(
+            operation=lambda: ctx.service.download_attachment(
                 payload.attachment_ref, is_cancelled=ctx.is_cancelled
             ),
         )
@@ -246,3 +246,8 @@ def execute_attachment_download(
 
 def _write_attachment(destination: Path, data: bytes) -> None:
     destination.write_bytes(data)
+
+
+search_email._prepare_ctx = _prepare_email_context
+read_email._prepare_ctx = _prepare_email_context
+execute_attachment_download._prepare_ctx = _prepare_email_context

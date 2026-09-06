@@ -4,6 +4,11 @@
 
 ### Changed
 
+- **Breaking:** Construct tool contexts with `Ctx(**values)` and pass resources
+  directly. Remove `FactoryCtx`, specialized context classes, `ToolDependency`,
+  and endpoint binding wrappers; `Tool.dependencies` now returns resources.
+  See `docs/context-migration.md` for replacements and state ownership.
+
 - Define and enforce Google-style source docstrings, and normalize tool
   docstrings before including them in agent prompts.
 

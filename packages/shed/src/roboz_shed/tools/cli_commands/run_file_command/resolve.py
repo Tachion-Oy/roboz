@@ -1,12 +1,14 @@
 """Resolve ``run_file_command`` inputs before permission checks."""
 
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
+from roboz import Ctx
 from roboz.models import Message
 from roboz.models.truncation import Severity, Truncation
+from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
-
 from roboz_shed.models import (
     CommandReady,
     GuardFileSingle,
@@ -27,7 +29,7 @@ from roboz_shed.tools.cli_commands.utilities.constants import (
 )
 from roboz_shed.tools.cli_commands.utilities.formatting import cli_help_message
 from roboz_shed.tools.cli_commands.utilities.path_extractors import resolve_path_indices
-from roboz_shed.tools.types import ResolvedFileCommand, RunFileCommandsCtx
+from roboz_shed.tools.types import ResolvedFileCommand
 from roboz_shed.tools.utils import resolve_path_token
 
 
@@ -232,7 +234,7 @@ def _argv_with_resolved_paths(
     return resolved_argv
 
 
-def _get_help(input: RunFileCommands, ctx: RunFileCommandsCtx) -> Help | None:
+def _get_help(input: RunFileCommands, ctx: Ctx) -> Help | None:
     cli_command = input.file_commands[0]
     if cli_command.command.strip().lower() == "help" and not cli_command.argv:
         return Help(
@@ -365,7 +367,7 @@ def _move_destinations(
 
 @factory
 def resolve_input(
-    input: RunFileCommands, messages: list[Message], ctx: RunFileCommandsCtx
+    input: RunFileCommands, messages: list[Message], ctx: Ctx
 ) -> ResolvedFileCommand | Help | ParseError:
     """Prepare requested file commands for permission checks and execution."""
     specs = ctx.specs
@@ -386,3 +388,17 @@ def resolve_input(
     return ResolvedFileCommand(
         original_input=input, items=_guard_items(input, base, spec)
     )
+
+
+resolve_input._prepare_ctx = partial(
+    _prepare_context,
+    required=(
+        "base",
+        "specs",
+        "allow_rules",
+        "deny_rules",
+        "ask_rules",
+        "takes_precedence",
+        "default_verdict",
+    ),
+)

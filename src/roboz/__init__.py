@@ -2,10 +2,7 @@
 
 from roboz.agent import (
     Agent,
-    BackgroundAgentCtx,
     BackgroundAgentStatus,
-    PromptAgentCtx,
-    SubagentCtx,
     prompt_agent,
     run_background_agent,
     run_subagent,
@@ -33,18 +30,15 @@ from roboz.tooling import (
     ExternalDependencyKind,
     ExternalDependencySource,
     Factory,
-    FactoryCtx,
     LazyExternalDependency,
     ModelEndpointDependency,
     NetworkServiceDependency,
     Tool,
-    ToolDependency,
 )
+from roboz.tooling.context import Ctx
 from roboz.tooling.decorators import factory, tool
 from roboz.tools import (
-    MessageCtx,
     PromptUser,
-    PromptUserCtx,
     message_user,
     prompt_user,
     prompt_user_at_start,
@@ -53,10 +47,10 @@ from roboz.tools import (
 )
 
 __all__ = [
+    "Ctx",
     "Agent",
     "AgentBaseModel",
     "All",
-    "BackgroundAgentCtx",
     "BackgroundAgentStatus",
     "Empty",
     "ExecutableDependency",
@@ -64,7 +58,6 @@ __all__ = [
     "ExternalDependencyKind",
     "ExternalDependencySource",
     "Factory",
-    "FactoryCtx",
     "HashMaps",
     "Int",
     "Invoke",
@@ -72,21 +65,16 @@ __all__ = [
     "Location",
     "LocationStr",
     "Message",
-    "MessageCtx",
     "ModelEndpointDependency",
     "NetworkServiceDependency",
-    "PromptAgentCtx",
     "PromptUser",
-    "PromptUserCtx",
     "Role",
     "Skill",
     "Stop",
     "StopLocation",
     "Str",
     "Strs",
-    "SubagentCtx",
     "Tool",
-    "ToolDependency",
     "factory",
     "message_user",
     "prompt_agent",

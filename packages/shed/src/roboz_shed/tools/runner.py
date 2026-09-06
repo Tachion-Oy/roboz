@@ -3,20 +3,20 @@
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
-from roboz import FactoryCtx
+from roboz import Ctx
+from roboz.models import Message, Str
+from roboz.models.truncation import Severity, Truncation, TruncationSpec
 from roboz.tooling import (
     ExecutableDependency,
     ExternalDependency,
     ExternalDependencySource,
-    ToolDependency,
 )
-from roboz.models import Message, Str
-from roboz.models.truncation import Severity, Truncation, TruncationSpec
+from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
-
 from roboz_shed.models import (
     CommandReady,
     GuardFilesResult,
@@ -154,30 +154,30 @@ def _oversized_output_result(
 class ExecutableCommandCatalog(ExternalDependencySource):
     """Immutable command implementations and their inspectable dependencies."""
 
-    bindings: Mapping[str, ToolDependency[ExecutableDependency]]
+    bindings: Mapping[str, ExecutableDependency]
 
     def __post_init__(self) -> None:
         """Validate and freeze executable bindings by command name."""
         bindings = dict(self.bindings)
         for command_name, binding in bindings.items():
-            if command_name != binding.resource.executable:
+            if command_name != binding.executable:
                 raise ValueError(
                     "command binding must use its executable name: "
-                    f"{command_name!r} != {binding.resource.executable!r}"
+                    f"{command_name!r} != {binding.executable!r}"
                 )
         object.__setattr__(self, "bindings", MappingProxyType(bindings))
 
     @classmethod
     def from_names(cls, names: Iterable[str]) -> "ExecutableCommandCatalog":
         """Build a command catalog from unique executable names."""
-        bindings: dict[str, ToolDependency[ExecutableDependency]] = {}
+        bindings: dict[str, ExecutableDependency] = {}
         for name in names:
             if name in bindings:
                 raise ValueError(f"duplicate executable command: {name}")
-            bindings[name] = ToolDependency(ExecutableDependency(name))
+            bindings[name] = ExecutableDependency(name)
         return cls(bindings)
 
-    def binding_for(self, command_name: str) -> ToolDependency[ExecutableDependency]:
+    def binding_for(self, command_name: str) -> ExecutableDependency:
         """Return the declared binding for a resolved command."""
         try:
             return self.bindings[command_name]
@@ -188,22 +188,14 @@ class ExecutableCommandCatalog(ExternalDependencySource):
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Return all executable dependencies in catalog order."""
-        return tuple(binding.resource for binding in self.bindings.values())
-
-
-@dataclass(frozen=True)
-class ExecuteFileCommandCtx(FactoryCtx):
-    """Executable catalog and output policy bound to command execution."""
-
-    truncation: TruncationSpec
-    commands: ExecutableCommandCatalog
+        return tuple(self.bindings.values())
 
 
 @factory
 def execute_file_command(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: ExecuteFileCommandCtx,
+    ctx: Ctx,
 ) -> Str | RunFileCommands:
     """Run a permitted file command and return bounded output."""
     truncation = ctx.truncation
@@ -224,7 +216,7 @@ def execute_file_command(
     new_input = input.original_input
 
     try:
-        executable = ctx.commands.binding_for(ready.command_name).resource
+        executable = ctx.commands.binding_for(ready.command_name)
         argv = [str(executable.require()), *argv[1:]]
         ok, out = run_cli_argv(argv, cwd, stdin, command_line)
         if len(out) > MAX_COMMAND_OUTPUT_CHARS:
@@ -259,3 +251,8 @@ def execute_file_command(
             case _:
                 msg = str(e)
         return _accumulate_error(new_input, command_line, msg, truncation)
+
+
+execute_file_command._prepare_ctx = partial(
+    _prepare_context, required=("truncation", "commands")
+)

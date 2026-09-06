@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Final
 
 from roboz.agent import Agent
-from roboz.llm import EndpointLike, bind_endpoint
+from roboz.llm import EndpointLike
+from roboz.llm.binding import _validate_endpoint
 from roboz.runtime import EventPipe, EventSink, default_event_sinks
 from roboz.tooling import Tool
+from roboz.tooling.context import Ctx
 from roboz.tools._identifiers import (
     CONSOLIDATE_MEMORY_TOOL_NAME,
     LIBRARIAN_AGENT_NAME,
@@ -19,14 +21,8 @@ from roboz.tools._identifiers import (
     SLEEP_BETWEEN_RUNS_TOOL_NAME,
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
 )
-from roboz.tools.consolidate_memory import consolidate_memory
 from roboz.tools.compactification import DEFAULT_MAX_CHARS_TOLERANCE_PERCENT
-from roboz.tools.memory_contexts import (
-    ConsolidateMemoryCtx,
-    PurgeFilesCtx,
-    SleepBetweenRunsCtx,
-    SnapshotConversationsCtx,
-)
+from roboz.tools.consolidate_memory import consolidate_memory
 from roboz.tools.purge_files import purge_files
 from roboz.tools.sleep_between_runs import sleep_between_runs
 from roboz.tools.snapshot_conversations import snapshot_conversations
@@ -121,9 +117,7 @@ class LibrarianConstructor:
     def __post_init__(self) -> None:
         """Require exactly one source for the snapshot endpoint."""
         if (self.snapshot_endpoint is None) == (self.endpoint_factory is None):
-            raise ValueError(
-                "set exactly one of snapshot_endpoint or endpoint_factory"
-            )
+            raise ValueError("set exactly one of snapshot_endpoint or endpoint_factory")
 
     def pipeline(
         self,
@@ -140,12 +134,13 @@ class LibrarianConstructor:
             else self.snapshot_endpoint
         )
         assert endpoint is not None
-        endpoint_binding = bind_endpoint(endpoint)
+        _validate_endpoint(endpoint)
+        endpoint_binding = endpoint
         watched_agents = set(agent_names)
         tuning = self.tuning
 
         snapshot = snapshot_conversations(
-            SnapshotConversationsCtx(
+            Ctx(
                 endpoint=endpoint_binding,
                 conversation_root=paths.conversation_root,
                 snapshot_root=paths.snapshot_root,
@@ -159,7 +154,7 @@ class LibrarianConstructor:
             )
         ).copy(name=SNAPSHOT_CONVERSATIONS_TOOL_NAME)
         consolidate = consolidate_memory(
-            ConsolidateMemoryCtx(
+            Ctx(
                 endpoint=endpoint_binding,
                 snapshot_root=paths.snapshot_root,
                 memory_root=paths.memory_root,
@@ -174,14 +169,14 @@ class LibrarianConstructor:
             )
         ).copy(name=CONSOLIDATE_MEMORY_TOOL_NAME)
         purge_logs = purge_files(
-            PurgeFilesCtx(
+            Ctx(
                 folders=[paths.conversation_root],
                 pattern=JSON_ARTIFACT_PATTERN,
                 max_files=tuning.max_log_files,
             )
         ).copy(name=PURGE_LOGS_TOOL_NAME)
         purge_snapshots = purge_files(
-            PurgeFilesCtx(
+            Ctx(
                 folders=[paths.snapshot_root],
                 pattern=MARKDOWN_ARTIFACT_PATTERN,
                 max_files=tuning.max_snapshot_files,
@@ -189,14 +184,14 @@ class LibrarianConstructor:
             )
         ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME)
         purge_memory = purge_files(
-            PurgeFilesCtx(
+            Ctx(
                 folders=[paths.memory_root],
                 pattern=MARKDOWN_ARTIFACT_PATTERN,
                 max_files=tuning.max_memory_files,
             )
         ).copy(name=PURGE_MEMORY_TOOL_NAME)
         wait = sleep_between_runs(
-            SleepBetweenRunsCtx(
+            Ctx(
                 seconds=tuning.sleep_seconds,
                 is_cancelled=probe.is_cancelled,
                 conversation_root=paths.conversation_root,

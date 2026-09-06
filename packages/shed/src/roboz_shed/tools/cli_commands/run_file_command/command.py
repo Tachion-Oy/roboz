@@ -3,30 +3,20 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz.runtime.pipe import EventPipe
+from roboz import Ctx
 from roboz.models.truncation import TruncationSpec
+from roboz.runtime.pipe import EventPipe
 from roboz.tooling import Tool
-
 from roboz_shed.identifiers import (
     CLI_TOOLS_SKILL_NAME,
     RUN_FILE_COMMAND_PASSIVE_TOOL_NAME,
     RUN_FILE_COMMAND_TOOL_NAME,
 )
-from roboz_shed.models import (
-    ActionVerdict,
-    GuardCtx,
-    PermissionRule,
-    RunFileCommands,
-)
+from roboz_shed.models import ActionVerdict, PermissionRule, RunFileCommands
 from roboz_shed.tools.cli_commands.utilities.cmd_spec import CmdSpec
 from roboz_shed.tools.guard import build_guarded_tool_chain
-from roboz_shed.tools.runner import (
-    ExecutableCommandCatalog,
-    ExecuteFileCommandCtx,
-    execute_file_command,
-)
+from roboz_shed.tools.runner import ExecutableCommandCatalog, execute_file_command
 from roboz_shed.tools.truncation import default_cli_truncation
-from roboz_shed.tools.types import RunFileCommandsCtx
 from roboz_shed.tools.utils import resolve_tool_base
 
 from .resolve import _validate_input, resolve_input
@@ -49,7 +39,7 @@ def _normalize_context(
     default_verdict: ActionVerdict,
     command_specs: Sequence[CmdSpec] | None,
     pipe: EventPipe | None,
-) -> tuple[RunFileCommandsCtx, GuardCtx]:
+) -> tuple[Ctx, Ctx]:
     allow = list(allow_rules if allow_rules else [])
     deny = list(deny_rules if deny_rules else [])
     ask = list(ask_rules if ask_rules else [])
@@ -61,7 +51,7 @@ def _normalize_context(
     )
     resolved_base = resolve_tool_base(base)
 
-    cli_ctx = RunFileCommandsCtx(
+    cli_ctx = Ctx(
         specs=specs,
         base=resolved_base,
         allow_rules=allow,
@@ -70,7 +60,7 @@ def _normalize_context(
         takes_precedence=precedence,
         default_verdict=default_verdict,
     )
-    guard_ctx = GuardCtx(
+    guard_ctx = Ctx(
         base=resolved_base,
         takes_precedence=precedence,
         default_verdict=default_verdict,
@@ -148,10 +138,10 @@ def get_run_file_command(
         entry=run_file_command_tool,
         guard_ctx=guard_ctx,
         execute=execute_file_command(
-            ExecuteFileCommandCtx(
+            Ctx(
                 truncation=execute_cli_truncation,
                 commands=ExecutableCommandCatalog.from_names(
-                    spec.name for spec in cli_ctx.specs
+                    (spec.name for spec in cli_ctx.specs)
                 ),
             )
         ),

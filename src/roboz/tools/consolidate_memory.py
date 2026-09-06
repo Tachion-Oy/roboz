@@ -3,24 +3,27 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Final
 
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
-from roboz.llm import endpoint_resource
-from roboz.models import All, Message, NO_MESSAGE, Str
+from roboz.models import NO_MESSAGE, All, Message, Str
 from roboz.runtime import log_with_data
 from roboz.runtime.persistence import active_marker_paths
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
 from roboz.tools._identifiers import CONSOLIDATE_MEMORY_TOOL_NAME
 from roboz.tools._snapshot_metadata import parse_snapshot_document
-from roboz.tools.compactification import summarize_conversation_segment
+from roboz.tools.compactification import (
+    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
+    summarize_conversation_segment,
+)
 from roboz.tools.consolidate_memory_prompts import (
     CONSOLIDATE_MEMORY_INSTRUCTIONS,
     CONSOLIDATE_MEMORY_SYSTEM_PROMPT,
 )
 from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_contexts import ConsolidateMemoryCtx
 from roboz.tools.memory_files import (
     MARKDOWN_SUFFIX,
     UTF8_ENCODING,
@@ -82,9 +85,7 @@ def _should_consolidate(
     return (now - oldest).total_seconds() >= max_age_seconds
 
 
-def _snapshot_text(
-    snapshot_root: Path, pending: list[TimestampedFile]
-) -> str:
+def _snapshot_text(snapshot_root: Path, pending: list[TimestampedFile]) -> str:
     return "\n\n".join(
         f"### Snapshot: {path.parent.relative_to(snapshot_root).as_posix()}\n\n"
         f"{parse_snapshot_document(path.read_text(encoding=UTF8_ENCODING)).content}"
@@ -158,8 +159,7 @@ def build_provenance_block(
             )
         else:
             lines.append(
-                f"- `{descriptor.path}` - conversation "
-                f"`{descriptor.conversation_id}`"
+                f"- `{descriptor.path}` - conversation `{descriptor.conversation_id}`"
             )
     if previous_memory_path is not None:
         previous_path = relative_or_absolute(
@@ -181,9 +181,7 @@ def _not_consolidated_result(pending_count: int, *, superseded: bool = False) ->
 
 
 @factory
-def consolidate_memory(
-    input: All, messages: list[Message], ctx: ConsolidateMemoryCtx
-) -> Str:
+def consolidate_memory(input: All, messages: list[Message], ctx: Ctx) -> Str:
     """Fold eligible snapshots into a new append-only persistent memory file."""
     del input, messages
     if ctx.pipe is not None:
@@ -204,7 +202,7 @@ def consolidate_memory(
 
     try:
         summary = summarize_conversation_segment(
-            endpoint=endpoint_resource(ctx.endpoint),
+            endpoint=ctx.endpoint,
             system_prompt=CONSOLIDATE_MEMORY_SYSTEM_PROMPT,
             instructions=CONSOLIDATE_MEMORY_INSTRUCTIONS,
             max_chars=ctx.max_chars,
@@ -212,9 +210,7 @@ def consolidate_memory(
             conversation=_summary_input(
                 snapshot_root=ctx.snapshot_root,
                 previous_memory=(
-                    strip_provenance(
-                        memory_location.read_text(encoding=UTF8_ENCODING)
-                    )
+                    strip_provenance(memory_location.read_text(encoding=UTF8_ENCODING))
                     if memory_location is not None
                     else None
                 ),
@@ -273,8 +269,7 @@ def consolidate_memory(
     )
     return Str(
         value=(
-            f"{CONSOLIDATE_MEMORY_TOOL_NAME}: pending={len(pending)}, "
-            "consolidated=1"
+            f"{CONSOLIDATE_MEMORY_TOOL_NAME}: pending={len(pending)}, consolidated=1"
         ),
         truncation=NO_MESSAGE,
     )
@@ -289,3 +284,23 @@ __all__ = [
     "strip_leading_memory_title",
     "strip_provenance",
 ]
+
+
+consolidate_memory._prepare_ctx = partial(
+    _prepare_context,
+    required=(
+        "endpoint",
+        "snapshot_root",
+        "memory_root",
+        "conversation_root",
+        "agent_names",
+        "min_pending_snapshots",
+        "max_pending_age_seconds",
+        "max_chars",
+    ),
+    defaults={
+        "max_chars_tolerance_percent": DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
+        "timeout_s": None,
+        "pipe": None,
+    },
+)

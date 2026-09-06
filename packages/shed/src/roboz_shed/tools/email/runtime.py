@@ -1,33 +1,19 @@
 """Shared runtime state and cancellable provider execution."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from functools import partial
 from typing import TypeVar
 
-from roboz import FactoryCtx
+from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.runtime import run_cancellable_external_call
-from roboz.runtime.pipe import EventPipe
-from roboz.tooling import ToolDependency
-
-from .contracts import EmailService
+from roboz.tooling.context import _prepare_context
 
 T = TypeVar("T")
 
 
-@dataclass(frozen=True)
-class EmailRuntimeContext(FactoryCtx):
-    """Provider binding, cancellation, timeout, and prompt policy for email tools."""
-
-    service: ToolDependency[EmailService]
-    is_cancelled: Callable[[], bool]
-    timeout_s: float
-    pipe: EventPipe | None
-    prompt_before_inbox_read: bool = False
-
-
 def run_email_call(
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
     *,
     label: str,
     cancelled_message: str,
@@ -45,3 +31,10 @@ def run_email_call(
     if ctx.is_cancelled():
         raise ExternalCallCancelledError(cancelled_message)
     return result
+
+
+_prepare_email_context = partial(
+    _prepare_context,
+    required=("service", "is_cancelled", "timeout_s", "pipe"),
+    defaults={"prompt_before_inbox_read": False},
+)

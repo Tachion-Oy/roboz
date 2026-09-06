@@ -8,6 +8,11 @@
 
 ### Changed
 
+- **Breaking:** Replace specialized tool contexts with `roboz.Ctx(**values)`
+  and use service/executable resources directly. Existing builders retain their
+  defaults and guard behavior. See `docs/context-migration.md` in the repository
+  for the low-level API migration.
+
 - Document Shed's agent-facing tools under the shared docstring contract.
 
 ### Fixed

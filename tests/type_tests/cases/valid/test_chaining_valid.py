@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import assert_type
 
-from roboz import FactoryCtx, Int, Message, Stop, Str, Tool, factory, tool
-
-
-@dataclass(frozen=True)
-class Ctx(FactoryCtx):
-    pass
+from roboz import Ctx, Int, Message, Stop, Str, Tool, factory, tool
 
 
 @tool

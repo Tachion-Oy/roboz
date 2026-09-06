@@ -24,7 +24,7 @@ from roboz.agent._notifications import (
 )
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.agent._tool_observer import ToolInvocationObserver
-from roboz.agent.prompt_agent_tool import PromptAgentCtx, prompt_agent
+from roboz.agent.prompt_agent_tool import prompt_agent
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -46,14 +46,14 @@ from roboz.runtime.io import (
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
+from roboz.tooling.context import Ctx
 from roboz.tooling.core import Factory, Tool
 from roboz.tooling.dependencies import (
     ExternalDependency,
     ExternalDependencySource,
-    ToolDependency,
     dedupe_external_dependencies,
 )
-from roboz.tools.interaction import NO_REPLY, PromptUserCtx, prompt_user
+from roboz.tools.interaction import NO_REPLY, prompt_user
 
 logger = getLogger(__name__)
 
@@ -118,9 +118,7 @@ class Agent(ExternalDependencySource):
             else get_bound_output(default=Output.CLI)
         )
         self.pipe = (
-            event_pipe
-            if event_pipe is not None
-            else EventPipe(event_sinks=event_sinks)
+            event_pipe if event_pipe is not None else EventPipe(event_sinks=event_sinks)
         )
         self.event_sinks = self.pipe.event_sinks
         self._tool_invocations = ToolInvocationObserver(
@@ -138,7 +136,7 @@ class Agent(ExternalDependencySource):
             )
         self.default_tools = [] if default_tools is None else list(default_tools)
         self.prompt_user_tool = (
-            prompt_user(PromptUserCtx(timeout_reply=NO_REPLY))
+            prompt_user(Ctx(timeout_reply=NO_REPLY))
             if custom_prompt_user_tool is None
             else custom_prompt_user_tool
         )
@@ -243,12 +241,9 @@ class Agent(ExternalDependencySource):
             endpoint = self.agent_endpoint
             if endpoint is None:
                 raise RuntimeError("agentic instance has no endpoint")
-            if isinstance(endpoint, ExternalDependency):
-                endpoint_binding = ToolDependency(resource=endpoint)
-            else:
-                endpoint_binding = endpoint
+            endpoint_binding = endpoint
             self.master_tool = prompt_agent(
-                PromptAgentCtx(
+                Ctx(
                     active_tools=tuple(self.active_tools.values()),
                     endpoint=endpoint_binding,
                     pipe=self.pipe,

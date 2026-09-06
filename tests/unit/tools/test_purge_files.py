@@ -3,8 +3,9 @@
 import os
 from pathlib import Path
 
+from roboz import Ctx
 from roboz.models import Empty
-from roboz.tools import PurgeFilesCtx, purge_files, purge_files_by_threshold
+from roboz.tools import purge_files, purge_files_by_threshold
 from roboz.tools._identifiers import PURGE_FILES_TOOL_NAME
 
 _MARKDOWN_PATTERN = "*.md"
@@ -18,7 +19,7 @@ def _tool(
     prune_empty_directories: bool = False,
 ):
     return purge_files(
-        PurgeFilesCtx(
+        Ctx(
             folders=folders,
             pattern=_MARKDOWN_PATTERN,
             max_files=max_files,
@@ -92,9 +93,7 @@ def test_purge_prunes_empty_descendants_after_deletion(tmp_path: Path) -> None:
     os.utime(old, (_BASE_MTIME_SECONDS, _BASE_MTIME_SECONDS))
     os.utime(new, (_BASE_MTIME_SECONDS + 1, _BASE_MTIME_SECONDS + 1))
 
-    result = _tool([root], 1, prune_empty_directories=True)(
-        input=Empty(), messages=[]
-    )
+    result = _tool([root], 1, prune_empty_directories=True)(input=Empty(), messages=[])
 
     assert result.value == "deleted 1, kept 1 of 2; pruned_empty_dirs=1"
     assert root.is_dir()
@@ -113,9 +112,7 @@ def test_purge_prunes_existing_empty_tree_even_below_threshold(tmp_path: Path) -
     snapshot.write_text("snapshot", encoding="utf-8")
     other.write_text("{}", encoding="utf-8")
 
-    result = _tool([root], 1, prune_empty_directories=True)(
-        input=Empty(), messages=[]
-    )
+    result = _tool([root], 1, prune_empty_directories=True)(input=Empty(), messages=[])
 
     assert result.value == "below threshold (1/1); pruned_empty_dirs=2"
     assert root.is_dir()

@@ -8,14 +8,8 @@ return the three tools in registration order.
 
 from pathlib import Path
 
-from roboz.models import Empty, Message, Str
-from roboz.models.truncation import Severity, Truncation
-from roboz.tooling.decorators import tool
-from roboz.tooling import Tool
-
 from roboz_shed.models import (
     ActionVerdict,
-    GuardCtx,
     GuardFilesResult,
     GuardStatus,
     Help,
@@ -25,6 +19,12 @@ from roboz_shed.models import (
 )
 from roboz_shed.tools.guard import build_guarded_tool_chain
 from roboz_shed.tools.types import ResolvedFileCommand
+
+from roboz import Ctx
+from roboz.models import Empty, Message, Str
+from roboz.models.truncation import Severity, Truncation
+from roboz.tooling import Tool
+from roboz.tooling.decorators import tool
 
 
 class _DummyInput(Empty):
@@ -47,8 +47,8 @@ def _make_execute() -> Tool:
     return execute
 
 
-def _guard_ctx() -> GuardCtx:
-    return GuardCtx(
+def _guard_ctx() -> Ctx:
+    return Ctx(
         base=Path("."),
         takes_precedence=ActionVerdict.deny,
         allow=[],

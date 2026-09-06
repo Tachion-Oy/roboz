@@ -1,10 +1,10 @@
 """Credential-free E2E contracts, also executed from installed wheels."""
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-from roboz import Agent, stop
-from roboz.agent.subagent import SubagentCtx, run_subagent
+from roboz import Agent, Ctx, stop
+from roboz.agent.subagent import run_subagent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink, RunLifecycleEvent
 from roboz.tools.librarian import LibrarianConstructor, LibrarianPaths, LibrarianTuning
@@ -23,7 +23,7 @@ def test_subagent_completion(tmp_path: Path) -> None:
             ]
         ),
     )
-    delegate = run_subagent(SubagentCtx(child))
+    delegate = run_subagent(Ctx(agent=child))
     parent = Agent(
         name="parent",
         interaction_mode=None,
