@@ -92,16 +92,26 @@ def test_registry_mismatches_fail_before_any_checks(mismatch) -> None:
     assert checks == []
 
 
-def test_endpoint_route_is_retained_and_materializes_the_current_selection() -> None:
-    first = LLMEndpoint(client=object(), api_name="test", model_name="first")
-    second = LLMEndpoint(client=object(), api_name="test", model_name="second")
+@pytest.mark.parametrize("second_model", ["shared", "different"])
+def test_endpoint_route_retains_identity_and_validates_current_selection(
+    second_model: str,
+) -> None:
+    first = LLMEndpoint(
+        client=object(), api_name="test", model_name="shared", temperature=0.2
+    )
+    second = LLMEndpoint(
+        client=object(), api_name="test", model_name=second_model, temperature=0.8
+    )
     selected = first
     calls = []
 
     class EndpointRoute(rz.LazyExternalDependency[LLMEndpoint]):
         def materialize(self) -> LLMEndpoint:
-            calls.append(selected.model_name)
-            return selected
+            # Re-select on every invocation while preserving the declared identity.
+            resource = self.resolver()
+            calls.append(resource)
+            self._validate_resolved(resource)
+            return resource
 
     route = EndpointRoute(
         dependency_id_value=first.dependency_id,
@@ -114,7 +124,7 @@ def test_endpoint_route_is_retained_and_materializes_the_current_selection() -> 
     def inspect_selected(
         input: rz.Empty, messages: list[rz.Message], ctx: rz.Ctx
     ) -> rz.Str:
-        return rz.Str(value=resolve_endpoint(ctx.endpoint).model_name)
+        return rz.Str(value=str(resolve_endpoint(ctx.endpoint).temperature))
 
     ctx = rz.Ctx(endpoint=route)
     assert ctx.external_dependencies()[0] is route
@@ -123,13 +133,18 @@ def test_endpoint_route_is_retained_and_materializes_the_current_selection() -> 
     copied = bound.copy()
     assert copied.external_dependencies[0] is route
     assert calls == []
-    assert bound(rz.Empty(), []).value == "first"
+    assert bound(rz.Empty(), []).value == "0.2"
     selected = second
     assert ctx.external_dependencies()[0] is route
-    assert calls == ["first"]
-    assert copied(rz.Empty(), []).value == "second"
+    assert calls == [first]
+    if second_model == "shared":
+        assert copied(rz.Empty(), []).value == "0.8"
+        assert route.redacted_metadata() == second.redacted_metadata()
+    else:
+        with pytest.raises(ValueError, match="different dependency id"):
+            copied(rz.Empty(), [])
     assert bound.external_dependencies[0].dependency_id == first.dependency_id
-    assert calls == ["first", "second"]
+    assert calls == [first, second]
 
 
 def test_direct_executable_declaration_is_the_command_used(monkeypatch) -> None:
