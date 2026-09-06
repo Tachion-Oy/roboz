@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.1.1"
+version = "0.1.2.dev1"
 description = "Typed primitives for composable agentic workflows"
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]

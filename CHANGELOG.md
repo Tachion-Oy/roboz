@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev1 - 2026-09-06
+
 ### Changed
 
 - Define and enforce Google-style source docstrings, and normalize tool
