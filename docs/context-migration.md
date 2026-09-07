@@ -191,7 +191,8 @@ Both `with_request_options` and `with_openrouter_policy` retain their concrete
 and lazy return types. When given a reference, they return a reference that
 selects and applies copied options on every call, retaining the selected client.
 Switching first → second → first therefore reuses the first lazy model's client.
-Calls already in flight retain their resolved endpoint. `Ctx` bindings remain
+Calls already in flight retain their resolved endpoint. Repeated `Agent.invoke()`
+calls resolve the current selection again for run lifecycle metadata. `Ctx` bindings remain
 immutable; selection state belongs to the object referenced by the getter.
 
 Keep every selectable endpoint in the deployment health catalog, including

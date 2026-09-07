@@ -14,6 +14,11 @@
   lazy resources. `external_dependencies` is now a reserved context field name;
   see `docs/context-migration.md`.
 
+### Fixed
+
+- Refresh lifecycle endpoint metadata when invoking an agent again after a live
+  reference switches models, while retaining each lazy dependency's client cache.
+
 ### Changed
 
 - **Breaking:** Construct tool contexts with `Ctx(**values)` and pass resources

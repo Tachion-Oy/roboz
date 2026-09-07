@@ -24,6 +24,7 @@ from roboz.llm import (
     with_request_options,
 )
 from roboz.llm.binding import resolve_transcription_endpoint
+from roboz.runtime.events import RunLifecycleEvent
 
 
 class Reference[T: ExternalDependency](ExternalDependencyReference[T]):
@@ -46,6 +47,7 @@ def selected_model(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
 def test_reference_switches_through_context_tools_and_agent(policy: str) -> None:
     constructions = []
     requests = []
+    events = []
 
     def lazy(name: str) -> LazyExternalDependency[LLMEndpoint]:
         def create(**kwargs):
@@ -67,13 +69,16 @@ def test_reference_switches_through_context_tools_and_agent(policy: str) -> None
                 client=SimpleNamespace(
                     chat=SimpleNamespace(completions=SimpleNamespace(create=create))
                 ),
-                api_name="test",
+                api_name=f"api-{name}",
                 model_name=name,
+                max_context_tokens=100_000 if name == "first" else 200_000,
+                temperature=0.2 if name == "first" else 0.8,
+                output_format="text" if name == "first" else "json",
                 stream=False,
             )
 
         return LazyExternalDependency(
-            f"model:test:{name}", ExternalDependencyKind.MODEL_ENDPOINT, {}, construct
+            f"model:api-{name}:{name}", ExternalDependencyKind.MODEL_ENDPOINT, {}, construct
         )
 
     first, second = lazy("first"), lazy("second")
@@ -96,6 +101,7 @@ def test_reference_switches_through_context_tools_and_agent(policy: str) -> None
         system_prompt="Stop.",
         tools=[stop],
         agent_endpoint=endpoint,
+        event_sinks=[events.append],
     )
     assert constructions == []
     assert not isinstance(reference, ExternalDependency)
@@ -123,8 +129,19 @@ def test_reference_switches_through_context_tools_and_agent(policy: str) -> None
             assert resolve_endpoint(endpoint).extra_body["reasoning"] == {
                 "effort": "low"
             }
-        agent.master_tool(Empty(), [Message(role="user", content="Stop.")])
-        assert requests[-1]["model"] == selected.materialize().model_name
+        events.clear()
+        agent.invoke()
+        expected = selected.materialize()
+        assert requests[-1]["model"] == expected.model_name
+        assert requests[-1]["temperature"] == expected.temperature
+        lifecycle = [event for event in events if isinstance(event, RunLifecycleEvent)]
+        assert [event.kind for event in lifecycle] == ["started", "stopped"]
+        for event in lifecycle:
+            assert event.api_name == expected.api_name
+            assert event.model_name == expected.model_name
+            assert event.max_context_tokens == expected.max_context_tokens
+            assert event.temperature == expected.temperature
+            assert event.output_format == expected.output_format
     assert constructions == ["first", "second"]
     assert clients[0] is clients[2]
     assert clients[0] is not clients[1]
