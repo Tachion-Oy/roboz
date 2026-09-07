@@ -267,6 +267,9 @@ endpoint unless given another, and shares its pipe. Its default threshold is
   (replacing `tool_builders`). Its demo writes into `WORKSPACE/projects/assistant`;
   `--data-path` selects the conversation storage root.
 
+- Email input models live in `roboshed.tools.email.inputs` and remain exported
+  from `roboshed.tools.email`; the top-level `roboshed.email_inputs` is removed.
+
 No compatibility constructors, import shims, or generic `AgentBundle` wrapper are provided.
 Conversation, snapshot, memory, and HTTP formats remain unchanged. This is an
 unreleased breaking API change; versions and publication are separate work.

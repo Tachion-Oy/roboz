@@ -2,11 +2,6 @@
 
 from pathlib import Path
 
-from roboshed.email_inputs import (
-    DownloadEmailAttachment,
-    ReadEmail,
-    SearchEmail,
-)
 from roboshed.models import (
     EmailAttachmentDownloadReady,
     GuardFilesResult,
@@ -23,6 +18,11 @@ from roboz.tooling.decorators import factory
 
 from .contracts import EmailMailbox, EmailProviderError, EmailSummary
 from .drafts import resolve_search_request
+from .inputs import (
+    DownloadEmailAttachment,
+    ReadEmail,
+    SearchEmail,
+)
 from .runtime import _prepare_email_context, run_email_call
 
 

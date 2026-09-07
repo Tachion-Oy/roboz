@@ -4,23 +4,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from roboz.exceptions import (
-    ExternalCallCancelledError,
-    ExternalCallTimeoutError,
-)
-from roboz.runtime.pipe import EventPipe
 from pydantic import ValidationError
-
 from roboshed.identifiers import (
     DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
     READ_EMAIL_TOOL_NAME,
-)
-from roboshed.email_inputs import (
-    CreateEmailDraft,
-    CreateReplyDraft,
-    DownloadEmailAttachment,
-    ReadEmail,
-    SearchEmail,
 )
 from roboshed.models import (
     ActionVerdict,
@@ -48,7 +35,20 @@ from roboshed.tools.email import (
 from roboshed.tools.email import messages as email_messages
 from roboshed.tools.email import runtime as email_runtime
 from roboshed.tools.email.factory import get_work_with_email
+from roboshed.tools.email.inputs import (
+    CreateEmailDraft,
+    CreateReplyDraft,
+    DownloadEmailAttachment,
+    ReadEmail,
+    SearchEmail,
+)
 from roboshed.tools.types import ResolvedFileCommand
+
+from roboz.exceptions import (
+    ExternalCallCancelledError,
+    ExternalCallTimeoutError,
+)
+from roboz.runtime.pipe import EventPipe
 
 
 class _FakeDraftService(EmailService):

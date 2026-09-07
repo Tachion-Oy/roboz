@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: move email input models into `roboshed.tools.email.inputs`;
+  they remain exported from `roboshed.tools.email`. The top-level
+  `roboshed.email_inputs` module is removed.
+
 - Breaking: compose the Librarian through its `capabilities` argument, like the
   orchestrator. Public `ConversationSnapshots`, `MemoryConsolidation`,
   `ArtifactRetention`, and `MaintenanceCadence` live in `roboshed.capabilities`.

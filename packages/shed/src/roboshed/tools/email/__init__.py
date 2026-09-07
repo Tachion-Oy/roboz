@@ -1,13 +1,5 @@
 """Complete provider-neutral email tool bundle."""
 
-from roboshed.email_inputs import (
-    CreateEmailDraft,
-    CreateReplyDraft,
-    DownloadEmailAttachment,
-    ReadEmail,
-    SearchEmail,
-)
-
 from .contracts import (
     DownloadedEmailAttachment,
     EmailDraftAttachment,
@@ -26,6 +18,13 @@ from .contracts import (
     EmailSummary,
 )
 from .factory import get_work_with_email
+from .inputs import (
+    CreateEmailDraft,
+    CreateReplyDraft,
+    DownloadEmailAttachment,
+    ReadEmail,
+    SearchEmail,
+)
 
 __all__ = [
     "DownloadedEmailAttachment",

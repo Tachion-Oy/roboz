@@ -3,8 +3,9 @@
 from datetime import date
 from typing import Literal
 
-from roboz.models import Empty
 from pydantic import ConfigDict, Field
+
+from roboz.models import Empty
 
 
 class CreateEmailDraft(Empty):
