@@ -9,8 +9,13 @@ from typing import Final
 import pytest
 from roboshed.agents.librarian import (
     LIBRARIAN_AGENT_DESCRIPTION,
-    LibrarianTuning,
     librarian,
+)
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    MaintenanceCadence,
+    MemoryConsolidation,
 )
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.workspace import Project, Workspace
@@ -41,22 +46,26 @@ def _build(
     tmp_path: Path,
     *,
     endpoint: MockLLMEndpoint | None = None,
-    tuning: LibrarianTuning | None = None,
+    token_growth_threshold: int = 100,
+    sleep_seconds: float = 0.01,
 ):
+    project = _paths(tmp_path)
+    names = {_WATCHED_AGENT}
     return librarian(
-        project=_paths(tmp_path),
-        agent_names={_WATCHED_AGENT},
-        snapshot_endpoint=endpoint or MockLLMEndpoint([]),
-        tuning=tuning
-        or LibrarianTuning(
-            token_growth_threshold=100,
-            min_pending_snapshots=3,
-            max_pending_age_seconds=3_600.0,
-            sleep_seconds=0.01,
+        agent_endpoint=endpoint or MockLLMEndpoint([]),
+        capabilities=(
+            ConversationSnapshots(
+                project, names, token_growth_threshold=token_growth_threshold
+            ),
+            MemoryConsolidation(
+                project, names, min_pending_snapshots=3, max_pending_age_seconds=3_600
+            ),
+            ArtifactRetention(project),
+            MaintenanceCadence(project, names, seconds=sleep_seconds),
         ),
     ).build(
         event_sink_factory=lambda name: default_event_sinks(
-            data_path=_paths(tmp_path).logs / name, include_cli=False
+            data_path=project.logs / name, include_cli=False
         )
     )
 
@@ -102,55 +111,99 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
         "purge_memory",
         "sleep_between_runs",
     ]
-    assert agent.agent_endpoint is None
+    assert not agent.is_agentic
+    assert isinstance(agent.agent_endpoint, MockLLMEndpoint)
     assert agent.description == LIBRARIAN_AGENT_DESCRIPTION
 
 
-def test_librarian_tuning_has_audited_defaults_and_validation() -> None:
-    tuning = LibrarianTuning()
-    assert tuning.sleep_seconds == 120
-    assert tuning.token_growth_threshold == 20_000
-    assert tuning.max_chars_tolerance_percent == 15.0
-    assert tuning.llm_timeout_s == 300.0
+@pytest.mark.parametrize(
+    "capability_type", [ConversationSnapshots, MemoryConsolidation]
+)
+def test_summary_capabilities_have_audited_defaults_and_validation(
+    tmp_path, capability_type
+):
+    project = _paths(tmp_path)
+    capability = capability_type(project, {_WATCHED_AGENT})
+    assert capability.max_chars_tolerance_percent == 15.0
+    assert capability.timeout_s == 300.0
 
-    with pytest.raises(ValueError, match="llm_timeout_s"):
-        LibrarianTuning(llm_timeout_s=0)
+    with pytest.raises(ValueError, match="timeout_s"):
+        capability_type(project, {_WATCHED_AGENT}, timeout_s=0)
     for invalid in (-1.0, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="max_chars_tolerance_percent"):
-            LibrarianTuning(max_chars_tolerance_percent=invalid)
+            capability_type(
+                project, {_WATCHED_AGENT}, max_chars_tolerance_percent=invalid
+            )
 
 
-def test_librarian_requires_exactly_one_endpoint_source(tmp_path) -> None:
-    with pytest.raises(ValueError, match="exactly one"):
-        librarian(project=_paths(tmp_path), agent_names={_WATCHED_AGENT})
-    with pytest.raises(ValueError, match="exactly one"):
-        librarian(
-            project=_paths(tmp_path),
-            agent_names={_WATCHED_AGENT},
-            snapshot_endpoint=MockLLMEndpoint([]),
-            endpoint_factory=lambda is_cancelled: MockLLMEndpoint([]),
-        )
+def test_maintenance_capability_defaults(tmp_path):
+    project = _paths(tmp_path)
+    snapshots = ConversationSnapshots(project, {_WATCHED_AGENT})
+    consolidation = MemoryConsolidation(project, {_WATCHED_AGENT})
+    retention = ArtifactRetention(project)
+    assert snapshots.token_growth_threshold == 20_000
+    assert snapshots.max_chars == 8_000
+    assert consolidation.max_chars == 12_000
+    assert consolidation.min_pending_snapshots == 3
+    assert consolidation.max_pending_age_seconds == 86_400
+    assert (
+        retention.max_log_files,
+        retention.max_snapshot_files,
+        retention.max_memory_files,
+    ) == (500, 100, 10)
+    assert MaintenanceCadence(project, {_WATCHED_AGENT}).seconds == 120
 
 
-def test_endpoint_factory_receives_bound_cancellation_probe(tmp_path: Path) -> None:
-    observed: list = []
-
-    def endpoint_factory(is_cancelled):
-        observed.append(is_cancelled)
-        return MockLLMEndpoint([])
-
+@pytest.mark.parametrize(
+    "capability_type", [ConversationSnapshots, MemoryConsolidation]
+)
+def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_type):
     definition = librarian(
-        project=_paths(tmp_path),
-        agent_names={_WATCHED_AGENT},
-        endpoint_factory=endpoint_factory,
+        capabilities=(capability_type(_paths(tmp_path), {_WATCHED_AGENT}),)
     )
-    agent = definition.build()
-    (is_cancelled,) = observed
-    assert is_cancelled() is False
+    with pytest.raises(ValueError, match="require.*an endpoint"):
+        definition.build()
 
-    agent.pipe.cancel()
 
-    assert is_cancelled() is True
+def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
+    project = _paths(tmp_path)
+    agent = librarian(
+        capabilities=(
+            ArtifactRetention(project),
+            MaintenanceCadence(project, {_WATCHED_AGENT}),
+        )
+    ).build()
+    assert [tool.name for tool in agent.default_tools] == [
+        "purge_logs",
+        "purge_snapshots",
+        "purge_memory",
+        "sleep_between_runs",
+    ]
+    result, _ = agent.invoke()
+    assert "project idle" in result.value
+    assert agent.external_dependencies() == ()
+
+
+def test_librarians_share_endpoint_but_have_independent_cancellation(
+    tmp_path: Path,
+) -> None:
+    endpoint = MockLLMEndpoint([])
+    definition = librarian(
+        agent_endpoint=endpoint,
+        capabilities=(
+            ConversationSnapshots(_paths(tmp_path), {_WATCHED_AGENT}),
+            MaintenanceCadence(_paths(tmp_path), {_WATCHED_AGENT}),
+        ),
+    )
+    first, second = definition.build(), definition.build()
+    first.pipe.cancel()
+
+    assert first.agent_endpoint is second.agent_endpoint is endpoint
+    with pytest.raises(ExternalCallCancelledError):
+        first.default_tools[0](input=Empty(), messages=[])
+    result, _ = second.invoke()
+    assert "project idle" in result.value
+    assert not second.pipe.cancelled
 
 
 def test_snapshot_retention_prunes_empty_conversation_folders(
@@ -189,7 +242,7 @@ def test_wait_returns_when_observed_active_run_ends(
 ) -> None:
     paths = _paths(tmp_path)
     source = _write_source_run(paths, status=RunStatus.RUNNING)
-    agent = _build(tmp_path, tuning=LibrarianTuning(sleep_seconds=120.0))
+    agent = _build(tmp_path, sleep_seconds=120.0)
     wait = next(
         tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
     )
@@ -211,7 +264,7 @@ def test_wait_returns_when_observed_active_run_ends(
 def test_wait_observes_agent_pipe_cancellation(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     _write_source_run(paths, status=RunStatus.RUNNING)
-    agent = _build(tmp_path, tuning=LibrarianTuning(sleep_seconds=120.0))
+    agent = _build(tmp_path, sleep_seconds=120.0)
     wait = next(
         tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
     )
@@ -249,7 +302,8 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
     agent = _build(
         tmp_path,
         endpoint=endpoint,
-        tuning=LibrarianTuning(token_growth_threshold=1, sleep_seconds=0.01),
+        token_growth_threshold=1,
+        sleep_seconds=0.01,
     )
 
     with pytest.raises(LibrarianProviderRequestFailure) as raised:
@@ -278,3 +332,34 @@ def test_builtin_default_configuration_is_preserved() -> None:
     result = sleep_between_runs(rz.Ctx(seconds=0))(rz.All(), [])
     assert isinstance(result, rz.Str)
     assert result.value == "sleep_between_runs: slept=0.0s"
+
+
+@pytest.mark.parametrize("override_snapshot", [False, True])
+def test_librarian_overrides_each_tool_endpoint_independently(
+    tmp_path, override_snapshot
+):
+    from roboz.llm import LLMEndpoint
+
+    default = LLMEndpoint(client=object(), api_name="test", model_name="default")
+    override = LLMEndpoint(client=object(), api_name="test", model_name="override")
+    agent = librarian(
+        agent_endpoint=default,
+        capabilities=(
+            ConversationSnapshots(
+                _paths(tmp_path),
+                {_WATCHED_AGENT},
+                endpoint=override if override_snapshot else None,
+            ),
+            MemoryConsolidation(
+                _paths(tmp_path),
+                {_WATCHED_AGENT},
+                endpoint=None if override_snapshot else override,
+            ),
+        ),
+    ).build()
+
+    snapshot, consolidation = agent.default_tools[:2]
+    expected = (override, default) if override_snapshot else (default, override)
+    assert snapshot.external_dependencies == (expected[0],)
+    assert consolidation.external_dependencies == (expected[1],)
+    assert agent.external_dependencies() == expected

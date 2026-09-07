@@ -4,9 +4,14 @@ import json
 import tempfile
 from pathlib import Path
 
-from roboshed.agents import LibrarianTuning
 from roboshed.agents import librarian as librarian_definition
 from roboshed.assistant import build_assistant
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    MaintenanceCadence,
+    MemoryConsolidation,
+)
 from roboshed.workspace import Project, Workspace, WorkspacePermissions
 
 from roboz import Agent, stop
@@ -89,6 +94,16 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
 
 
 def test_conversation_snapshot_memory_retention(tmp_path: Path) -> None:
+    _conversation_snapshot_memory_retention(tmp_path, separate_endpoints=False)
+
+
+def test_conversation_snapshot_memory_with_separate_models(tmp_path: Path) -> None:
+    _conversation_snapshot_memory_retention(tmp_path, separate_endpoints=True)
+
+
+def _conversation_snapshot_memory_retention(
+    tmp_path: Path, *, separate_endpoints: bool
+) -> None:
     paths = Project(Workspace(tmp_path), "test")
     author = Agent(
         name="author",
@@ -111,22 +126,29 @@ def test_conversation_snapshot_memory_retention(tmp_path: Path) -> None:
     )
     author.invoke()
     source = next((paths.logs / "author").rglob("*.json"))
+    responses = [
+        {"value": "The project uses a blue robot emblem."},
+        {"value": "Retain the blue robot emblem decision."},
+    ]
     librarian = librarian_definition(
-        project=paths,
-        agent_names={"author"},
-        snapshot_endpoint=MockLLMEndpoint(
-            [
-                {"value": "The project uses a blue robot emblem."},
-                {"value": "Retain the blue robot emblem decision."},
-            ]
-        ),
-        tuning=LibrarianTuning(
-            min_pending_snapshots=1,
-            token_growth_threshold=1,
-            sleep_seconds=0,
-            max_snapshot_files=0,
-            max_log_files=0,
-            max_memory_files=1,
+        agent_endpoint=None if separate_endpoints else MockLLMEndpoint(responses),
+        capabilities=(
+            ConversationSnapshots(
+                paths,
+                {"author"},
+                endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
+                token_growth_threshold=1,
+            ),
+            MemoryConsolidation(
+                paths,
+                {"author"},
+                endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
+                min_pending_snapshots=1,
+            ),
+            ArtifactRetention(
+                paths, max_snapshot_files=0, max_log_files=0, max_memory_files=1
+            ),
+            MaintenanceCadence(paths, {"author"}, seconds=0),
         ),
     ).build(
         event_sink_factory=lambda name: (PersistenceSink.for_path(paths.logs / name),)
@@ -224,6 +246,7 @@ if __name__ == "__main__":
 
     for scenario in (
         test_conversation_snapshot_memory_retention,
+        test_conversation_snapshot_memory_with_separate_models,
         test_persistent_orchestrator_delegates_and_accepts_another_request,
     ):
         with tempfile.TemporaryDirectory() as directory:

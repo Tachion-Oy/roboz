@@ -1,6 +1,7 @@
 import pytest
-from roboshed.agents import LibrarianTuning, orchestrator
 from roboshed.agents import librarian as librarian_definition
+from roboshed.agents import orchestrator
+from roboshed.capabilities import ConversationSnapshots, MaintenanceCadence
 from roboshed.deployments.robosprawl import AgenticFactory
 from roboshed.workspace import Project, Workspace
 
@@ -33,12 +34,15 @@ def test_factory_tracks_nested_agents_and_isolates_persistence_sinks(tmp_path):
         project=project,
         orchestrator=definition,
         librarian=librarian_definition(
-            project=project,
-            agent_names=definition.agent_names(),
-            snapshot_endpoint=MockLLMEndpoint(
+            agent_endpoint=MockLLMEndpoint(
                 [{"value": "Remember this conversation."}] * 3
             ),
-            tuning=LibrarianTuning(token_growth_threshold=1),
+            capabilities=(
+                ConversationSnapshots(
+                    project, definition.agent_names(), token_growth_threshold=1
+                ),
+                MaintenanceCadence(project, definition.agent_names()),
+            ),
         ),
     )
     events = []
@@ -94,9 +98,7 @@ def test_librarian_name_cannot_collide_with_root(tmp_path):
         project=project,
         orchestrator=_specialist("librarian"),
         librarian=librarian_definition(
-            project=project,
-            agent_names={"librarian"},
-            snapshot_endpoint=MockLLMEndpoint([]),
+            capabilities=(MaintenanceCadence(project, {"librarian"}),),
         ),
     )
     with pytest.raises(ValueError, match="librarian name"):

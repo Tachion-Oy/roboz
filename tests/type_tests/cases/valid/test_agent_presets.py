@@ -1,8 +1,15 @@
 from typing import assert_type
 
-from roboshed.agents import orchestrator
+from roboshed.agents import librarian, orchestrator
 from roboshed.assistant import build_assistant
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    MaintenanceCadence,
+    MemoryConsolidation,
+)
 from roboshed.workspace import Project
+
 from roboz import Agent
 from roboz.deployment import AgentCapability, AgentDefinition
 from roboz.llm import EndpointLike
@@ -18,4 +25,20 @@ def configure(
     assert_type(
         build_assistant(project=project, endpoint=endpoint, capabilities=(capability,)),
         Agent,
+    )
+    assert_type(
+        librarian(capabilities=(capability,), agent_endpoint=endpoint),
+        AgentDefinition,
+    )
+
+    assert_type(
+        librarian(
+            capabilities=(
+                ConversationSnapshots(project, {"orchestrator"}, endpoint=endpoint),
+                MemoryConsolidation(project, {"orchestrator"}, endpoint=endpoint),
+                ArtifactRetention(project),
+                MaintenanceCadence(project, {"orchestrator"}),
+            )
+        ),
+        AgentDefinition,
     )

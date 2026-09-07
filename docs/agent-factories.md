@@ -7,7 +7,7 @@ profiles; applications configure and host them.
 | --- | --- |
 | `roboz.deployment` | `AgentDefinition`, `AgentCapability`, `Capability`, `SubAgentSpec` |
 | `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `AgentDefinition` |
-| `roboshed.capabilities` | Reusable file and compaction capabilities, alongside `tools` and `skills` |
+| `roboshed.capabilities` | Reusable file, compaction, and maintenance capabilities, alongside `tools` and `skills` |
 | `roboshed.deployments.robosprawl` | Project composition, defined directly in the package `__init__.py` |
 | Other Shed modules | Workspace/project structure, permissions, memory and file tools |
 | Application | Configuration, model selection, permission policy, UI conventions, startup and shutdown |
@@ -20,7 +20,7 @@ Core imports none of these application modules.
 Both `AgentDefinition` and preset callers configure `capabilities` only. A capability is a configured feature
 such as file editing or compaction. It assembles the runtime tools and instructions
 needed to provide that feature. Applications choose capabilities; they do not pass
-parallel tool and skill lists into `orchestrator()` or `build_assistant()`.
+parallel tool and skill lists into `orchestrator()` or `librarian()`.
 
 A `Skill` is a lower-level package of instructions and optional tools. Capabilities
 can supply skills for on-demand loading or session-start loading, expose tools
@@ -111,6 +111,12 @@ also supplies the owning pipe as a separate runtime input. `AgentDefinition`
 only provides `default_endpoint=self.agent_endpoint`; it does not select the
 models for individual tools or construct endpoints.
 
+`ConversationSnapshots(endpoint=...)` and `MemoryConsolidation(endpoint=...)`
+independently select their models. Each falls back to the owning agent's
+`agent_endpoint` when unset; missing required endpoints fail during build.
+The Librarian's `is_agentic=False` retains the deterministic maintenance loop
+even when a default endpoint is present.
+
 Each build creates fresh pipes and tools while retaining supplied endpoint
 objects. Model calls handle cancellation and events using the pipe for that
 invocation. Lazy references remain deferred and live references keep their
@@ -124,7 +130,10 @@ needed. Already-bound `Capability(...)` inputs are returned unchanged.
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
 from roboshed.agents import librarian, orchestrator
-from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.capabilities import (
+    ArtifactRetention, ConversationSnapshots, FileCommands, FileEditing,
+    MaintenanceCadence, MemoryConsolidation,
+)
 from roboshed.deployments.robosprawl import AgenticFactory
 from roboshed.workspace import Project, Workspace, WorkspacePermissions
 
@@ -135,9 +144,13 @@ root = orchestrator(
     capabilities=(FileCommands(permissions), FileEditing(permissions)),
 )
 memory_agent = librarian(
-    project=project,
-    agent_names=root.agent_names(),
-    snapshot_endpoint=MockLLMEndpoint([]),
+    agent_endpoint=MockLLMEndpoint([]),
+    capabilities=(
+        ConversationSnapshots(project, root.agent_names()),
+        MemoryConsolidation(project, root.agent_names()),
+        ArtifactRetention(project),
+        MaintenanceCadence(project, root.agent_names()),
+    ),
 )
 factory = AgenticFactory(project=project, orchestrator=root, librarian=memory_agent)
 agent, background_agents = factory.build()
@@ -148,10 +161,14 @@ scripted responses before calling `agent.invoke()`. Construction creates no
 folders, materializes no providers, and starts no threads.
 
 Both role inputs are ordinary `AgentDefinition` objects. `orchestrator()` supplies
-the persistent collaboration prompt and stop tool. `librarian()` supplies the
-deterministic memory pipeline as a capability that builds against its owning pipe.
-The deployment assembler derives its watch set from `root.agent_names()`; callers
-need no hand-maintained list of specialist names.
+the persistent collaboration prompt and stop tool. `librarian()` selects a
+deterministic loop and accepts caller-selected capabilities in execution order.
+The example composes snapshotting, consolidation, retention, and cadence from
+`roboshed.capabilities`; each owns its settings and builds its own tools.
+Supply automatic work and a stopping policy. `MaintenanceCadence` goes last: it
+waits while watched conversations are active and stops when the project is idle.
+Capabilities can also be used independently, such as retention with cadence and
+no model. Derive the watch set from `root.agent_names()` to include specialists.
 
 The orchestrator stays available across tasks and stops when the user asks,
 including standing instructions. It selects no memory location. Use a plain
@@ -227,14 +244,25 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 - Endpoint inputs use `EndpointLike` from `roboz.llm`: configured endpoints or
   lazy/live references. Endpoint creation receives no runtime controls.
 - Replace `LibrarianDefinition`/`LibrarianConstructor` with
-  `librarian(project=..., agent_names=..., ...)`, which returns `AgentDefinition`.
-  `LibrarianTuning` remains the memory-pipeline configuration. Standalone builds
-  select their own event sinks; project deployment supplies them automatically.
+  `librarian(capabilities=(...), agent_endpoint=...)`, returning `AgentDefinition`.
+  Configure project and watched names on the selected maintenance capabilities.
+  Replace `LibrarianTuning` with settings on `ConversationSnapshots`,
+  `MemoryConsolidation`, `ArtifactRetention`, and `MaintenanceCadence`.
+  Snapshot/consolidation size limits are each named `max_chars`, timeouts
+  `timeout_s`, and cadence uses `seconds`. Other tuning fields retain their names
+  on the capability that consumes them.
+- Move `snapshot_endpoint` to `ConversationSnapshots(endpoint=...)` and
+  `consolidation_endpoint` to `MemoryConsolidation(endpoint=...)`; keep
+  `agent_endpoint` for a shared default. `endpoint_factory` and its aliases are
+  removed. Cancellation remains in the runtime and maintenance tools.
+  Standalone builds select their own event sinks; project deployment supplies
+  them automatically.
 - Memory/summarization tools live in `roboshed.tools`, including snapshotting,
   consolidation, retention, and sleep-between-runs.
 - Preset extensions use `capabilities` only. Move `tools`, `default_tools`,
   `skills`, and `auto_loaded_skills` from orchestrator calls into a capability
-  returning `Capability`. Move assistant `tools` and `skills` the same way.
+  returning `Capability`.
+
 - `build_assistant` takes `project`, optional `permissions`, and `capabilities`
   (replacing `tool_builders`). Its demo writes into `WORKSPACE/projects/assistant`;
   `--data-path` selects the conversation storage root.

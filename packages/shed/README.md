@@ -22,14 +22,19 @@ agent = build_assistant(
 agent.invoke()
 ```
 
-`roboshed.capabilities` provides `FileCommands`, `FileEditing`, and
-`Compactification`, alongside the `tools` and `skills` modules. Applications
+`roboshed.capabilities` provides `FileCommands`, `FileEditing`, `Compactification`,
+`ConversationSnapshots`, `MemoryConsolidation`, `ArtifactRetention`, and
+`MaintenanceCadence`, alongside the `tools` and `skills` modules. Applications
 choose and configure these capabilities through the presets’ single `capabilities`
 extension argument. A capability owns its tools and any skills used for instructions. `roboshed.deployments.robosprawl`
 provides project composition. `roboshed.agents` supplies the reusable
 orchestrator/Librarian presets. Generic definitions and
 capability contracts live in `roboz.deployment`. Each capability
-builds against the owning agent's pipe. Select permission policies through
+builds its tools with explicit endpoint overrides or the agent's default.
+Runtime controls remain separate from endpoints. The Librarian accepts an ordered
+`capabilities` sequence. Snapshot and consolidation capabilities each expose an
+`endpoint`; `agent_endpoint` supplies their shared default. Retention and cadence
+need no model. Each capability owns its settings and project inputs. Select permission policies through
 `roboshed.workspace.WorkspacePermissions`; workspace structure does not grant
 access. `build_assistant` is a task-oriented preset using the same construction.
 
@@ -38,8 +43,8 @@ See the [factory and migration guide](../../docs/agent-factories.md).
 ## Conversation compaction
 
 The following fragment belongs inside an agent or tool builder. `endpoint` is
-the agent's configured endpoint, and `agent_pipe` is its owning event pipe
-(supplied to each capability by the agent definition).
+the selected compaction model, and `agent_pipe` is the owning agent's event
+pipe. These are independent inputs to the tool.
 
 ```python
 from roboshed.tools import get_compactify_messages_when_needed_tool
@@ -84,7 +89,3 @@ context classes have been removed. Existing tool builders retain their keyword
 arguments, defaults, permission checks, cancellation, and timeout behavior.
 See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
 for low-level context fields and state ownership.
-
-Capability builders receive `build(pipe, *, default_endpoint)`. Configure
-individual tool models on their capabilities; the agent endpoint supplies a
-default, independently of the runtime pipe.

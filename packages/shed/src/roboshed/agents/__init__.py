@@ -1,6 +1,6 @@
 """Reusable agent presets built from Roboz primitives."""
 
-from .librarian import LibrarianTuning, librarian
+from .librarian import librarian
 from .orchestrator import orchestrator
 
-__all__ = ["librarian", "LibrarianTuning", "orchestrator"]
+__all__ = ["librarian", "orchestrator"]
