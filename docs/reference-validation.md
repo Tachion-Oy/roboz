@@ -86,3 +86,86 @@ archives, including core, companions, combined extras, metadata, import paths,
 `pip check`, and deterministic workflows. Local Linux checks do not claim
 GitHub Actions or Windows/macOS results. Hub integration evidence is maintained
 in its separate `docs/reference-validation.md`.
+
+
+## CodeRabbit lifecycle correction — 2026-09-07
+
+The earlier sections retain the original candidate evidence. The latest source
+revision is `b3afe024d6035ca720f4024dde6702df96b36271`, addressing
+[CodeRabbit review 5130698439](https://github.com/Tachion-Oy/roboz/pull/16#pullrequestreview-5130698439).
+
+Repeated `Agent.invoke()` calls cached the first endpoint for lifecycle metadata,
+although provider requests followed the live reference. Remove that agent-level
+cache and resolve the current endpoint at each run initialization. Concrete and
+mock endpoints remain direct; lazy dependencies still own their cached clients.
+Update the core Unreleased entry and context migration guide.
+
+The existing three policy variants now invoke the same Agent through first →
+second → first. They check provider requests and both started/stopped events for
+API name, model name, context limit, temperature, and output format, along with
+client reuse. This reproduced the stale `api-first` metadata when `api-second`
+was selected, then passed with the correction.
+
+All commands below use CI-pinned uv 0.12.10 (`PATH=/tmp/roboz-ci-tools/bin:$PATH`).
+Logs are in `reports/review-fix/`.
+
+| Command | Result |
+| --- | --- |
+| `uv run pytest tests/unit/llm/test_dependency_references.py -k reference_switches --no-cov` | Before fix: 3 failures; all reproduced stale lifecycle API metadata |
+| `uv run pytest tests/unit/llm/test_dependency_references.py --no-cov` | After fix: 7 passed |
+| `uv sync --locked --dev` | Exit 0 |
+| `uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/review-fix/coverage.xml --cov-report=json:reports/review-fix/coverage.json --junitxml=reports/review-fix/pytest.xml` | Exit 0 |
+| `uv run python scripts/check_coverage.py reports/review-fix/coverage.json` | Exit 0 |
+| `uv run python examples/quickstart.py` | Exit 0 |
+| `uv run ruff check` | Exit 0 |
+| `uv run pyright` | Exit 0 |
+| `bash scripts/run_type_tests.sh` | Exit 0 |
+| `uv build --all-packages --out-dir /tmp/roboz-reference-review-dist-0_j378ds` | Exit 0 |
+| `uv run twine check /tmp/roboz-reference-review-dist-0_j378ds/*` | Exit 0 |
+| `uv run python scripts/check_distributions.py --dist /tmp/roboz-reference-review-dist-0_j378ds` | Exit 0 |
+| `git diff --check` | Exit 0 |
+
+The full suite passes 869 tests on Python 3.13.3. Coverage remains core 95.69%,
+Shed 90.76%, OpenAI 90.00%, Proton Bridge 89.72%; all floors pass. The independent
+install gate passes wheels and wheels rebuilt from source archives for each
+package and the combined extras.
+
+Additional Python 3.14.7 checks pass (869 tests and quickstart):
+
+```bash
+export PATH=/tmp/roboz-ci-tools/bin:$PATH
+export UV_PROJECT_ENVIRONMENT=/tmp/roboz-reference-python3147
+uv run --python 3.14.7 --no-sync pytest --no-cov
+uv run --python 3.14.7 --no-sync python examples/quickstart.py
+```
+
+In the paired Hub worktree at `337ff70` (application source unchanged from
+`864f1d4b99c838dd4c523f28191969292ec8545e`), these commands also pass:
+
+```bash
+source scripts/env.sh
+export PATH=/tmp/roboz-ci-tools/bin:$PATH
+uv run python -c 'import roboz; print(roboz.__file__)'
+uv run pytest --cov-fail-under=90 \
+  --cov-report=xml:.artifacts/reports/review-fix-coverage.xml \
+  --junitxml=.artifacts/reports/review-fix-pytest.xml
+```
+
+The import points at this core worktree; Hub passes 289 backend/contract tests
+with 94.28% coverage. Logs are `.artifacts/review-fix-import.log` and
+`.artifacts/review-fix-backend.log`. Frontend and browser results remain the
+historical candidate results in the Hub report; those suites were not repeated
+for this run-initialization correction. GitHub CI will run on the pushed fix;
+the earlier green run applies to the preceding revision.
+
+Fresh candidate SHA-256 values:
+
+- `.gitignore`: `684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1`
+- `roboz-0.1.1-py3-none-any.whl`: `b7ac5833976c07a7d231350ffb96b4f02475cf60e95404d5d61abe6481b429aa`
+- `roboz-0.1.1.tar.gz`: `80e2abda99203099d2a37c9a7d92c1193997fd2c21f3507e295495c7a8a73f37`
+- `roboz_openai-0.1.0a1-py3-none-any.whl`: `c1e3904009895199d81af98889f1439fd301a136f5444083367cfef312d3e60a`
+- `roboz_openai-0.1.0a1.tar.gz`: `77f8a06e0c04a0269f009700a0f7747d467ab764a876fec34ab6e85b87db533d`
+- `roboz_proton_bridge-0.1.0b1-py3-none-any.whl`: `e7794263f9524b9e4c53cfe9ca6310f490fd1f4c76482a60da72499b7eb9b58e`
+- `roboz_proton_bridge-0.1.0b1.tar.gz`: `335dbc6d4fd616313bf3d5b903ca3277639b295ddfc46c0be1bfb3a6587974e2`
+- `roboz_shed-0.1.0a1-py3-none-any.whl`: `24b1d21329b9f58292cbecb57d319856aab6471773d56188fa9106ebb9a8cdfa`
+- `roboz_shed-0.1.0a1.tar.gz`: `23008dee9a88a1405a55cf57ee89d807fa250b3c4201ce1a5b25553de57daa82`
