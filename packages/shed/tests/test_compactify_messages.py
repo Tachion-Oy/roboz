@@ -4,8 +4,8 @@ import json
 from typing import Any
 
 import pytest
-from roboz_shed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
-from roboz_shed.tools.compactification import (
+from roboshed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
+from roboshed.tools.compactification import (
     COMPACTED_CONTEXT_KIND,
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
     COMPACTIFY_SYSTEM_PROMPT,

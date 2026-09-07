@@ -263,14 +263,14 @@ for name in {[name, *workspace_dependencies(name)]!r}:
 """)
     if name == "roboz":
         check(CORE_SMOKE)
-    if name in {"roboz", "roboz-shed"}:
+    if name in {"roboz", "roboshed"}:
         source = (
             "test_core_workflows.py" if name == "roboz" else "test_shed_workflows.py"
         )
         workflow = root / source
         shutil.copyfile(ROOT / "tests/e2e" / source, workflow)
         run(str(python), "-I", str(workflow))
-        if name == "roboz-shed":
+        if name == "roboshed":
             executable = python.parent / (
                 "roboz-demo.exe" if os.name == "nt" else "roboz-demo"
             )

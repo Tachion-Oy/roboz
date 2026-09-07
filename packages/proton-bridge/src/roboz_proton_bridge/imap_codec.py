@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from roboz_shed.tools.email.contracts import EmailProviderError, EmailSearchRequest
+from roboshed.tools.email.contracts import EmailProviderError, EmailSearchRequest
 from .protocol import (
     IMAP_ATTACHMENT_REFERENCE_PREFIX,
     IMAP_SOURCE_REFERENCE_PREFIX,

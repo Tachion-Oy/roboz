@@ -16,7 +16,7 @@ def test_release_selects_one_matching_package(name):
 
 
 @pytest.mark.parametrize(
-    "tag", ["v0.1.0", "other-v0.1.0", "roboz-v9.0.0", "roboz-shed-v0.1.0"]
+    "tag", ["v0.1.0", "other-v0.1.0", "roboz-v9.0.0", "roboshed-v0.1.0"]
 )
 def test_release_rejects_unknown_packages_and_version_mismatches(tag):
     with pytest.raises(ValueError):
@@ -34,7 +34,7 @@ def test_release_selects_verified_bytes_without_rebuilding(tmp_path, monkeypatch
     artifacts = ["roboz-0.1.1-py3-none-any.whl", "roboz-0.1.1.tar.gz"]
     for filename in artifacts:
         (candidates / filename).write_bytes(b"verified bytes: " + filename.encode())
-    (candidates / "roboz_shed-0.1.0a1-py3-none-any.whl").write_bytes(b"other package")
+    (candidates / "roboshed-0.1.0a1-py3-none-any.whl").write_bytes(b"other package")
     monkeypatch.setattr(release_package, "ROOT", project)
     monkeypatch.setattr(release_package, "PROJECTS", {"roboz": project})
     monkeypatch.setattr(

@@ -10,8 +10,8 @@ layered only on top of an ``allow`` verdict. A deny is absolute - there is no
 from pathlib import Path
 from unittest.mock import patch
 
-from roboz_shed.models import ActionVerdict, GuardDenyReason, Operation, PermissionRule
-from roboz_shed.tools.guard import resolve_allow_verdict
+from roboshed.models import ActionVerdict, GuardDenyReason, Operation, PermissionRule
+from roboshed.tools.guard import resolve_allow_verdict
 
 from roboz import Ctx
 from roboz.runtime.pipe import EventPipe
@@ -53,7 +53,7 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_yes_allows(
     location = tmp_path / "shared" / "f.md"  # not created: skip overwrite sub-check
 
     with patch(
-        "roboz_shed.tools.utils.interact_with_user", return_value="yes"
+        "roboshed.tools.utils.interact_with_user", return_value="yes"
     ) as prompt:
         verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
 
@@ -75,7 +75,7 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_no_denies(
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz_shed.tools.utils.interact_with_user", return_value="no"):
+    with patch("roboshed.tools.utils.interact_with_user", return_value="no"):
         verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
 
     # Allowed by policy, but the user declines the prompt -> denied (by user).
@@ -96,7 +96,7 @@ def test_deny_is_absolute_ask_rule_never_prompts(tmp_path: Path) -> None:
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz_shed.tools.utils.interact_with_user") as prompt:
+    with patch("roboshed.tools.utils.interact_with_user") as prompt:
         verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
 
     assert verdict == ActionVerdict.deny
@@ -115,7 +115,7 @@ def test_overlap_with_deny_precedence_never_prompts(tmp_path: Path) -> None:
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz_shed.tools.utils.interact_with_user") as prompt:
+    with patch("roboshed.tools.utils.interact_with_user") as prompt:
         verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
 
     assert verdict == ActionVerdict.deny

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from roboz.models import Str
 from roboz.models.truncation import Severity, Truncation
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     ApplyPatch,
     ApplyPatchReady,
@@ -14,8 +14,8 @@ from roboz_shed.models import (
     Operation,
     PermissionRule,
 )
-from roboz_shed.tools import get_apply_patch
-from roboz_shed.tools.types import ResolvedFileCommand
+from roboshed.tools import get_apply_patch
+from roboshed.tools.types import ResolvedFileCommand
 
 
 def test_get_apply_patch_rejects_relative_base() -> None:

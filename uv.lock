@@ -7,7 +7,7 @@ members = [
     "roboz",
     "roboz-openai",
     "roboz-proton-bridge",
-    "roboz-shed",
+    "roboshed",
 ]
 
 [[package]]
@@ -883,7 +883,7 @@ proton-bridge-beta = [
     { name = "roboz-proton-bridge" },
 ]
 shed = [
-    { name = "roboz-shed" },
+    { name = "roboshed" },
 ]
 
 [package.dev-dependencies]
@@ -895,7 +895,7 @@ dev = [
     { name = "pyyaml" },
     { name = "roboz-openai" },
     { name = "roboz-proton-bridge" },
-    { name = "roboz-shed" },
+    { name = "roboshed" },
     { name = "ruff" },
     { name = "twine" },
 ]
@@ -907,7 +907,7 @@ requires-dist = [
     { name = "rich", specifier = ">=14.2.0" },
     { name = "roboz-openai", marker = "extra == 'openai'", editable = "packages/openai" },
     { name = "roboz-proton-bridge", marker = "extra == 'proton-bridge-beta'", editable = "packages/proton-bridge" },
-    { name = "roboz-shed", marker = "extra == 'shed'", editable = "packages/shed" },
+    { name = "roboshed", marker = "extra == 'shed'", editable = "packages/shed" },
 ]
 provides-extras = ["shed", "openai", "proton-bridge-beta"]
 
@@ -920,7 +920,7 @@ dev = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "roboz-openai", editable = "packages/openai" },
     { name = "roboz-proton-bridge", editable = "packages/proton-bridge" },
-    { name = "roboz-shed", editable = "packages/shed" },
+    { name = "roboshed", editable = "packages/shed" },
     { name = "ruff", specifier = ">=0.5.0" },
     { name = "twine", specifier = ">=6.2" },
 ]
@@ -948,7 +948,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "roboz" },
-    { name = "roboz-shed" },
+    { name = "roboshed" },
 ]
 
 [package.metadata]
@@ -956,11 +956,11 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.4" },
     { name = "pydantic-settings", specifier = ">=2.0,<3" },
     { name = "roboz", editable = "." },
-    { name = "roboz-shed", editable = "packages/shed" },
+    { name = "roboshed", editable = "packages/shed" },
 ]
 
 [[package]]
-name = "roboz-shed"
+name = "roboshed"
 version = "0.1.0a1"
 source = { editable = "packages/shed" }
 dependencies = [

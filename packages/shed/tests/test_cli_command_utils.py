@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from roboz.models import Str
 
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     CommandReady,
     Help,
@@ -16,22 +16,22 @@ from roboz_shed.models import (
     RunFileCommand,
     RunFileCommands,
 )
-from roboz_shed.tools import get_run_file_command
-from roboz_shed.tools.cli_commands.run_file_command.command import _validate_input
-from roboz_shed.tools.cli_commands.run_file_command.resolve import (
+from roboshed.tools import get_run_file_command
+from roboshed.tools.cli_commands.run_file_command.command import _validate_input
+from roboshed.tools.cli_commands.run_file_command.resolve import (
     _guard_items,
     _resolve_paths_and_argv,
 )
-from roboz_shed.tools.cli_commands.run_file_command.specs import (
+from roboshed.tools.cli_commands.run_file_command.specs import (
     CP,
     FILE_COMMANDS_DELETE,
     FILE_COMMANDS_READ,
     FILE_COMMANDS_WRITE,
     MV,
 )
-from roboz_shed.tools.types import ResolvedFileCommand
-from roboz_shed.tools.cli_commands.utilities.cmd_spec import ArgPattern, CmdSpec
-from roboz_shed.tools.cli_commands.utilities.formatting import (
+from roboshed.tools.types import ResolvedFileCommand
+from roboshed.tools.cli_commands.utilities.cmd_spec import ArgPattern, CmdSpec
+from roboshed.tools.cli_commands.utilities.formatting import (
     format_cli_commands_help,
     format_cli_constraints,
     format_cli_full_help,

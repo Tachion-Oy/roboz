@@ -6,7 +6,7 @@ import tempfile
 
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import Output, PersistenceSink
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
+from roboshed.assistant import WorkspacePermissions, build_assistant
 
 
 def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:

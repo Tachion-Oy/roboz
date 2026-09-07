@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Breaking: `roboz[shed]` now installs `roboshed` instead of `roboz-shed`. Update direct requirements to `roboshed` and imports from `roboz_shed` to `roboshed`; no compatibility package is provided.
+
 ### Added
 
 - Add `ExternalDependencyReference` for replaceable resources. Endpoint helpers

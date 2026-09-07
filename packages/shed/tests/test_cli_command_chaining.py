@@ -20,20 +20,20 @@ from roboz.llm import get_truncated_messages_for_context
 from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
 from roboz.models import Role
 from roboz.llm import MockLLMEndpoint
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     Operation,
     PermissionRule,
     RunFileCommand,
     RunFileCommands,
 )
-from roboz_shed.tools import get_run_file_command
-from roboz_shed.tools.cli_commands.run_file_command.specs import (
+from roboshed.tools import get_run_file_command
+from roboshed.tools.cli_commands.run_file_command.specs import (
     FILE_COMMANDS_READ,
     FILE_COMMANDS_WRITE,
 )
-from roboz_shed.tools.cli_commands.utilities.cmd_spec import CmdSpec
-from roboz_shed.tools.cli_commands.utilities.constants import (
+from roboshed.tools.cli_commands.utilities.cmd_spec import CmdSpec
+from roboshed.tools.cli_commands.utilities.constants import (
     PIPE_OUTPUT_TO_NEXT_COMMAND,
     PIPE_STDIN_FROM_PREVIOUS_COMMAND,
 )

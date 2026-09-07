@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     GuardFileSingle,
     GuardFilesResult,
     Operation,
 )
-from roboz_shed.tools.guard import build_guarded_tool_chain, guard_items
-from roboz_shed.tools.types import ResolvedFileCommand
+from roboshed.tools.guard import build_guarded_tool_chain, guard_items
+from roboshed.tools.types import ResolvedFileCommand
 
 from roboz import Ctx, Empty, Message, Str, tool
 

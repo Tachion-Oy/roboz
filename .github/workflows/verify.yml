@@ -24,7 +24,7 @@ jobs:
           version: "0.12.10"
       - run: uv sync --locked --dev
       - run: >-
-          uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge
+          uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge
           --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json
           --junitxml=reports/pytest.xml
       - run: uv run python scripts/check_coverage.py reports/coverage.json

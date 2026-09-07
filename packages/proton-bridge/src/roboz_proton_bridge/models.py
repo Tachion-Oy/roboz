@@ -16,7 +16,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from roboz_shed.tools.email.contracts import EmailProviderError
+from roboshed.tools.email.contracts import EmailProviderError
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 

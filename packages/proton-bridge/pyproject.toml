@@ -9,7 +9,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 import-names = ["roboz_proton_bridge"]
 classifiers = ["Development Status :: 4 - Beta", "Typing :: Typed"]
-dependencies = ["roboz>=0.1.1,<0.2.0","roboz-shed>=0.1.0a1,<0.2.0","pydantic>=2.12.4","pydantic-settings>=2.0,<3"]
+dependencies = ["roboz>=0.1.1,<0.2.0","roboshed>=0.1.0a1,<0.2.0","pydantic>=2.12.4","pydantic-settings>=2.0,<3"]
 
 [build-system]
 requires = ["hatchling>=1.32"]

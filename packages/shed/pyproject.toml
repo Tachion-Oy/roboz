@@ -1,13 +1,13 @@
 [project]
-name = "roboz-shed"
+name = "roboshed"
 version = "0.1.0a1"
-description = "roboz-shed: optional building blocks for Roboz"
+description = "roboshed: optional building blocks for Roboz"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Tachion Oy" }]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-import-names = ["roboz_shed"]
+import-names = ["roboshed"]
 classifiers = ["Development Status :: 3 - Alpha", "Typing :: Typed"]
 dependencies = ["roboz>=0.1.1,<0.2.0","pydantic>=2.12.4"]
 
@@ -16,7 +16,7 @@ requires = ["hatchling>=1.32"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/roboz_shed"]
+packages = ["src/roboshed"]
 
 [project.urls]
 Repository = "https://github.com/Tachion-Oy/roboz"
@@ -25,4 +25,4 @@ Repository = "https://github.com/Tachion-Oy/roboz"
 testpaths = ["tests"]
 
 [project.scripts]
-roboz-demo = "roboz_shed.demo:main"
+roboz-demo = "roboshed.demo:main"

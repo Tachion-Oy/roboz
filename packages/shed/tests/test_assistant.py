@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
-from roboz_shed.demo import main
+from roboshed.assistant import WorkspacePermissions, build_assistant
+from roboshed.demo import main
 
 from roboz import Ctx, Empty, Message, Str, tool
 from roboz.llm import MockLLMEndpoint
@@ -58,8 +58,8 @@ def test_assistant_uses_injected_tools_and_pipe(tmp_path: Path):
 
 
 def test_workspace_denies_escape_and_symlink_target(tmp_path: Path):
-    from roboz_shed.models import ActionVerdict, Operation
-    from roboz_shed.tools.guard import resolve_allow_verdict
+    from roboshed.models import ActionVerdict, Operation
+    from roboshed.tools.guard import resolve_allow_verdict
 
     root = tmp_path / "workspace"
     root.mkdir()

@@ -5,7 +5,7 @@ This repository builds four independently versioned distributions:
 | Distribution | Import | Version | Contents |
 | --- | --- | --- | --- |
 | `roboz` | `roboz` | `0.1.1` (pre-alpha project) | Primitives and existing dependency-free reference tools |
-| `roboz-shed` | `roboz_shed` | `0.1.0a1` | Guarded files, patch editing, assistant, neutral email tools |
+| `roboshed` | `roboshed` | `0.1.0a1` | Guarded files, patch editing, assistant, neutral email tools |
 | `roboz-openai` | `roboz_openai` | `0.1.0a1` | OpenAI-compatible Chat Completions and OpenRouter constructors |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `0.1.0b1` | Proton Bridge mailbox and draft adapter |
 
@@ -35,7 +35,7 @@ conversation; the terminal displays a concise result.
 uv build --all-packages --out-dir dist/first-slice
 uv venv /tmp/roboz-trial --python 3.13
 uv pip install --python /tmp/roboz-trial/bin/python dist/first-slice/*.whl
-/tmp/roboz-trial/bin/python -I -m roboz_shed.demo --mock --workspace /tmp/roboz-trial-workspace --data-path /tmp/roboz-trial-data
+/tmp/roboz-trial/bin/python -I -m roboshed.demo --mock --workspace /tmp/roboz-trial-workspace --data-path /tmp/roboz-trial-data
 ```
 
 Use a new output directory if yours contains wheels from older versions. For
@@ -80,7 +80,7 @@ connect to a service.
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
+from roboshed.assistant import WorkspacePermissions, build_assistant
 
 assistant = build_assistant(
     endpoint=MockLLMEndpoint([
@@ -102,7 +102,7 @@ import adapters; other Shed library modules do not import them.
 denies resolved paths outside it. These are tool guards, not an OS sandbox.
 Arbitrary shell and Git execution are absent from the default assistant.
 
-Another email adapter implements `roboz_shed.tools.email.EmailService`.
+Another email adapter implements `roboshed.tools.email.EmailService`.
 `ResolvedFileCommand[Input, Payload]` and `GuardFilesResult[Input, Payload]` carry
 typed payloads without registering integration-specific unions. Concrete types
 survive in-memory handoffs. When decoding persisted guard JSON, use explicitly

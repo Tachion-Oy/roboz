@@ -1,4 +1,4 @@
-# roboz-shed
+# roboshed
 
 Reusable tools, skills, and a small assistant built on Roboz. Version `0.1.0a1`
 is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
@@ -10,7 +10,7 @@ install any model SDK, Proton, document SDK, web service, or backend framework.
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
+from roboshed.assistant import WorkspacePermissions, build_assistant
 
 assistant = build_assistant(
     endpoint=MockLLMEndpoint([
@@ -37,7 +37,7 @@ unions. Use concrete generic parameters when decoding serialized guard results.
 The installed demo requires only `cat` in mock mode:
 
 ```bash
-python -m roboz_shed.demo --mock --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data
+python -m roboshed.demo --mock --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data
 ```
 
 It creates a uniquely named file and a saved conversation. Its real-provider
@@ -52,7 +52,7 @@ the agent's configured endpoint, and `agent_pipe` is its owning event pipe
 (supplied to `tool_builders` by `build_assistant`).
 
 ```python
-from roboz_shed.tools import get_compactify_messages_when_needed_tool
+from roboshed.tools import get_compactify_messages_when_needed_tool
 
 compact = get_compactify_messages_when_needed_tool(
     endpoint=endpoint, threshold_percent=60, pipe=agent_pipe, timeout_s=60,
@@ -83,7 +83,7 @@ Summarization messages and model-call events use the supplied pipe.
 The public tool name and persisted caller are `compactify_messages_when_needed`.
 This tool incorporates the continuation prompts used by PeffaHub/PeffaShed while
 retaining RoboSprawl's caller name. The old `robosprawl.compaction` import is
-replaced by `roboz_shed.tools`; Roboz core continues to own the shared summarizer.
+replaced by `roboshed.tools`; Roboz core continues to own the shared summarizer.
 
 ## Context API migration
 

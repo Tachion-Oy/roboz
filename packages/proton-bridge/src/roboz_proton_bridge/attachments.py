@@ -4,7 +4,7 @@ from email import policy
 from email.message import Message
 from email.parser import BytesParser
 
-from roboz_shed.tools.email.contracts import (
+from roboshed.tools.email.contracts import (
     DownloadedEmailAttachment,
     EmailMessageAttachment,
     EmailProviderError,

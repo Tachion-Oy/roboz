@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Breaking: rename the distribution from `roboz-shed` to `roboshed` and the import namespace from `roboz_shed` to `roboshed`. Update dependency declarations and imports; the `roboz-demo` command is unchanged. No compatibility package is provided.
+
 ### Added
 
 - Compact active conversations with configurable continuation prompts, context thresholds, cancellation, and optional per-attempt timeouts.

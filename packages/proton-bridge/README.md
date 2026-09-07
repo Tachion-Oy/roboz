@@ -34,8 +34,8 @@ names; load it into the environment yourself rather than committing credentials.
 ```python
 from pathlib import Path
 from roboz_proton_bridge import ProtonBridgeEmailService, ProtonBridgeSettings
-from roboz_shed.models import ActionVerdict, Operation, PermissionRule
-from roboz_shed.tools.email import EmailSignature, get_work_with_email
+from roboshed.models import ActionVerdict, Operation, PermissionRule
+from roboshed.tools.email import EmailSignature, get_work_with_email
 
 service = ProtonBridgeEmailService(
     settings=ProtonBridgeSettings.from_environment(),

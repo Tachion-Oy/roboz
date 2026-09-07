@@ -5,13 +5,13 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
-from roboz_shed.tools import get_compactify_messages_when_needed_tool
-from roboz_shed.tools.compactification import (
+from roboshed.tools import get_compactify_messages_when_needed_tool
+from roboshed.tools.compactification import (
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
     COMPACTIFY_SYSTEM_PROMPT,
     compactify_messages_when_needed,
 )
-from roboz_shed.tools.compactification.compactify_messages import CompactionState
+from roboshed.tools.compactification.compactify_messages import CompactionState
 
 from roboz import All, Ctx, Message, Role
 from roboz.exceptions import (

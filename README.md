@@ -41,7 +41,7 @@ python -m pip install roboz
 ```
 
 Optional tools and adapters are separate distributions in this repository:
-`roboz-shed`, `roboz-openai`, and `roboz-proton-bridge`. Start with the
+`roboshed`, `roboz-openai`, and `roboz-proton-bridge`. Start with the
 [installation and add-on guide](docs/addons.md) to build their wheels and run
 the assistant demo without credentials. These companion releases must be
 published before their named PyPI installs and convenience extras are usable.

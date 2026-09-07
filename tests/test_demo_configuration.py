@@ -1,6 +1,6 @@
 import pytest
 
-from roboz_shed.demo import main
+from roboshed.demo import main
 
 
 def test_invalid_bridge_settings_show_safe_error_without_environment_values(

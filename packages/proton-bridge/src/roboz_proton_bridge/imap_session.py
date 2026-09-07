@@ -9,7 +9,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
-from roboz_shed.tools.email.contracts import EmailProviderError
+from roboshed.tools.email.contracts import EmailProviderError
 from .imap_codec import require_ok
 from .models import ProtonBridgeSettings, ProtonBridgeTlsMode
 from .protocol import IMAP_TIMEOUT_SECONDS

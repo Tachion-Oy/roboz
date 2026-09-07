@@ -38,7 +38,7 @@ Logs are retained locally in `reports/` (ignored by Git).
 | `uv run ruff check src --fix` | Pass |
 | `uv run ruff check tests/unit/llm/test_dependency_references.py tests/type_tests/cases/valid/test_endpoint_request_options.py --fix` | Found two misplaced test imports; moved to module top and reran successfully. |
 | `uv run ruff format tests/unit/llm/test_dependency_references.py tests/type_tests/cases/valid/test_endpoint_request_options.py` | Pass |
-| `uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json --junitxml=reports/pytest.xml` | 869 passed; exit 0 |
+| `uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json --junitxml=reports/pytest.xml` | 869 passed; exit 0 |
 | `uv run python scripts/check_coverage.py reports/coverage.json` | All four floors pass |
 | `uv run pytest tests/e2e --no-cov` | 3 passed |
 | `uv run python examples/quickstart.py` | Exit 0 |
@@ -78,8 +78,8 @@ issue. Logs preserve each attempted sync/test separately.
 - `roboz_openai-0.1.0a1.tar.gz`: `77f8a06e0c04a0269f009700a0f7747d467ab764a876fec34ab6e85b87db533d`
 - `roboz_proton_bridge-0.1.0b1-py3-none-any.whl`: `e7794263f9524b9e4c53cfe9ca6310f490fd1f4c76482a60da72499b7eb9b58e`
 - `roboz_proton_bridge-0.1.0b1.tar.gz`: `335dbc6d4fd616313bf3d5b903ca3277639b295ddfc46c0be1bfb3a6587974e2`
-- `roboz_shed-0.1.0a1-py3-none-any.whl`: `24b1d21329b9f58292cbecb57d319856aab6471773d56188fa9106ebb9a8cdfa`
-- `roboz_shed-0.1.0a1.tar.gz`: `23008dee9a88a1405a55cf57ee89d807fa250b3c4201ce1a5b25553de57daa82`
+- `roboshed-0.1.0a1-py3-none-any.whl`: `24b1d21329b9f58292cbecb57d319856aab6471773d56188fa9106ebb9a8cdfa`
+- `roboshed-0.1.0a1.tar.gz`: `23008dee9a88a1405a55cf57ee89d807fa250b3c4201ce1a5b25553de57daa82`
 
 Independent installed checks pass for wheels and wheels rebuilt from source
 archives, including core, companions, combined extras, metadata, import paths,
@@ -114,7 +114,7 @@ Logs are in `reports/review-fix/`.
 | `uv run pytest tests/unit/llm/test_dependency_references.py -k reference_switches --no-cov` | Before fix: 3 failures; all reproduced stale lifecycle API metadata |
 | `uv run pytest tests/unit/llm/test_dependency_references.py --no-cov` | After fix: 7 passed |
 | `uv sync --locked --dev` | Exit 0 |
-| `uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/review-fix/coverage.xml --cov-report=json:reports/review-fix/coverage.json --junitxml=reports/review-fix/pytest.xml` | Exit 0 |
+| `uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/review-fix/coverage.xml --cov-report=json:reports/review-fix/coverage.json --junitxml=reports/review-fix/pytest.xml` | Exit 0 |
 | `uv run python scripts/check_coverage.py reports/review-fix/coverage.json` | Exit 0 |
 | `uv run python examples/quickstart.py` | Exit 0 |
 | `uv run ruff check` | Exit 0 |
@@ -167,5 +167,5 @@ Fresh candidate SHA-256 values:
 - `roboz_openai-0.1.0a1.tar.gz`: `77f8a06e0c04a0269f009700a0f7747d467ab764a876fec34ab6e85b87db533d`
 - `roboz_proton_bridge-0.1.0b1-py3-none-any.whl`: `e7794263f9524b9e4c53cfe9ca6310f490fd1f4c76482a60da72499b7eb9b58e`
 - `roboz_proton_bridge-0.1.0b1.tar.gz`: `335dbc6d4fd616313bf3d5b903ca3277639b295ddfc46c0be1bfb3a6587974e2`
-- `roboz_shed-0.1.0a1-py3-none-any.whl`: `24b1d21329b9f58292cbecb57d319856aab6471773d56188fa9106ebb9a8cdfa`
-- `roboz_shed-0.1.0a1.tar.gz`: `23008dee9a88a1405a55cf57ee89d807fa250b3c4201ce1a5b25553de57daa82`
+- `roboshed-0.1.0a1-py3-none-any.whl`: `24b1d21329b9f58292cbecb57d319856aab6471773d56188fa9106ebb9a8cdfa`
+- `roboshed-0.1.0a1.tar.gz`: `23008dee9a88a1405a55cf57ee89d807fa250b3c4201ce1a5b25553de57daa82`

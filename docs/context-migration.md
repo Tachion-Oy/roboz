@@ -110,7 +110,7 @@ background = rz.run_background_agent(rz.Ctx(agent=child, state=state))
 ```
 
 Compaction similarly accepts `CompactionState` from
-`roboz_shed.tools.compactification.compactify_messages`. These state classes are
+`roboshed.tools.compactification.compactify_messages`. These state classes are
 ordinary mutable state, not required context subclasses. `Tool.copy()` retains
 the already-bound callable and state; a copy does not allocate new default state.
 

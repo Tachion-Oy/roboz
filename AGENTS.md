@@ -10,7 +10,7 @@ This workspace contains four independently versioned distributions:
 | Distribution | Import package | Changelog |
 | --- | --- | --- |
 | `roboz` | `roboz` | `CHANGELOG.md` |
-| `roboz-shed` | `roboz_shed` | `packages/shed/CHANGELOG.md` |
+| `roboshed` | `roboshed` | `packages/shed/CHANGELOG.md` |
 | `roboz-openai` | `roboz_openai` | `packages/openai/CHANGELOG.md` |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `packages/proton-bridge/CHANGELOG.md` |
 

@@ -9,7 +9,7 @@ from html import escape
 from pathlib import Path
 from typing import cast
 
-from roboz_shed.tools.email.contracts import (
+from roboshed.tools.email.contracts import (
     EmailDraftAttachment,
     EmailDraftRequest,
     EmailInlineImage,

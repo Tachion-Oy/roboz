@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from roboz_shed.identifiers import (
+from roboshed.identifiers import (
     CREATE_EMAIL_DRAFT_TOOL_NAME,
     CREATE_REPLY_DRAFT_TOOL_NAME,
     DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
     READ_EMAIL_TOOL_NAME,
     SEARCH_EMAIL_TOOL_NAME,
 )
-from roboz_shed.models import ActionVerdict
-from roboz_shed.tools.email import (
+from roboshed.models import ActionVerdict
+from roboshed.tools.email import (
     EmailDraftAttachment,
     EmailDraftRequest,
     EmailInlineImage,
@@ -27,7 +27,7 @@ from roboz_shed.tools.email import (
     EmailSearchRequest,
     EmailSignature,
 )
-from roboz_shed.tools.email.factory import get_work_with_email
+from roboshed.tools.email.factory import get_work_with_email
 from roboz_proton_bridge import (
     ProtonBridgeEmailService,
     ProtonBridgeSettings,
