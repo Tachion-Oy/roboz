@@ -4,13 +4,29 @@
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-Typed primitives for composable agentic workflows. The distribution and import
-package are both `roboz`; the primary authoring API is available at the package
-root.
+Typed control flow and context management for reliable agentic workflows. Roboz
+lets the model decide what needs judgment, then hands the result to ordinary,
+typed Python for the steps that should not be probabilistic.
 
 > [!WARNING]
 > Roboz is pre-release software requiring Python 3.13 or newer. APIs may change
 > before 1.0.
+
+## Why Roboz
+
+**Chain tools instead of prompting through every step.** The model chooses an
+active tool; successful output can flow directly into typed, passive tools with
+no additional model decision. Conditions can route by output value or type,
+external policy, or current state. Branches can converge on a shared successor.
+Only active tools enter the model's tool surface, keeping orchestration details
+out of the prompt while Python and Pydantic enforce the handoffs.
+
+**Treat context as a lifecycle, not an ever-growing transcript.** Every message
+can carry its own truncation policy. Keep an operational result intact while it
+is recent, reduce it to a stub later, and remove it from model context when it is
+stale. `NO_MESSAGE` hides internal chatter immediately. These policies change
+only the view sent to the model; runtime events and persisted messages retain the
+full record.
 
 ## Install
 
@@ -33,29 +49,66 @@ published before their named PyPI installs and convenience extras are usable.
 ## Quick start
 
 ```python
+from builtins import input as read_input
+
 import roboz as rz
-from roboz.llm import MockLLMEndpoint
+
+
+@rz.tool
+def ask_number(input: rz.Empty, messages: list[rz.Message]) -> rz.Int:
+    """Ask the user for an integer, repeating until the response is valid."""
+    while True:
+        try:
+            reply = read_input("Enter an integer: ")
+        except EOFError:  # Keep the example runnable in non-interactive checks.
+            reply = "7"
+        try:
+            return rz.Int(value=int(reply))
+        except ValueError:
+            print("Please enter a whole number.")
+
+
+@rz.tool(
+    chained_to=ask_number,
+    chain_condition=lambda output: output.value % 2 == 0,
+)
+def report_even(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
+    """Report that the supplied integer is even."""
+    print(f"{input.value} is even.")
+    return rz.Stop(value="even")
+
+
+@rz.tool(
+    chained_to=ask_number,
+    chain_condition=lambda output: output.value % 2 != 0,
+)
+def report_odd(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
+    """Report that the supplied integer is odd."""
+    print(f"{input.value} is odd.")
+    return rz.Stop(value="odd")
+
 
 agent = rz.Agent(
     name="demo",
-    system_prompt="Stop and return a greeting.",
-    tools=[rz.stop],
-    agent_endpoint=MockLLMEndpoint(
-        [
-            {
-                "action": "stop",
-                "rationale": "The task is complete.",
-                "value": "Hello from Roboz!",
-            }
-        ]
-    ),
+    is_agentic=False,
+    agent_endpoint=None,
+    default_tools=[ask_number],
+    tools=[report_even, report_odd],
 )
 
-result, _messages = agent.invoke()
-print(result.value)
+agent.invoke()
 ```
 
+`ask_number` starts with `Empty`, handles input validation locally, and returns a
+typed `Int`. Roboz then evaluates both conditions and runs exactly one passive
+successor. The routing is ordinary, testable Python; no model needs to interpret
+the reply or choose the next step.
+
 The same program is available in [`examples/quickstart.py`](examples/quickstart.py).
+See [`examples/tool_chaining.py`](examples/tool_chaining.py) for conditional
+routing and convergence, and
+[`examples/message_truncation.py`](examples/message_truncation.py) for a sliding
+message-visibility window.
 
 ## Primitives
 
@@ -66,6 +119,7 @@ The same program is available in [`examples/quickstart.py`](examples/quickstart.
 | `rz.Ctx` | Binds keyword configuration and dependency objects without a custom class. |
 | `@rz.factory` | Creates a tool whose runtime context declares external dependencies. |
 | `rz.Skill` | Packages reusable instructions and optional tools. |
+| `rz.Message` | Carries content plus its model-context truncation lifecycle. |
 | `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
 
 The package contains agent and LLM primitives, models, runtime and persistence

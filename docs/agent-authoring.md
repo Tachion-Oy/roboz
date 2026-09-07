@@ -13,14 +13,35 @@ Primary references:
 Build agents in this order:
 
 1. Define role and decision policy in `system_prompt`.
-2. Define active tools (directly invocable by model).
-3. Define passive/chained tools (orchestration-only, not in active selection surface).
+2. Define active tools only for choices that require model judgment.
+3. Chain typed passive tools for follow-up work that code can decide.
 4. Define startup/default tools.
 5. Attach skills (`skills` and/or `auto_loaded_skills`).
 6. Construct `Agent(...)`.
 7. Validate tool chains and run behavior with tests.
 
-## Overarching Principle: Skills First, Prompt Lean
+## Core Principle: Model Judgment, Code Orchestration
+
+Use the model to choose an entry point or resolve genuine ambiguity. Once an
+output determines what must happen next, express that transition as a tool-chain
+edge instead of asking the model to choose again.
+
+This division is central to Roboz:
+
+- passive tool schemas and descriptions stay out of the model's active tool surface
+- known follow-up steps need no extra model round trip
+- typed outputs become validated inputs for the next stage
+- ordinary Python predicates make routing explicit and testable
+
+A chain may continue linearly, choose one conditional branch, converge from
+several possible parents, yield control back to the model when no edge matches,
+or terminate by returning `Stop`. Pair chains with per-message truncation when
+intermediate results should be useful briefly or should never enter model context.
+
+See [tool chaining and message lifecycle](tool-authoring.md#tool-chaining) for the
+exact graph and context semantics.
+
+## Supporting Principle: Skills First, Prompt Lean
 
 When a behavior can be separated from core agent identity and reused, extract it into a `Skill`.
 
@@ -68,6 +89,8 @@ and chained tools for deterministic routing and flow control.
 
 For example, command execution is an active choice, while validation that must
 always follow a successful command is a good candidate for passive chaining.
+If validation produces bulky diagnostics, attach a graded truncation policy to
+that output so it remains actionable while fresh and ages out of model context.
 
 ## Step 3: Make Constructors Side-Effect Free
 

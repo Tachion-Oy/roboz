@@ -157,24 +157,108 @@ Supply an `EndpointLike`: a concrete endpoint, an `ExternalDependencyReference`
 automatically; mocks are ordinary context values and add no external dependency.
 The LLM call resolves the endpoint when it is needed.
 
-## Chaining Patterns
+## Tool Chaining
 
-Supported shapes:
+Tool chaining moves known control flow out of the model loop. The model selects
+an active tool; its typed output can then run one passive successor directly.
+Because any tool with `chained_to` is passive, its description and schema are not
+part of the model's active tool surface.
 
-- linear: `A -> B`
-- consolidation: `[A, B] -> C`
-- conditional fork: `A -> B` only when predicate matches output
+```text
+                                      ┌─ predicate A ─> B ─┐
+model ─> active tool A ─> typed output┤                    ├─> D
+                                      └─ predicate B ─> C ─┘
+```
 
-Use `chain_condition` to encode branching policy.
-If omitted, chaining defaults to always-on.
+The graph supports these precise shapes:
 
-Guidance:
+- **Linear:** `B(chained_to=A)` always follows `A` when its predicate is true.
+- **Conditional fan-out:** several children may name `A` as their parent, but
+  exactly zero or one predicate may match each output. This is exclusive routing,
+  not parallel broadcast; multiple matches raise `RuntimeError`.
+- **Converging fan-in:** `D(chained_to=[B, C])` may follow either parent. It does
+  not wait for both parents or aggregate their outputs.
 
-- keep predicates deterministic and simple
-- do not bury business logic inside chain predicates
-- test branch edges explicitly
+If no child matches, the chain ends and the agent resumes its configured default
+flow, normally returning control to the model. Returning `Stop` ends the entire
+agent run immediately, so no successor is selected.
 
-Reference chain docs: [`reference.md`](reference.md)
+### Conditional routing
+
+`chain_condition` receives the parent's concrete output. It can branch on the
+output type or value and may close over application policy:
+
+```python
+@rz.tool(
+    chained_to=inspect_result,
+    chain_condition=lambda output: isinstance(output, Approved),
+)
+def publish(input: Approved, messages: list[rz.Message]) -> rz.Str:
+    """Publish an approved result."""
+    ...
+```
+
+A predicate may also consult injected state, such as a policy object's calendar:
+
+```python
+chain_condition=lambda output: output.ready and policy.today().weekday() != 1
+```
+
+Keep predicates small and side-effect free. Inject clocks and other changing
+state so every branch can be tested deterministically. Put the work itself in the
+child tool, not in its predicate.
+
+### Types, identity, and graph safety
+
+Parent outputs and child inputs are checked by the type checker and validated
+again when the `Agent` graph is constructed. A union-output parent can route to a
+child accepting one constituent when an explicit predicate selects that branch.
+Every referenced parent must be present in the same agent graph.
+
+At runtime Roboz requires a unique next tool. Test the no-match, each-match, and
+ambiguous-match cases for conditional branches. See
+[`examples/tool_chaining.py`](../examples/tool_chaining.py) for a runnable
+conditional fan-out that converges on one finalizer.
+
+## Message Lifecycle and Truncation
+
+Every tool output inherits `AgentBaseModel.truncation`. When Roboz turns that
+output into a `Message`, the policy follows it. The policy is applied each time a
+model request is assembled, based on how many newer messages now follow it; the
+stored message itself is not rewritten.
+
+```python
+from roboz.models import Severity, Truncation
+
+TRACEBACK_LIFECYCLE = [
+    Truncation(threshold=0, severity=Severity.LIGHT),
+    Truncation(threshold=3, severity=Severity.STUB),
+    Truncation(threshold=8, severity=Severity.REMOVE),
+]
+
+return rz.Str(value=traceback, truncation=TRACEBACK_LIFECYCLE)
+```
+
+In this policy a short traceback remains readable while fresh (`LIGHT` only caps
+oversized string fields), becomes a caller/action stub after three newer
+messages, and disappears from model context after eight. When several thresholds
+match, the rule with the largest threshold wins.
+
+Use the built-in policies deliberately:
+
+- `DEFAULT` applies `LIGHT` immediately, preventing any single string field from
+  entering context without a size bound.
+- `NO_TRUNCATION` explicitly keeps the full message at every distance.
+- `NO_MESSAGE` removes the message from every model request while runtime events
+  and configured persistence retain the full content.
+- `ERROR_RETRY` keeps a fresh error lightly bounded, then removes it after five
+  newer messages.
+- `GRADED` progresses from `LIGHT` to `STUB` to `REMOVE` over a longer window.
+
+System messages are always retained. Threshold distance counts later messages,
+not turns, tokens, or elapsed time. See
+[`examples/message_truncation.py`](../examples/message_truncation.py) for a
+runnable projection of the same message at several distances.
 
 ## Active and Passive Responsibilities
 
@@ -184,6 +268,11 @@ When authoring tools, decide whether they should be active or passive in the age
 - Passive tools should represent deterministic follow-up orchestration.
 
 This boundary keeps prompts and action selection surface lean while preserving automation flow.
+
+For purely internal stages, return outputs with `NO_MESSAGE`. For results that
+the model may need on the next decision, prefer a graded lifecycle. Chaining and
+truncation solve different halves of the same problem: the first removes
+unnecessary model decisions, and the second removes unnecessary model history.
 
 ## Reuse and Identity
 
@@ -253,6 +342,9 @@ Related test guidance:
 
 - Overloading one tool with multiple unrelated responsibilities.
 - Using chain conditions as hidden control-flow language.
+- Treating conditional fan-out as parallel execution or fan-in as a join barrier.
+- Allowing two successor predicates to match the same output.
 - Reusing one mutable tool instance in different graphs.
 - Exposing too many active tools when passive chaining would do.
+- Hiding output with `NO_MESSAGE` when the model still needs it for its next decision.
 - Prompting around weak tool contracts instead of fixing tool design.
