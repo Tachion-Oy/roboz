@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from roboz.tools.snapshot_conversation_example import SNAPSHOT_CONVERSATION_EXAMPLE
+from roboshed.tools.snapshot_conversation_example import SNAPSHOT_CONVERSATION_EXAMPLE
 
 SNAPSHOT_CONVERSATION_SYSTEM_PROMPT: Final[str] = """You are a recorder that writes raw memory \
 snapshots of agent conversations.

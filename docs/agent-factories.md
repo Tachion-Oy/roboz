@@ -1,14 +1,37 @@
-# Agent definitions and capabilities
+# Agent definitions, factories, and ownership
 
-`roboz.deployment` provides `AgentDefinition`, `AgentCapability`, `Capability`,
-and `SubAgentSpec`. Definitions accept capabilities as their only tool/skill
-extension input; the runtime supplies user interaction. Callers supply stopping
-through a capability when constructing a task-oriented agent.
+Core describes and constructs agents. Shed supplies concrete agents and
+capabilities; applications configure and host them.
 
-A capability groups the tools and instructions that provide a feature. Already-bound
-`Capability` objects and runtime-bound implementations share the same build contract.
-A `Skill` is a lower-level package of instructions and optional tools supplied
-inside a capability, with on-demand or session-start loading.
+| Module | Owns |
+| --- | --- |
+| `roboz.deployment` | `AgentDefinition`, `AgentCapability`, `Capability`, `SubAgentSpec` |
+| `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `AgentDefinition` |
+| `roboshed.capabilities` | Reusable file and compaction capabilities, alongside `tools` and `skills` |
+| Other Shed modules | Workspace/project structure, permissions, memory and file tools |
+| Application | Configuration, model selection, permission policy, UI conventions, startup and shutdown |
+
+Core imports none of these application modules.
+
+## Capabilities and skills
+
+Both `AgentDefinition` and preset callers configure `capabilities` only. A capability is a configured feature
+such as file editing or compaction. It assembles the runtime tools and instructions
+needed to provide that feature. Applications choose capabilities; they do not pass
+parallel tool and skill lists into `orchestrator()` or `build_assistant()`.
+
+A `Skill` is a lower-level package of instructions and optional tools. Capabilities
+can supply skills for on-demand loading or session-start loading, expose tools
+directly, or install automatic tools. These are implementation choices inside a
+capability, represented by `Capability`; they are not competing definition or
+preset inputs.
+For example, `FileEditing` bundles a guarded patch tool with its editing instructions.
+`Compactification` supplies an automatic tool without a skill.
+
+The orchestrator and assistant always supply `stop`. `Agent` supplies user
+interaction independently of selected capabilities. Only the lower-level `Agent`
+and concrete `Capability` expose tool and skill fields; `AgentDefinition` has a
+single capability list.
 
 ## Generic construction
 
@@ -54,4 +77,53 @@ The `event_sinks` build argument follows the root and specialists. An optional
 `event_sink_factory(name)` supplies fresh, agent-specific sinks independently;
 parent-specific sinks never leak to children. Core does not choose log locations.
 To add root-only automatic work, append a `Capability(default_tools=(... ,))`
-to the root definition's capability tuple. No separate tool-injection build argument exists.
+to the root definition's capability tuple. The deployment uses this same path to
+wire background start tools; no separate tool-injection build argument exists.
+
+## Agent presets
+
+`roboshed.agents.orchestrator()` and `librarian()` both return `AgentDefinition`.
+The orchestrator supplies a persistent collaboration prompt and a stop capability;
+completing one task does not end the session. The librarian supplies its fixed
+snapshot, consolidation and retention pipeline as an automatic capability.
+
+Configure `orchestrator(agent_endpoint=endpoint, capabilities=(...))`. Configure
+`librarian(project=project, agent_names=root.agent_names(), snapshot_endpoint=endpoint)`.
+Call `.build()` on either definition and invoke the resulting agent directly.
+Preset definitions select no event sinks; callers supply persistence explicitly
+through `event_sink_factory`. The librarian can run in the background through
+`run_background_agent`; hosts own cancellation and shutdown.
+
+`roboshed.assistant.build_assistant` is a task-oriented file preset. It supplies
+file capabilities and stop, with optional additional capabilities. Its demo builds
+email tools and their orientation skill together inside one capability.
+
+## Workspace and capability inputs
+
+Workspace areas describe roles, not permissions. Projects expose `logs`,
+`snapshots`, and `memory`. Persistence paths may be project-relative or absolute
+and must not overlap. `project.artifact_dir(name)` resolves an additional folder
+inside the project. No dynamic configuration keys become Python attributes.
+
+Applications select and configure `roboshed.capabilities`. RoboSprawl assembles
+its capability tuple; any future user-facing selection belongs in Sprawl.
+Capabilities do not depend on a named deployment profile.
+
+File capabilities take concrete `WorkspacePermissions`; configure them from the
+project before creating the definition. `Compactification` uses its owning
+endpoint unless given another, and shares its pipe. Its default threshold is
+80%; Sprawl explicitly chooses 60%.
+
+## Migration
+
+- Memory tools and the Librarian move from core to `roboshed.tools` and
+  `roboshed.agents`. Replace `LibrarianConstructor` and its path record with
+  `librarian(project=..., agent_names=..., snapshot_endpoint=...)` and `.build()`.
+- Import `WorkspacePermissions`, `Workspace`, and `Project` from `roboshed.workspace`.
+  Project identity and persistence paths are explicit; arbitrary configuration
+  keys do not become Python attributes.
+- `build_assistant` takes `project`, optional `permissions`, and `capabilities`.
+  Move former `tool_builders`, tools and skill extensions into capability builds.
+  The demo uses `WORKSPACE/projects/assistant`; `--data-path` selects log storage.
+- Core keeps construction, control and interaction primitives. All tool/skill
+  definition extensions use capabilities. There are no compatibility imports.

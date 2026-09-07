@@ -3,8 +3,8 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz import Ctx
 from roboshed.models import ActionVerdict, PermissionRule
+from roboz import Ctx
 
 from .cmd_spec import CmdSpec
 

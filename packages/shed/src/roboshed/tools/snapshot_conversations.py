@@ -6,6 +6,30 @@ from enum import StrEnum
 from functools import partial
 from typing import Final
 
+from roboshed.identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
+from roboshed.tools._snapshot_metadata import (
+    SnapshotDocument,
+    format_snapshot_document,
+    parse_snapshot_document,
+)
+from roboshed.tools.compactification import (
+    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
+    summarize_conversation_segment,
+)
+from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
+from roboshed.tools.memory_files import (
+    JSON_SUFFIX,
+    MARKDOWN_SUFFIX,
+    UTF8_ENCODING,
+    latest_timestamped_file,
+    load_conversation_run,
+    write_timestamped_file,
+)
+from roboshed.tools.snapshot_conversation_prompts import (
+    SNAPSHOT_CONVERSATION_INSTRUCTIONS,
+    SNAPSHOT_CONVERSATION_SYSTEM_PROMPT,
+)
+from roboshed.tools.snapshot_normalize import normalize_messages_for_snapshot
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
 from roboz.models import NO_MESSAGE, All, Message, Str
@@ -18,30 +42,6 @@ from roboz.runtime.persistence import (
 )
 from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tools._identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
-from roboz.tools._snapshot_metadata import (
-    SnapshotDocument,
-    format_snapshot_document,
-    parse_snapshot_document,
-)
-from roboz.tools.compactification import (
-    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
-    summarize_conversation_segment,
-)
-from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_files import (
-    JSON_SUFFIX,
-    MARKDOWN_SUFFIX,
-    UTF8_ENCODING,
-    latest_timestamped_file,
-    load_conversation_run,
-    write_timestamped_file,
-)
-from roboz.tools.snapshot_conversation_prompts import (
-    SNAPSHOT_CONVERSATION_INSTRUCTIONS,
-    SNAPSHOT_CONVERSATION_SYSTEM_PROMPT,
-)
-from roboz.tools.snapshot_normalize import normalize_messages_for_snapshot
 
 logger = logging.getLogger(__name__)
 

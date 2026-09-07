@@ -5,6 +5,11 @@ import logging
 import math
 from typing import Final
 
+from roboshed.tools.compactification.summary_prompts import (
+    SUMMARY_OUTPUT_EXAMPLE,
+    build_summary_length_feedback,
+    build_summary_user_prompt,
+)
 from roboz.llm import (
     EndpointLike,
     LLMEndpoint,
@@ -14,13 +19,8 @@ from roboz.llm import (
     get_completion,
     resolve_endpoint,
 )
-from roboz.models import BaseNames, Message, NO_TRUNCATION, Role, Str
+from roboz.models import NO_TRUNCATION, BaseNames, Message, Role, Str
 from roboz.runtime import EventPipe, log_with_data
-from roboz.tools.compactification.summary_prompts import (
-    SUMMARY_OUTPUT_EXAMPLE,
-    build_summary_length_feedback,
-    build_summary_user_prompt,
-)
 
 logger = logging.getLogger(__name__)
 

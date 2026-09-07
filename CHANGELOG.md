@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Breaking: move the Librarian and its memory/summarization tools out of core into `roboshed.agents` and `roboshed.tools`. Use `librarian(project=..., agent_names=..., snapshot_endpoint=...)` instead of `LibrarianConstructor` and its path record; see `docs/agent-factories.md`. Core retains control, interaction, and generic construction primitives.
+
 - Add generic `AgentDefinition`, `AgentCapability`, `Capability`, and `SubAgentSpec` in `roboz.deployment`. Configure all tools and skills through capabilities, with fresh agent pipes and explicit sink configuration; definitions select no project, memory, or persistence conventions. See `docs/agent-factories.md`.
 
 - Breaking: `roboz[shed]` now installs `roboshed` instead of `roboz-shed`. Update direct requirements to `roboshed` and imports from `roboz_shed` to `roboshed`; no compatibility package is provided.

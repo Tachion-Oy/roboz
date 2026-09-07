@@ -10,7 +10,7 @@ SNAPSHOT_CONVERSATION_EXAMPLE: Final[str] = """## Goals and intent
 - `snapshot_conversations` implemented: scans one conversation root, filters by allowed agent names, writes one markdown snapshot per `conversation_id`.
 - Existing snapshots are read as the prior record, merged with new transcript content, then replaced by the updated snapshot.
 - `projects/brandstrategy/05-credibility/` was observed empty earlier; a later successful `apply_patch` created `credibility.md`. Current state: the file exists with the approved draft.
-- Summarization wired through `summarize_conversation_segment` in `src/roboz/tools/compactification/summarize.py`; segment ended with unit tests passing.
+- Summarization wired through `summarize_conversation_segment` in `packages/shed/src/roboshed/tools/compactification/summarize.py`; segment ended with unit tests passing.
 - In progress at segment end: agent was drafting the consolidation trigger thresholds; not yet reviewed by the user.
 
 ## Decisions
@@ -30,7 +30,7 @@ SNAPSHOT_CONVERSATION_EXAMPLE: Final[str] = """## Goals and intent
 
 ## Facts and references
 - Librarian must never snapshot itself; it only processes agents in its allow-list.
-- Key files: `src/roboz/tools/librarian.py`, `src/roboz/tools/snapshot_conversations.py`, `src/roboz/tools/memory_files.py`.
+- Key files: `packages/shed/src/roboshed/agents/librarian.py`, `packages/shed/src/roboshed/tools/snapshot_conversations.py`, `packages/shed/src/roboshed/tools/memory_files.py`.
 - Prompt examples live in separate modules from prompt constants.
 - User asked to remember: orchestrator consumes memory through `Agent` `initial_messages` pointing at the memory folder.
 """

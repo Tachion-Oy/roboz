@@ -5,6 +5,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from roboshed.tools import consolidate_memory
+from roboshed.tools._snapshot_metadata import (
+    SNAPSHOT_COVERAGE_TAG,
+    format_snapshot_document,
+)
+from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
+from roboshed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
 from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
@@ -12,15 +19,8 @@ from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty
 from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import mark_conversation_active
-from roboz.tools import consolidate_memory
-from roboz.tools._snapshot_metadata import (
-    SNAPSHOT_COVERAGE_TAG,
-    format_snapshot_document,
-)
-from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
-consolidate_module = importlib.import_module("roboz.tools.consolidate_memory")
+consolidate_module = importlib.import_module("roboshed.tools.consolidate_memory")
 
 _DEFAULT_AGENT = "orchestrator"
 _MAX_CHARS = 10_000

@@ -4,8 +4,8 @@ This repository builds four independently versioned distributions:
 
 | Distribution | Import | Version | Contents |
 | --- | --- | --- | --- |
-| `roboz` | `roboz` | `0.1.1` (pre-alpha project) | Primitives and existing dependency-free reference tools |
-| `roboshed` | `roboshed` | `0.1.0a1` | Guarded files, patch editing, assistant, neutral email tools |
+| `roboz` | `roboz` | `0.1.1` (pre-alpha project) | Agent, tool, skill, control, event, and persistence primitives |
+| `roboshed` | `roboshed` | `0.1.0a1` | Agent factories, workspace, capabilities, memory, guarded files, and neutral email tools |
 | `roboz-openai` | `roboz_openai` | `0.1.0a1` | OpenAI-compatible Chat Completions and OpenRouter constructors |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `0.1.0b1` | Proton Bridge mailbox and draft adapter |
 
@@ -80,33 +80,29 @@ connect to a service.
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
-from roboshed.assistant import WorkspacePermissions, build_assistant
+from roboshed.workspace import Project, Workspace
+from roboshed.assistant import build_assistant
 
 assistant = build_assistant(
     endpoint=MockLLMEndpoint([
         {"action": "stop", "rationale": "Done", "value": "Hello!"}
     ]),
-    workspace=WorkspacePermissions.local(Path("./workspace")),
+    project=Project(Workspace(Path("./workspace")), "example"),
 )
 result, messages = assistant.invoke()
 ```
 
-The builder supplies read commands and patch editing. Pass additional `tools`
-and `skills` explicitly. For capabilities requiring cancellation/events, pass
-`tool_builders`: each callable receives the owning agent's `EventPipe` once at
-construction and returns tools. No integration registry or automatic activation
-is required. The installed demo is a composition example whose explicit flags
-import adapters; other Shed library modules do not import them.
+The assistant preset supplies guarded read commands and patch editing. Pass
+additional `capabilities` explicitly. Each capability owns its tools and skills
+and receives the owning agent's event pipe once per build. The demo's explicit flags import
+optional adapters; other Shed modules do not import providers.
 
-`WorkspacePermissions.local` allows operations inside the selected root and
-denies resolved paths outside it. These are tool guards, not an OS sandbox.
-Arbitrary shell and Git execution are absent from the default assistant.
+See [agent factories](agent-factories.md) for persistent orchestration, common
+workspace structure, permission injection, and API migration.
 
 Another email adapter implements `roboshed.tools.email.EmailService`.
-`ResolvedFileCommand[Input, Payload]` and `GuardFilesResult[Input, Payload]` carry
-typed payloads without registering integration-specific unions. Concrete types
-survive in-memory handoffs. When decoding persisted guard JSON, use explicitly
-parameterized models so payload types can be reconstructed.
+`ResolvedFileCommand[Input, Payload]` and `GuardFilesResult[Input, Payload]` retain
+typed payloads. Decode persisted guard JSON with explicitly parameterized models.
 
 ## Independent releases
 
@@ -141,7 +137,9 @@ not publish. See the [PyPA publishing guide](https://packaging.python.org/en/lat
 ## Future Hub
 
 The separate Hub repository will own FastAPI, run management, SSE, user-input
-handling, project layout, configuration, UI, and a useful default assistant.
+handling, project configuration, UI, and the concrete default deployment. Shared workspace
+structure and reusable factories belong to `roboshed`, alongside their tools and
+capabilities. `roboz` supplies the primitives used to build them.
 It consumes these distributions. Personal signatures, Tero connections, and
 business-specific defaults remain configuration or local extensions.
 

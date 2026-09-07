@@ -157,11 +157,13 @@ Prompt fragments used to implement those operations live together in `roboz.llm.
 
 ## Companion Packages
 
-The `roboz` package includes its typed primitives and dependency-free reference
-tools, including the Librarian memory pipeline. Optional companion distributions
-depend on `roboz` and provide integrations that require provider SDKs, guarded
-system tools, or application-specific services; Roboz never imports those
-companions.
+The `roboz` package owns typed agent, tool, skill, control, interaction, event,
+and persistence primitives. `roboz.deployment` defines generic construction and
+capability contracts. `roboshed` applies those primitives:
+orchestrator/Librarian composition, workspace structure, concrete capabilities,
+memory maintenance, and guarded tools. Provider
+adapters live in separate companions. Core never imports its consumers; having
+no provider dependency does not make a composition a primitive.
 
 ## Runtime Event Bus
 

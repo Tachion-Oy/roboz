@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Breaking: own orchestrator/Librarian presets, workspace/project structure, reusable capabilities, and memory/summarization tools. Import presets from `roboshed.agents`, feature implementations from `roboshed.capabilities`, and explicit paths/permission inputs from `roboshed.workspace`. Both presets return `AgentDefinition`; the orchestrator remains available across tasks until asked to stop. Assistant extensions use only `capabilities`; replace `workspace` with `project` and optional `permissions`, and move separate tool/skill inputs into capability builds. See `docs/agent-factories.md`.
+
 - Breaking: rename the distribution from `roboz-shed` to `roboshed` and the import namespace from `roboz_shed` to `roboshed`. Update dependency declarations and imports; the `roboz-demo` command is unchanged. No compatibility package is provided.
 
 ### Added

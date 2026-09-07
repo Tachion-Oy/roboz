@@ -1,8 +1,8 @@
 """Regression tests for the snapshot and consolidation anti-spiral prompts."""
 
-from roboz.tools.consolidate_memory_example import CONSOLIDATE_MEMORY_EXAMPLE
-from roboz.tools.consolidate_memory_prompts import CONSOLIDATE_MEMORY_INSTRUCTIONS
-from roboz.tools.snapshot_conversation_prompts import (
+from roboshed.tools.consolidate_memory_example import CONSOLIDATE_MEMORY_EXAMPLE
+from roboshed.tools.consolidate_memory_prompts import CONSOLIDATE_MEMORY_INSTRUCTIONS
+from roboshed.tools.snapshot_conversation_prompts import (
     SNAPSHOT_CONVERSATION_INSTRUCTIONS,
 )
 
@@ -74,9 +74,9 @@ def test_consolidate_example_has_genuine_interaction_and_snapshot_shape() -> Non
     response = CONSOLIDATE_MEMORY_EXAMPLE.split(response_marker, maxsplit=1)[1]
     assert response.startswith("## Standing instructions")
 
-    assert CONSOLIDATE_MEMORY_EXAMPLE.count(
-        "# Conversation Snapshot: orchestrator"
-    ) == 2
+    assert (
+        CONSOLIDATE_MEMORY_EXAMPLE.count("# Conversation Snapshot: orchestrator") == 2
+    )
     for section in (
         "## Goals and intent",
         "## State of work",

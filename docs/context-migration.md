@@ -61,10 +61,7 @@ Field values retain their previous meanings and types; values are not coerced by
 | `prompt_agent` | `endpoint`, `active_tools`, `pipe` | None |
 | `run_subagent` | `agent` | None |
 | `run_background_agent` | `agent` | Fresh `state` per binding |
-| `snapshot_conversations` | `endpoint`, `conversation_root`, `snapshot_root`, `memory_root`, `agent_names`, `token_growth_threshold`, `max_chars` | `max_chars_tolerance_percent=15.0`, `timeout_s=None`, `pipe=None` |
-| `consolidate_memory` | `endpoint`, `snapshot_root`, `memory_root`, `conversation_root`, `agent_names`, `min_pending_snapshots`, `max_pending_age_seconds`, `max_chars` | `max_chars_tolerance_percent=15.0`, `timeout_s=None`, `pipe=None` |
-| `purge_files` | `pattern`, `max_files`, `folders` | `prune_empty_directories=False` |
-| `sleep_between_runs` | `seconds` | `is_cancelled=None`, `conversation_root=None`, fresh empty `agent_names` set |
+
 
 The former `PromptUserCtx`, `MessageCtx`, `PromptAgentCtx`, `SubagentCtx`,
 `BackgroundAgentCtx`, `SnapshotConversationsCtx`, `ConsolidateMemoryCtx`,
@@ -75,6 +72,10 @@ The former `PromptUserCtx`, `MessageCtx`, `PromptAgentCtx`, `SubagentCtx`,
 
 | Tool or stage | Required context fields | Defaults |
 | --- | --- | --- |
+| `snapshot_conversations` | `endpoint`, `conversation_root`, `snapshot_root`, `memory_root`, `agent_names`, `token_growth_threshold`, `max_chars` | `max_chars_tolerance_percent=15.0`, `timeout_s=None`, `pipe=None` |
+| `consolidate_memory` | `endpoint`, `snapshot_root`, `memory_root`, `conversation_root`, `agent_names`, `min_pending_snapshots`, `max_pending_age_seconds`, `max_chars` | `max_chars_tolerance_percent=15.0`, `timeout_s=None`, `pipe=None` |
+| `purge_files` | `pattern`, `max_files`, `folders` | `prune_empty_directories=False` |
+| `sleep_between_runs` | `seconds` | `is_cancelled=None`, `conversation_root=None`, fresh empty `agent_names` set |
 | File-command resolution | `base`, `specs`, `allow_rules`, `deny_rules`, `ask_rules`, `takes_precedence`, `default_verdict` | None |
 | Patch and email attachment/path resolution | `base` | None |
 | `operation_guard` | `base`, `takes_precedence`, `deny`, `allow`, `ask`, `default_verdict` | `command_specs=()`, `pipe=None` |

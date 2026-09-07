@@ -3,13 +3,6 @@
 from functools import partial
 from pathlib import Path
 
-from roboz import Ctx
-from roboz.models import Message, Str
-from roboz.models.truncation import Severity, Truncation, TruncationSpec
-from roboz.runtime.pipe import EventPipe
-from roboz.tooling import Tool
-from roboz.tooling.context import _prepare_context
-from roboz.tooling.decorators import factory
 from roboshed.identifiers import APPLY_PATCH_TOOL_NAME, FILE_EDITING_SKILL_NAME
 from roboshed.models import (
     ActionVerdict,
@@ -27,6 +20,13 @@ from roboshed.tools.guard import build_guarded_tool_chain
 from roboshed.tools.truncation import default_cli_truncation
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import resolve_single_file_path, resolve_tool_base
+from roboz import Ctx
+from roboz.models import Message, Str
+from roboz.models.truncation import Severity, Truncation, TruncationSpec
+from roboz.runtime.pipe import EventPipe
+from roboz.tooling import Tool
+from roboz.tooling.context import _prepare_context
+from roboz.tooling.decorators import factory
 
 APPLY_PATCH_NAME: str = APPLY_PATCH_TOOL_NAME
 

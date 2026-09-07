@@ -6,6 +6,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from roboshed.tools import snapshot_conversations
+from roboshed.tools._snapshot_metadata import (
+    SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
+    SNAPSHOT_COVERAGE_TAG,
+    SNAPSHOT_COVERAGE_VERSION,
+    parse_snapshot_document,
+)
+from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
+from roboshed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
 from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
@@ -20,17 +29,8 @@ from roboz.runtime.persistence import (
     message_to_logged_row,
     utc_iso_z,
 )
-from roboz.tools import snapshot_conversations
-from roboz.tools._snapshot_metadata import (
-    SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
-    SNAPSHOT_COVERAGE_TAG,
-    SNAPSHOT_COVERAGE_VERSION,
-    parse_snapshot_document,
-)
-from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
-snapshot_module = importlib.import_module("roboz.tools.snapshot_conversations")
+snapshot_module = importlib.import_module("roboshed.tools.snapshot_conversations")
 
 _DEFAULT_AGENT = "code_task_executor"
 _DEFAULT_CONVERSATION = "conversation-1"

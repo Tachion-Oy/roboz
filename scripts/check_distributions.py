@@ -59,6 +59,7 @@ def wheels_for(dist: Path, *, core_only: bool = False) -> dict[str, Path]:
 CORE_SMOKE = """
 from importlib.util import find_spec
 import roboz as rz
+assert all(find_spec(n) is None for n in ("roboz.agents", "roboz.workspace", "roboz.tools.snapshot_conversations", "roboz.tools.compactification"))
 from roboz.llm import MockLLMEndpoint
 assert all(find_spec(n) is None for n in ('roboshed', 'roboz_openai', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
 agent = rz.Agent(name='test', tools=[rz.stop], system_prompt='Stop.', agent_endpoint=MockLLMEndpoint([{'action': 'stop', 'rationale': 'test', 'value': 'ok'}]))

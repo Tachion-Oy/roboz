@@ -1,6 +1,6 @@
 # roboshed
 
-Reusable tools, skills, and a small assistant built on Roboz. Version `0.1.0a1`
+Reusable agent factories, capabilities, workspaces, tools, and skills built on Roboz. Version `0.1.0a1`
 is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
 
 Includes guarded Unix file commands, Python patch editing, CLI/file/email
@@ -10,46 +10,35 @@ install any model SDK, Proton, document SDK, web service, or backend framework.
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
-from roboshed.assistant import WorkspacePermissions, build_assistant
+from roboshed.workspace import Project, Workspace
+from roboshed.assistant import build_assistant
 
-assistant = build_assistant(
+agent = build_assistant(
     endpoint=MockLLMEndpoint([
-        {"action": "stop", "rationale": "Complete", "value": "Hello"}
+        {"action": "stop", "rationale": "done", "value": "Ready."}
     ]),
-    workspace=WorkspacePermissions.local(Path("./workspace")),
+    project=Project(Workspace(Path("./workspace")), "example"),
 )
-result, messages = assistant.invoke()
+agent.invoke()
 ```
 
-`build_assistant` accepts additional tools, skills, event sinks, initial messages,
-and a system prompt. `tool_builders` receive the owning event pipe to bind
-cancellation and events. Low-level `get_run_file_command`, `get_apply_patch`,
-and `get_work_with_email` factories also work without this assistant.
+`roboshed.capabilities` provides `FileCommands`, `FileEditing`, and
+`Compactification`, alongside the `tools` and `skills` modules. Applications
+choose and configure these capabilities through the presets’ single `capabilities`
+extension argument. A capability owns its tools and any skills used for instructions. `roboshed.agents` supplies the reusable
+orchestrator/Librarian presets. Generic definitions and
+capability contracts live in `roboz.deployment`. Each capability
+builds against the owning agent's pipe. Select permission policies through
+`roboshed.workspace.WorkspacePermissions`; workspace structure does not grant
+access. `build_assistant` is a task-oriented preset using the same construction.
 
-The assistant supplies read commands and patch editing. The file factory can
-also explicitly enable its write/delete command specifications. Permission
-rules cover allow/deny/ask, configured precedence, overwrite checks, and resolved
-paths; they are not an OS sandbox. Commands require their named Unix executables.
-
-Generic guard models preserve input/payload types without integration-specific
-unions. Use concrete generic parameters when decoding serialized guard results.
-
-The installed demo requires only `cat` in mock mode:
-
-```bash
-python -m roboshed.demo --mock --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data
-```
-
-It creates a uniquely named file and a saved conversation. Its real-provider
-and email flags require the separately installed adapters. See the repository's
-[installation guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/addons.md)
-for local wheel installation before these packages are published.
+See the [factory and migration guide](../../docs/agent-factories.md).
 
 ## Conversation compaction
 
 The following fragment belongs inside an agent or tool builder. `endpoint` is
 the agent's configured endpoint, and `agent_pipe` is its owning event pipe
-(supplied to `tool_builders` by `build_assistant`).
+(supplied to each capability by the agent definition).
 
 ```python
 from roboshed.tools import get_compactify_messages_when_needed_tool
@@ -83,7 +72,8 @@ Summarization messages and model-call events use the supplied pipe.
 The public tool name and persisted caller are `compactify_messages_when_needed`.
 This tool incorporates the continuation prompts used by PeffaHub/PeffaShed while
 retaining RoboSprawl's caller name. The old `robosprawl.compaction` import is
-replaced by `roboshed.tools`; Roboz core continues to own the shared summarizer.
+replaced by `roboshed.tools`. Shed also owns the shared summarizer and Librarian
+memory pipeline; core provides the mechanisms they use.
 
 ## Context API migration
 

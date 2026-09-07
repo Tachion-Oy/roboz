@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from roboz.tools.consolidate_memory_example import CONSOLIDATE_MEMORY_EXAMPLE
+from roboshed.tools.consolidate_memory_example import CONSOLIDATE_MEMORY_EXAMPLE
 
 CONSOLIDATE_MEMORY_SYSTEM_PROMPT: Final[str] = """You are a librarian that maintains one bounded \
 persistent memory file distilled from conversation snapshots.

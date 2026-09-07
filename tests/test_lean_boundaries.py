@@ -18,6 +18,8 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "peffashed",
     "shed",
     "roboshed",
+    "robosprawl",
+    "fastapi",
     "roboz_openai",
     "roboz_proton_bridge",
 }
@@ -25,6 +27,10 @@ FORBIDDEN_IMPORT_SEGMENTS = {
 
 def test_addon_namespaces_are_absent() -> None:
     assert find_spec("roboz.standard") is None
+    assert find_spec("roboz.agents") is None
+    assert find_spec("roboz.workspace") is None
+    assert find_spec("roboz.tools.snapshot_conversations") is None
+    assert find_spec("roboz.tools.compactification") is None
     assert find_spec("roboz.llm.providers") is None
 
 

@@ -3,9 +3,6 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from roboz import Ctx, ExternalDependency
-from roboz.runtime.pipe import EventPipe
-from roboz.tooling import Tool
 from roboshed.identifiers import (
     CREATE_EMAIL_DRAFT_TOOL_NAME,
     CREATE_REPLY_DRAFT_TOOL_NAME,
@@ -30,6 +27,9 @@ from roboshed.tools.email.messages import (
 )
 from roboshed.tools.guard import build_guarded_tool_chain
 from roboshed.tools.utils import resolve_tool_base
+from roboz import Ctx, ExternalDependency
+from roboz.runtime.pipe import EventPipe
+from roboz.tooling import Tool
 
 DEFAULT_EMAIL_OPERATION_TIMEOUT_S = 30.0
 

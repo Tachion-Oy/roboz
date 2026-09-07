@@ -5,11 +5,14 @@ import html
 from pathlib import Path
 from uuid import uuid4
 
+from roboshed.workspace import Project, Workspace
 from roboz import Role, Tool
+from roboz.deployment import AgentCapability, Capability
 from roboz.llm import EndpointLike, MockLLMEndpoint, resolve_endpoint
-from roboz.runtime import CliSink, EventPipe, PersistenceSink
+from roboz.runtime import CliSink, EventPipe
 
-from .assistant import WorkspacePermissions, build_assistant
+from .assistant import build_assistant
+from .workspace import WorkspacePermissions
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -85,9 +88,11 @@ def main(argv: list[str] | None = None) -> None:
             model=args.model, max_context_tokens=args.max_context_tokens
         )
 
-    workspace = WorkspacePermissions.local(args.workspace)
-    builders = []
-    skills = []
+    project = Project(
+        Workspace(args.workspace), "assistant", logs_dir=args.data_path.resolve()
+    )
+    workspace = WorkspacePermissions.local(project.root)
+    capabilities: list[AgentCapability] = []
     if args.proton:
         try:
             from roboz_proton_bridge import (
@@ -130,8 +135,11 @@ def main(argv: list[str] | None = None) -> None:
                 is_cancelled=lambda: pipe.cancelled,
             )
 
-        builders.append(email_tools)
-        skills.append(email_skill)
+        class EmailCapability:
+            def build(self, pipe, agent_endpoint):
+                return Capability(tools=tuple(email_tools(pipe)), skills=(email_skill,))
+
+        capabilities.append(EmailCapability())
 
     # Resolve once so missing credentials fail before starting an interactive run.
     try:
@@ -143,15 +151,14 @@ def main(argv: list[str] | None = None) -> None:
         data_path = args.data_path.resolve()
         agent = build_assistant(
             endpoint=materialized,
-            workspace=workspace,
-            tool_builders=builders,
-            skills=skills,
+            project=project,
+            permissions=workspace,
+            capabilities=capabilities,
             initial_messages=[
                 args.prompt or "Create and read the demonstration file, then stop."
             ],
             event_sinks=[
                 CliSink(types_to_print={Role.ERROR}),
-                PersistenceSink.for_path(data_path),
             ],
         )
         result, messages = agent.invoke()

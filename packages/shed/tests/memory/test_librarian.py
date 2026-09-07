@@ -7,10 +7,18 @@ from pathlib import Path
 from typing import Final
 
 import pytest
+from roboshed.agents.librarian import (
+    LIBRARIAN_AGENT_DESCRIPTION,
+    LibrarianTuning,
+    librarian,
+)
+from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
+from roboshed.workspace import Project, Workspace
 
 from roboz.exceptions import ExternalCallCancelledError, LLMAuthError
 from roboz.llm import MockLLMEndpoint, MockProviderError
 from roboz.models import Empty, Message, Role, Stop, Str
+from roboz.runtime import default_event_sinks
 from roboz.runtime.persistence import (
     ConversationRun,
     RunStatus,
@@ -19,25 +27,14 @@ from roboz.runtime.persistence import (
     message_to_logged_row,
     utc_iso_z,
 )
-from roboz.tools.librarian import (
-    LIBRARIAN_AGENT_DESCRIPTION,
-    LibrarianConstructor,
-    LibrarianPaths,
-    LibrarianTuning,
-)
-from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
 
-sleep_module = importlib.import_module("roboz.tools.sleep_between_runs")
+sleep_module = importlib.import_module("roboshed.tools.sleep_between_runs")
 
 _WATCHED_AGENT: Final[str] = "orchestrator"
 
 
-def _paths(tmp_path: Path) -> LibrarianPaths:
-    return LibrarianPaths(
-        conversation_root=tmp_path / "logs",
-        snapshot_root=tmp_path / "snapshots",
-        memory_root=tmp_path / "memory",
-    )
+def _paths(tmp_path: Path) -> Project:
+    return Project(Workspace(tmp_path), "test")
 
 
 def _build(
@@ -46,7 +43,9 @@ def _build(
     endpoint: MockLLMEndpoint | None = None,
     tuning: LibrarianTuning | None = None,
 ):
-    return LibrarianConstructor(
+    return librarian(
+        project=_paths(tmp_path),
+        agent_names={_WATCHED_AGENT},
         snapshot_endpoint=endpoint or MockLLMEndpoint([]),
         tuning=tuning
         or LibrarianTuning(
@@ -55,20 +54,22 @@ def _build(
             max_pending_age_seconds=3_600.0,
             sleep_seconds=0.01,
         ),
-    ).build(paths=_paths(tmp_path), agent_names={_WATCHED_AGENT})
+    ).build(
+        event_sink_factory=lambda name: default_event_sinks(
+            data_path=_paths(tmp_path).logs / name, include_cli=False
+        )
+    )
 
 
 def _write_source_run(
-    paths: LibrarianPaths, *, status: RunStatus = RunStatus.COMPLETED
+    paths: Project, *, status: RunStatus = RunStatus.COMPLETED
 ) -> Path:
     created_at = datetime(2026, 8, 4, tzinfo=timezone.utc)
     run = ConversationRun(
         conversation_id="source-run",
         agent_name=_WATCHED_AGENT,
         started_at=utc_iso_z(created_at),
-        ended_at=(
-            None if status is RunStatus.RUNNING else utc_iso_z(created_at)
-        ),
+        ended_at=(None if status is RunStatus.RUNNING else utc_iso_z(created_at)),
         status=status,
         messages=[
             message_to_logged_row(
@@ -79,7 +80,7 @@ def _write_source_run(
             )
         ],
     )
-    agent_dir = paths.conversation_root / _WATCHED_AGENT
+    agent_dir = paths.logs / _WATCHED_AGENT
     path = agent_dir / "source-run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(run.model_dump_json(), encoding="utf-8")
@@ -107,6 +108,7 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
 
 def test_librarian_tuning_has_audited_defaults_and_validation() -> None:
     tuning = LibrarianTuning()
+    assert tuning.sleep_seconds == 120
     assert tuning.token_growth_threshold == 20_000
     assert tuning.max_chars_tolerance_percent == 15.0
     assert tuning.llm_timeout_s == 300.0
@@ -118,11 +120,13 @@ def test_librarian_tuning_has_audited_defaults_and_validation() -> None:
             LibrarianTuning(max_chars_tolerance_percent=invalid)
 
 
-def test_librarian_requires_exactly_one_endpoint_source() -> None:
+def test_librarian_requires_exactly_one_endpoint_source(tmp_path) -> None:
     with pytest.raises(ValueError, match="exactly one"):
-        LibrarianConstructor()
+        librarian(project=_paths(tmp_path), agent_names={_WATCHED_AGENT})
     with pytest.raises(ValueError, match="exactly one"):
-        LibrarianConstructor(
+        librarian(
+            project=_paths(tmp_path),
+            agent_names={_WATCHED_AGENT},
             snapshot_endpoint=MockLLMEndpoint([]),
             endpoint_factory=lambda is_cancelled: MockLLMEndpoint([]),
         )
@@ -135,9 +139,12 @@ def test_endpoint_factory_receives_bound_cancellation_probe(tmp_path: Path) -> N
         observed.append(is_cancelled)
         return MockLLMEndpoint([])
 
-    agent = LibrarianConstructor(endpoint_factory=endpoint_factory).build(
-        paths=_paths(tmp_path), agent_names={_WATCHED_AGENT}
+    definition = librarian(
+        project=_paths(tmp_path),
+        agent_names={_WATCHED_AGENT},
+        endpoint_factory=endpoint_factory,
     )
+    agent = definition.build()
     (is_cancelled,) = observed
     assert is_cancelled() is False
 
@@ -150,8 +157,8 @@ def test_snapshot_retention_prunes_empty_conversation_folders(
     tmp_path: Path,
 ) -> None:
     paths = _paths(tmp_path)
-    artifact = paths.snapshot_root / "retained" / "one.md"
-    empty = paths.snapshot_root / "empty-conversation"
+    artifact = paths.snapshots / "retained" / "one.md"
+    empty = paths.snapshots / "empty-conversation"
     artifact.parent.mkdir(parents=True)
     empty.mkdir(parents=True)
     artifact.write_text("snapshot", encoding="utf-8")
@@ -220,9 +227,7 @@ def test_librarian_invoke_persists_no_message_cycle_outputs(tmp_path: Path) -> N
 
     agent.invoke()
 
-    run_files = list(
-        (paths.conversation_root / "librarian").rglob("*.json")
-    )
+    run_files = list((paths.logs / "librarian").rglob("*.json"))
     assert len(run_files) == 1
     run = json.loads(run_files[0].read_text(encoding="utf-8"))
     assert run["agent_name"] == "librarian"
@@ -251,9 +256,7 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
         agent.invoke()
 
     assert isinstance(raised.value.__cause__, LLMAuthError)
-    run_files = list(
-        (paths.conversation_root / "librarian").rglob("*.json")
-    )
+    run_files = list((paths.logs / "librarian").rglob("*.json"))
     assert len(run_files) == 1
     run_text = run_files[0].read_text(encoding="utf-8")
     run = json.loads(run_text)
@@ -265,3 +268,13 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
         if event["category"] == "tool" and event["kind"] == "failed"
     )
     assert failure["data"]["tool"] == "snapshot_conversations"
+
+
+def test_builtin_default_configuration_is_preserved() -> None:
+    from roboshed.tools import sleep_between_runs
+
+    import roboz as rz
+
+    result = sleep_between_runs(rz.Ctx(seconds=0))(rz.All(), [])
+    assert isinstance(result, rz.Str)
+    assert result.value == "sleep_between_runs: slept=0.0s"

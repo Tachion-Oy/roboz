@@ -15,3 +15,12 @@ FILE_EDITING_SKILL_NAME: Final[str] = "file_editing"
 EMAIL_TOOLS_SKILL_NAME: Final[str] = "email_tools"
 
 COMPACTIFY_MESSAGES_TOOL_NAME: Final[str] = "compactify_messages_when_needed"
+
+SNAPSHOT_CONVERSATIONS_TOOL_NAME: Final[str] = "snapshot_conversations"
+CONSOLIDATE_MEMORY_TOOL_NAME: Final[str] = "consolidate_memory"
+PURGE_FILES_TOOL_NAME: Final[str] = "purge_files"
+PURGE_LOGS_TOOL_NAME: Final[str] = "purge_logs"
+PURGE_SNAPSHOTS_TOOL_NAME: Final[str] = "purge_snapshots"
+PURGE_MEMORY_TOOL_NAME: Final[str] = "purge_memory"
+SLEEP_BETWEEN_RUNS_TOOL_NAME: Final[str] = "sleep_between_runs"
+LIBRARIAN_AGENT_NAME: Final[str] = "librarian"

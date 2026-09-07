@@ -123,14 +123,15 @@ message-visibility window.
 | `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
 
 The package contains agent and LLM primitives, models, runtime and persistence
-infrastructure, skills, tooling, foundational control/interaction tools, and
-dependency-free reference tools such as the Librarian memory pipeline. Provider
-catalogs and SDK integrations, guarded file and CLI tools, and application
+infrastructure, skills, tooling, and foundational control/interaction tools.
+Provider catalogs and SDK integrations, guarded file and CLI tools, and application
 integrations belong in companion packages and are not dependencies of Roboz.
 
-`roboz.deployment` supplies generic agent definitions, capabilities, and specialist
-composition without selecting a project layout or persistence policy. See
-[agent definitions and capabilities](docs/agent-factories.md).
+`roboz.deployment` supplies generic agent definitions, capability contracts,
+and specialist composition. `roboshed` supplies orchestrator/Librarian
+factories, concrete capabilities, memory tools, and workspace structure. These are described in [agent factories](docs/agent-factories.md). Configured file and compaction capabilities live in `roboshed.capabilities`,
+alongside `roboshed.tools` and `roboshed.skills`; agent presets live in
+`roboshed.agents`.
 
 ## Documentation
 

@@ -3,12 +3,6 @@
 from functools import partial
 from pathlib import Path
 
-from roboz import Ctx
-from roboz.models import Message
-from roboz.models.truncation import Severity, Truncation
-from roboz.tooling import Tool
-from roboz.tooling.context import _prepare_context
-from roboz.tooling.decorators import factory
 from roboshed.models import (
     ActionVerdict,
     GuardDenyReason,
@@ -25,6 +19,12 @@ from roboshed.models import (
 from roboshed.tools.guard_formatting import format_guard_constraints
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import check_allow_deny_permission, check_ask_permission
+from roboz import Ctx
+from roboz.models import Message
+from roboz.models.truncation import Severity, Truncation
+from roboz.tooling import Tool
+from roboz.tooling.context import _prepare_context
+from roboz.tooling.decorators import factory
 
 GUARD_ERR_DENIED = "operation={operation!r} DENIED for location={location!r}"
 GUARD_ERR_DENIED_BY_USER = "Denied by user response to permission prompt."

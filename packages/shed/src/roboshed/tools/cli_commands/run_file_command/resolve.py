@@ -4,11 +4,6 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-from roboz import Ctx
-from roboz.models import Message
-from roboz.models.truncation import Severity, Truncation
-from roboz.tooling.context import _prepare_context
-from roboz.tooling.decorators import factory
 from roboshed.models import (
     CommandReady,
     GuardFileSingle,
@@ -31,6 +26,11 @@ from roboshed.tools.cli_commands.utilities.formatting import cli_help_message
 from roboshed.tools.cli_commands.utilities.path_extractors import resolve_path_indices
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import resolve_path_token
+from roboz import Ctx
+from roboz.models import Message
+from roboz.models.truncation import Severity, Truncation
+from roboz.tooling.context import _prepare_context
+from roboz.tooling.decorators import factory
 
 
 def _specs_by_name(specs: Sequence[CmdSpec]) -> dict[str, CmdSpec]:

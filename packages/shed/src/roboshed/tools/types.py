@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Generic, Literal
 
 from pydantic import ConfigDict, Field, SerializeAsAny
 
-from roboz import Empty
 from roboshed.models import (
     GuardFileSingle,
     TInput,
     TPayload,
 )
+from roboz import Empty
 
 if TYPE_CHECKING:
     pass

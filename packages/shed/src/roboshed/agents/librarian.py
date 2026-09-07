@@ -1,18 +1,11 @@
 """Lean composition for the deterministic Librarian maintenance daemon."""
 
 import math
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
-from roboz.agent import Agent
-from roboz.llm import EndpointLike
-from roboz.llm.binding import _validate_endpoint
-from roboz.runtime import EventPipe, EventSink, default_event_sinks
-from roboz.tooling import Tool
-from roboz.tooling.context import Ctx
-from roboz.tools._identifiers import (
+from roboshed.identifiers import (
     CONSOLIDATE_MEMORY_TOOL_NAME,
     LIBRARIAN_AGENT_NAME,
     PURGE_LOGS_TOOL_NAME,
@@ -21,11 +14,17 @@ from roboz.tools._identifiers import (
     SLEEP_BETWEEN_RUNS_TOOL_NAME,
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
 )
-from roboz.tools.compactification import DEFAULT_MAX_CHARS_TOLERANCE_PERCENT
-from roboz.tools.consolidate_memory import consolidate_memory
-from roboz.tools.purge_files import purge_files
-from roboz.tools.sleep_between_runs import sleep_between_runs
-from roboz.tools.snapshot_conversations import snapshot_conversations
+from roboshed.tools.compactification import DEFAULT_MAX_CHARS_TOLERANCE_PERCENT
+from roboshed.tools.consolidate_memory import consolidate_memory
+from roboshed.tools.purge_files import purge_files
+from roboshed.tools.sleep_between_runs import sleep_between_runs
+from roboshed.tools.snapshot_conversations import snapshot_conversations
+from roboshed.workspace import Project
+from roboz.deployment import AgentDefinition, Capability
+from roboz.llm import EndpointLike
+from roboz.llm.binding import _validate_endpoint
+from roboz.runtime import EventPipe
+from roboz.tooling.context import Ctx
 
 LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
     "Runs deterministic maintenance cycles that snapshot conversations, "
@@ -50,15 +49,6 @@ _MIN_TOLERANCE_PERCENT: Final[float] = 0.0
 
 type IsCancelled = Callable[[], bool]
 type EndpointFactory = Callable[[IsCancelled], EndpointLike]
-
-
-@dataclass(frozen=True)
-class LibrarianPaths:
-    """Filesystem tier consumed by Librarian maintenance."""
-
-    conversation_root: Path
-    snapshot_root: Path
-    memory_root: Path
 
 
 @dataclass(frozen=True)
@@ -89,62 +79,42 @@ class LibrarianTuning:
             )
 
 
-class CancellationProbe:
-    """Bind callbacks created before the owning Agent's pipe is available."""
-
-    def __init__(self) -> None:
-        """Initialize an unbound cancellation probe."""
-        self._pipe: EventPipe | None = None
-
-    def is_cancelled(self) -> bool:
-        """Return whether the bound agent pipe has been cancelled."""
-        return self._pipe is not None and self._pipe.cancelled
-
-    def bind(self, pipe: EventPipe) -> None:
-        """Bind the probe to its owning agent's event pipe."""
-        self._pipe = pipe
-
-
 @dataclass(frozen=True)
-class LibrarianConstructor:
-    """Build a non-agentic background Agent with a fixed maintenance pipeline."""
+class _LibrarianMaintenance:
+    """Bind the fixed maintenance pipeline to its owning agent runtime."""
+
+    project: Project
+    agent_names: frozenset[str]
 
     snapshot_endpoint: EndpointLike | None = None
     endpoint_factory: EndpointFactory | None = None
     tuning: LibrarianTuning = LibrarianTuning()
-    agent_name: str = LIBRARIAN_AGENT_NAME
 
     def __post_init__(self) -> None:
         """Require exactly one source for the snapshot endpoint."""
         if (self.snapshot_endpoint is None) == (self.endpoint_factory is None):
             raise ValueError("set exactly one of snapshot_endpoint or endpoint_factory")
 
-    def pipeline(
-        self,
-        *,
-        paths: LibrarianPaths,
-        agent_names: Collection[str],
-        pipe: EventPipe,
-        probe: CancellationProbe,
-    ) -> tuple[Tool, ...]:
+    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
         """Build the exact ordered tool sequence used for every cycle."""
         endpoint = (
-            self.endpoint_factory(probe.is_cancelled)
+            self.endpoint_factory(lambda: pipe.cancelled)
             if self.endpoint_factory is not None
             else self.snapshot_endpoint
         )
         assert endpoint is not None
         _validate_endpoint(endpoint)
         endpoint_binding = endpoint
-        watched_agents = set(agent_names)
+        project = self.project
+        watched_agents = set(self.agent_names)
         tuning = self.tuning
 
         snapshot = snapshot_conversations(
             Ctx(
                 endpoint=endpoint_binding,
-                conversation_root=paths.conversation_root,
-                snapshot_root=paths.snapshot_root,
-                memory_root=paths.memory_root,
+                conversation_root=project.logs,
+                snapshot_root=project.snapshots,
+                memory_root=project.memory,
                 agent_names=watched_agents,
                 token_growth_threshold=tuning.token_growth_threshold,
                 max_chars=tuning.max_snapshot_chars,
@@ -156,9 +126,9 @@ class LibrarianConstructor:
         consolidate = consolidate_memory(
             Ctx(
                 endpoint=endpoint_binding,
-                snapshot_root=paths.snapshot_root,
-                memory_root=paths.memory_root,
-                conversation_root=paths.conversation_root,
+                snapshot_root=project.snapshots,
+                memory_root=project.memory,
+                conversation_root=project.logs,
                 agent_names=watched_agents,
                 min_pending_snapshots=tuning.min_pending_snapshots,
                 max_pending_age_seconds=tuning.max_pending_age_seconds,
@@ -170,14 +140,14 @@ class LibrarianConstructor:
         ).copy(name=CONSOLIDATE_MEMORY_TOOL_NAME)
         purge_logs = purge_files(
             Ctx(
-                folders=[paths.conversation_root],
+                folders=[project.logs],
                 pattern=JSON_ARTIFACT_PATTERN,
                 max_files=tuning.max_log_files,
             )
         ).copy(name=PURGE_LOGS_TOOL_NAME)
         purge_snapshots = purge_files(
             Ctx(
-                folders=[paths.snapshot_root],
+                folders=[project.snapshots],
                 pattern=MARKDOWN_ARTIFACT_PATTERN,
                 max_files=tuning.max_snapshot_files,
                 prune_empty_directories=True,
@@ -185,7 +155,7 @@ class LibrarianConstructor:
         ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME)
         purge_memory = purge_files(
             Ctx(
-                folders=[paths.memory_root],
+                folders=[project.memory],
                 pattern=MARKDOWN_ARTIFACT_PATTERN,
                 max_files=tuning.max_memory_files,
             )
@@ -193,61 +163,61 @@ class LibrarianConstructor:
         wait = sleep_between_runs(
             Ctx(
                 seconds=tuning.sleep_seconds,
-                is_cancelled=probe.is_cancelled,
-                conversation_root=paths.conversation_root,
+                is_cancelled=lambda: pipe.cancelled,
+                conversation_root=project.logs,
                 agent_names=watched_agents,
             )
         ).copy(name=SLEEP_BETWEEN_RUNS_TOOL_NAME)
-        return (
-            snapshot,
-            consolidate,
-            purge_logs,
-            purge_snapshots,
-            purge_memory,
-            wait,
+        return Capability(
+            default_tools=(
+                snapshot,
+                consolidate,
+                purge_logs,
+                purge_snapshots,
+                purge_memory,
+                wait,
+            )
         )
 
-    def build(
-        self,
-        *,
-        paths: LibrarianPaths,
-        agent_names: Collection[str],
-        event_sinks: Sequence[EventSink] = (),
-        include_cli_output: bool = False,
-    ) -> Agent:
-        """Construct a headless daemon and persist its own maintenance run log."""
-        built_in_sinks = default_event_sinks(
-            data_path=paths.conversation_root / self.agent_name,
-            include_cli=include_cli_output,
-        )
-        pipe = EventPipe(event_sinks=(*built_in_sinks, *event_sinks))
-        probe = CancellationProbe()
-        pipeline = self.pipeline(
-            paths=paths,
-            agent_names=agent_names,
-            pipe=pipe,
-            probe=probe,
-        )
-        agent = Agent(
-            name=self.agent_name,
-            description=LIBRARIAN_AGENT_DESCRIPTION,
-            interaction_mode=None,
-            event_pipe=pipe,
-            agent_endpoint=None,
-            is_agentic=False,
-            automatic_tool_prompt=False,
-            default_tools=pipeline,
-        )
-        probe.bind(agent.pipe)
-        return agent
+
+def librarian(
+    *,
+    project: Project,
+    agent_names: Collection[str],
+    snapshot_endpoint: EndpointLike | None = None,
+    endpoint_factory: EndpointFactory | None = None,
+    tuning: LibrarianTuning = LibrarianTuning(),
+    name: str = LIBRARIAN_AGENT_NAME,
+) -> AgentDefinition:
+    """Define a deterministic background agent with a fixed memory pipeline.
+
+    Supply the watched conversation names and exactly one endpoint source. The
+    returned generic definition builds fresh tools against its owning pipe;
+    constructing it starts no work and selects no event sinks or log location.
+    """
+    return AgentDefinition(
+        name=name,
+        description=LIBRARIAN_AGENT_DESCRIPTION,
+        interaction_mode=None,
+        agent_endpoint=None,
+        is_agentic=False,
+        automatic_tool_prompt=False,
+        capabilities=(
+            _LibrarianMaintenance(
+                project=project,
+                agent_names=frozenset(agent_names),
+                snapshot_endpoint=snapshot_endpoint,
+                endpoint_factory=endpoint_factory,
+                tuning=tuning,
+            ),
+        ),
+    )
 
 
 __all__ = [
-    "CancellationProbe",
     "EndpointFactory",
     "IsCancelled",
     "LIBRARIAN_AGENT_DESCRIPTION",
-    "LibrarianConstructor",
-    "LibrarianPaths",
+    "librarian",
     "LibrarianTuning",
 ]

@@ -6,12 +6,12 @@ from pathlib import Path
 from time import sleep
 from typing import Final
 
+from roboshed.identifiers import SLEEP_BETWEEN_RUNS_TOOL_NAME
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.models import NO_MESSAGE, All, Message, Stop, Str
 from roboz.runtime.persistence import active_marker_paths
 from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tools._identifiers import SLEEP_BETWEEN_RUNS_TOOL_NAME
 
 SLEEP_POLL_SECONDS: Final[float] = 1.0
 

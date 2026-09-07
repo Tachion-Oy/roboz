@@ -6,13 +6,13 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
+from roboshed.tools.compactification import summarize as summarize_module
+from roboshed.tools.compactification import summarize_conversation_segment
 
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.models import LIGHT_MAX_CHARS, NO_TRUNCATION
-from roboz.runtime import EventPipe, LOG_DATA_ATTRIBUTE
-from roboz.tools.compactification import summarize as summarize_module
-from roboz.tools.compactification import summarize_conversation_segment
+from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 
 
 def _summarize(
@@ -131,10 +131,7 @@ def test_summarize_retries_one_character_above_tolerance() -> None:
 def test_summarize_zero_tolerance_preserves_strict_limit() -> None:
     endpoint = MockLLMEndpoint([{"value": "x" * 11}, {"value": "short"}])
 
-    assert (
-        _summarize(endpoint, max_chars=10, max_chars_tolerance_percent=0)
-        == "short"
-    )
+    assert _summarize(endpoint, max_chars=10, max_chars_tolerance_percent=0) == "short"
     assert endpoint.mock_responses == []
 
 

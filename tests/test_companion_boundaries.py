@@ -19,6 +19,7 @@ def test_shed_library_does_not_import_integrations():
         "groq",
         "cerebras",
         "fastapi",
+        "robosprawl",
     }
     for path in (ROOT / "packages/shed/src/roboshed").rglob("*.py"):
         # The installed demo is an application composition example. Its optional

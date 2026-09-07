@@ -2,15 +2,6 @@
 
 from pathlib import Path
 
-from roboz import Ctx
-from roboz.exceptions import (
-    ExternalCallCancelledError,
-    ExternalCallInterruptedError,
-    ExternalCallTimeoutError,
-)
-from roboz.models import Message, Str
-from roboz.runtime import interact_with_user
-from roboz.tooling.decorators import factory
 from roboshed.email_inputs import (
     DownloadEmailAttachment,
     ReadEmail,
@@ -20,6 +11,15 @@ from roboshed.models import (
     EmailAttachmentDownloadReady,
     GuardFilesResult,
 )
+from roboz import Ctx
+from roboz.exceptions import (
+    ExternalCallCancelledError,
+    ExternalCallInterruptedError,
+    ExternalCallTimeoutError,
+)
+from roboz.models import Message, Str
+from roboz.runtime import interact_with_user
+from roboz.tooling.decorators import factory
 
 from .contracts import EmailMailbox, EmailProviderError, EmailSummary
 from .drafts import resolve_search_request

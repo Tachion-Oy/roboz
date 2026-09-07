@@ -5,16 +5,6 @@ from email.headerregistry import Address
 from functools import partial
 from pathlib import Path
 
-from roboz import Ctx
-from roboz.exceptions import (
-    ExternalCallCancelledError,
-    ExternalCallInterruptedError,
-    ExternalCallTimeoutError,
-)
-from roboz.models import Message, Str
-from roboz.models.truncation import Severity, Truncation
-from roboz.tooling.context import _prepare_context
-from roboz.tooling.decorators import factory
 from roboshed.email_inputs import (
     CreateEmailDraft,
     CreateReplyDraft,
@@ -39,6 +29,16 @@ from roboshed.tools.email.contracts import (
 )
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import resolve_single_file_path
+from roboz import Ctx
+from roboz.exceptions import (
+    ExternalCallCancelledError,
+    ExternalCallInterruptedError,
+    ExternalCallTimeoutError,
+)
+from roboz.models import Message, Str
+from roboz.models.truncation import Severity, Truncation
+from roboz.tooling.context import _prepare_context
+from roboz.tooling.decorators import factory
 
 from .runtime import _prepare_email_context, run_email_call
 

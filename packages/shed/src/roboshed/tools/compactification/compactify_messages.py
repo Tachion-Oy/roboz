@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Final
 
+from roboshed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
 from roboz import Ctx
 from roboz.llm import EndpointLike, estimate_conversation_tokens, resolve_endpoint
 from roboz.llm.binding import _validate_endpoint
@@ -23,13 +24,12 @@ from roboz.runtime import EventPipe
 from roboz.tooling import Tool
 from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tools.compactification import summarize_conversation_segment
-from roboshed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
 
 from .prompts import (
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
     COMPACTIFY_SYSTEM_PROMPT,
 )
+from .summarize import summarize_conversation_segment
 
 
 @dataclass

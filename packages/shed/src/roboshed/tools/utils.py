@@ -5,11 +5,9 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-from roboz.runtime import EventPipe
-from roboz.runtime import interact_with_user
-
 from roboshed.models import ActionVerdict, Operation, PermissionRule
 from roboshed.tools.cli_commands.utilities.constants import GLOB_CHARS
+from roboz.runtime import EventPipe, interact_with_user
 
 AskPermissionOutcome = Literal["no_prompt", "user_confirmed", "user_declined"]
 

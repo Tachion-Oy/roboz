@@ -6,7 +6,6 @@ import pytest
 
 import roboz as rz
 from roboz.agent.background_agent import run_background_agent
-from roboz.tools import sleep_between_runs
 
 
 @rz.factory
@@ -65,12 +64,6 @@ def test_empty_context_and_fields_named_after_dependency_concepts() -> None:
 def test_builtin_required_fields_fail_at_binding() -> None:
     with pytest.raises(TypeError, match="timeout_reply"):
         rz.prompt_user(rz.Ctx())
-
-
-def test_builtin_default_configuration_is_preserved() -> None:
-    result = sleep_between_runs(rz.Ctx(seconds=0))(rz.All(), [])
-    assert isinstance(result, rz.Str)
-    assert result.value == "sleep_between_runs: slept=0.0s"
 
 
 def test_tool_copy_retains_explicitly_supplied_state() -> None:

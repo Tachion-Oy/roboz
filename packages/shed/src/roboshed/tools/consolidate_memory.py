@@ -7,24 +7,18 @@ from functools import partial
 from pathlib import Path
 from typing import Final
 
-from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
-from roboz.models import NO_MESSAGE, All, Message, Str
-from roboz.runtime import log_with_data
-from roboz.runtime.persistence import active_marker_paths
-from roboz.tooling.context import Ctx, _prepare_context
-from roboz.tooling.decorators import factory
-from roboz.tools._identifiers import CONSOLIDATE_MEMORY_TOOL_NAME
-from roboz.tools._snapshot_metadata import parse_snapshot_document
-from roboz.tools.compactification import (
+from roboshed.identifiers import CONSOLIDATE_MEMORY_TOOL_NAME
+from roboshed.tools._snapshot_metadata import parse_snapshot_document
+from roboshed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
     summarize_conversation_segment,
 )
-from roboz.tools.consolidate_memory_prompts import (
+from roboshed.tools.consolidate_memory_prompts import (
     CONSOLIDATE_MEMORY_INSTRUCTIONS,
     CONSOLIDATE_MEMORY_SYSTEM_PROMPT,
 )
-from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_files import (
+from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
+from roboshed.tools.memory_files import (
     MARKDOWN_SUFFIX,
     UTF8_ENCODING,
     latest_timestamped_file,
@@ -33,6 +27,12 @@ from roboz.tools.memory_files import (
     utc_now,
     write_timestamped_file,
 )
+from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
+from roboz.models import NO_MESSAGE, All, Message, Str
+from roboz.runtime import log_with_data
+from roboz.runtime.persistence import active_marker_paths
+from roboz.tooling.context import Ctx, _prepare_context
+from roboz.tooling.decorators import factory
 
 logger = logging.getLogger(__name__)
 

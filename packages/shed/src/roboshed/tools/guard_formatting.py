@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from roboz import Ctx
 from roboshed.models import ActionVerdict, PermissionRule
+from roboz import Ctx
 
 
 def _resolved_rule_pattern(rule: PermissionRule) -> str:

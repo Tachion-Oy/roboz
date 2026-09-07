@@ -51,7 +51,7 @@ tools = get_work_with_email(
 
 Pass a caller-owned signature for draft creation (an explicit empty signature is
 valid). The adapter contains no personal signature or branded assets. With an
-assistant, build these tools through `tool_builders` and pass its pipe plus
+assistant, build these tools in an agent capability and pass its owning pipe plus
 `is_cancelled=lambda: pipe.cancelled` to bind cancellation.
 
 Capabilities: metadata search, bounded reads, attachment download, drafts, and

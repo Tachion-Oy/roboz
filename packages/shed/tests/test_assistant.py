@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
 
-from roboshed.assistant import WorkspacePermissions, build_assistant
+from roboshed.assistant import build_assistant
 from roboshed.demo import main
+from roboshed.workspace import Project, Workspace, WorkspacePermissions
 
 from roboz import Ctx, Empty, Message, Str, tool
+from roboz.deployment import Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import PersistenceSink, RunLifecycleEvent
 
@@ -13,7 +15,7 @@ def test_installed_demo_writes_file_and_completed_conversation(tmp_path: Path, c
     workspace = tmp_path / "workspace"
     data = tmp_path / "data"
     main(["--mock", "--workspace", str(workspace), "--data-path", str(data)])
-    files = list(workspace.glob("roboz-demo-*.txt"))
+    files = list((workspace / "projects" / "assistant").glob("roboz-demo-*.txt"))
     assert len(files) == 1
     assert files[0].read_text() == "Hello from Roboz!\n"
     logs = [json.loads(path.read_text()) for path in data.rglob("*.json")]
@@ -31,9 +33,10 @@ def test_assistant_uses_injected_tools_and_pipe(tmp_path: Path):
         seen.append(True)
         return Str(value="custom result")
 
-    def tools(pipe):
-        pipes.append(pipe)
-        return [custom]
+    class CustomCapability:
+        def build(self, pipe, agent_endpoint):
+            pipes.append(pipe)
+            return Capability(tools=(custom,))
 
     events = []
     agent = build_assistant(
@@ -43,8 +46,9 @@ def test_assistant_uses_injected_tools_and_pipe(tmp_path: Path):
                 {"action": "stop", "rationale": "done", "value": "ok"},
             ]
         ),
-        workspace=WorkspacePermissions.local(tmp_path),
-        tool_builders=[tools],
+        project=Project(Workspace(tmp_path), "test"),
+        permissions=WorkspacePermissions.local(tmp_path),
+        capabilities=[CustomCapability()],
         event_sinks=[events.append, PersistenceSink.for_path(tmp_path / "logs")],
     )
     result, _ = agent.invoke()
