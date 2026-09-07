@@ -10,16 +10,11 @@ layered only on top of an ``allow`` verdict. A deny is absolute - there is no
 from pathlib import Path
 from unittest.mock import patch
 
-from roboz.runtime.pipe import EventPipe
-
-from roboz_shed.models import (
-    ActionVerdict,
-    GuardCtx,
-    GuardDenyReason,
-    Operation,
-    PermissionRule,
-)
+from roboz_shed.models import ActionVerdict, GuardDenyReason, Operation, PermissionRule
 from roboz_shed.tools.guard import resolve_allow_verdict
+
+from roboz import Ctx
+from roboz.runtime.pipe import EventPipe
 
 CREATE = Operation.CREATE
 PATTERN = "shared/**"
@@ -32,8 +27,8 @@ def _ctx(
     allow: list[PermissionRule],
     deny: list[PermissionRule],
     ask: list[PermissionRule],
-) -> GuardCtx:
-    return GuardCtx(
+) -> Ctx:
+    return Ctx(
         base=base,
         takes_precedence=takes_precedence,
         allow=allow,

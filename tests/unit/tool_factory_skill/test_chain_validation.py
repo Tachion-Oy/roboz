@@ -1,12 +1,10 @@
-from dataclasses import dataclass
-
 import pytest
 
+from roboz import Ctx
 from roboz.agent.core import Agent
+from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Int, Invoke, Message, Stop, Str, Strs
 from roboz.tooling.decorators import factory, tool
-from roboz.tooling.dependencies import FactoryCtx
-from roboz.llm.endpoints import MockLLMEndpoint
 
 # Default real endpoint loads API keys; tests only validate tool chains at init.
 _MOCK_AGENT_ENDPOINT = MockLLMEndpoint(
@@ -153,19 +151,17 @@ def test_tool_chain_list_invalid():
 
 
 def test_factory_chain_valid():
-    @dataclass(frozen=True)
-    class Context(FactoryCtx): ...
 
     @factory
-    def root_factory(input: Str, messages: list[Message], ctx: Context) -> Str:
+    def root_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return Str(value=input.value)
 
     # NOTE: `chained_to` references the Factory, not the resolved Tool.
     @factory(chained_to=root_factory)
-    def next_factory(input: Str, messages: list[Message], ctx: Context) -> Str:
+    def next_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return Str(value=str(int(input.value) + 1))
 
-    ctx = Context()
+    ctx = Ctx()
     root_tool = root_factory(ctx)
     next_tool = next_factory(ctx)
 
@@ -187,8 +183,6 @@ def test_factory_chain_valid():
 
 
 def test_factory_chain_list_invalid():
-    @dataclass(frozen=True)
-    class Context(FactoryCtx): ...
 
     @tool
     def invalid_tool(input: Str, messages: list[Message]) -> Empty:
@@ -199,10 +193,10 @@ def test_factory_chain_list_invalid():
         return Str(value=input.value)
 
     @factory(chained_to=[valid_tool, invalid_tool])
-    def next_factory(input: Str, messages: list[Message], ctx: Context) -> Str:
+    def next_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return Str(value="1")
 
-    next_tool = next_factory(Context())
+    next_tool = next_factory(Ctx())
 
     @tool
     def default_tool(input: Empty, messages: list[Message]) -> Empty:

@@ -1,31 +1,21 @@
-from dataclasses import dataclass
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from roboz import Ctx
 from roboz.models import Message, Str
 from roboz.tooling.decorators import factory, tool
 from roboz.tooling.dependencies import (
     ExecutableDependency,
     ExternalDependencyKind,
-    FactoryCtx,
     LazyExternalDependency,
-    ToolDependency,
 )
 
 
-@dataclass(frozen=True)
-class DependencyContext(FactoryCtx):
-    executable: ToolDependency[ExecutableDependency]
-    label: str = "ordinary field"
-
-
 @factory
-def dependency_factory(
-    input: Str, messages: list[Message], ctx: DependencyContext
-) -> Str:
+def dependency_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
     return input
 
 
@@ -39,57 +29,36 @@ def test_plain_tool_has_no_dependencies() -> None:
 
 
 def test_factory_rejects_arbitrary_context() -> None:
-    with pytest.raises(TypeError, match="FactoryCtx"):
+    with pytest.raises(TypeError, match="Ctx"):
         dependency_factory(cast(Any, {"executable": "python"}))
 
 
 def test_context_ignores_ordinary_fields() -> None:
     executable = ExecutableDependency("python")
-    context = DependencyContext(
-        executable=ToolDependency(executable),
-        label="not a dependency",
-    )
+    context = Ctx(executable=executable, label="not a dependency")
 
-    assert dependency_factory(context).dependencies == (ToolDependency(executable),)
+    assert dependency_factory(context).dependencies == (executable,)
 
 
 def test_tool_view_deduplicates_by_id_preserving_first_seen_order() -> None:
-    @dataclass(frozen=True)
-    class MultiDependencyContext(FactoryCtx):
-        first: ToolDependency[ExecutableDependency]
-        rest: tuple[
-            ToolDependency[ExecutableDependency]
-            | ToolDependency[LazyExternalDependency[ExecutableDependency]],
-            ...,
-        ]
 
     @factory
-    def multi_dependency_factory(
-        input: Str, messages: list[Message], ctx: MultiDependencyContext
-    ) -> Str:
+    def multi_dependency_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return input
 
     executable = ExecutableDependency("python", display_name="Python")
-    compatible = MultiDependencyContext(
-        first=ToolDependency(executable),
-        rest=(ToolDependency(executable),),
-    )
+    compatible = Ctx(first=executable, rest=(executable,))
     compatible_tool = multi_dependency_factory(compatible)
     assert compatible_tool.dependencies == (
-        ToolDependency(executable),
-        ToolDependency(executable),
+        executable,
+        executable,
     )
     assert compatible_tool.external_dependencies == (executable,)
 
     shell = ExecutableDependency("sh")
-    renamed = MultiDependencyContext(
-        first=ToolDependency(executable),
-        rest=(
-            ToolDependency(shell),
-            ToolDependency(
-                ExecutableDependency("python", display_name="Different Python")
-            ),
-        ),
+    renamed = Ctx(
+        first=executable,
+        rest=(shell, ExecutableDependency("python", display_name="Different Python")),
     )
     assert multi_dependency_factory(renamed).external_dependencies == (
         executable,
@@ -100,8 +69,6 @@ def test_tool_view_deduplicates_by_id_preserving_first_seen_order() -> None:
 def test_dependency_primitives_validate_empty_and_invalid_values() -> None:
     with pytest.raises(ValueError, match="executable must be non-empty"):
         ExecutableDependency(" ")
-    with pytest.raises(TypeError, match="must be an ExternalDependency"):
-        ToolDependency(cast(Any, object()))
     with pytest.raises(ValueError, match="dependency_id must be non-empty"):
         LazyExternalDependency(
             dependency_id_value=" ",
@@ -114,12 +81,12 @@ def test_dependency_primitives_validate_empty_and_invalid_values() -> None:
 def test_factory_binding_copy_and_rebinding_are_independent() -> None:
     python = ExecutableDependency("python")
     shell = ExecutableDependency("sh")
-    python_binding = ToolDependency(python)
-    shell_binding = ToolDependency(shell)
+    python_binding = python
+    shell_binding = shell
 
-    python_tool = dependency_factory(DependencyContext(python_binding))
+    python_tool = dependency_factory(Ctx(executable=python_binding))
     python_copy = python_tool.copy(name="python_copy")
-    shell_tool = dependency_factory(DependencyContext(shell_binding))
+    shell_tool = dependency_factory(Ctx(executable=shell_binding))
 
     assert python_tool.dependencies == (python_binding,)
     assert python_copy.dependencies == (python_binding,)
@@ -144,15 +111,14 @@ def test_lazy_dependency_is_not_resolved_during_binding_and_resolves_once() -> N
         resolver=resolve,
     )
 
-    @dataclass(frozen=True)
-    class LazyContext(FactoryCtx):
-        dependency: ToolDependency[LazyExternalDependency[ExecutableDependency]]
-
     @factory
-    def lazy_factory(input: Str, messages: list[Message], ctx: LazyContext) -> Str:
+    def lazy_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
         return input
 
-    bound = lazy_factory(LazyContext(ToolDependency(lazy)))
+    ctx = Ctx(dependency=lazy)
+    assert ctx.external_dependencies()[0] is lazy
+    assert calls == 0
+    bound = lazy_factory(ctx)
     assert bound.external_dependencies == (lazy,)
     assert calls == 0
 

@@ -3,12 +3,8 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz_shed.models import (
-    ActionVerdict,
-    GuardCtx,
-    PermissionRule,
-)
-from roboz_shed.tools.types import RunFileCommandsCtx
+from roboz import Ctx
+from roboz_shed.models import ActionVerdict, PermissionRule
 
 from .cmd_spec import CmdSpec
 
@@ -22,7 +18,7 @@ def _framed_cli_output(command_line: str, body: str) -> str:
     return f"--- begin: {command_line} ---\n{body}\n--- end: {command_line} ---"
 
 
-def _format_constraints_for_deny(ctx: GuardCtx) -> str:
+def _format_constraints_for_deny(ctx: Ctx) -> str:
     """Format allowed paths and permissions for a guard denial message."""
     base = (ctx.base or Path(".")).resolve()
     return format_cli_constraints(
@@ -32,7 +28,7 @@ def _format_constraints_for_deny(ctx: GuardCtx) -> str:
         ask_rules=ctx.ask,
         takes_precedence=ctx.takes_precedence,
         default_verdict=ctx.default_verdict,
-        command_specs=ctx.command_specs,
+        command_specs=getattr(ctx, "command_specs", ()),
     )
 
 
@@ -243,7 +239,7 @@ def format_cli_full_help(
     )
 
 
-def cli_help_message(specs: Sequence[CmdSpec], ctx: RunFileCommandsCtx) -> str:
+def cli_help_message(specs: Sequence[CmdSpec], ctx: Ctx) -> str:
     """Full help: commands section plus constraints for this tool chain."""
     return format_cli_full_help(
         specs,

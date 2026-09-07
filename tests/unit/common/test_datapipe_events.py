@@ -4,17 +4,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from roboz import Ctx
 from roboz.agent.core import Agent
-from roboz.tools import stop
-from roboz.agent.subagent import SubagentCtx, run_subagent
-from roboz.models import Empty, Message, Str
-from roboz.runtime.observability import (
-    FailureKind,
-    LifecycleKind,
-    RuntimeEventCategory,
-    RuntimeEventLevel,
-)
-from roboz.runtime import sinks
+from roboz.agent.subagent import run_subagent
+from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.models import Empty, Message, Role, Str
+from roboz.models.truncation import NO_MESSAGE
+from roboz.runtime import LOG_DATA_ATTRIBUTE, Output, sinks
 from roboz.runtime.events import (
     MessageDeltaEvent,
     MessageEvent,
@@ -22,14 +18,17 @@ from roboz.runtime.events import (
     RuntimeEvent,
     ScriptOutputEvent,
 )
-from roboz.runtime.pipe import EventPipe
+from roboz.runtime.observability import (
+    FailureKind,
+    LifecycleKind,
+    RuntimeEventCategory,
+    RuntimeEventLevel,
+)
 from roboz.runtime.persistence import RunStatus
+from roboz.runtime.pipe import EventPipe
 from roboz.runtime.sinks import CliSink, PersistenceSink, default_event_sinks
-from roboz.models.truncation import NO_MESSAGE
-from roboz.runtime import LOG_DATA_ATTRIBUTE, Output
-from roboz.models import Role
 from roboz.tooling.decorators import tool
-from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.tools import stop
 
 
 def test_datapipe_emits_lifecycle_and_message_events_in_order() -> None:
@@ -503,7 +502,7 @@ def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
             ]
         ),
     )
-    delegate = run_subagent(SubagentCtx(child)).copy(name="delegate")
+    delegate = run_subagent(Ctx(agent=child)).copy(name="delegate")
     parent = Agent(
         interaction_mode=Output.API,
         name="parent_agent",

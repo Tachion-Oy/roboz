@@ -1,21 +1,20 @@
 """Single-file apply_patch connector: guarded path checks then Python string replace."""
 
-from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
-from roboz import FactoryCtx
+from roboz import Ctx
 from roboz.models import Message, Str
-from roboz.runtime.pipe import EventPipe
 from roboz.models.truncation import Severity, Truncation, TruncationSpec
-from roboz.tooling.decorators import factory
+from roboz.runtime.pipe import EventPipe
 from roboz.tooling import Tool
-
+from roboz.tooling.context import _prepare_context
+from roboz.tooling.decorators import factory
 from roboz_shed.identifiers import APPLY_PATCH_TOOL_NAME, FILE_EDITING_SKILL_NAME
 from roboz_shed.models import (
     ActionVerdict,
     ApplyPatch,
     ApplyPatchReady,
-    GuardCtx,
     GuardFileSingle,
     GuardFilesResult,
     GuardStatus,
@@ -26,22 +25,15 @@ from roboz_shed.models import (
 from roboz_shed.tools.cli_commands.utilities.formatting import _framed_cli_output
 from roboz_shed.tools.guard import build_guarded_tool_chain
 from roboz_shed.tools.truncation import default_cli_truncation
-from roboz_shed.tools.types import ApplyPatchCtx, ResolvedFileCommand
+from roboz_shed.tools.types import ResolvedFileCommand
 from roboz_shed.tools.utils import resolve_single_file_path, resolve_tool_base
 
 APPLY_PATCH_NAME: str = APPLY_PATCH_TOOL_NAME
 
 
-@dataclass(frozen=True)
-class ExecuteApplyPatchCtx(FactoryCtx):
-    """Output truncation policy bound to literal patch execution."""
-
-    truncation: TruncationSpec
-
-
 @factory
 def apply_patch(
-    input: ApplyPatch, messages: list[Message], ctx: ApplyPatchCtx
+    input: ApplyPatch, messages: list[Message], ctx: Ctx
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an exact single-file string replacement for permission checking."""
     base = ctx.base.resolve()
@@ -112,7 +104,7 @@ def _perform_replace(
 def execute_apply_patch_replace(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: ExecuteApplyPatchCtx,
+    ctx: Ctx,
 ) -> Str:
     """Apply a permitted exact string replacement to one file."""
     truncation = ctx.truncation
@@ -172,9 +164,9 @@ def get_apply_patch(
     precedence = takes_precedence if takes_precedence else ActionVerdict.deny
     base = resolve_tool_base(base)
 
-    connector_ctx = ApplyPatchCtx(base=base)
+    connector_ctx = Ctx(base=base)
 
-    guard_ctx = GuardCtx(
+    guard_ctx = Ctx(
         base=base,
         takes_precedence=precedence,
         allow=allow,
@@ -204,7 +196,11 @@ def get_apply_patch(
     return build_guarded_tool_chain(
         entry=entry,
         guard_ctx=guard_ctx,
-        execute=execute_apply_patch_replace(
-            ExecuteApplyPatchCtx(truncation=execute_cli_truncation)
-        ),
+        execute=execute_apply_patch_replace(Ctx(truncation=execute_cli_truncation)),
     )
+
+
+apply_patch._prepare_ctx = partial(_prepare_context, required=("base",))
+execute_apply_patch_replace._prepare_ctx = partial(
+    _prepare_context, required=("truncation",)
+)

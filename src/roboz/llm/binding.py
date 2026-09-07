@@ -1,7 +1,7 @@
-"""Tool dependency bindings for language-model endpoints."""
+"""Request policy and deferred resolution for language-model endpoints."""
 
 from collections.abc import Mapping
-from typing import Final, TypedDict, cast, overload
+from typing import Final, TypedDict, overload
 
 from roboz.llm.endpoints import (
     EndpointLike,
@@ -12,15 +12,9 @@ from roboz.llm.endpoints import (
     TranscriptionEndpointLike,
     copy_request_options,
 )
-from roboz.tooling.dependencies import (
-    ExternalDependency,
-    LazyExternalDependency,
-    ToolDependency,
-)
+from roboz.tooling.dependencies import ExternalDependency, LazyExternalDependency
 
 _EXTRA_BODY_FIELD: Final[str] = "extra_body"
-
-EndpointBinding = ToolDependency[ExternalDependency] | MockLLMEndpoint
 
 
 @overload
@@ -69,20 +63,10 @@ def with_request_options(
     )
 
 
-def bind_endpoint(endpoint: EndpointLike) -> EndpointBinding:
-    """Bind real endpoint resources while leaving test mocks ordinary."""
-    if isinstance(endpoint, MockLLMEndpoint):
-        return endpoint
-    if not isinstance(endpoint, ExternalDependency):
+def _validate_endpoint(endpoint: EndpointLike) -> None:
+    """Reject unsupported endpoint values without materializing a resource."""
+    if not isinstance(endpoint, (ExternalDependency, MockLLMEndpoint)):
         raise TypeError("endpoint must be an external dependency or MockLLMEndpoint")
-    return ToolDependency(endpoint)
-
-
-def endpoint_resource(endpoint: EndpointBinding) -> EndpointLike:
-    """Return the callable endpoint represented by a factory context binding."""
-    if isinstance(endpoint, ToolDependency):
-        return cast(EndpointLike, endpoint.resource)
-    return endpoint
 
 
 class LLMTelemetryDict(TypedDict, total=False):

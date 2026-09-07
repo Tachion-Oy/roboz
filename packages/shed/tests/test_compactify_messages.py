@@ -1,34 +1,33 @@
 """Tests for threshold-triggered in-place message compactification."""
 
 import json
-from dataclasses import replace
 from typing import Any
 
 import pytest
-from roboz import All, Message, Role
-from roboz.llm import MockLLMEndpoint
-from roboz.models import MessageKind
-from roboz.models.truncation import Severity
 from roboz_shed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
 from roboz_shed.tools.compactification import (
     COMPACTED_CONTEXT_KIND,
-    COMPACTIFY_SYSTEM_PROMPT,
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
-    CompactifyMessagesCtx,
+    COMPACTIFY_SYSTEM_PROMPT,
     CompactifyStatus,
     compactify_messages_when_needed,
     get_compactify_messages_when_needed_tool,
 )
 
+from roboz import All, Ctx, Message, Role
+from roboz.llm import MockLLMEndpoint
+from roboz.models import MessageKind
+from roboz.models.truncation import Severity
 
-def _ctx(**overrides) -> CompactifyMessagesCtx:
-    base = CompactifyMessagesCtx(
+
+def _ctx(**overrides) -> Ctx:
+    values = dict(
         endpoint=MockLLMEndpoint([{"value": "# compact"}], max_context_tokens=1_000),
         threshold_percent=80.0,
         system_prompt=COMPACTIFY_SYSTEM_PROMPT,
         skill_message=COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
     )
-    return replace(base, **overrides)
+    return Ctx(**(values | overrides))
 
 
 def test_compactify_messages_skips_below_threshold() -> None:

@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from roboz import FactoryCtx, Int, Message, Str, factory
-
-
-@dataclass(frozen=True)
-class Ctx(FactoryCtx):
-    pass
+from roboz import Ctx, Int, Message, Str, factory
 
 
 # Scenario: factory -> factory mismatch.

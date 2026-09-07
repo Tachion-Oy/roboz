@@ -5,16 +5,10 @@ import pytest
 from roboz.llm import (
     LLMEndpoint,
     MockLLMEndpoint,
-    bind_endpoint,
-    endpoint_resource,
     resolve_endpoint,
     with_request_options,
 )
-from roboz.tooling.dependencies import (
-    ExternalDependencyKind,
-    LazyExternalDependency,
-    ToolDependency,
-)
+from roboz.tooling.dependencies import ExternalDependencyKind, LazyExternalDependency
 
 
 def test_with_request_options_copies_endpoint_and_body() -> None:
@@ -72,9 +66,7 @@ def test_with_request_options_keeps_lazy_endpoint_lazy() -> None:
 def test_with_request_options_creates_independent_configurations() -> None:
     endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
     low = with_request_options(endpoint, extra_body={"reasoning": {"effort": "low"}})
-    high = with_request_options(
-        endpoint, extra_body={"reasoning": {"effort": "high"}}
-    )
+    high = with_request_options(endpoint, extra_body={"reasoning": {"effort": "high"}})
 
     assert low.extra_body == {"reasoning": {"effort": "low"}}
     assert high.extra_body == {"reasoning": {"effort": "high"}}
@@ -111,28 +103,37 @@ def test_with_request_options_rejects_non_json_values(invalid_value: object) -> 
         with_request_options(endpoint, extra_body={"provider": invalid_value})
 
 
-def test_bind_endpoint_wraps_external_endpoint() -> None:
+def test_endpoint_can_be_bound_directly() -> None:
+    from roboz import Ctx, Empty, Message, factory
+
+    @factory
+    def use_endpoint(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
+        assert resolve_endpoint(ctx.endpoint) is endpoint
+        return input
+
     endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
-
-    binding = bind_endpoint(endpoint)
-
-    assert isinstance(binding, ToolDependency)
-    assert binding.resource is endpoint
-    assert endpoint_resource(binding) is endpoint
+    bound = use_endpoint(Ctx(endpoint=endpoint))
+    assert bound.dependencies == (endpoint,)
+    bound(Empty(), [])
 
 
-def test_bind_endpoint_leaves_mock_endpoint_unwrapped() -> None:
+def test_mock_endpoint_does_not_declare_external_resources() -> None:
+    from roboz import Ctx, Empty, Message, factory
+
+    @factory
+    def use_endpoint(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
+        assert resolve_endpoint(ctx.endpoint) is endpoint
+        return input
+
     endpoint = MockLLMEndpoint([])
-
-    binding = bind_endpoint(endpoint)
-
-    assert binding is endpoint
-    assert endpoint_resource(binding) is endpoint
+    bound = use_endpoint(Ctx(endpoint=endpoint))
+    assert bound.external_dependencies == ()
+    bound(Empty(), [])
 
 
-def test_bind_endpoint_rejects_non_endpoint_resource() -> None:
-    with pytest.raises(TypeError, match="endpoint must be an external dependency"):
-        bind_endpoint(cast(Any, object()))
+def test_resolve_endpoint_rejects_non_endpoint_resource() -> None:
+    with pytest.raises(TypeError, match="endpoint"):
+        resolve_endpoint(cast(Any, object()))
 
 
 def test_resolve_endpoint_is_a_public_consumer_operation() -> None:

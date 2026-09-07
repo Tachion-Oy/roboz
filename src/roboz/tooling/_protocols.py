@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from roboz.models import Empty, Invoke, Message, Stop
-from roboz.tooling.dependencies import FactoryCtx
+from roboz.tooling.context import Ctx
 
 if TYPE_CHECKING:
     from roboz.tooling.core import Factory, Tool
@@ -23,7 +23,7 @@ class ToolFuncProtocol[
 class FactoryToolFuncProtocol[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: FactoryCtx,
+    TCtx: Ctx,
 ](Protocol):
     __name__: str
 
@@ -46,13 +46,13 @@ class ChainedToolDecoratorUnion[TInput: Empty, TOther: Empty | Stop](Protocol):
 
 
 class ChainedFactoryDecorator[TInput: Empty](Protocol):
-    def __call__[TOutput: Empty | Invoke | Stop, TCtx: FactoryCtx](
+    def __call__[TOutput: Empty | Invoke | Stop, TCtx: Ctx](
         self, func: FactoryToolFuncProtocol[TInput, TOutput, TCtx]
     ) -> Factory[TInput, TOutput, TCtx]: ...
 
 
 class ChainedFactoryDecoratorUnion[TInput: Empty, TOther: Empty | Stop](Protocol):
-    def __call__[TOutput: Empty | Invoke | Stop, TCtx: FactoryCtx](
+    def __call__[TOutput: Empty | Invoke | Stop, TCtx: Ctx](
         self,
         func: (
             FactoryToolFuncProtocol[TInput, TOutput, TCtx]

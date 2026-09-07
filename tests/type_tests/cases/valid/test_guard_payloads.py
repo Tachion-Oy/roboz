@@ -1,19 +1,14 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboz import Str
 from roboz_shed.email_inputs import CreateEmailDraft
-from roboz_shed.models import (
-    ApplyPatch,
-    GuardCtx,
-    GuardFileSingle,
-    GuardFilesResult,
-    Operation,
-)
+from roboz_shed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
 from roboz_shed.tools.guard import guard_items
 
+from roboz import Ctx, Str
 
-def typed_guard(ctx: GuardCtx) -> None:
+
+def typed_guard(ctx: Ctx) -> None:
     items = [
         GuardFileSingle[Str](
             operation=Operation.READ, location=Path("/tmp"), value=Str(value="payload")

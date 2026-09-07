@@ -2,18 +2,13 @@
 
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import partial
 from typing import Final
 
-from roboz import FactoryCtx
-from roboz.llm import (
-    EndpointBinding,
-    EndpointLike,
-    bind_endpoint,
-    endpoint_resource,
-    estimate_conversation_tokens,
-    resolve_endpoint,
-)
+from roboz import Ctx
+from roboz.llm import EndpointLike, estimate_conversation_tokens, resolve_endpoint
+from roboz.llm.binding import _validate_endpoint
 from roboz.models import (
     BOOTSTRAP_MESSAGE_KINDS,
     All,
@@ -26,13 +21,14 @@ from roboz.models import (
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime import EventPipe
 from roboz.tooling import Tool
+from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
 from roboz.tools.compactification import summarize_conversation_segment
-
 from roboz_shed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
+
 from .prompts import (
-    COMPACTIFY_SYSTEM_PROMPT,
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
+    COMPACTIFY_SYSTEM_PROMPT,
 )
 
 
@@ -41,19 +37,6 @@ class CompactionState:
     """Successful compactions owned by one constructed tool."""
 
     count: int = 0
-
-
-@dataclass(frozen=True)
-class CompactifyMessagesCtx(FactoryCtx):
-    """Endpoint, continuation policy, and owning run controls for compaction."""
-
-    endpoint: EndpointBinding
-    threshold_percent: float
-    system_prompt: str
-    skill_message: str
-    pipe: EventPipe | None = None
-    timeout_s: float | None = None
-    state: CompactionState = field(default_factory=CompactionState)
 
 
 DEFAULT_THRESHOLD_PERCENT: Final[float] = 80.0
@@ -103,13 +86,15 @@ def _compacted_message(
     """Build the persisted continuation payload, including its JSON overhead."""
     return Message(
         role=Role.USER,
-        content=json.dumps({
-            BaseNames.CALLER_FIELD: COMPACTIFY_MESSAGES_TOOL_NAME,
-            BaseNames.VALUE_FIELD: "Context compactified for continuation.",
-            "summary_markdown": summary,
-            "percent_used_before": percent_used_before,
-            "threshold_percent": threshold_percent,
-        }),
+        content=json.dumps(
+            {
+                BaseNames.CALLER_FIELD: COMPACTIFY_MESSAGES_TOOL_NAME,
+                BaseNames.VALUE_FIELD: "Context compactified for continuation.",
+                "summary_markdown": summary,
+                "percent_used_before": percent_used_before,
+                "threshold_percent": threshold_percent,
+            }
+        ),
         message_kind=COMPACTED_CONTEXT_KIND,
     )
 
@@ -147,7 +132,7 @@ def _check_controls(pipe: EventPipe | None) -> None:
 
 @factory
 def compactify_messages_when_needed(
-    input: All, messages: list[Message], ctx: CompactifyMessagesCtx
+    input: All, messages: list[Message], ctx: Ctx
 ) -> CompactifyStatus:
     """Compact the active conversation when its context budget reaches the threshold.
 
@@ -161,7 +146,7 @@ def compactify_messages_when_needed(
         raise ValueError("threshold_percent must be finite and greater than 0")
     _validate_timeout(ctx.timeout_s)
     _check_controls(ctx.pipe)
-    endpoint_like = endpoint_resource(ctx.endpoint)
+    endpoint_like = ctx.endpoint
     endpoint = resolve_endpoint(endpoint_like)
     max_tokens = endpoint.max_context_tokens
     consumed = estimate_conversation_tokens(messages)
@@ -262,8 +247,9 @@ def get_compactify_messages_when_needed_tool(
     if not math.isfinite(threshold_percent) or threshold_percent <= 0:
         raise ValueError("threshold_percent must be finite and greater than 0")
     _validate_timeout(timeout_s)
-    ctx = CompactifyMessagesCtx(
-        endpoint=bind_endpoint(endpoint),
+    _validate_endpoint(endpoint)
+    ctx = Ctx(
+        endpoint=endpoint,
         threshold_percent=threshold_percent,
         system_prompt=system_prompt,
         skill_message=skill_message,
@@ -276,8 +262,15 @@ def get_compactify_messages_when_needed_tool(
 __all__ = [
     "COMPACTED_CONTEXT_KIND",
     "DEFAULT_THRESHOLD_PERCENT",
-    "CompactifyMessagesCtx",
     "CompactifyStatus",
     "compactify_messages_when_needed",
     "get_compactify_messages_when_needed_tool",
 ]
+
+
+compactify_messages_when_needed._prepare_ctx = partial(
+    _prepare_context,
+    required=("endpoint", "threshold_percent", "system_prompt", "skill_message"),
+    defaults={"pipe": None, "timeout_s": None},
+    default_factories={"state": CompactionState},
+)

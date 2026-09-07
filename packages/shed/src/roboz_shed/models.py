@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
-from roboz import FactoryCtx
-from roboz.runtime import EventPipe
-from roboz.models import Empty
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 from pydantic.json_schema import SkipJsonSchema
 
+from roboz.models import Empty
+
 if TYPE_CHECKING:
-    from roboz_shed.tools.cli_commands.utilities.cmd_spec import CmdSpec
+    pass
 
 
 class RunFileCommand(BaseModel):
@@ -241,17 +240,3 @@ class PermissionRule:
         """Require at least one operation on every permission rule."""
         if not self.operations:
             raise ValueError("operations must not be empty")
-
-
-@dataclass(frozen=True)
-class GuardCtx(FactoryCtx):
-    """Context for write_guard used in creation of files."""
-
-    base: Path | None
-    takes_precedence: ActionVerdict
-    deny: list[PermissionRule]
-    allow: list[PermissionRule]
-    ask: list[PermissionRule]
-    default_verdict: ActionVerdict
-    command_specs: Sequence[CmdSpec] = ()
-    pipe: EventPipe | None = None

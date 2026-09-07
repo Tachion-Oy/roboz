@@ -5,31 +5,26 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
+from roboz_shed.tools import get_compactify_messages_when_needed_tool
+from roboz_shed.tools.compactification import (
+    COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
+    COMPACTIFY_SYSTEM_PROMPT,
+    compactify_messages_when_needed,
+)
+from roboz_shed.tools.compactification.compactify_messages import CompactionState
 
-from roboz import All, Message, Role
+from roboz import All, Ctx, Message, Role
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
     LLMCallTimeoutError,
     LLMError,
 )
-from roboz.llm import (
-    LLMEndpoint,
-    MockLLMEndpoint,
-    bind_endpoint,
-    estimate_conversation_tokens,
-)
+from roboz.llm import LLMEndpoint, MockLLMEndpoint, estimate_conversation_tokens
 from roboz.models import MessageKind
 from roboz.runtime import EventPipe
 from roboz.runtime.events import MessageEvent, RuntimeEvent
 from roboz.tooling import ExternalDependencyKind, LazyExternalDependency
-from roboz_shed.tools import get_compactify_messages_when_needed_tool
-from roboz_shed.tools.compactification import (
-    COMPACTIFY_SYSTEM_PROMPT,
-    COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
-    CompactifyMessagesCtx,
-    compactify_messages_when_needed,
-)
 
 
 def _messages():
@@ -60,8 +55,9 @@ def _endpoint(create):
 
 
 def _ctx(endpoint, pipe=None, timeout_s=None):
-    return CompactifyMessagesCtx(
-        endpoint=bind_endpoint(endpoint),
+    return Ctx(
+        state=CompactionState(),
+        endpoint=endpoint,
         threshold_percent=80,
         system_prompt=COMPACTIFY_SYSTEM_PROMPT,
         skill_message=COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
@@ -126,7 +122,9 @@ def test_prefix_and_payload_leave_no_summary_budget(prefix_chars):
     assert output.status == "blocked"
     assert output.compaction_summary is None
     assert output.compactions == ctx.state.count == 2
-    assert all(actual is previous for actual, previous in zip(messages, original, strict=True))
+    assert all(
+        actual is previous for actual, previous in zip(messages, original, strict=True)
+    )
     assert len(endpoint.mock_responses) == 1
 
 
@@ -168,9 +166,7 @@ def test_summary_over_budget_retries_even_within_default_length_tolerance():
 
 
 def test_json_escaping_cannot_exceed_replacement_budget():
-    endpoint = MockLLMEndpoint(
-        [{"value": "\U0001f600" * 300}], max_context_tokens=1000
-    )
+    endpoint = MockLLMEndpoint([{"value": "\U0001f600" * 300}], max_context_tokens=1000)
     ctx = _ctx(endpoint)
     ctx.state.count = 2
     messages = _messages()
@@ -380,8 +376,23 @@ def test_lazy_endpoint_inspection_does_not_materialize():
         resolver=resolve,
     )
     tool = get_compactify_messages_when_needed_tool(endpoint=endpoint)
-    assert tool.dependencies[0].resource is endpoint
+    assert tool.dependencies[0] is endpoint
     assert tool.external_dependencies == (endpoint,)
     assert resolutions == []
     assert tool(input=All(), messages=_messages()).status == "compacted"
     assert resolutions == [True]
+
+
+def test_default_counter_is_per_binding_and_copies_share_the_bound_counter():
+    endpoint = MockLLMEndpoint([{"value": "continue"}] * 3, max_context_tokens=1000)
+    context = Ctx(
+        endpoint=endpoint,
+        threshold_percent=80,
+        system_prompt=COMPACTIFY_SYSTEM_PROMPT,
+        skill_message=COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
+    )
+    first = compactify_messages_when_needed(context)
+    second = compactify_messages_when_needed(context)
+    assert first(All(), _messages()).compactions == 1
+    assert second(All(), _messages()).compactions == 1
+    assert first.copy()(All(), _messages()).compactions == 2

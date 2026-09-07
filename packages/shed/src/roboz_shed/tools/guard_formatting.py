@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-from roboz_shed.models import ActionVerdict, GuardCtx, PermissionRule
+from roboz import Ctx
+from roboz_shed.models import ActionVerdict, PermissionRule
 
 
 def _resolved_rule_pattern(rule: PermissionRule) -> str:
@@ -20,7 +21,7 @@ def _rule_bullets(rules: list[PermissionRule]) -> list[str]:
     ] or ["- (none)"]
 
 
-def format_guard_constraints(ctx: GuardCtx) -> str:
+def format_guard_constraints(ctx: Ctx) -> str:
     """Format path and operation constraints for a guard denial."""
     base = (ctx.base or Path(".")).resolve()
     precedence = "allow" if ctx.takes_precedence == ActionVerdict.allow else "deny"

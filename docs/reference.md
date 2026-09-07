@@ -34,7 +34,12 @@ Main code:
 - [`../src/roboz/tooling/decorators.py`](../src/roboz/tooling/decorators.py)
 
 Use `@tool` for actions that only need `input` and `messages`.
-Use `@factory` when the tool needs runtime context.
+Use `@factory` when the tool needs runtime context: annotate `ctx: rz.Ctx` and
+bind with `factory_instance(rz.Ctx(prefix="hello"))`. Inspect a context before
+binding with `ctx.external_dependencies()`, which returns direct and live-source
+resources deduplicated by ID. Resources go directly into context fields.
+See [tool authoring](tool-authoring.md) and
+[context migration](context-migration.md).
 
 Both support:
 

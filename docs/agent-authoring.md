@@ -145,10 +145,17 @@ By default the view includes tools from configured but not-yet-loaded skills so
 deployment preflight can report potential requirements. Pass
 `include_lazy_skills=False` for only the currently composed graph.
 
-Subagent and background-agent contexts bind the child agent itself as a live
-dependency source. Their wrapper Tools derive from the child's current Tool
-graph, so later `Agent.add()` calls remain visible without a parallel dependency
-snapshot.
+A context can inspect a child before a wrapper tool is constructed:
+
+```python
+ctx = rz.Ctx(agent=child)
+dependencies = ctx.external_dependencies()
+subagent_tool = rz.run_subagent(ctx)
+```
+
+Subagent and background-agent tools retain their bound context as a live
+source. Later `child.add()` calls are visible through `ctx.external_dependencies()`,
+the wrapper tool, its copies, and the parent agent's dependency view.
 
 Endpoints must be concrete endpoint objects or `LazyExternalDependency`
 instances. Raw callable endpoints are not supported.

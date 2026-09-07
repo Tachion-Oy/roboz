@@ -2,7 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- Inspect resources before binding tools with `Ctx.external_dependencies()`.
+  Contexts implement `ExternalDependencySource`, preserving resource identity
+  and reflecting live nested contexts, agents, and catalogs without resolving
+  lazy resources. `external_dependencies` is now a reserved context field name;
+  see `docs/context-migration.md`.
+
 ### Changed
+
+- **Breaking:** Construct tool contexts with `Ctx(**values)` and pass resources
+  directly. Remove `FactoryCtx`, specialized context classes, `ToolDependency`,
+  and endpoint binding wrappers; `Tool.dependencies` now returns resources.
+  See `docs/context-migration.md` for replacements and state ownership.
 
 - Define and enforce Google-style source docstrings, and normalize tool
   docstrings before including them in agent prompts.

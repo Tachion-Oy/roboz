@@ -3,15 +3,12 @@
 import logging
 from datetime import datetime
 from enum import StrEnum
+from functools import partial
 from typing import Final
 
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
-from roboz.llm import (
-    endpoint_resource,
-    estimate_conversation_tokens,
-    get_truncated_messages_for_context,
-)
-from roboz.models import All, Message, NO_MESSAGE, Str
+from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
+from roboz.models import NO_MESSAGE, All, Message, Str
 from roboz.runtime import log_with_data
 from roboz.runtime.persistence import (
     ConversationRun,
@@ -19,6 +16,7 @@ from roboz.runtime.persistence import (
     RunStatus,
     logged_row_to_message,
 )
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
 from roboz.tools._identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
 from roboz.tools._snapshot_metadata import (
@@ -26,9 +24,11 @@ from roboz.tools._snapshot_metadata import (
     format_snapshot_document,
     parse_snapshot_document,
 )
-from roboz.tools.compactification import summarize_conversation_segment
+from roboz.tools.compactification import (
+    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
+    summarize_conversation_segment,
+)
 from roboz.tools.librarian_errors import LibrarianProviderRequestFailure
-from roboz.tools.memory_contexts import SnapshotConversationsCtx
 from roboz.tools.memory_files import (
     JSON_SUFFIX,
     MARKDOWN_SUFFIX,
@@ -154,15 +154,16 @@ def _summary_input(
         "- Message ordering: ascending sequence; created_at is UTC context.\n\n"
     )
     if previous_snapshot is None:
-        return source + "## New conversation segment\n\n" + _conversation_text(uncovered)
+        return (
+            source + "## New conversation segment\n\n" + _conversation_text(uncovered)
+        )
     recorded_at = (
         previous_snapshot_time.isoformat()
         if previous_snapshot_time is not None
         else _UNKNOWN_TIME
     )
     return (
-        source
-        + f"## Previous snapshot (recorded_at={recorded_at})\n\n"
+        source + f"## Previous snapshot (recorded_at={recorded_at})\n\n"
         f"{previous_snapshot.strip()}\n\n"
         "## New conversation segment\n\n"
         f"{_conversation_text(uncovered)}"
@@ -173,15 +174,14 @@ def _should_snapshot(*, run: ConversationRun, threshold: int, new_tokens: int) -
     if run.status is RunStatus.CANCELLED:
         return False
     return new_tokens >= threshold or (
-        run.status in TERMINAL_SYNCABLE_STATUSES
-        and new_tokens > _MIN_TOKEN_THRESHOLD
+        run.status in TERMINAL_SYNCABLE_STATUSES and new_tokens > _MIN_TOKEN_THRESHOLD
     )
 
 
 def _snapshot_one_run(
     *,
     run: ConversationRun,
-    ctx: SnapshotConversationsCtx,
+    ctx: Ctx,
     threshold: int,
 ) -> bool:
     snapshot_folder = ctx.snapshot_root / run.conversation_id
@@ -189,9 +189,7 @@ def _snapshot_one_run(
         snapshot_folder, suffix=MARKDOWN_SUFFIX
     )
     snapshot_document = (
-        parse_snapshot_document(
-            snapshot_location.read_text(encoding=UTF8_ENCODING)
-        )
+        parse_snapshot_document(snapshot_location.read_text(encoding=UTF8_ENCODING))
         if snapshot_location is not None
         else None
     )
@@ -213,7 +211,7 @@ def _snapshot_one_run(
 
     try:
         summary = summarize_conversation_segment(
-            endpoint=endpoint_resource(ctx.endpoint),
+            endpoint=ctx.endpoint,
             system_prompt=SNAPSHOT_CONVERSATION_SYSTEM_PROMPT,
             instructions=SNAPSHOT_CONVERSATION_INSTRUCTIONS,
             max_chars=ctx.max_chars,
@@ -221,9 +219,7 @@ def _snapshot_one_run(
             conversation=_summary_input(
                 run=run,
                 previous_snapshot=(
-                    snapshot_document.content
-                    if snapshot_document is not None
-                    else None
+                    snapshot_document.content if snapshot_document is not None else None
                 ),
                 previous_snapshot_time=snapshot_time,
                 uncovered=visible_messages,
@@ -241,9 +237,7 @@ def _snapshot_one_run(
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
 
-    current_time, _ = latest_timestamped_file(
-        snapshot_folder, suffix=MARKDOWN_SUFFIX
-    )
+    current_time, _ = latest_timestamped_file(snapshot_folder, suffix=MARKDOWN_SUFFIX)
     if current_time is not None and (
         snapshot_time is None or current_time > snapshot_time
     ):
@@ -279,9 +273,7 @@ def _snapshot_one_run(
 
 
 @factory
-def snapshot_conversations(
-    input: All, messages: list[Message], ctx: SnapshotConversationsCtx
-) -> Str:
+def snapshot_conversations(input: All, messages: list[Message], ctx: Ctx) -> Str:
     """Create append-only snapshots for eligible persisted conversation runs."""
     del input, messages
     if ctx.pipe is not None:
@@ -326,3 +318,22 @@ def snapshot_conversations(
 
 
 __all__ = ["SnapshotMode", "snapshot_conversations"]
+
+
+snapshot_conversations._prepare_ctx = partial(
+    _prepare_context,
+    required=(
+        "endpoint",
+        "conversation_root",
+        "snapshot_root",
+        "memory_root",
+        "agent_names",
+        "token_growth_threshold",
+        "max_chars",
+    ),
+    defaults={
+        "max_chars_tolerance_percent": DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
+        "timeout_s": None,
+        "pipe": None,
+    },
+)

@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
+from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
-from roboz.llm import MockLLMEndpoint, bind_endpoint
+from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty
-from roboz.runtime import EventPipe, LOG_DATA_ATTRIBUTE
+from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import mark_conversation_active
-from roboz.tools import ConsolidateMemoryCtx, consolidate_memory
+from roboz.tools import consolidate_memory
 from roboz.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_TAG,
     format_snapshot_document,
@@ -62,9 +63,9 @@ def _ctx(
     min_pending_snapshots: int = 3,
     max_pending_age_seconds: float = _ONE_HOUR_SECONDS,
     pipe: EventPipe | None = None,
-) -> ConsolidateMemoryCtx:
-    return ConsolidateMemoryCtx(
-        endpoint=bind_endpoint(endpoint),
+) -> Ctx:
+    return Ctx(
+        endpoint=endpoint,
         snapshot_root=snapshot_root,
         memory_root=memory_root,
         conversation_root=conversation_root,
@@ -230,7 +231,9 @@ def test_summary_receives_previous_memory_without_provenance_and_only_pending(
         )
         return "## Active work\n- Folded."
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", fake_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", fake_summary
+    )
     consolidate_memory(
         _ctx(
             snapshot_root=snapshot_root,
@@ -271,7 +274,9 @@ def test_summary_does_not_receive_snapshot_coverage_metadata(
         captured.append(kwargs["conversation"])
         return "## Active work\n- Folded."
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", fake_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", fake_summary
+    )
     consolidate_memory(
         _ctx(
             snapshot_root=snapshot_root,
@@ -312,7 +317,9 @@ def test_pending_snapshots_are_supplied_oldest_to_newest(
         captured.append(kwargs["conversation"])
         return "## Active work\n- Current state."
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", fake_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", fake_summary
+    )
     consolidate_memory(
         _ctx(
             snapshot_root=snapshot_root,
@@ -386,7 +393,9 @@ def test_provenance_is_not_accumulated_across_cycles(
         captured.append(kwargs["conversation"])
         return "## Active work\n- Updated."
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", fake_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", fake_summary
+    )
     consolidate_memory(
         _ctx(
             snapshot_root=snapshot_root,
@@ -399,9 +408,10 @@ def test_provenance_is_not_accumulated_across_cycles(
 
     assert consolidate_module.PROVENANCE_MARKER not in captured[0]
     newest = max(memory_root.glob("*.md"))
-    assert newest.read_text(encoding="utf-8").count(
-        consolidate_module.PROVENANCE_MARKER
-    ) == 1
+    assert (
+        newest.read_text(encoding="utf-8").count(consolidate_module.PROVENANCE_MARKER)
+        == 1
+    )
 
 
 def test_consolidation_rechecks_cancellation_before_write(
@@ -419,7 +429,9 @@ def test_consolidation_rechecks_cancellation_before_write(
         pipe.cancel()
         return "late memory"
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", cancel_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", cancel_summary
+    )
     with pytest.raises(ExternalCallCancelledError):
         consolidate_memory(
             _ctx(
@@ -452,7 +464,9 @@ def test_consolidation_skips_redundant_twin_when_watermark_advances(
         )
         return "redundant memory"
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", racing_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", racing_summary
+    )
     result = consolidate_memory(
         _ctx(
             snapshot_root=snapshot_root,
@@ -479,7 +493,9 @@ def test_consolidation_translates_provider_request_failure(
         del kwargs
         raise LLMProviderRequestError("bad request")
 
-    monkeypatch.setattr(consolidate_module, "summarize_conversation_segment", failing_summary)
+    monkeypatch.setattr(
+        consolidate_module, "summarize_conversation_segment", failing_summary
+    )
     with pytest.raises(LibrarianProviderRequestFailure):
         consolidate_memory(
             _ctx(

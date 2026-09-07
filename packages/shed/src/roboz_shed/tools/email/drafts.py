@@ -2,8 +2,10 @@
 
 import re
 from email.headerregistry import Address
+from functools import partial
 from pathlib import Path
 
+from roboz import Ctx
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -11,8 +13,8 @@ from roboz.exceptions import (
 )
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation
+from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
-
 from roboz_shed.email_inputs import (
     CreateEmailDraft,
     CreateReplyDraft,
@@ -35,10 +37,10 @@ from roboz_shed.tools.email.contracts import (
     EmailReplyDraftRequest,
     EmailSearchRequest,
 )
-from roboz_shed.tools.types import EmailToolCtx, ResolvedFileCommand
+from roboz_shed.tools.types import ResolvedFileCommand
 from roboz_shed.tools.utils import resolve_single_file_path
 
-from .runtime import EmailRuntimeContext, run_email_call
+from .runtime import _prepare_email_context, run_email_call
 
 
 def resolve_draft_request(
@@ -201,7 +203,7 @@ def _resolve_attachment_items(
 
 @factory
 def resolve_email_input(
-    input: CreateEmailDraft, messages: list[Message], ctx: EmailToolCtx
+    input: CreateEmailDraft, messages: list[Message], ctx: Ctx
 ) -> ResolvedFileCommand | ParseError:
     """Prepare a new email draft and its attachments for permission checking."""
     del messages
@@ -219,7 +221,7 @@ def resolve_email_input(
 
 @factory
 def resolve_reply_draft_input(
-    input: CreateReplyDraft, messages: list[Message], ctx: EmailToolCtx
+    input: CreateReplyDraft, messages: list[Message], ctx: Ctx
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an email reply draft and its attachments for permission checking."""
     del messages
@@ -240,7 +242,7 @@ def resolve_reply_draft_input(
 def resolve_attachment_download(
     input: DownloadEmailAttachment,
     messages: list[Message],
-    ctx: EmailToolCtx,
+    ctx: Ctx,
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an email attachment destination for permission checking."""
     del messages
@@ -294,7 +296,7 @@ def _attachments_from_guard(
 def execute_email_operation(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
 ) -> Str:
     """Create an approved email draft without sending it."""
     del messages
@@ -309,7 +311,7 @@ def execute_email_operation(
             ctx,
             label="email-create-draft",
             cancelled_message="Email draft creation was cancelled",
-            operation=lambda: ctx.service.resource.create_draft(
+            operation=lambda: ctx.service.create_draft(
                 request, is_cancelled=ctx.is_cancelled
             ),
         )
@@ -354,7 +356,7 @@ def execute_email_operation(
 def execute_reply_draft(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
 ) -> Str:
     """Create an approved reply draft without sending it."""
     del messages
@@ -369,7 +371,7 @@ def execute_reply_draft(
             ctx,
             label="email-create-reply-draft",
             cancelled_message="Email reply draft creation was cancelled",
-            operation=lambda: ctx.service.resource.create_reply_draft(
+            operation=lambda: ctx.service.create_reply_draft(
                 request, is_cancelled=ctx.is_cancelled
             ),
         )
@@ -414,3 +416,10 @@ def execute_reply_draft(
         return Str(
             value="[error] Unable to create email reply draft due to an email provider failure."
         )
+
+
+resolve_email_input._prepare_ctx = partial(_prepare_context, required=("base",))
+resolve_reply_draft_input._prepare_ctx = partial(_prepare_context, required=("base",))
+resolve_attachment_download._prepare_ctx = partial(_prepare_context, required=("base",))
+execute_email_operation._prepare_ctx = _prepare_email_context
+execute_reply_draft._prepare_ctx = _prepare_email_context

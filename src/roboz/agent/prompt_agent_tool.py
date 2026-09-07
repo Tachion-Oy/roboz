@@ -1,30 +1,17 @@
 """Factory tool that asks a model to choose an agent action."""
 
-from dataclasses import dataclass
-from typing import Any
+from functools import partial
 
-from roboz.llm import EndpointLike, call_llm_api, get_completion
+from roboz.llm import call_llm_api, get_completion
 from roboz.models import Empty, Invoke, Message
-from roboz.runtime.pipe import EventPipe
-from roboz.tooling.core import Tool
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tooling.dependencies import FactoryCtx, ToolDependency
-
-@dataclass(frozen=True)
-class PromptAgentCtx(FactoryCtx):
-    """Endpoint, tools, and event pipe used for one model decision."""
-
-    endpoint: ToolDependency[Any] | EndpointLike
-    active_tools: tuple[Tool, ...]
-    pipe: EventPipe
 
 
 @factory
-def prompt_agent(input: Empty, messages: list[Message], ctx: PromptAgentCtx) -> Invoke:
+def prompt_agent(input: Empty, messages: list[Message], ctx: Ctx) -> Invoke:
     """Choose and prepare the next available agent action."""
     endpoint = ctx.endpoint
-    if isinstance(endpoint, ToolDependency):
-        endpoint = endpoint.resource
 
     def start_stream_attempt() -> None:
         ctx.pipe.start_message()
@@ -43,3 +30,8 @@ def prompt_agent(input: Empty, messages: list[Message], ctx: PromptAgentCtx) -> 
         on_attempt_start=start_stream_attempt,
     )
     return Invoke.model_validate(response)
+
+
+prompt_agent._prepare_ctx = partial(
+    _prepare_context, required=("endpoint", "active_tools", "pipe")
+)

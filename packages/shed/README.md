@@ -84,3 +84,12 @@ The public tool name and persisted caller are `compactify_messages_when_needed`.
 This tool incorporates the continuation prompts used by PeffaHub/PeffaShed while
 retaining RoboSprawl's caller name. The old `robosprawl.compaction` import is
 replaced by `roboz_shed.tools`; Roboz core continues to own the shared summarizer.
+
+## Context API migration
+
+Low-level tool factories now use `roboz.Ctx(**values)` directly, with service,
+endpoint, and executable objects supplied without wrappers. The specialized
+context classes have been removed. Existing tool builders retain their keyword
+arguments, defaults, permission checks, cancellation, and timeout behavior.
+See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
+for low-level context fields and state ownership.

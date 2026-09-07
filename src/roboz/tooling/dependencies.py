@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import shutil
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, fields
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
-from collections.abc import Iterable
-from typing import Any, Callable, Mapping
+from typing import Callable, Mapping
 
 
 class ExternalDependencyKind(StrEnum):
@@ -50,6 +50,8 @@ class ExternalDependency(ABC):
 
 class ExternalDependencySource(ABC):
     """An object whose current graph exposes external dependencies."""
+
+    __slots__ = ()
 
     @abstractmethod
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
@@ -169,43 +171,6 @@ class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
                 "lazy dependency resolver returned a different dependency kind: "
                 f"{resource.kind!r} != {self.kind!r}"
             )
-
-
-@dataclass(frozen=True)
-class ToolDependency[TExternal: ExternalDependency]:
-    """One Tool's binding to an injected external dependency."""
-
-    resource: TExternal
-
-    def __post_init__(self) -> None:
-        """Validate that the bound resource follows the dependency contract."""
-        if not isinstance(self.resource, ExternalDependency):
-            raise TypeError("ToolDependency.resource must be an ExternalDependency")
-
-
-@dataclass(frozen=True)
-class FactoryCtx:
-    """Immutable marker base required by every ``@factory`` context."""
-
-
-def factory_context_dependencies(
-    context: FactoryCtx,
-) -> tuple[
-    tuple[ToolDependency[Any], ...],
-    tuple[ExternalDependencySource, ...],
-]:
-    """Extract direct bindings and live sources from a factory context."""
-    dependencies: list[ToolDependency[Any]] = []
-    sources: list[ExternalDependencySource] = []
-    for field in fields(context):
-        value = getattr(context, field.name)
-        candidates = value if isinstance(value, tuple) else (value,)
-        for candidate in candidates:
-            if isinstance(candidate, ToolDependency):
-                dependencies.append(candidate)
-            elif isinstance(candidate, ExternalDependencySource):
-                sources.append(candidate)
-    return tuple(dependencies), tuple(sources)
 
 
 def dedupe_external_dependencies(

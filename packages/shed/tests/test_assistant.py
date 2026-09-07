@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
 
-from roboz import Empty, Message, Str, tool
-from roboz.llm import MockLLMEndpoint
-from roboz.runtime import PersistenceSink, RunLifecycleEvent
-
 from roboz_shed.assistant import WorkspacePermissions, build_assistant
 from roboz_shed.demo import main
+
+from roboz import Ctx, Empty, Message, Str, tool
+from roboz.llm import MockLLMEndpoint
+from roboz.runtime import PersistenceSink, RunLifecycleEvent
 
 
 def test_installed_demo_writes_file_and_completed_conversation(tmp_path: Path, capsys):
@@ -58,7 +58,7 @@ def test_assistant_uses_injected_tools_and_pipe(tmp_path: Path):
 
 
 def test_workspace_denies_escape_and_symlink_target(tmp_path: Path):
-    from roboz_shed.models import ActionVerdict, GuardCtx, Operation
+    from roboz_shed.models import ActionVerdict, Operation
     from roboz_shed.tools.guard import resolve_allow_verdict
 
     root = tmp_path / "workspace"
@@ -67,7 +67,7 @@ def test_workspace_denies_escape_and_symlink_target(tmp_path: Path):
     outside.write_text("private")
     (root / "link.txt").symlink_to(outside)
     workspace = WorkspacePermissions.local(root)
-    ctx = GuardCtx(
+    ctx = Ctx(
         base=workspace.base,
         takes_precedence=workspace.takes_precedence,
         allow=list(workspace.allow),

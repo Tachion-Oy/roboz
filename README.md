@@ -63,6 +63,7 @@ The same program is available in [`examples/quickstart.py`](examples/quickstart.
 | --- | --- |
 | `rz.Agent` | Owns the tool surface, prompt assembly, invoke loop, and runtime events. |
 | `@rz.tool` | Creates an action from typed input, messages, and output models. |
+| `rz.Ctx` | Binds keyword configuration and dependency objects without a custom class. |
 | `@rz.factory` | Creates a tool whose runtime context declares external dependencies. |
 | `rz.Skill` | Packages reusable instructions and optional tools. |
 | `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
@@ -105,3 +106,7 @@ Roboz is typed and ships a PEP 561 `py.typed` marker.
 ## License
 
 Roboz is licensed under the [Apache License 2.0](LICENSE). Copyright © 2026 Tachion Oy.
+
+Context-aware tools use `ctx: rz.Ctx` and bind with `rz.Ctx(prefix="hello")`.
+See [tool authoring](docs/tool-authoring.md) and the
+[context API migration](docs/context-migration.md).

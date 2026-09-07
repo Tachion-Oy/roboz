@@ -3,16 +3,16 @@
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import partial
 from threading import Event
 from typing import Final, Literal
 
-from roboz.agent.core import Agent
 from roboz.models import Empty, Message
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime.events import PipeEvent, RunLifecycleEvent
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tooling.dependencies import FactoryCtx
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +30,6 @@ class BackgroundAgentState:
     thread: threading.Thread | None = None
     checks: int = 0
     started_monotonic: float | None = None
-
-
-@dataclass(frozen=True)
-class BackgroundAgentCtx(FactoryCtx):
-    """Agent and mutable heartbeat state bound to the background tool."""
-
-    agent: Agent
-    state: BackgroundAgentState = field(default_factory=BackgroundAgentState)
 
 
 class BackgroundAgentStatus(Empty):
@@ -60,7 +52,7 @@ def _fmt_uptime(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-def _invoke_agent(ctx: BackgroundAgentCtx) -> None:
+def _invoke_agent(ctx: Ctx) -> None:
     agent = ctx.agent
     logger.debug(
         "Background agent invoke starting (name=%s, thread=%s)",
@@ -80,7 +72,7 @@ def _invoke_agent(ctx: BackgroundAgentCtx) -> None:
 
 
 def _status(
-    ctx: BackgroundAgentCtx,
+    ctx: Ctx,
     *,
     status: BackgroundAgentPhase,
     checks: int,
@@ -97,7 +89,7 @@ def _status(
 
 @factory
 def run_background_agent(
-    input: Empty, messages: list[Message], ctx: BackgroundAgentCtx
+    input: Empty, messages: list[Message], ctx: Ctx
 ) -> BackgroundAgentStatus:
     """Start a background agent in a daemon thread and return a heartbeat."""
     ctx.state.checks += 1
@@ -152,8 +144,14 @@ def run_background_agent(
 
 
 __all__ = [
-    "BackgroundAgentCtx",
     "BackgroundAgentPhase",
     "BackgroundAgentStatus",
     "run_background_agent",
 ]
+
+
+run_background_agent._prepare_ctx = partial(
+    _prepare_context,
+    required=("agent",),
+    default_factories={"state": BackgroundAgentState},
+)

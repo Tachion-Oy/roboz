@@ -3,10 +3,9 @@
 from collections.abc import Callable
 from pathlib import Path
 
+from roboz import Ctx, ExternalDependency
 from roboz.runtime.pipe import EventPipe
-from roboz.tooling import ToolDependency
 from roboz.tooling import Tool
-
 from roboz_shed.identifiers import (
     CREATE_EMAIL_DRAFT_TOOL_NAME,
     CREATE_REPLY_DRAFT_TOOL_NAME,
@@ -15,11 +14,7 @@ from roboz_shed.identifiers import (
     READ_EMAIL_TOOL_NAME,
     SEARCH_EMAIL_TOOL_NAME,
 )
-from roboz_shed.models import (
-    ActionVerdict,
-    GuardCtx,
-    PermissionRule,
-)
+from roboz_shed.models import ActionVerdict, PermissionRule
 from roboz_shed.tools.email.contracts import EmailService
 from roboz_shed.tools.email.drafts import (
     execute_email_operation,
@@ -33,9 +28,7 @@ from roboz_shed.tools.email.messages import (
     read_email,
     search_email,
 )
-from roboz_shed.tools.email.runtime import EmailRuntimeContext
 from roboz_shed.tools.guard import build_guarded_tool_chain
-from roboz_shed.tools.types import EmailToolCtx
 from roboz_shed.tools.utils import resolve_tool_base
 
 DEFAULT_EMAIL_OPERATION_TIMEOUT_S = 30.0
@@ -60,8 +53,10 @@ def get_work_with_email(
 
     Inbox reads proceed directly unless ``prompt_before_inbox_read`` is enabled.
     """
-    runtime = EmailRuntimeContext(
-        service=ToolDependency(service),
+    if not isinstance(service, ExternalDependency):
+        raise TypeError("service must be an ExternalDependency")
+    runtime = Ctx(
+        service=service,
         is_cancelled=is_cancelled,
         timeout_s=timeout_s,
         pipe=pipe,
@@ -131,7 +126,7 @@ def get_work_with_email(
 
 def _get_download_attachment_tools(
     *,
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
     base: Path,
     default_verdict: ActionVerdict,
     deny_rules: list[PermissionRule] | None,
@@ -141,7 +136,7 @@ def _get_download_attachment_tools(
     pipe: EventPipe | None,
 ) -> list[Tool]:
     resolved_base = resolve_tool_base(base)
-    guard_ctx = GuardCtx(
+    guard_ctx = Ctx(
         base=resolved_base,
         takes_precedence=takes_precedence or ActionVerdict.deny,
         default_verdict=default_verdict,
@@ -150,7 +145,7 @@ def _get_download_attachment_tools(
         ask=list(ask_rules or []),
         pipe=pipe,
     )
-    entry = resolve_attachment_download(EmailToolCtx(base=resolved_base)).copy(
+    entry = resolve_attachment_download(Ctx(base=resolved_base)).copy(
         name=DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
         description=(
             "Download one email attachment to a specific local path. "
@@ -193,8 +188,8 @@ def _get_create_email_draft_tools(
     precedence = takes_precedence if takes_precedence else ActionVerdict.deny
     resolved_base = resolve_tool_base(base)
 
-    email_ctx = EmailToolCtx(base=resolved_base)
-    guard_ctx = GuardCtx(
+    email_ctx = Ctx(base=resolved_base)
+    guard_ctx = Ctx(
         base=resolved_base,
         takes_precedence=precedence,
         default_verdict=default_verdict,
@@ -214,11 +209,8 @@ def _get_create_email_draft_tools(
         "requires READ permission. "
         f"The possibly available `{email_skill_name}` skill has usage guidance."
     )
-    execute_ctx = EmailRuntimeContext(
-        service=ToolDependency(service),
-        is_cancelled=is_cancelled,
-        timeout_s=timeout_s,
-        pipe=pipe,
+    execute_ctx = Ctx(
+        service=service, is_cancelled=is_cancelled, timeout_s=timeout_s, pipe=pipe
     )
     entry = resolve_email_input(email_ctx).copy(
         name=CREATE_EMAIL_DRAFT_TOOL_NAME, description=description
@@ -232,7 +224,7 @@ def _get_create_email_draft_tools(
 
 def _get_create_reply_draft_tools(
     *,
-    ctx: EmailRuntimeContext,
+    ctx: Ctx,
     base: Path,
     default_verdict: ActionVerdict,
     deny_rules: list[PermissionRule] | None,
@@ -243,7 +235,7 @@ def _get_create_reply_draft_tools(
     email_skill_name: str,
 ) -> list[Tool]:
     resolved_base = resolve_tool_base(base)
-    guard_ctx = GuardCtx(
+    guard_ctx = Ctx(
         base=resolved_base,
         takes_precedence=takes_precedence or ActionVerdict.deny,
         default_verdict=default_verdict,
@@ -264,7 +256,7 @@ def _get_create_reply_draft_tools(
         "from_address?, client_request_id?, attachment_paths?}`. The draft is not sent. "
         f"Load `{email_skill_name}` for usage guidance."
     )
-    entry = resolve_reply_draft_input(EmailToolCtx(base=resolved_base)).copy(
+    entry = resolve_reply_draft_input(Ctx(base=resolved_base)).copy(
         name=CREATE_REPLY_DRAFT_TOOL_NAME,
         description=description,
     )

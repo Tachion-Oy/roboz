@@ -7,7 +7,8 @@ from typing import cast
 
 import pytest
 
-from roboz.agent.background_agent import BackgroundAgentCtx, run_background_agent
+from roboz import Ctx
+from roboz.agent.background_agent import BackgroundAgentState, run_background_agent
 from roboz.agent.core import Agent
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty, Message, Stop
@@ -49,7 +50,7 @@ def test_run_background_agent_starts_once_while_thread_alive() -> None:
         release.wait(timeout=2)
 
     agent = _TestAgent("blocking", block)
-    ctx = BackgroundAgentCtx(agent=agent)
+    ctx = Ctx(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     try:
@@ -72,7 +73,7 @@ def test_run_background_agent_starts_once_while_thread_alive() -> None:
 
 def test_run_background_agent_respawns_dead_thread() -> None:
     agent = _TestAgent("returning", lambda: None)
-    ctx = BackgroundAgentCtx(agent=agent)
+    ctx = Ctx(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     first = tool(input=Empty(), messages=[])
@@ -98,7 +99,7 @@ def test_run_background_agent_isolates_exceptions_without_logging_their_text(
         raise RuntimeError("provider-secret-value")
 
     agent = _TestAgent("failing", fail)
-    ctx = BackgroundAgentCtx(agent=agent)
+    ctx = Ctx(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     with caplog.at_level(logging.ERROR, logger="roboz.agent.background_agent"):
@@ -126,7 +127,7 @@ def test_run_background_agent_times_out_without_started_lifecycle(
             return None
 
     monkeypatch.setattr("roboz.agent.background_agent.BACKGROUND_START_TIMEOUT_S", 0.01)
-    ctx = BackgroundAgentCtx(agent=cast(Agent, SilentAgent()))
+    ctx = Ctx(agent=cast(Agent, SilentAgent()), state=BackgroundAgentState())
 
     with pytest.raises(RuntimeError, match="did not persist its lifecycle event"):
         run_background_agent(ctx)(input=Empty(), messages=[])

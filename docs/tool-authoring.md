@@ -44,119 +44,118 @@ def summarize(input: rz.Empty, messages: list[rz.Message]) -> rz.Str:
 
 ### Context-aware factory
 
-```python
-from dataclasses import dataclass
+Use `Ctx` directly; no class definition or inheritance is needed.
 
+```python
 import roboz as rz
 
-@dataclass(frozen=True)
-class PrefixCtx(rz.FactoryCtx):
-    """Presentation prefix bound to the summary tool."""
-
-    prefix: str
-
 @rz.factory
-def summarize_with_prefix(
-    input: rz.Empty, messages: list[rz.Message], ctx: PrefixCtx
+def add_prefix(
+    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
 ) -> rz.Str:
-    """Summarize the conversation using the configured presentation style."""
-    return rz.Str(value=f"{ctx.prefix} done")
+    """Prefix the supplied text with the configured label."""
+    return rz.Str(value=f"{ctx.prefix}{input.value}")
 
-tool_instance = summarize_with_prefix(PrefixCtx(prefix="[agent]"))
+tool_instance = add_prefix(rz.Ctx(prefix="[agent] "))
 ```
 
-Every factory context must be a frozen `FactoryCtx` dataclass. Dictionaries,
-`TypedDict`s, and arbitrary context objects are intentionally rejected.
+`Ctx` accepts keyword fields and exposes them as attributes. Names must be public
+Python identifiers and cannot be keywords or reserved API/implementation names.
+`external_dependencies` is reserved; `dependencies` and `values` remain valid fields.
+Bindings cannot be reassigned or deleted, but contained objects keep their
+identity and may be mutable. A missing field raises `AttributeError`. Contexts
+are runtime configuration, outside the model's input schema and prompts.
+
+Tool inputs, outputs, and chaining retain their type contracts. Arbitrary
+context fields are dynamic: Pyright does not infer their names or types from
+`Ctx(...)`. Validate application-specific values where they are consumed.
+
+See [context migration and built-in fields](context-migration.md) for existing
+call sites, built-in defaults, and state ownership.
 
 ## External Dependencies
 
-A plain `@tool` has no declared external dependencies. If an operation calls a
-model or network service, or starts an executable, make it a factory and inject
-that resource through a direct `ToolDependency` context field:
+A plain `@tool` has no declared external dependencies. Pass resources directly
+in a factory context so the same objects drive execution and inspection:
 
 ```python
-from dataclasses import dataclass
 from subprocess import run
 
 import roboz as rz
 
-@dataclass(frozen=True)
-class ConvertCtx(rz.FactoryCtx):
-    """Executable dependency used to perform the conversion."""
-
-    converter: rz.ToolDependency[rz.ExecutableDependency]
-
 @rz.factory
 def convert(
-    input: rz.Str, messages: list[rz.Message], ctx: ConvertCtx
+    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
 ) -> rz.Str:
-    """Run the configured converter and return the supplied value on success."""
-    executable = ctx.converter.resource.require()
-    run([executable, input.value], check=True)
+    """Run the configured converter on the supplied value."""
+    run([ctx.converter.require(), input.value], check=True)
     return input
+
+ctx = rz.Ctx(prefix="[agent]", converter=rz.ExecutableDependency("my-converter"))
+dependencies = ctx.external_dependencies()  # Inspect before building a tool.
+tool_instance = convert(ctx)
 ```
 
-The binding used by the closure is the declaration. Do not maintain a parallel
-list of command names or dependency strings. `Tool.copy()` preserves the exact
-bindings captured by the copied closure.
+`require()` resolves the configured executable using `shutil.which()` and returns
+a `pathlib.Path`, or raises `FileNotFoundError`. `subprocess.run()` executes it.
+The resulting tool exposes the same executable object through `dependencies`
+and `external_dependencies`; authors do not maintain a separate resource list.
 
-Network adapters use the same contract: implement
-`NetworkServiceDependency`, bind the adapter on the execute-stage context, and
-invoke `binding.resource`. A factory that independently requires several
-resources uses one binding field per resource. If operations have different
-requirements, split them into separate Tools instead of adding conditional
-dependency metadata.
+Service adapters implement `NetworkServiceDependency`. Bind the service directly
+and invoke it through `ctx.service`, for example `ctx.service.search_messages(...)`.
+Factories that independently require several resources use several context
+fields. Direct tuple entries are also collected. Ordinary configuration values
+are ignored; arbitrary nested containers and object attributes are not walked.
+Aggregate catalogs and agents expose their current dependencies through
+`ExternalDependencySource`. `Ctx` also implements this interface, so contexts
+can contain other contexts as live sources.
 
 Every `ExternalDependency` supports `materialize()`. Eager dependencies return
-themselves; `LazyExternalDependency` carries stable, redacted identity and
-caches construction on first materialization. Inspecting `Tool.dependencies`,
-`Tool.external_dependencies`, or an agent dependency view never materializes a
-dependency, performs network I/O, or starts a process.
+themselves; `LazyExternalDependency` carries inspectable identity and caches its
+first successful resolution. Context binding, `Tool.copy()`, and dependency
+inspection do not materialize resources, contact services, or execute processes.
+Custom resource implementations retain control over `materialize()`, including
+endpoint routes that select a different resource for subsequent calls.
+
+`Ctx.external_dependencies()` returns a `tuple[ExternalDependency, ...]`: direct
+resources first, then live-source resources, deduplicated by ID while retaining
+the first object. Each inspection reads the current source graphs without
+copying resources or running health checkers.
+
+`Tool.dependencies` contains direct resources in field/tuple order, including
+repeated resources. `Tool.external_dependencies` adds live source dependencies
+from its bound context and deduplicates by `dependency_id`, retaining the first
+resource. Copies keep the original callable, resource identities, and captured
+state.
 
 ## Standalone LLM-backed tools
 
-The public `roboz.llm` operations do not require an `Agent`. Bind an endpoint in a
-factory context, call it, and validate the completion against the tool's output
-model:
+The public `roboz.llm` operations do not require an `Agent`. Bind an endpoint
+object directly and validate its completion against the output model:
 
 ```python
-from dataclasses import dataclass
-
 import roboz as rz
-from roboz.llm import (
-    EndpointBinding,
-    bind_endpoint,
-    call_llm_api,
-    endpoint_resource,
-    get_completion,
-)
-
-@dataclass(frozen=True)
-class SummarizeCtx(rz.FactoryCtx):
-    """Model endpoint bound to conversation summarization."""
-
-    endpoint: EndpointBinding
+from roboz.llm import call_llm_api, get_completion
 
 @rz.factory
 def summarize_with_llm(
-    input: rz.Str, messages: list[rz.Message], ctx: SummarizeCtx
+    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
 ) -> rz.Str:
     """Summarize the conversation using the configured model."""
     result = get_completion(
         messages=messages,
         LlmOutputModel=rz.Str,
-        call_llm_api=lambda current: call_llm_api(
-            endpoint_resource(ctx.endpoint), current
-        ),
+        call_llm_api=lambda current: call_llm_api(ctx.endpoint, current),
     )
     return rz.Str(**result)
 
-summarize = summarize_with_llm(SummarizeCtx(bind_endpoint(endpoint)))
+summarize = summarize_with_llm(rz.Ctx(endpoint=endpoint))
 ```
 
-`MockLLMEndpoint` follows the same public path for deterministic tests. Real
-endpoints become `ToolDependency` bindings, so dependency identity and
-materialization remain inspectable on the resulting tool.
+Supply an `EndpointLike`: a concrete endpoint, a lazy endpoint resource, or a
+`MockLLMEndpoint` for deterministic tests. Real endpoint resources are discovered
+automatically; mocks are ordinary context values and add no external dependency.
+The LLM call resolves the endpoint when it is needed.
 
 ## Chaining Patterns
 

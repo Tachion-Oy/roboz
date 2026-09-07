@@ -64,14 +64,14 @@ def test_domain_ownership_exports() -> None:
     assert not hasattr(roboz.tooling, "factory")
 
 
-def test_all_exported_ctx_contracts_inherit_factory_ctx() -> None:
+def test_single_context_authoring_api() -> None:
+    assert rz.Ctx is roboz.tooling.Ctx
     for module in (rz, roboz.agent, roboz.tools, roboz.tooling):
-        for name in module.__all__:
-            value = getattr(module, name)
-            if name.endswith("Ctx"):
-                assert inspect.isclass(value)
-                assert issubclass(value, rz.FactoryCtx)
-            assert not name.endswith("Context")
+        assert [name for name in module.__all__ if name.endswith("Ctx")] == (
+            ["Ctx"] if module in (rz, roboz.tooling) else []
+        )
+    assert not hasattr(rz, "FactoryCtx")
+    assert not hasattr(rz, "ToolDependency")
 
 
 def test_approved_interaction_rename() -> None:

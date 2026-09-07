@@ -1,14 +1,14 @@
 """Tools for sending messages to and requesting input from users."""
 
-from dataclasses import dataclass
+from functools import partial
 
 from pydantic import ConfigDict, Field
 
 from roboz.models import All, Message, Role, Str
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime.io import interact_with_user
+from roboz.tooling.context import Ctx, _prepare_context
 from roboz.tooling.decorators import factory
-from roboz.tooling.dependencies import FactoryCtx
 
 NO_REPLY = "The user did not respond"
 
@@ -27,15 +27,8 @@ class PromptUser(Str):
     model_config = ConfigDict(extra="forbid")
 
 
-@dataclass(frozen=True)
-class PromptUserCtx(FactoryCtx):
-    """Fallback response returned when a user prompt times out."""
-
-    timeout_reply: str
-
-
 @factory
-def prompt_user(input: PromptUser, messages: list[Message], ctx: PromptUserCtx) -> Str:
+def prompt_user(input: PromptUser, messages: list[Message], ctx: Ctx) -> Str:
     """Send the user a message and wait for their reply.
 
     Set a timeout only when the task requires a bounded wait; otherwise wait
@@ -49,22 +42,15 @@ def prompt_user(input: PromptUser, messages: list[Message], ctx: PromptUserCtx) 
     return Str(value=reply)
 
 
-@dataclass(frozen=True)
-class MessageCtx(FactoryCtx):
-    """Fixed user-facing message bound to a message tool."""
-
-    message: str
-
-
 @factory
-def message_user(input: Str, messages: list[Message], ctx: MessageCtx) -> Str:
+def message_user(input: Str, messages: list[Message], ctx: Ctx) -> Str:
     """Send the configured fixed message to the user without awaiting a reply."""
     _ = interact_with_user(ctx.message, with_reply=False)
     return Str(value=ctx.message)
 
 
 @factory
-def prompt_user_at_start(input: All, messages: list[Message], ctx: MessageCtx) -> Str:
+def prompt_user_at_start(input: All, messages: list[Message], ctx: Ctx) -> Str:
     """Prompt the user only at the start of a conversation.
 
     Use this as a default tool when the agent needs an initial user response.
@@ -75,3 +61,8 @@ def prompt_user_at_start(input: All, messages: list[Message], ctx: MessageCtx) -
     if reply is None:
         reply = NO_REPLY
     return Str(value=reply)
+
+
+prompt_user._prepare_ctx = partial(_prepare_context, required=("timeout_reply",))
+message_user._prepare_ctx = partial(_prepare_context, required=("message",))
+prompt_user_at_start._prepare_ctx = partial(_prepare_context, required=("message",))

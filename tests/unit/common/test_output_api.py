@@ -2,13 +2,14 @@
 
 import json
 
+from roboz import Ctx
 from roboz.agent.core import Agent
-from roboz.tools import MessageCtx, prompt_user_at_start, stop
-from roboz.runtime import io as utils
-from roboz.models import Empty, Message, Stop, Str, Role
-from roboz.runtime import Output, bind_output, interact_with_user, reset_output
-from roboz.tooling.decorators import tool
 from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.models import Empty, Message, Role, Stop, Str
+from roboz.runtime import Output, bind_output, interact_with_user, reset_output
+from roboz.runtime import io as utils
+from roboz.tooling.decorators import tool
+from roboz.tools import prompt_user_at_start, stop
 
 
 def test_interact_with_user_requires_bound_output():
@@ -102,7 +103,7 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
             {"action": "stop", "rationale": "done", "value": "ok"},
         ]
     )
-    start_only = prompt_user_at_start(MessageCtx(message="m"))
+    start_only = prompt_user_at_start(Ctx(message="m"))
     agent = Agent(
         interaction_mode=Output.API,
         name="api_output_agent",
