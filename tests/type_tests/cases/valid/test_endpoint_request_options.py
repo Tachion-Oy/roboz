@@ -1,3 +1,5 @@
+from roboz import Agent, Ctx, ExternalDependency, ExternalDependencyReference
+from roboz.llm import EndpointLike, with_openrouter_policy
 from typing import assert_type
 
 from roboz.llm import LLMEndpoint, with_request_options
@@ -23,3 +25,27 @@ configured_lazy = with_request_options(
     extra_body={"provider": {"sort": "throughput"}},
 )
 assert_type(configured_lazy, LazyExternalDependency[LLMEndpoint])
+
+
+
+
+class SelectedEndpoint(ExternalDependencyReference[LLMEndpoint]):
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        return (lazy_endpoint,)
+
+    def materialize(self) -> LLMEndpoint:
+        return lazy_endpoint.materialize()
+
+
+reference = SelectedEndpoint()
+endpoint_like: EndpointLike = reference
+assert_type(
+    with_request_options(reference, extra_body={}),
+    ExternalDependencyReference[LLMEndpoint],
+)
+assert_type(with_openrouter_policy(reference), ExternalDependencyReference[LLMEndpoint])
+assert_type(with_openrouter_policy(lazy_endpoint), LazyExternalDependency[LLMEndpoint])
+assert_type(with_openrouter_policy(endpoint), LLMEndpoint)
+assert_type(lazy_endpoint.materialize(), LLMEndpoint)
+ctx = Ctx(endpoint=reference)
+agent = Agent(name="typed_reference", system_prompt="Stop.", agent_endpoint=reference)

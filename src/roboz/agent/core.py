@@ -50,6 +50,7 @@ from roboz.tooling.context import Ctx
 from roboz.tooling.core import Factory, Tool
 from roboz.tooling.dependencies import (
     ExternalDependency,
+    ExternalDependencyReference,
     ExternalDependencySource,
     dedupe_external_dependencies,
 )
@@ -141,7 +142,7 @@ class Agent(ExternalDependencySource):
             else custom_prompt_user_tool
         )
         if agent_endpoint is not None and not isinstance(
-            agent_endpoint, (ExternalDependency, MockLLMEndpoint)
+            agent_endpoint, (ExternalDependency, ExternalDependencyReference, MockLLMEndpoint)
         ):
             raise TypeError(
                 "agent_endpoint must be an endpoint dependency or MockLLMEndpoint"

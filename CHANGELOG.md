@@ -4,6 +4,10 @@
 
 ### Added
 
+- Add `ExternalDependencyReference` for replaceable resources. Endpoint helpers
+  preserve live selection and discovery through contexts, tools, and agents,
+  while lazy resources retain their identity validation and cached clients.
+
 - Inspect resources before binding tools with `Ctx.external_dependencies()`.
   Contexts implement `ExternalDependencySource`, preserving resource identity
   and reflecting live nested contexts, agents, and catalogs without resolving
