@@ -30,7 +30,7 @@ preset inputs.
 For example, `FileEditing` bundles a guarded patch tool with its editing instructions.
 `Compactification` supplies an automatic tool without a skill.
 
-The orchestrator and assistant always supply `stop`. `Agent` supplies user
+The orchestrator always supplies `stop`. `Agent` supplies user
 interaction independently of selected capabilities. Only the lower-level `Agent`
 and concrete `Capability` expose tool and skill fields; `AgentDefinition` has a
 single capability list.
@@ -172,7 +172,7 @@ no model. Derive the watch set from `root.agent_names()` to include specialists.
 
 The orchestrator stays available across tasks and stops when the user asks,
 including standing instructions. It selects no memory location. Use a plain
-definition or `roboshed.assistant.build_assistant` for task-oriented behavior.
+definition with a task-specific prompt for task-oriented behavior.
 
 `AgenticFactory` binds the project and definitions. It seeds root initial context
 from `project.memory` by default; `seed_initial_messages_from_memory=False`
@@ -262,11 +262,9 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 - Preset extensions use `capabilities` only. Move `tools`, `default_tools`,
   `skills`, and `auto_loaded_skills` from orchestrator calls into a capability
   returning `Capability`.
-
-- `build_assistant` takes `project`, optional `permissions`, and `capabilities`
-  (replacing `tool_builders`). Its demo writes into `WORKSPACE/projects/assistant`;
-  `--data-path` selects the conversation storage root.
-
+- `roboshed.assistant`, `roboshed.demo`, and the `roboz-demo` command are removed.
+  Compose task-oriented file agents with `AgentDefinition`, `FileCommands`,
+  `FileEditing`, and a stop capability. Supply persistence through build sinks.
 - Email input models live in `roboshed.tools.email.inputs` and remain exported
   from `roboshed.tools.email`; the top-level `roboshed.email_inputs` is removed.
 

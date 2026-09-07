@@ -4,13 +4,13 @@ import argparse
 import email
 import os
 import shutil
-import tarfile
-from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = {
@@ -127,19 +127,6 @@ assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_
             workflow = root / "shed_workflows.py"
             shutil.copyfile(ROOT / "tests/e2e/test_shed_workflows.py", workflow)
             run(str(python), "-I", str(workflow))
-            # Verify the published console entry point too.
-            executable = python.parent / (
-                "roboz-demo.exe" if os.name == "nt" else "roboz-demo"
-            )
-            run(
-                str(executable),
-                "--mock",
-                "--workspace",
-                str(root / "workspace"),
-                "--data-path",
-                str(root / "data"),
-            )
-            assert list((root / "data").rglob("*.json"))
         if label in {"openai", "extras"}:
             check("""
 from roboz_openai import openrouter_endpoint

@@ -1,20 +1,22 @@
-"""Exercise guarded file tools through the real assistant and event pipeline."""
+"""Exercise guarded file tools through the real agent and event pipeline."""
 
 import json
 import tempfile
 from pathlib import Path
 
 from roboshed.agents import librarian as librarian_definition
-from roboshed.assistant import build_assistant
 from roboshed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
+    FileCommands,
+    FileEditing,
     MaintenanceCadence,
     MemoryConsolidation,
 )
 from roboshed.workspace import Project, Workspace, WorkspacePermissions
 
 from roboz import Agent, stop
+from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, Output, PersistenceSink
 
@@ -36,12 +38,17 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
             "file_commands": [{"command": "cat", "argv": [path]}],
         }
 
-    agent = build_assistant(
-        project=Project(Workspace(tmp_path), "test"),
-        permissions=WorkspacePermissions.local(workspace),
+    permissions = WorkspacePermissions.local(workspace)
+    agent = AgentDefinition(
+        name="file_worker",
+        system_prompt="Complete the file task and stop.",
+        capabilities=(
+            Capability(tools=(stop,)),
+            FileCommands(permissions),
+            FileEditing(permissions),
+        ),
         interaction_mode=Output.API,
-        event_sinks=[PersistenceSink.for_path(tmp_path / "logs")],
-        endpoint=MockLLMEndpoint(
+        agent_endpoint=MockLLMEndpoint(
             [
                 read("note.txt"),
                 {
@@ -64,7 +71,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
                 {"action": "stop", "rationale": "finished", "value": "done"},
             ]
         ),
-    )
+    ).build(event_sinks=(PersistenceSink.for_path(tmp_path / "logs"),))
     result, messages = agent.invoke()
     assert result.value == "done"
     assert note.read_text() == "after-marker"

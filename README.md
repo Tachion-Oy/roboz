@@ -42,8 +42,8 @@ python -m pip install roboz
 
 Optional tools and adapters are separate distributions in this repository:
 `roboshed`, `roboz-openai`, and `roboz-proton-bridge`. Start with the
-[installation and add-on guide](docs/addons.md) to build their wheels and run
-the assistant demo without credentials. These companion releases must be
+[installation and add-on guide](docs/addons.md) to build their wheels and compose
+agents from capabilities. These companion releases must be
 published before their named PyPI installs and convenience extras are usable.
 
 ## Quick start
@@ -145,7 +145,7 @@ alongside `roboshed.tools` and `roboshed.skills`. The project deployment lives i
 | [`docs/testing-practices.md`](docs/testing-practices.md) | Test design and review expectations |
 | [`docs/build-and-test.md`](docs/build-and-test.md) | Local setup and CI-equivalent validation |
 | [`docs/port-parity.md`](docs/port-parity.md) | Audited source-commit parity and deliberate exclusions |
-| [`docs/addons.md`](docs/addons.md) | Optional packages, installed demo, composition, and releases |
+| [`docs/addons.md`](docs/addons.md) | Optional packages, composition, and releases |
 | [`docs/maintainer-basics.md`](docs/maintainer-basics.md) | Practical changelog, versioning, release, and open-source basics |
 
 ## Development

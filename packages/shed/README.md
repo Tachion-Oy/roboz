@@ -9,17 +9,26 @@ install any model SDK, Proton, document SDK, web service, or backend framework.
 
 ```python
 from pathlib import Path
+from roboz import stop
+from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
-from roboshed.workspace import Project, Workspace
-from roboshed.assistant import build_assistant
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.workspace import WorkspacePermissions
 
-agent = build_assistant(
-    endpoint=MockLLMEndpoint([
+permissions = WorkspacePermissions.local(Path("./workspace"))
+agent = AgentDefinition(
+    name="file_worker",
+    system_prompt="Complete the user's task, then call stop.",
+    agent_endpoint=MockLLMEndpoint([
         {"action": "stop", "rationale": "done", "value": "Ready."}
     ]),
-    project=Project(Workspace(Path("./workspace")), "example"),
-)
-agent.invoke()
+    capabilities=(
+        Capability(tools=(stop,)),
+        FileCommands(permissions),
+        FileEditing(permissions),
+    ),
+).build()
+result, messages = agent.invoke()
 ```
 
 `roboshed.capabilities` provides `FileCommands`, `FileEditing`, `Compactification`,
@@ -36,7 +45,7 @@ Runtime controls remain separate from endpoints. The Librarian accepts an ordere
 `endpoint`; `agent_endpoint` supplies their shared default. Retention and cadence
 need no model. Each capability owns its settings and project inputs. Select permission policies through
 `roboshed.workspace.WorkspacePermissions`; workspace structure does not grant
-access. `build_assistant` is a task-oriented preset using the same construction.
+access. Compose task-oriented agents directly with `AgentDefinition`.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 

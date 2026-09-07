@@ -14,20 +14,14 @@ Core installs only Pydantic, python-dotenv, and Rich. Companions require core
 Package maturity labels do not imply every service/environment has been tested.
 These are local releases until published.
 
-## Try the first slice
+## Development setup
 
-Development requires Python 3.13+ and uv. File CLI tools use Unix executables;
-the deterministic demo needs `cat`, while patch editing uses Python only.
+Development requires Python 3.13+ and uv. File command tools use Unix executables;
+patch editing uses Python only.
 
 ```bash
 uv sync --locked --dev
-uv run roboz-demo --mock --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data
 ```
-
-The demo creates a uniquely named file, reads it through a guarded tool, verifies
-the result, and saves its conversation. Repeating it creates another file.
-It needs no credentials or network calls. Full runtime details are in the saved
-conversation; the terminal displays a concise result.
 
 ## Install built wheels
 
@@ -35,7 +29,6 @@ conversation; the terminal displays a concise result.
 uv build --all-packages --out-dir dist/first-slice
 uv venv /tmp/roboz-trial --python 3.13
 uv pip install --python /tmp/roboz-trial/bin/python dist/first-slice/*.whl
-/tmp/roboz-trial/bin/python -I -m roboshed.demo --mock --workspace /tmp/roboz-trial-workspace --data-path /tmp/roboz-trial-data
 ```
 
 Use a new output directory if yours contains wheels from older versions. For
@@ -49,53 +42,44 @@ The verifier installs exact local wheels outside the checkout and may download
 third-party dependencies from PyPI. No sibling paths or editable installs are
 used. The core source distribution excludes companion source trees.
 
-## Real model and email runs
+## Models and email
 
-Set `OPENROUTER_API_KEY` in your shell or secret manager. Choose an available
-model and its context limit explicitly:
-
-```bash
-uv run roboz-demo --provider openrouter \
-  --model YOUR_MODEL_ID --max-context-tokens YOUR_MODEL_CONTEXT_LIMIT \
-  --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data \
-  --prompt "Read the text files and write a short summary in this workspace."
-```
-
-For OpenAI, use `--provider openai` and `OPENAI_API_KEY`. The adapter uses the
-core's Chat Completions path; choose a model compatible with its request
-parameters. Model catalogs and routing policy remain caller-owned.
-
-Add `--proton` after configuring Bridge as described in the
-[Proton guide](../packages/proton-bridge/README.md). `--signature-file PATH`
-optionally supplies plain-text signature content; the demo otherwise supplies
-an empty signature. No personal signature is built in.
-
-Real model calls can incur charges. Inbox reads mark messages read, and draft
-creation writes to the configured mailbox; there is no sending tool. Test email
-with a designated mailbox. Library imports and dependency inspection never
-connect to a service.
+Configure models through `roboz_openai.openrouter_endpoint` or
+`roboz_openai.openai_endpoint`, supplying a model ID and context limit.
+Pass the resulting endpoint to an agent definition or an individual capability.
+See the [OpenAI adapter guide](../packages/openai/README.md) and
+[Proton guide](../packages/proton-bridge/README.md) for provider configuration.
+Applications own model selection, credentials, email signatures, and startup.
 
 ## Compose an application
 
 ```python
 from pathlib import Path
+from roboz import stop
+from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
-from roboshed.workspace import Project, Workspace
-from roboshed.assistant import build_assistant
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.workspace import WorkspacePermissions
 
-assistant = build_assistant(
-    endpoint=MockLLMEndpoint([
-        {"action": "stop", "rationale": "Done", "value": "Hello!"}
+permissions = WorkspacePermissions.local(Path("./workspace"))
+agent = AgentDefinition(
+    name="file_worker",
+    system_prompt="Complete the user's task, then call stop.",
+    agent_endpoint=MockLLMEndpoint([
+        {"action": "stop", "rationale": "done", "value": "Ready."}
     ]),
-    project=Project(Workspace(Path("./workspace")), "example"),
-)
-result, messages = assistant.invoke()
+    capabilities=(
+        Capability(tools=(stop,)),
+        FileCommands(permissions),
+        FileEditing(permissions),
+    ),
+).build()
+result, messages = agent.invoke()
 ```
 
-The assistant preset supplies guarded read commands and patch editing. Pass
-additional `capabilities` explicitly. Each capability owns its tools and skills
-and receives the owning agent's event pipe once per build. The demo's explicit flags import
-optional adapters; other Shed modules do not import providers.
+Compose guarded file capabilities through `AgentDefinition`, or use the
+orchestrator and Librarian presets. Each capability owns its tools and skills
+and receives the owning agent's event pipe once per build.
 
 See [agent factories](agent-factories.md) for persistent orchestration, common
 workspace structure, permission injection, and API migration.

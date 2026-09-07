@@ -23,6 +23,3 @@ Repository = "https://github.com/Tachion-Oy/roboz"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[project.scripts]
-roboz-demo = "roboshed.demo:main"
