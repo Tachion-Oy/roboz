@@ -128,6 +128,10 @@ dependency-free reference tools such as the Librarian memory pipeline. Provider
 catalogs and SDK integrations, guarded file and CLI tools, and application
 integrations belong in companion packages and are not dependencies of Roboz.
 
+`roboz.deployment` supplies generic agent definitions, capabilities, and specialist
+composition without selecting a project layout or persistence policy. See
+[agent definitions and capabilities](docs/agent-factories.md).
+
 ## Documentation
 
 | Guide | Contents |

@@ -5,6 +5,7 @@ It focuses on concrete runtime behavior and conventions already used in the repo
 
 Primary references:
 
+- Reusable definitions and capabilities: [Agent factories](agent-factories.md)
 - Core reference: [`reference.md`](reference.md)
 - Tool and factory patterns: [`tool-authoring.md`](tool-authoring.md)
 
