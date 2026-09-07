@@ -6,30 +6,35 @@ from roboz.deployment import (
     AgentDefinition,
     Capability,
 )
-from roboz.llm import EndpointLike
+from roboz.llm import EndpointLike, MockLLMEndpoint
 from roboz.runtime import EventPipe
 
 
 class Extension:
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
+        assert_type(default_endpoint, EndpointLike | None)
+        return Capability()
+
+
+class EndpointFree(AgentCapability):
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
         return Capability()
 
 
 static_capability: AgentCapability = Capability()
 capability: AgentCapability = Extension()
-assert_type(
-    AgentDefinition(
-        name="custom",
-        agent_endpoint=None,
-        is_agentic=False,
-        capabilities=(
-            static_capability,
-            capability,
-        ),
-    ),
-    AgentDefinition,
+endpoint_free: AgentCapability = EndpointFree()
+
+
+endpoint: EndpointLike = MockLLMEndpoint([])
+definition = AgentDefinition(
+    name="custom",
+    agent_endpoint=endpoint,
+    system_prompt="Use the configured capabilities.",
+    capabilities=(static_capability, capability, endpoint_free),
 )
-
-
-definition = AgentDefinition(name="worker", agent_endpoint=None, is_agentic=False)
 assert_type(definition.build(), Agent)

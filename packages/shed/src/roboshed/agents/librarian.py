@@ -95,7 +95,9 @@ class _LibrarianMaintenance:
         if (self.snapshot_endpoint is None) == (self.endpoint_factory is None):
             raise ValueError("set exactly one of snapshot_endpoint or endpoint_factory")
 
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
         """Build the exact ordered tool sequence used for every cycle."""
         endpoint = (
             self.endpoint_factory(lambda: pipe.cancelled)

@@ -3,10 +3,8 @@ from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe
 
 
-class Invalid:
-    def build(
-        self, pipe: EventPipe, agent_endpoint: EndpointLike | None
-    ) -> str:
+class Invalid(AgentCapability):
+    def build(self, pipe: EventPipe, *, default_endpoint: EndpointLike | None) -> str:
         return "not capability contributions"
 
 

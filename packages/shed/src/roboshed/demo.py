@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
             )
 
         class EmailCapability:
-            def build(self, pipe, agent_endpoint):
+            def build(self, pipe, *, default_endpoint):
                 return Capability(tools=tuple(email_tools(pipe)), skills=(email_skill,))
 
         capabilities.append(EmailCapability())

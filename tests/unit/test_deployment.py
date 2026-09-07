@@ -1,5 +1,5 @@
 from roboz import Empty, Message, Skill, Str, stop, tool
-from roboz.deployment import AgentDefinition, Capability
+from roboz.deployment import AgentCapability, AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import Output
 
@@ -7,10 +7,12 @@ from roboz.runtime import Output
 def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     calls = []
     built_pipes = []
+    received_endpoints = []
 
-    class Capabilities:
-        def build(self, pipe, agent_endpoint):
+    class Capabilities(AgentCapability):
+        def build(self, pipe, *, default_endpoint):
             built_pipes.append(pipe)
+            received_endpoints.append(default_endpoint)
 
             @tool
             def begin(input: Empty, messages: list[Message]) -> Str:
@@ -59,6 +61,7 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     agent = definition.build()
     second = definition.build()
     assert built_pipes == [agent.pipe, second.pipe]
+    assert all(endpoint is definition.agent_endpoint for endpoint in received_endpoints)
     assert agent.pipe is not second.pipe
     assert agent.default_tools[0] is not second.default_tools[0]
     assert agent.default_tools[0] in agent.tools
@@ -86,3 +89,33 @@ def test_duplicate_names_fail_before_building_capabilities_or_sinks():
     )
     with pytest.raises(ValueError, match="unique"):
         root.build(event_sink_factory=unexpected)
+
+
+def test_each_capability_receives_its_owning_agents_default():
+    from roboz.deployment import SubAgentSpec
+
+    received = []
+
+    class Feature:
+        def build(self, pipe, *, default_endpoint):
+            received.append((pipe, default_endpoint))
+            return Capability(tools=(stop,))
+
+    parent_endpoint, child_endpoint = MockLLMEndpoint([]), MockLLMEndpoint([])
+    child = AgentDefinition(
+        name="child",
+        system_prompt="Complete the task.",
+        agent_endpoint=child_endpoint,
+        capabilities=(Feature(),),
+    )
+    parent = AgentDefinition(
+        name="parent",
+        system_prompt="Delegate the task.",
+        agent_endpoint=parent_endpoint,
+        capabilities=(Feature(),),
+        subagents=(SubAgentSpec(child, "delegate", "Run the child."),),
+    ).build()
+
+    assert received[0] == (parent.pipe, parent_endpoint)
+    assert received[1][0] is not parent.pipe
+    assert received[1][1] is child_endpoint

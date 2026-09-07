@@ -34,7 +34,7 @@ def test_assistant_uses_injected_tools_and_pipe(tmp_path: Path):
         return Str(value="custom result")
 
     class CustomCapability:
-        def build(self, pipe, agent_endpoint):
+        def build(self, pipe, *, default_endpoint):
             pipes.append(pipe)
             return Capability(tools=(custom,))
 

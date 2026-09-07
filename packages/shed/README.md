@@ -84,3 +84,7 @@ context classes have been removed. Existing tool builders retain their keyword
 arguments, defaults, permission checks, cancellation, and timeout behavior.
 See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
 for low-level context fields and state ownership.
+
+Capability builders receive `build(pipe, *, default_endpoint)`. Configure
+individual tool models on their capabilities; the agent endpoint supplies a
+default, independently of the runtime pipe.

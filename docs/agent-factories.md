@@ -58,7 +58,7 @@ This works with only `roboz` installed. A definition needs no project, workspace
 memory folder, provider companion, or host. Without supplied sinks it selects no
 persistence or event output. `initial_messages` are explicit caller inputs.
 
-A capability implements `build(pipe, agent_endpoint) -> Capability`. Its
+A capability implements `build(pipe, *, default_endpoint) -> Capability`. Its
 four ordered contributions are `tools`, `default_tools`, `skills`, and
 `auto_loaded_skills`: selectable actions, automatic per-turn work, on-demand
 instructions/tools, and session-loaded instructions/tools. Already-bound
@@ -81,6 +81,42 @@ parent-specific sinks never leak to children. Core does not choose log locations
 To add root-only automatic work, append a `Capability(default_tools=(... ,))`
 to the root definition's capability tuple. The deployment uses this same path to
 wire background start tools; no separate tool-injection build argument exists.
+
+## Tool endpoints
+
+Configure tool-specific endpoints on the capability itself. Given configured
+`main_model` and `compaction_model` endpoints:
+
+```python
+from roboshed.agents import orchestrator
+from roboshed.capabilities import Compactification
+
+worker = orchestrator(
+    agent_endpoint=main_model,
+    capabilities=(Compactification(endpoint=compaction_model),),
+)
+```
+
+`Compactification()` uses the owning agent's model. An explicit `endpoint` uses
+that model instead. Inside the capability's `build()` the choice is direct:
+
+```python
+endpoint = self.endpoint if self.endpoint is not None else default_endpoint
+if endpoint is None:
+    raise ValueError("compaction requires an endpoint")
+```
+
+The chosen endpoint goes straight into the tool constructor. The capability
+also supplies the owning pipe as a separate runtime input. `AgentDefinition`
+only provides `default_endpoint=self.agent_endpoint`; it does not select the
+models for individual tools or construct endpoints.
+
+Each build creates fresh pipes and tools while retaining supplied endpoint
+objects. Model calls handle cancellation and events using the pipe for that
+invocation. Lazy references remain deferred and live references keep their
+current selection. Enumerate the actual bound resources with
+`agent.external_dependencies()`; no separate capability endpoint registry is
+needed. Already-bound `Capability(...)` inputs are returned unchanged.
 
 ## The RoboSprawl deployment profile
 
@@ -183,8 +219,13 @@ endpoint unless given another, and shares its pipe. Its default threshold is
   through `event_sink_factory` and initial context through `initial_messages`.
 - Pass the project into `AgenticFactory(project=..., ...)`, then unpack
   `agent, background_agents = factory.build(event_sinks=...)`. Call `agent.invoke()`.
-- Capabilities receive only `(pipe, agent_endpoint)`. Store application inputs in
-  the configured capability; use `FileCommands(project_permissions(project))`.
+- Replace capability `build(pipe, agent_endpoint)` with
+  `build(pipe, *, default_endpoint: EndpointLike | None)`. Store tool-specific
+  endpoint overrides as ordinary capability fields. Select each explicit value
+  or the supplied default in `build()`, validate it, and pass it directly to
+  its tool constructor.
+- Endpoint inputs use `EndpointLike` from `roboz.llm`: configured endpoints or
+  lazy/live references. Endpoint creation receives no runtime controls.
 - Replace `LibrarianDefinition`/`LibrarianConstructor` with
   `librarian(project=..., agent_names=..., ...)`, which returns `AgentDefinition`.
   `LibrarianTuning` remains the memory-pipeline configuration. Standalone builds

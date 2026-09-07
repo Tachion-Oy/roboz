@@ -11,19 +11,21 @@ from roboshed.tools import (
 from roboshed.tools.cli_commands.run_file_command import FILE_COMMANDS_READ
 from roboshed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 from roboshed.workspace import WorkspacePermissions
-from roboz.deployment import Capability
+from roboz.deployment import AgentCapability, Capability
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe
 
 
 @dataclass(frozen=True)
-class FileCommands:
+class FileCommands(AgentCapability):
     """Guarded read commands, optionally accompanied by their orientation skill."""
 
     permissions: WorkspacePermissions
     auto_load_skill: bool = True
 
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
         """Build a read-tool chain using this agent's pipe and selected policy."""
         return Capability(
             tools=(
@@ -37,13 +39,15 @@ class FileCommands:
 
 
 @dataclass(frozen=True)
-class FileEditing:
+class FileEditing(AgentCapability):
     """Literal patch editing with caller-selected file permissions."""
 
     permissions: WorkspacePermissions
     auto_load_skill: bool = True
 
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
         """Build patch editing and optional orientation against the owning pipe."""
         return Capability(
             tools=(get_apply_patch(**self.permissions.tool_options(pipe)),),
@@ -52,18 +56,20 @@ class FileEditing:
 
 
 @dataclass(frozen=True)
-class Compactification:
+class Compactification(AgentCapability):
     """Automatic context compaction, bound to the selected or owning endpoint."""
 
     endpoint: EndpointLike | None = None
     threshold_percent: float = DEFAULT_THRESHOLD_PERCENT
     timeout_s: float | None = None
 
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
-        """Build a fresh compaction tool sharing the agent's runtime controls."""
-        endpoint = self.endpoint if self.endpoint is not None else agent_endpoint
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> Capability:
+        """Use the configured endpoint, falling back to the agent's endpoint."""
+        endpoint = self.endpoint if self.endpoint is not None else default_endpoint
         if endpoint is None:
-            raise ValueError("compactification requires an endpoint")
+            raise ValueError("compaction requires an endpoint")
         return Capability(
             default_tools=(
                 get_compactify_messages_when_needed_tool(

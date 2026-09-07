@@ -13,8 +13,22 @@ from roboz.tooling import Tool
 from roboz.tooling.context import Ctx
 
 
+class AgentCapability(Protocol):
+    """A configured feature that binds its own tools to an agent runtime.
+
+    Store tool-specific endpoints on the capability. The build input supplies
+    the owning agent's endpoint as a default, independently of its event pipe.
+    """
+
+    def build(
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
+    ) -> "Capability":
+        """Bind configured tools, using the supplied default for unset endpoints."""
+        ...
+
+
 @dataclass(frozen=True)
-class Capability:
+class Capability(AgentCapability):
     """Configured tools and skills that provide an agent feature.
 
     Tools shared between a chain and default execution retain their identity.
@@ -28,18 +42,10 @@ class Capability:
     auto_loaded_skills: tuple[Skill, ...] = ()
 
     def build(
-        self, pipe: EventPipe, agent_endpoint: EndpointLike | None
+        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
     ) -> "Capability":
         """Return these already-bound inputs without copying or starting work."""
         return self
-
-
-class AgentCapability(Protocol):
-    """A configured capability built against its owning agent's event pipe."""
-
-    def build(self, pipe: EventPipe, agent_endpoint: EndpointLike | None) -> Capability:
-        """Resolve this feature's runtime inputs without starting work."""
-        ...
 
 
 @dataclass(frozen=True)
@@ -58,6 +64,8 @@ class AgentDefinition:
     All tools and skills enter through capabilities. Already-bound inputs and
     endpoint dependencies are supplied objects; callers own their reuse. Scripted
     mock endpoints that consume responses must be recreated for each run.
+    Each capability selects its tool endpoints, using the agent endpoint as
+    the default. Endpoint objects remain independent of runtime controls.
     """
 
     name: str
@@ -100,17 +108,22 @@ class AgentDefinition:
                 *event_sinks,
             )
         )
-        contributions = [c.build(pipe, self.agent_endpoint) for c in self.capabilities]
-        children = tuple(
-            run_subagent(
-                Ctx(
-                    agent=spec.definition.build(
-                        event_sinks=event_sinks, event_sink_factory=event_sink_factory
-                    )
-                )
-            ).copy(name=spec.tool_name, description=spec.tool_description)
-            for spec in self.subagents
-        )
+        contributions = []
+        for capability in self.capabilities:
+            contributions.append(
+                capability.build(pipe, default_endpoint=self.agent_endpoint)
+            )
+
+        tools = [tool for contribution in contributions for tool in contribution.tools]
+        for spec in self.subagents:
+            child = spec.definition.build(
+                event_sinks=event_sinks, event_sink_factory=event_sink_factory
+            )
+            delegation = run_subagent(Ctx(agent=child)).copy(
+                name=spec.tool_name, description=spec.tool_description
+            )
+            tools.append(delegation)
+
         return Agent(
             name=self.name,
             description=self.description,
@@ -120,7 +133,7 @@ class AgentDefinition:
             is_agentic=self.is_agentic,
             automatic_tool_prompt=self.automatic_tool_prompt,
             system_prompt=self.system_prompt,
-            tools=[*(tool for c in contributions for tool in c.tools), *children],
+            tools=tools,
             default_tools=[tool for c in contributions for tool in c.default_tools],
             skills=[skill for c in contributions for skill in c.skills],
             auto_loaded_skills=[

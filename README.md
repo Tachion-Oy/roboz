@@ -128,7 +128,8 @@ Provider catalogs and SDK integrations, guarded file and CLI tools, and applicat
 integrations belong in companion packages and are not dependencies of Roboz.
 
 `roboz.deployment` supplies generic agent definitions, capability contracts,
-and specialist composition. `roboshed` supplies orchestrator/Librarian
+and specialist composition. Capabilities accept tool-specific endpoints and pass
+them directly to their tools, using the owning agent's endpoint as the default. `roboshed` supplies orchestrator/Librarian
 factories, concrete capabilities, memory tools, and workspace structure. These are described in [agent factories](docs/agent-factories.md). Configured file and compaction capabilities live in `roboshed.capabilities`,
 alongside `roboshed.tools` and `roboshed.skills`. The project deployment lives in
 `roboshed.deployments.robosprawl`; agent presets live in `roboshed.agents`.

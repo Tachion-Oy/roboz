@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Breaking: capability builders receive `build(pipe, *, default_endpoint)`.
+  Configure tool-specific endpoints on capabilities and use the owning agent's
+  model as a fallback. Endpoint objects and runtime controls remain independent.
+  See `docs/agent-factories.md` for migration.
+
 - Add `roboshed.deployments.robosprawl.AgenticFactory` to bind project persistence, initial memory, and background-start capabilities to configured definitions. Builds return `RoboSprawlBundle(agent, background_agents)`, a named tuple for direct invocation and host cancellation; construction starts no threads. See `docs/agent-factories.md`.
 
 - Breaking: own orchestrator/Librarian presets, workspace/project structure, reusable capabilities, and memory/summarization tools. Import presets from `roboshed.agents`, feature implementations from `roboshed.capabilities`, and explicit paths/permission inputs from `roboshed.workspace`. Both presets return `AgentDefinition`; the orchestrator remains available across tasks until asked to stop. Assistant extensions use only `capabilities`; replace `workspace` with `project` and optional `permissions`, and move separate tool/skill inputs into capability builds. See `docs/agent-factories.md`.
