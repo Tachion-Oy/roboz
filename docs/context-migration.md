@@ -149,3 +149,52 @@ Keep application-level exact registration matching, safe health probes, timeout
 policy, and cached health endpoints in the application. Custom endpoint routes
 retain their own `materialize()` behavior, including selection changes after
 binding. Mock endpoints remain excluded from external dependency discovery.
+
+
+## Replaceable endpoint references
+
+Keep `LazyExternalDependency` for one declared resource with deferred, cached
+construction. Its constructor and ID/kind validation are unchanged; failed
+resolutions are not cached. It now also implements `ExternalDependencyReference`
+and discovers itself without materializing.
+
+For a route that can select different model IDs, inherit the reference ABC
+instead of subclassing a lazy resource and capturing the first model's metadata:
+
+```python
+from collections.abc import Callable
+import roboz as rz
+from roboz.llm import LLMEndpoint, with_request_options
+
+class ModelRoute(rz.ExternalDependencyReference[LLMEndpoint]):
+    __slots__ = ("get_endpoint",)
+
+    def __init__(self, get_endpoint: Callable[[], rz.LazyExternalDependency[LLMEndpoint]]):
+        self.get_endpoint = get_endpoint
+
+    def materialize(self) -> LLMEndpoint:
+        selected = self.get_endpoint()
+        return selected.materialize()
+
+    def external_dependencies(self) -> tuple[rz.ExternalDependency, ...]:
+        selected = self.get_endpoint()
+        return (selected,)
+
+route = ModelRoute(lambda: selected_model)
+configured = with_request_options(route, extra_body={"reasoning": {"effort": "low"}})
+ctx = rz.Ctx(endpoint=configured)
+```
+
+A reference has no separate resource ID, kind, or metadata. Discovery delegates
+to the current selection without constructing a client or checking health.
+Both `with_request_options` and `with_openrouter_policy` retain their concrete
+and lazy return types. When given a reference, they return a reference that
+selects and applies copied options on every call, retaining the selected client.
+Switching first → second → first therefore reuses the first lazy model's client.
+Calls already in flight retain their resolved endpoint. Repeated `Agent.invoke()`
+calls resolve the current selection again for run lifecycle metadata. `Ctx` bindings remain
+immutable; selection state belongs to the object referenced by the getter.
+
+Keep every selectable endpoint in the deployment health catalog, including
+unselected models. A route's live discovery is not the complete deployment
+catalog. Registration matching and health scheduling remain application policy.

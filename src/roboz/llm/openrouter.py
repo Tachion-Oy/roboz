@@ -5,7 +5,7 @@ from typing import Final, Literal, overload
 
 from roboz.llm.binding import with_request_options
 from roboz.llm.endpoints import JSONValue, LLMEndpoint, RequestOptions
-from roboz.tooling import LazyExternalDependency
+from roboz.tooling import ExternalDependencyReference, LazyExternalDependency
 
 type OpenRouterReasoningEffort = Literal["low", "high", "max"]
 type OpenRouterSort = Literal["throughput"]
@@ -68,12 +68,21 @@ def with_openrouter_policy(
 ) -> LazyExternalDependency[LLMEndpoint]: ...
 
 
+@overload
 def with_openrouter_policy(
-    endpoint: LLMEndpoint | LazyExternalDependency[LLMEndpoint],
+    endpoint: ExternalDependencyReference[LLMEndpoint],
     *,
     reasoning_effort: OpenRouterReasoningEffort | None = None,
     ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> LLMEndpoint | LazyExternalDependency[LLMEndpoint]:
+) -> ExternalDependencyReference[LLMEndpoint]: ...
+
+
+def with_openrouter_policy(
+    endpoint: LLMEndpoint | ExternalDependencyReference[LLMEndpoint],
+    *,
+    reasoning_effort: OpenRouterReasoningEffort | None = None,
+    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
+) -> LLMEndpoint | ExternalDependencyReference[LLMEndpoint]:
     """Copy an endpoint with OpenRouter policy while retaining its identity."""
     return with_request_options(
         endpoint,

@@ -7,7 +7,7 @@ from typing import Any, Final, Literal, cast
 from pydantic import BaseModel, Field, field_validator
 
 from roboz.models import Message, Role
-from roboz.tooling.dependencies import LazyExternalDependency, ModelEndpointDependency
+from roboz.tooling.dependencies import ExternalDependencyReference, ModelEndpointDependency
 
 type JSONValue = (
     None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
@@ -183,7 +183,7 @@ class MockProviderError(Exception):
         self.status_code = status_code
 
 
-EndpointLike = LLMEndpoint | MockLLMEndpoint | LazyExternalDependency[LLMEndpoint]
+EndpointLike = LLMEndpoint | MockLLMEndpoint | ExternalDependencyReference[LLMEndpoint]
 
 
 class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
@@ -239,5 +239,5 @@ class MockTranscriptionEndpoint:
 TranscriptionEndpointLike = (
     TranscriptionEndpoint
     | MockTranscriptionEndpoint
-    | LazyExternalDependency[TranscriptionEndpoint]
+    | ExternalDependencyReference[TranscriptionEndpoint]
 )

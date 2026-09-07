@@ -114,8 +114,8 @@ Every `ExternalDependency` supports `materialize()`. Eager dependencies return
 themselves; `LazyExternalDependency` carries inspectable identity and caches its
 first successful resolution. Context binding, `Tool.copy()`, and dependency
 inspection do not materialize resources, contact services, or execute processes.
-Custom resource implementations retain control over `materialize()`, including
-endpoint routes that select a different resource for subsequent calls.
+Use `ExternalDependencyReference` for routes whose selected resource can change.
+The selected dependency owns its identity validation and client cache.
 
 `Ctx.external_dependencies()` returns a `tuple[ExternalDependency, ...]`: direct
 resources first, then live-source resources, deduplicated by ID while retaining
@@ -152,8 +152,8 @@ def summarize_with_llm(
 summarize = summarize_with_llm(rz.Ctx(endpoint=endpoint))
 ```
 
-Supply an `EndpointLike`: a concrete endpoint, a lazy endpoint resource, or a
-`MockLLMEndpoint` for deterministic tests. Real endpoint resources are discovered
+Supply an `EndpointLike`: a concrete endpoint, an `ExternalDependencyReference`
+(including lazy endpoint resources), or a `MockLLMEndpoint` for deterministic tests. Real endpoint resources are discovered
 automatically; mocks are ordinary context values and add no external dependency.
 The LLM call resolves the endpoint when it is needed.
 

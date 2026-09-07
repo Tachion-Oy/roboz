@@ -58,6 +58,21 @@ class ExternalDependencySource(ABC):
         """Derive external dependencies from the object's current graph."""
 
 
+class ExternalDependencyReference[TExternal: ExternalDependency](ExternalDependencySource):
+    """A live reference to resources, without a separate dependency identity.
+
+    Inspection exposes the current underlying dependencies without constructing
+    them. Materialization selects the current target on each call; caching and
+    identity validation belong to that target.
+    """
+
+    __slots__ = ()
+
+    @abstractmethod
+    def materialize(self) -> TExternal:
+        """Return the currently selected concrete dependency."""
+
+
 @dataclass(frozen=True)
 class ExecutableDependency(ExternalDependency):
     """An executable resolved from ``PATH`` and injected into a Tool factory."""
@@ -121,7 +136,9 @@ class ModelEndpointDependency(ExternalDependency):
 
 
 @dataclass(frozen=True)
-class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
+class LazyExternalDependency[TExternal: ExternalDependency](
+    ExternalDependency, ExternalDependencyReference[TExternal]
+):
     """Inspectable dependency identity with deferred, cached construction."""
 
     dependency_id_value: str
@@ -148,6 +165,10 @@ class LazyExternalDependency[TExternal: ExternalDependency](ExternalDependency):
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return a detached copy of safe dependency metadata."""
         return dict(self.metadata)
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Expose this resource without resolving it."""
+        return (self,)
 
     @cached_property
     def materialized(self) -> TExternal:

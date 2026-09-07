@@ -50,6 +50,7 @@ from roboz.tooling.context import Ctx
 from roboz.tooling.core import Factory, Tool
 from roboz.tooling.dependencies import (
     ExternalDependency,
+    ExternalDependencyReference,
     ExternalDependencySource,
     dedupe_external_dependencies,
 )
@@ -141,7 +142,7 @@ class Agent(ExternalDependencySource):
             else custom_prompt_user_tool
         )
         if agent_endpoint is not None and not isinstance(
-            agent_endpoint, (ExternalDependency, MockLLMEndpoint)
+            agent_endpoint, (ExternalDependency, ExternalDependencyReference, MockLLMEndpoint)
         ):
             raise TypeError(
                 "agent_endpoint must be an endpoint dependency or MockLLMEndpoint"
@@ -149,7 +150,6 @@ class Agent(ExternalDependencySource):
         if self.is_agentic and agent_endpoint is None:
             raise ValueError("agentic instances require agent_endpoint")
         self.agent_endpoint = agent_endpoint
-        self._resolved_endpoint: LLMEndpoint | MockLLMEndpoint | None = None
         self.initial_messages = initial_messages if initial_messages else []
 
         self.active_tools: dict[str, Tool] = {}
@@ -513,14 +513,17 @@ class Agent(ExternalDependencySource):
             )
 
     def _initialize_pipe_for_invoke(self, *, dry_run: bool) -> None:
+        """Initialize run metadata from the current endpoint selection.
+
+        Resources own their construction caches; a live reference may select a
+        different endpoint for each invocation of the same agent.
+        """
         endpoint: LLMEndpoint | MockLLMEndpoint | None = None
         if self.is_agentic:
-            if self._resolved_endpoint is None:
-                configured_endpoint = self.agent_endpoint
-                if configured_endpoint is None:
-                    raise RuntimeError("agentic instance has no endpoint")
-                self._resolved_endpoint = resolve_endpoint(configured_endpoint)
-            endpoint = self._resolved_endpoint
+            configured_endpoint = self.agent_endpoint
+            if configured_endpoint is None:
+                raise RuntimeError("agentic instance has no endpoint")
+            endpoint = resolve_endpoint(configured_endpoint)
         self.pipe.initialize(
             dry_run=dry_run,
             agent_name=self.name,
