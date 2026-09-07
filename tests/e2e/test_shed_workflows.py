@@ -147,6 +147,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     tmp_path: Path,
 ) -> None:
     from roboshed.agents import orchestrator
+    from roboshed.deployments.robosprawl import AgenticFactory
 
     from roboz.deployment import AgentDefinition, Capability, SubAgentSpec
     from roboz.runtime import Output, bind_api_user_io, reset_api_user_io
@@ -198,14 +199,13 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     )
     project = Project(Workspace(tmp_path), "collaboration")
     events = []
-    agent = definition.build(
-        event_sinks=(events.append,),
-        event_sink_factory=lambda name: (PersistenceSink.for_path(project.logs / name),),
+    bundle = AgenticFactory(project=project, orchestrator=definition).build(
+        event_sinks=(events.append,)
     )
     replies = Replies()
     token = bind_api_user_io(replies)
     try:
-        result, messages = agent.invoke()
+        result, messages = bundle.agent.invoke()
     finally:
         reset_api_user_io(token)
     assert result.value == "session ended"
@@ -214,6 +214,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     assert list((project.logs / "orchestrator").rglob("*.json"))
     assert list((project.logs / "specialist").rglob("*.json"))
     assert any(getattr(event, "agent_name", None) == "specialist" for event in events)
+    assert bundle.background_agents == ()
 
 
 if __name__ == "__main__":

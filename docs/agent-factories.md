@@ -1,16 +1,18 @@
 # Agent definitions, factories, and ownership
 
-Core describes and constructs agents. Shed supplies concrete agents and
-capabilities; applications configure and host them.
+Core describes and constructs agents. Shed supplies concrete agents and deployment
+profiles; applications configure and host them.
 
 | Module | Owns |
 | --- | --- |
 | `roboz.deployment` | `AgentDefinition`, `AgentCapability`, `Capability`, `SubAgentSpec` |
 | `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `AgentDefinition` |
 | `roboshed.capabilities` | Reusable file and compaction capabilities, alongside `tools` and `skills` |
+| `roboshed.deployments.robosprawl` | Project composition, defined directly in the package `__init__.py` |
 | Other Shed modules | Workspace/project structure, permissions, memory and file tools |
 | Application | Configuration, model selection, permission policy, UI conventions, startup and shutdown |
 
+Other deployment profiles can live alongside `robosprawl` in `roboshed.deployments`.
 Core imports none of these application modules.
 
 ## Capabilities and skills
@@ -80,23 +82,75 @@ To add root-only automatic work, append a `Capability(default_tools=(... ,))`
 to the root definition's capability tuple. The deployment uses this same path to
 wire background start tools; no separate tool-injection build argument exists.
 
-## Agent presets
+## The RoboSprawl deployment profile
 
-`roboshed.agents.orchestrator()` and `librarian()` both return `AgentDefinition`.
-The orchestrator supplies a persistent collaboration prompt and a stop capability;
-completing one task does not end the session. The librarian supplies its fixed
-snapshot, consolidation and retention pipeline as an automatic capability.
+```python
+from pathlib import Path
+from roboz.llm import MockLLMEndpoint
+from roboshed.agents import librarian, orchestrator
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.deployments.robosprawl import AgenticFactory
+from roboshed.workspace import Project, Workspace, WorkspacePermissions
 
-Configure `orchestrator(agent_endpoint=endpoint, capabilities=(...))`. Configure
-`librarian(project=project, agent_names=root.agent_names(), snapshot_endpoint=endpoint)`.
-Call `.build()` on either definition and invoke the resulting agent directly.
-Preset definitions select no event sinks; callers supply persistence explicitly
-through `event_sink_factory`. The librarian can run in the background through
-`run_background_agent`; hosts own cancellation and shutdown.
+project = Project(Workspace(Path("./data")), "example")
+permissions = WorkspacePermissions.local(project.root)
+root = orchestrator(
+    agent_endpoint=MockLLMEndpoint([]),
+    capabilities=(FileCommands(permissions), FileEditing(permissions)),
+)
+memory_agent = librarian(
+    project=project,
+    agent_names=root.agent_names(),
+    snapshot_endpoint=MockLLMEndpoint([]),
+)
+factory = AgenticFactory(project=project, orchestrator=root, librarian=memory_agent)
+agent, background_agents = factory.build()
+```
 
-`roboshed.assistant.build_assistant` is a task-oriented file preset. It supplies
-file capabilities and stop, with optional additional capabilities. Its demo builds
-email tools and their orientation skill together inside one capability.
+This example constructs the graph without running it. Configure endpoints or
+scripted responses before calling `agent.invoke()`. Construction creates no
+folders, materializes no providers, and starts no threads.
+
+Both role inputs are ordinary `AgentDefinition` objects. `orchestrator()` supplies
+the persistent collaboration prompt and stop tool. `librarian()` supplies the
+deterministic memory pipeline as a capability that builds against its owning pipe.
+The deployment assembler derives its watch set from `root.agent_names()`; callers
+need no hand-maintained list of specialist names.
+
+The orchestrator stays available across tasks and stops when the user asks,
+including standing instructions. It selects no memory location. Use a plain
+definition or `roboshed.assistant.build_assistant` for task-oriented behavior.
+
+`AgenticFactory` binds the project and definitions. It seeds root initial context
+from `project.memory` by default; `seed_initial_messages_from_memory=False`
+disables this. It constructs fresh log sinks at `project.logs / agent.name`.
+`include_cli_output` defaults to false. Builds do not mutate either definition.
+Foreground and background trees must have disjoint agent names. The Librarian
+persists separately; caller foreground sinks do not follow it.
+
+## Invocation and threading
+
+The factory returns `RoboSprawlBundle`, a named tuple defined in the deployment
+package. Its fields identify the runnable root and background agents:
+
+```python
+bundle = factory.build()
+result, messages = bundle.agent.invoke()
+background_agents = bundle.background_agents
+```
+
+Tuple unpacking also works: `agent, background_agents = factory.build()`.
+The named tuple carries references only; it has no forwarding or lifecycle
+methods. The host retains `background_agents` for cancellation and shutdown.
+
+`Agent.invoke()` runs synchronously on the calling thread. The deployment wires
+`run_background_agent` into the root's default tools; that tool starts and tracks
+the Librarian's daemon thread. Subsequent calls reuse a live background thread.
+Specialist delegation is synchronous on the root's thread.
+
+Sprawl runs the root in its own worker thread. Its run control retains background
+pipes and observes background thread lifecycle events, preserving cancellation,
+startup races, and shutdown handling. A CLI can invoke the root on its main thread.
 
 ## Workspace and capability inputs
 
@@ -116,14 +170,34 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 
 ## Migration
 
-- Memory tools and the Librarian move from core to `roboshed.tools` and
-  `roboshed.agents`. Replace `LibrarianConstructor` and its path record with
-  `librarian(project=..., agent_names=..., snapshot_endpoint=...)` and `.build()`.
-- Import `WorkspacePermissions`, `Workspace`, and `Project` from `roboshed.workspace`.
-  Project identity and persistence paths are explicit; arbitrary configuration
-  keys do not become Python attributes.
-- `build_assistant` takes `project`, optional `permissions`, and `capabilities`.
-  Move former `tool_builders`, tools and skill extensions into capability builds.
-  The demo uses `WORKSPACE/projects/assistant`; `--data-path` selects log storage.
-- Core keeps construction, control and interaction primitives. All tool/skill
-  definition extensions use capabilities. There are no compatibility imports.
+- The optional distribution and namespace are `roboshed`; `roboz[shed]` installs it.
+- Import generic definitions and capability contracts from `roboz.deployment`,
+  agent presets from `roboshed.agents`, reusable capabilities from
+  `roboshed.capabilities`, and the project deployment from
+  `roboshed.deployments.robosprawl`.
+- Move all direct `AgentDefinition` tool/skill fields into
+  `capabilities=(Capability(tools=(...), default_tools=(...), skills=(...),
+  auto_loaded_skills=(...)), ...)`. Already-bound and runtime-bound capabilities
+  use the same protocol; no compatibility result class is retained.
+- Call `AgentDefinition.build()` without a project. Supply persistence explicitly
+  through `event_sink_factory` and initial context through `initial_messages`.
+- Pass the project into `AgenticFactory(project=..., ...)`, then unpack
+  `agent, background_agents = factory.build(event_sinks=...)`. Call `agent.invoke()`.
+- Capabilities receive only `(pipe, agent_endpoint)`. Store application inputs in
+  the configured capability; use `FileCommands(project_permissions(project))`.
+- Replace `LibrarianDefinition`/`LibrarianConstructor` with
+  `librarian(project=..., agent_names=..., ...)`, which returns `AgentDefinition`.
+  `LibrarianTuning` remains the memory-pipeline configuration. Standalone builds
+  select their own event sinks; project deployment supplies them automatically.
+- Memory/summarization tools live in `roboshed.tools`, including snapshotting,
+  consolidation, retention, and sleep-between-runs.
+- Preset extensions use `capabilities` only. Move `tools`, `default_tools`,
+  `skills`, and `auto_loaded_skills` from orchestrator calls into a capability
+  returning `Capability`. Move assistant `tools` and `skills` the same way.
+- `build_assistant` takes `project`, optional `permissions`, and `capabilities`
+  (replacing `tool_builders`). Its demo writes into `WORKSPACE/projects/assistant`;
+  `--data-path` selects the conversation storage root.
+
+No compatibility constructors, import shims, or generic `AgentBundle` wrapper are provided.
+Conversation, snapshot, memory, and HTTP formats remain unchanged. This is an
+unreleased breaking API change; versions and publication are separate work.

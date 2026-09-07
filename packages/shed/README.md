@@ -25,7 +25,8 @@ agent.invoke()
 `roboshed.capabilities` provides `FileCommands`, `FileEditing`, and
 `Compactification`, alongside the `tools` and `skills` modules. Applications
 choose and configure these capabilities through the presets’ single `capabilities`
-extension argument. A capability owns its tools and any skills used for instructions. `roboshed.agents` supplies the reusable
+extension argument. A capability owns its tools and any skills used for instructions. `roboshed.deployments.robosprawl`
+provides project composition. `roboshed.agents` supplies the reusable
 orchestrator/Librarian presets. Generic definitions and
 capability contracts live in `roboz.deployment`. Each capability
 builds against the owning agent's pipe. Select permission policies through
