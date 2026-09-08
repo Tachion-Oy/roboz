@@ -1,7 +1,6 @@
 import ast
-from pathlib import Path
 import tomllib
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,12 +18,9 @@ def test_shed_library_does_not_import_integrations():
         "groq",
         "cerebras",
         "fastapi",
+        "robosprawl",
     }
-    for path in (ROOT / "packages/shed/src/roboz_shed").rglob("*.py"):
-        # The installed demo is an application composition example. Its optional
-        # imports are flag-controlled, and isolated-install checks exercise it.
-        if path.name == "demo.py":
-            continue
+    for path in (ROOT / "packages/shed/src/roboshed").rglob("*.py"):
         tree = ast.parse(path.read_text())
         imports = []
         for node in ast.walk(tree):
@@ -39,7 +35,7 @@ def test_each_companion_has_only_its_own_required_dependencies():
     expected = {
         "shed": {"roboz", "pydantic"},
         "openai": {"roboz", "openai"},
-        "proton-bridge": {"roboz", "roboz-shed", "pydantic", "pydantic-settings"},
+        "proton-bridge": {"roboz", "roboshed", "pydantic", "pydantic-settings"},
     }
     for directory, dependencies in expected.items():
         project = tomllib.loads(

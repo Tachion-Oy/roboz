@@ -4,25 +4,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from roboz.exceptions import (
-    ExternalCallCancelledError,
-    ExternalCallTimeoutError,
-)
-from roboz.runtime.pipe import EventPipe
 from pydantic import ValidationError
-
-from roboz_shed.identifiers import (
+from roboshed.identifiers import (
     DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
     READ_EMAIL_TOOL_NAME,
 )
-from roboz_shed.email_inputs import (
-    CreateEmailDraft,
-    CreateReplyDraft,
-    DownloadEmailAttachment,
-    ReadEmail,
-    SearchEmail,
-)
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     GuardFilesResult,
     GuardStatus,
@@ -30,8 +17,8 @@ from roboz_shed.models import (
     ParseError,
     PermissionRule,
 )
-from roboz_shed.skills.email_tools.prompts import INSTRUCTIONS as EMAIL_INSTRUCTIONS
-from roboz_shed.tools.email import (
+from roboshed.skills.email_tools.prompts import INSTRUCTIONS as EMAIL_INSTRUCTIONS
+from roboshed.tools.email import (
     DownloadedEmailAttachment,
     EmailDraftAttachment,
     EmailDraftRequest,
@@ -45,10 +32,23 @@ from roboz_shed.tools.email import (
     EmailService,
     EmailSummary,
 )
-from roboz_shed.tools.email import messages as email_messages
-from roboz_shed.tools.email import runtime as email_runtime
-from roboz_shed.tools.email.factory import get_work_with_email
-from roboz_shed.tools.types import ResolvedFileCommand
+from roboshed.tools.email import messages as email_messages
+from roboshed.tools.email import runtime as email_runtime
+from roboshed.tools.email.factory import get_work_with_email
+from roboshed.tools.email.inputs import (
+    CreateEmailDraft,
+    CreateReplyDraft,
+    DownloadEmailAttachment,
+    ReadEmail,
+    SearchEmail,
+)
+from roboshed.tools.types import ResolvedFileCommand
+
+from roboz.exceptions import (
+    ExternalCallCancelledError,
+    ExternalCallTimeoutError,
+)
+from roboz.runtime.pipe import EventPipe
 
 
 class _FakeDraftService(EmailService):
@@ -440,7 +440,7 @@ def test_work_with_email_ask_rule_can_block_attachment_read(tmp_path: Path) -> N
         pipe=pipe,
     )
 
-    with patch("roboz_shed.tools.utils.interact_with_user", return_value="no"):
+    with patch("roboshed.tools.utils.interact_with_user", return_value="no"):
         _, guarded, result = _run_chain(tools, _input(attachment_paths=["ask-me.pdf"]))
 
     assert guarded is not None

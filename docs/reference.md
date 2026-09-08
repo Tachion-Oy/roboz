@@ -26,6 +26,12 @@ At invoke time it:
 - loops through tool selection and execution
 - exits on `Stop` or cancellation paths
 
+After a tool returns, the runtime selects at most one passive successor whose
+`chained_to` edge names that tool and whose `chain_condition` accepts the output.
+No match resumes the configured default flow; multiple matches are an ambiguous
+graph and raise `RuntimeError`. Returning `Stop` exits before another edge is
+selected.
+
 ## Tools and Factories
 
 Main code:
@@ -49,7 +55,44 @@ Both support:
 - `chain(...)`
 - `rename(...)`
 
+`chained_to=[parent_a, parent_b]` means that the child may follow either parent;
+it is convergence, not a barrier that waits for both. Several conditional
+children may share one parent for exclusive routing, but the runtime does not
+broadcast an output to several children.
+
 Tool names should be imperative action phrases, for example `stop`, `throw_dice`, or `save_file`.
+
+## Message Context and Truncation
+
+Main code:
+
+- [`../src/roboz/models/truncation.py`](../src/roboz/models/truncation.py)
+- [`../src/roboz/llm/_truncation.py`](../src/roboz/llm/_truncation.py)
+
+`AgentBaseModel` outputs and `Message` objects carry a `TruncationSpec`: either
+one `Truncation` rule or a list of rules. A rule has:
+
+- `threshold`: the minimum distance from the newest message at which it applies;
+  negative thresholds never apply
+- `severity`: `LIGHT`, `STUB`, or `REMOVE`
+
+For every non-system message, `get_truncated_messages_for_context()` computes
+`distance = number of later messages`, chooses the applicable rule with the
+largest threshold, and creates the model-visible projection:
+
+| Severity | Model-visible result |
+| --- | --- |
+| `LIGHT` | Preserve structure and cap each string field at `LIGHT_MAX_CHARS`. |
+| `STUB` | Keep a placeholder and, when present, the caller and action. |
+| `REMOVE` | Omit the message from the request. |
+
+System messages bypass truncation. The projection is prepared for each model
+request and does not mutate the conversation, emitted events, or persisted
+content.
+
+Public policies are exported from `roboz.models`: `DEFAULT`, `NO_TRUNCATION`,
+`NO_MESSAGE`, `ERROR_RETRY`, and `GRADED`. The projection and token-estimation
+helpers are exported from `roboz.llm`.
 
 ## Skills
 
@@ -114,11 +157,13 @@ Prompt fragments used to implement those operations live together in `roboz.llm.
 
 ## Companion Packages
 
-The `roboz` package includes its typed primitives and dependency-free reference
-tools, including the Librarian memory pipeline. Optional companion distributions
-depend on `roboz` and provide integrations that require provider SDKs, guarded
-system tools, or application-specific services; Roboz never imports those
-companions.
+The `roboz` package owns typed agent, tool, skill, control, interaction, event,
+and persistence primitives. `roboz.deployment` defines generic construction and
+capability contracts. `roboshed` applies those primitives:
+orchestrator/Librarian composition, workspace structure, concrete capabilities,
+memory maintenance, and guarded tools. Provider
+adapters live in separate companions. Core never imports its consumers; having
+no provider dependency does not make a composition a primitive.
 
 ## Runtime Event Bus
 

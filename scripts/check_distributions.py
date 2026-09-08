@@ -4,18 +4,18 @@ import argparse
 import email
 import os
 import shutil
-import tarfile
-from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = {
     "roboz": ROOT,
-    "roboz-shed": ROOT / "packages/shed",
+    "roboshed": ROOT / "packages/shed",
     "roboz-openai": ROOT / "packages/openai",
     "roboz-proton-bridge": ROOT / "packages/proton-bridge",
 }
@@ -59,8 +59,9 @@ def wheels_for(dist: Path, *, core_only: bool = False) -> dict[str, Path]:
 CORE_SMOKE = """
 from importlib.util import find_spec
 import roboz as rz
+assert all(find_spec(n) is None for n in ("roboz.agents", "roboz.workspace", "roboz.tools.snapshot_conversations", "roboz.tools.compactification"))
 from roboz.llm import MockLLMEndpoint
-assert all(find_spec(n) is None for n in ('roboz_shed', 'roboz_openai', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
+assert all(find_spec(n) is None for n in ('roboshed', 'roboz_openai', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
 agent = rz.Agent(name='test', tools=[rz.stop], system_prompt='Stop.', agent_endpoint=MockLLMEndpoint([{'action': 'stop', 'rationale': 'test', 'value': 'ok'}]))
 assert agent.invoke()[0].value == 'ok'
 """
@@ -79,9 +80,9 @@ def check_installs(dist: Path, root: Path, *, core_only: bool = False) -> None:
         if core_only
         else {
             "core": ["roboz"],
-            "shed": ["roboz", "roboz-shed"],
+            "shed": ["roboz", "roboshed"],
             "openai": ["roboz", "roboz-openai"],
-            "proton": ["roboz", "roboz-shed", "roboz-proton-bridge"],
+            "proton": ["roboz", "roboshed", "roboz-proton-bridge"],
             "extras": list(wheels),
         }
     )
@@ -118,27 +119,14 @@ for name in {packages!r}:
         if label == "shed":
             check("""
 from importlib.util import find_spec
-import importlib, pkgutil, roboz_shed
-for module in pkgutil.walk_packages(roboz_shed.__path__, roboz_shed.__name__ + '.'):
+import importlib, pkgutil, roboshed
+for module in pkgutil.walk_packages(roboshed.__path__, roboshed.__name__ + '.'):
     importlib.import_module(module.name)
 assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_openai', 'roboz_proton_bridge'))
 """)
             workflow = root / "shed_workflows.py"
             shutil.copyfile(ROOT / "tests/e2e/test_shed_workflows.py", workflow)
             run(str(python), "-I", str(workflow))
-            # Verify the published console entry point too.
-            executable = python.parent / (
-                "roboz-demo.exe" if os.name == "nt" else "roboz-demo"
-            )
-            run(
-                str(executable),
-                "--mock",
-                "--workspace",
-                str(root / "workspace"),
-                "--data-path",
-                str(root / "data"),
-            )
-            assert list((root / "data").rglob("*.json"))
         if label in {"openai", "extras"}:
             check("""
 from roboz_openai import openrouter_endpoint
@@ -148,7 +136,7 @@ assert 'materialized' not in endpoint.__dict__
 """)
         if label == "openai":
             check(
-                "from importlib.util import find_spec; assert find_spec('roboz_shed') is None"
+                "from importlib.util import find_spec; assert find_spec('roboshed') is None"
             )
         if label == "proton":
             check("""

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from roboz import Int, Str
-from roboz_shed.models import GuardFileSingle, Operation
+from roboshed.models import GuardFileSingle, Operation
 
 item = GuardFileSingle[Str](
     operation=Operation.READ, location=Path("/tmp"), value=Int(value=1)

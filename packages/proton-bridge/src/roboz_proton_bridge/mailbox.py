@@ -7,7 +7,7 @@ from datetime import datetime
 from email.message import Message
 from typing import Any
 
-from roboz_shed.tools.email.contracts import EmailMailbox, EmailProviderError
+from roboshed.tools.email.contracts import EmailMailbox, EmailProviderError
 from .imap_codec import (
     ImapSourceReference,
     decode_source_reference,

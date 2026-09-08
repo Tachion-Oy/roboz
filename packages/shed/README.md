@@ -1,6 +1,6 @@
-# roboz-shed
+# roboshed
 
-Reusable tools, skills, and a small assistant built on Roboz. Version `0.1.0a1`
+Reusable agent factories, capabilities, workspaces, tools, and skills built on Roboz. Version `0.1.0a1`
 is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
 
 Includes guarded Unix file commands, Python patch editing, CLI/file/email
@@ -9,50 +9,54 @@ install any model SDK, Proton, document SDK, web service, or backend framework.
 
 ```python
 from pathlib import Path
+from roboz import stop
+from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.workspace import WorkspacePermissions
 
-assistant = build_assistant(
-    endpoint=MockLLMEndpoint([
-        {"action": "stop", "rationale": "Complete", "value": "Hello"}
+permissions = WorkspacePermissions.local(Path("./workspace"))
+agent = AgentDefinition(
+    name="file_worker",
+    system_prompt="Complete the user's task, then call stop.",
+    agent_endpoint=MockLLMEndpoint([
+        {"action": "stop", "rationale": "done", "value": "Ready."}
     ]),
-    workspace=WorkspacePermissions.local(Path("./workspace")),
-)
-result, messages = assistant.invoke()
+    capabilities=(
+        Capability(tools=(stop,)),
+        FileCommands(permissions),
+        FileEditing(permissions),
+    ),
+).build()
+result, messages = agent.invoke()
 ```
 
-`build_assistant` accepts additional tools, skills, event sinks, initial messages,
-and a system prompt. `tool_builders` receive the owning event pipe to bind
-cancellation and events. Low-level `get_run_file_command`, `get_apply_patch`,
-and `get_work_with_email` factories also work without this assistant.
+`roboshed.capabilities` provides `FileCommands`, `FileEditing`, `Compactification`,
+`ConversationSnapshots`, `MemoryConsolidation`, `ArtifactRetention`, and
+`MaintenanceCadence`, alongside the `tools` and `skills` modules. Applications
+choose and configure these capabilities through the presets’ single `capabilities`
+extension argument. A capability owns its tools and any skills used for instructions. `roboshed.deployments.robosprawl`
+provides project composition. `roboshed.agents` supplies the reusable
+orchestrator/Librarian presets. Generic definitions and
+capability contracts live in `roboz.deployment`. Each capability
+builds its tools with explicit endpoint overrides or the agent's default.
+Runtime controls remain separate from endpoints. The Librarian accepts an ordered
+`capabilities` sequence. Snapshot and consolidation capabilities each expose an
+`endpoint`; `agent_endpoint` supplies their shared default. Retention and cadence
+need no model. Each capability owns its settings and project inputs. Select permission policies through
+`roboshed.workspace.WorkspacePermissions`; workspace structure does not grant
+access. Compose task-oriented agents directly with `AgentDefinition`.
 
-The assistant supplies read commands and patch editing. The file factory can
-also explicitly enable its write/delete command specifications. Permission
-rules cover allow/deny/ask, configured precedence, overwrite checks, and resolved
-paths; they are not an OS sandbox. Commands require their named Unix executables.
-
-Generic guard models preserve input/payload types without integration-specific
-unions. Use concrete generic parameters when decoding serialized guard results.
-
-The installed demo requires only `cat` in mock mode:
-
-```bash
-python -m roboz_shed.demo --mock --workspace /tmp/roboz-demo-workspace --data-path /tmp/roboz-demo-data
-```
-
-It creates a uniquely named file and a saved conversation. Its real-provider
-and email flags require the separately installed adapters. See the repository's
-[installation guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/addons.md)
-for local wheel installation before these packages are published.
+See the [factory and migration guide](../../docs/agent-factories.md).
 
 ## Conversation compaction
 
 The following fragment belongs inside an agent or tool builder. `endpoint` is
-the agent's configured endpoint, and `agent_pipe` is its owning event pipe
-(supplied to `tool_builders` by `build_assistant`).
+the selected compaction model, and `agent_pipe` is the owning agent's event
+pipe. These are independent inputs to the tool.
 
 ```python
-from roboz_shed.tools import get_compactify_messages_when_needed_tool
+from roboshed.tools import get_compactify_messages_when_needed_tool
 
 compact = get_compactify_messages_when_needed_tool(
     endpoint=endpoint, threshold_percent=60, pipe=agent_pipe, timeout_s=60,
@@ -83,7 +87,8 @@ Summarization messages and model-call events use the supplied pipe.
 The public tool name and persisted caller are `compactify_messages_when_needed`.
 This tool incorporates the continuation prompts used by PeffaHub/PeffaShed while
 retaining RoboSprawl's caller name. The old `robosprawl.compaction` import is
-replaced by `roboz_shed.tools`; Roboz core continues to own the shared summarizer.
+replaced by `roboshed.tools`. Shed also owns the shared summarizer and Librarian
+memory pipeline; core provides the mechanisms they use.
 
 ## Context API migration
 

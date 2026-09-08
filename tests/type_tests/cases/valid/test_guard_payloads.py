@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboz_shed.email_inputs import CreateEmailDraft
-from roboz_shed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
-from roboz_shed.tools.guard import guard_items
+from roboshed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
+from roboshed.tools.email.inputs import CreateEmailDraft
+from roboshed.tools.guard import guard_items
 
 from roboz import Ctx, Str
 

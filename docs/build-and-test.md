@@ -148,7 +148,7 @@ GitHub Actions or nonlocal platforms have passed.
 Run the statement coverage gates independently for each distribution:
 
 ```bash
-uv run pytest --cov=roboz_shed --cov=roboz_openai --cov=roboz_proton_bridge \
+uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge \
   --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json \
   --junitxml=reports/pytest.xml
 uv run python scripts/check_coverage.py reports/coverage.json

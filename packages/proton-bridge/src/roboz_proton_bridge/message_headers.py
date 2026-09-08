@@ -7,7 +7,7 @@ from email import policy
 from email.message import Message
 from email.parser import BytesParser
 
-from roboz_shed.tools.email.contracts import EmailProviderError
+from roboshed.tools.email.contracts import EmailProviderError
 from .protocol import MAX_FETCHED_HEADER_BYTES, EmailHeader
 
 _MESSAGE_ID_PATTERN = re.compile(r"<[^<>\s]+@[^<>\s]+>")

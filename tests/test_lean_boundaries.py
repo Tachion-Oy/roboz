@@ -17,7 +17,9 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "peffahub",
     "peffashed",
     "shed",
-    "roboz_shed",
+    "roboshed",
+    "robosprawl",
+    "fastapi",
     "roboz_openai",
     "roboz_proton_bridge",
 }
@@ -25,6 +27,10 @@ FORBIDDEN_IMPORT_SEGMENTS = {
 
 def test_addon_namespaces_are_absent() -> None:
     assert find_spec("roboz.standard") is None
+    assert find_spec("roboz.agents") is None
+    assert find_spec("roboz.workspace") is None
+    assert find_spec("roboz.tools.snapshot_conversations") is None
+    assert find_spec("roboz.tools.compactification") is None
     assert find_spec("roboz.llm.providers") is None
 
 
@@ -61,7 +67,7 @@ def test_base_dependency_set_is_primitive_only() -> None:
     assert names == {"pydantic", "python-dotenv", "rich"}
     extras = metadata["project"]["optional-dependencies"]
     assert extras == {
-        "shed": ["roboz-shed>=0.1.0a1,<0.2.0"],
+        "shed": ["roboshed>=0.1.0a1,<0.2.0"],
         "openai": ["roboz-openai>=0.1.0a1,<0.2.0"],
         "proton-bridge-beta": ["roboz-proton-bridge>=0.1.0b1,<0.2.0"],
     }

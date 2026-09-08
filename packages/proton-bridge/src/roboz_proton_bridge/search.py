@@ -8,7 +8,7 @@ from email.message import Message
 from itertools import batched
 from typing import Any
 
-from roboz_shed.tools.email.contracts import (
+from roboshed.tools.email.contracts import (
     EmailMailbox,
     EmailProviderError,
     EmailSearchRequest,

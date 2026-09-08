@@ -8,7 +8,7 @@ return the three tools in registration order.
 
 from pathlib import Path
 
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     GuardFilesResult,
     GuardStatus,
@@ -17,8 +17,8 @@ from roboz_shed.models import (
     RunFileCommand,
     RunFileCommands,
 )
-from roboz_shed.tools.guard import build_guarded_tool_chain
-from roboz_shed.tools.types import ResolvedFileCommand
+from roboshed.tools.guard import build_guarded_tool_chain
+from roboshed.tools.types import ResolvedFileCommand
 
 from roboz import Ctx
 from roboz.models import Empty, Message, Str

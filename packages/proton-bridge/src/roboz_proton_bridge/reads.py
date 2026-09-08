@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from roboz_shed.tools.email.contracts import (
+from roboshed.tools.email.contracts import (
     DownloadedEmailAttachment,
     EmailMailbox,
     EmailMessage,

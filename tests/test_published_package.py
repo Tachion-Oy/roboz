@@ -184,8 +184,8 @@ def test_staged_dependencies_use_only_testpypi_and_exclude_extras(
     projects = {}
     for name, dependencies in {
         "roboz": [],
-        "roboz-shed": ["roboz>=1"],
-        "roboz-proton-bridge": ["roboz>=1", "roboz-shed>=1", "pydantic>=2"],
+        "roboshed": ["roboz>=1"],
+        "roboz-proton-bridge": ["roboz>=1", "roboshed>=1", "pydantic>=2"],
     }.items():
         root = tmp_path / name
         root.mkdir()
@@ -205,7 +205,7 @@ def test_staged_dependencies_use_only_testpypi_and_exclude_extras(
     paths = published.staged_dependencies(
         published.Index("testpypi"), "roboz-proton-bridge", output
     )
-    assert {path.read_bytes() for path in paths} == {b"roboz", b"roboz-shed"}
+    assert {path.read_bytes() for path in paths} == {b"roboz", b"roboshed"}
     assert all(
         "test.pypi.org" in url or "test-files.pythonhosted.org" in url
         for url in requests

@@ -13,7 +13,7 @@ of installation). Python's import names are a separate thing:
 | Install name | Import name | Responsibility |
 | --- | --- | --- |
 | `roboz` | `roboz` | Reusable primitives |
-| `roboz-shed` | `roboz_shed` | Basic tools and assistant composition |
+| `roboshed` | `roboshed` | Agent factories, workspace, capabilities, and ready-made tools |
 | `roboz-openai` | `roboz_openai` | Model-provider adapter |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | Optional email adapter |
 

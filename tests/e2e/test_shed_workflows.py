@@ -1,12 +1,24 @@
-"""Exercise guarded file tools through the real assistant and event pipeline."""
+"""Exercise guarded file tools through the real agent and event pipeline."""
 
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
+from roboshed.agents import librarian as librarian_definition
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    FileCommands,
+    FileEditing,
+    MaintenanceCadence,
+    MemoryConsolidation,
+)
+from roboshed.workspace import Project, Workspace, WorkspacePermissions
+
+from roboz import Agent, stop
+from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
-from roboz.runtime import Output, PersistenceSink
-from roboz_shed.assistant import WorkspacePermissions, build_assistant
+from roboz.runtime import EventPipe, Output, PersistenceSink
 
 
 def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
@@ -26,11 +38,17 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
             "file_commands": [{"command": "cat", "argv": [path]}],
         }
 
-    agent = build_assistant(
-        workspace=WorkspacePermissions.local(workspace),
+    permissions = WorkspacePermissions.local(workspace)
+    agent = AgentDefinition(
+        name="file_worker",
+        system_prompt="Complete the file task and stop.",
+        capabilities=(
+            Capability(tools=(stop,)),
+            FileCommands(permissions),
+            FileEditing(permissions),
+        ),
         interaction_mode=Output.API,
-        event_sinks=[PersistenceSink.for_path(tmp_path / "logs")],
-        endpoint=MockLLMEndpoint(
+        agent_endpoint=MockLLMEndpoint(
             [
                 read("note.txt"),
                 {
@@ -53,7 +71,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
                 {"action": "stop", "rationale": "finished", "value": "done"},
             ]
         ),
-    )
+    ).build(event_sinks=(PersistenceSink.for_path(tmp_path / "logs"),))
     result, messages = agent.invoke()
     assert result.value == "done"
     assert note.read_text() == "after-marker"
@@ -82,7 +100,162 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
     assert list((tmp_path / "logs").rglob("*.json"))
 
 
+def test_conversation_snapshot_memory_retention(tmp_path: Path) -> None:
+    _conversation_snapshot_memory_retention(tmp_path, separate_endpoints=False)
+
+
+def test_conversation_snapshot_memory_with_separate_models(tmp_path: Path) -> None:
+    _conversation_snapshot_memory_retention(tmp_path, separate_endpoints=True)
+
+
+def _conversation_snapshot_memory_retention(
+    tmp_path: Path, *, separate_endpoints: bool
+) -> None:
+    paths = Project(Workspace(tmp_path), "test")
+    author = Agent(
+        name="author",
+        interaction_mode=None,
+        tools=[stop],
+        system_prompt="Remember the project decision.",
+        initial_messages=["The project uses a blue robot emblem."],
+        event_pipe=EventPipe(
+            event_sinks=[PersistenceSink.for_path(paths.logs / "author")]
+        ),
+        agent_endpoint=MockLLMEndpoint(
+            [
+                {
+                    "action": "stop",
+                    "rationale": "record decision",
+                    "value": "Use the blue robot.",
+                },
+            ]
+        ),
+    )
+    author.invoke()
+    source = next((paths.logs / "author").rglob("*.json"))
+    responses = [
+        {"value": "The project uses a blue robot emblem."},
+        {"value": "Retain the blue robot emblem decision."},
+    ]
+    librarian = librarian_definition(
+        agent_endpoint=None if separate_endpoints else MockLLMEndpoint(responses),
+        capabilities=(
+            ConversationSnapshots(
+                paths,
+                {"author"},
+                endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
+                token_growth_threshold=1,
+            ),
+            MemoryConsolidation(
+                paths,
+                {"author"},
+                endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
+                min_pending_snapshots=1,
+            ),
+            ArtifactRetention(
+                paths, max_snapshot_files=0, max_log_files=0, max_memory_files=1
+            ),
+            MaintenanceCadence(paths, {"author"}, seconds=0),
+        ),
+    ).build(
+        event_sink_factory=lambda name: (PersistenceSink.for_path(paths.logs / name),)
+    )
+    result, _ = librarian.invoke()
+    assert "project idle" in result.value
+    memory = list(paths.memory.glob("*.md"))
+    assert len(memory) == 1
+    assert "blue robot emblem" in memory[0].read_text()
+    # Retention happens after consolidation: the memory survives its sources.
+    assert not source.exists()
+    assert not list(paths.snapshots.rglob("*.md"))
+    assert not any(path.is_dir() for path in paths.snapshots.iterdir())
+    assert list((paths.logs / "librarian").rglob("*.json"))
+
+
+def test_persistent_orchestrator_delegates_and_accepts_another_request(
+    tmp_path: Path,
+) -> None:
+    from roboshed.agents import orchestrator
+    from roboshed.deployments.robosprawl import AgenticFactory
+
+    from roboz.deployment import AgentDefinition, Capability, SubAgentSpec
+    from roboz.runtime import Output, bind_api_user_io, reset_api_user_io
+
+    class Replies:
+        def __init__(self):
+            self.prompts = []
+            self.answers = iter(("Do another task.", "Stop the session."))
+
+        def request_input(self, message, timeout=None):
+            self.prompts.append(message)
+            return next(self.answers)
+
+        def notify(self, message):
+            raise AssertionError("This scenario expects questions with replies")
+
+    child = AgentDefinition(
+        name="specialist",
+        system_prompt="Complete the delegated task.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "specialist result"}]
+        ),
+        capabilities=(Capability(tools=(stop,)),),
+        interaction_mode=Output.API,
+    )
+    definition = orchestrator(
+        agent_endpoint=MockLLMEndpoint(
+            [
+                {
+                    "action": "prompt_user",
+                    "rationale": "first task complete",
+                    "value": "First task done. What next?",
+                },
+                {"action": "delegate", "rationale": "handle next task"},
+                {
+                    "action": "prompt_user",
+                    "rationale": "remain available",
+                    "value": "Second task done. What next?",
+                },
+                {
+                    "action": "stop",
+                    "rationale": "user requested stop",
+                    "value": "session ended",
+                },
+            ]
+        ),
+        subagents=(SubAgentSpec(child, "delegate", "Run the specialist."),),
+        interaction_mode=Output.API,
+    )
+    project = Project(Workspace(tmp_path), "collaboration")
+    events = []
+    bundle = AgenticFactory(project=project, orchestrator=definition).build(
+        event_sinks=(events.append,)
+    )
+    replies = Replies()
+    token = bind_api_user_io(replies)
+    try:
+        result, messages = bundle.agent.invoke()
+    finally:
+        reset_api_user_io(token)
+    assert result.value == "session ended"
+    assert len(replies.prompts) == 2
+    assert any("specialist result" in m.content for m in messages)
+    assert list((project.logs / "orchestrator").rglob("*.json"))
+    assert list((project.logs / "specialist").rglob("*.json"))
+    assert any(getattr(event, "agent_name", None) == "specialist" for event in events)
+    assert bundle.background_agents == ()
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         test_guarded_read_edit_read_and_denied_escape(Path(directory))
     print("PASS guarded read/edit/read and denied escape")
+
+    for scenario in (
+        test_conversation_snapshot_memory_retention,
+        test_conversation_snapshot_memory_with_separate_models,
+        test_persistent_orchestrator_delegates_and_accepts_another_request,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            scenario(Path(directory))
+        print(f"PASS {scenario.__name__}")

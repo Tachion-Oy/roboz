@@ -8,7 +8,6 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -16,6 +15,7 @@ import sys
 import tempfile
 import time
 import tomllib
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
@@ -263,27 +263,13 @@ for name in {[name, *workspace_dependencies(name)]!r}:
 """)
     if name == "roboz":
         check(CORE_SMOKE)
-    if name in {"roboz", "roboz-shed"}:
+    if name in {"roboz", "roboshed"}:
         source = (
             "test_core_workflows.py" if name == "roboz" else "test_shed_workflows.py"
         )
         workflow = root / source
         shutil.copyfile(ROOT / "tests/e2e" / source, workflow)
         run(str(python), "-I", str(workflow))
-        if name == "roboz-shed":
-            executable = python.parent / (
-                "roboz-demo.exe" if os.name == "nt" else "roboz-demo"
-            )
-            run(
-                str(executable),
-                "--mock",
-                "--workspace",
-                str(root / "workspace"),
-                "--data-path",
-                str(root / "data"),
-            )
-            if not list((root / "data").rglob("*.json")):
-                raise ValueError("Installed roboz-demo did not persist its run")
     else:
         # Exercise real adapters with scripted HTTP/IMAP, without provider credentials.
         source = (

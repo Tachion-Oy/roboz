@@ -2,7 +2,7 @@
 
 import pytest
 
-from roboz_shed.tools.cli_commands.utilities.path_extractors import (
+from roboshed.tools.cli_commands.utilities.path_extractors import (
     PathExtractor,
     cat_path_args,
     cp_path_args,

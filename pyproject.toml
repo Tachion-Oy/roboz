@@ -30,7 +30,7 @@ requires = ["hatchling>=1.32"]
 build-backend = "hatchling.build"
 
 [project.optional-dependencies]
-shed = ["roboz-shed>=0.1.0a1,<0.2.0"]
+shed = ["roboshed>=0.1.0a1,<0.2.0"]
 openai = ["roboz-openai>=0.1.0a1,<0.2.0"]
 proton-bridge-beta = ["roboz-proton-bridge>=0.1.0b1,<0.2.0"]
 
@@ -39,7 +39,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 roboz = { workspace = true }
-roboz-shed = { workspace = true }
+roboshed = { workspace = true }
 roboz-openai = { workspace = true }
 roboz-proton-bridge = { workspace = true }
 
@@ -74,7 +74,7 @@ convention = "google"
 
 [dependency-groups]
 dev = [
-    "roboz-shed",
+    "roboshed",
     "roboz-openai",
     "roboz-proton-bridge",
     "pyright>=1.1.411",

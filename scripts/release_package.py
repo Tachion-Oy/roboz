@@ -11,7 +11,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = {
     "roboz": ROOT,
-    "roboz-shed": ROOT / "packages/shed",
+    "roboshed": ROOT / "packages/shed",
     "roboz-openai": ROOT / "packages/openai",
     "roboz-proton-bridge": ROOT / "packages/proton-bridge",
 }

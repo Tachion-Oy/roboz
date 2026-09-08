@@ -17,7 +17,7 @@ from roboz.models import Role
 from roboz.tooling import ExecutableDependency
 from roboz.llm import MockLLMEndpoint
 
-from roboz_shed.models import (
+from roboshed.models import (
     ActionVerdict,
     Help,
     Operation,
@@ -25,9 +25,9 @@ from roboz_shed.models import (
     RunFileCommand,
     RunFileCommands,
 )
-from roboz_shed.skills.cli_tools.prompts import INSTRUCTIONS
-from roboz_shed.tools import get_run_file_command
-from roboz_shed.tools import runner as command_runner
+from roboshed.skills.cli_tools.prompts import INSTRUCTIONS
+from roboshed.tools import get_run_file_command
+from roboshed.tools import runner as command_runner
 
 
 def test_instructions_json_examples_are_argv_only() -> None:

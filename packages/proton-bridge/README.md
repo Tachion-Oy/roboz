@@ -34,8 +34,8 @@ names; load it into the environment yourself rather than committing credentials.
 ```python
 from pathlib import Path
 from roboz_proton_bridge import ProtonBridgeEmailService, ProtonBridgeSettings
-from roboz_shed.models import ActionVerdict, Operation, PermissionRule
-from roboz_shed.tools.email import EmailSignature, get_work_with_email
+from roboshed.models import ActionVerdict, Operation, PermissionRule
+from roboshed.tools.email import EmailSignature, get_work_with_email
 
 service = ProtonBridgeEmailService(
     settings=ProtonBridgeSettings.from_environment(),
@@ -51,7 +51,7 @@ tools = get_work_with_email(
 
 Pass a caller-owned signature for draft creation (an explicit empty signature is
 valid). The adapter contains no personal signature or branded assets. With an
-assistant, build these tools through `tool_builders` and pass its pipe plus
+assistant, build these tools in an agent capability and pass its owning pipe plus
 `is_cancelled=lambda: pipe.cancelled` to bind cancellation.
 
 Capabilities: metadata search, bounded reads, attachment download, drafts, and

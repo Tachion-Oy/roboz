@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from roboz_shed.tools.email.contracts import EmailMailbox
+from roboshed.tools.email.contracts import EmailMailbox
 from .imap_codec import append_uid, require_ok, uid_identifier
 from .imap_session import ImapSessionProvider, ensure_not_cancelled
 from .mailbox import mailbox_for
