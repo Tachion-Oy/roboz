@@ -319,3 +319,102 @@ def test_health_monitor_enforces_four_check_concurrency() -> None:
 
     asyncio.run(exercise())
     assert maximum == 4
+
+
+@pytest.mark.parametrize("failure", ["record", "scheduler_sleep"])
+def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog, failure):
+    async def exercise():
+        iterations = asyncio.Queue()
+        resume = asyncio.Event()
+        calls = 0
+        clock_calls = 0
+        sleep_calls = 0
+
+        async def checker(dependency):
+            nonlocal calls
+            calls += 1
+            return DependencyCheckResult.success()
+
+        def wall_clock():
+            nonlocal clock_calls
+            clock_calls += 1
+            if failure == "record" and clock_calls == 1:
+                raise ValueError("private diagnostic payload")
+            return 1_000.0
+
+        async def sleep(delay):
+            nonlocal sleep_calls
+            sleep_calls += 1
+            iterations.put_nowait(delay)
+            if failure == "scheduler_sleep" and sleep_calls == 1:
+                raise ValueError("private diagnostic payload")
+            await resume.wait()
+            resume.clear()
+
+        dependency = ExecutableDependency("bash")
+        monitor = DependencyHealthMonitor(
+            bind_dependencies([dependency], [_registration("bash", check=checker)]),
+            interval_s=7,
+            wall_clock=wall_clock,
+            monotonic=lambda: 0.0,
+            sleep=sleep,
+        )
+        try:
+            await monitor.start()
+            await monitor.start()
+            assert await asyncio.wait_for(iterations.get(), 2) == 7
+            assert calls == 1
+            if failure == "record":
+                resume.set()
+            else:
+                await monitor.start()
+            assert await asyncio.wait_for(iterations.get(), 2) == 7
+            assert calls == 2
+            record = monitor.record(dependency.dependency_id)
+            assert record is not None and record.status is DependencyStatus.AVAILABLE
+        finally:
+            await monitor.stop()
+        assert iterations.empty()
+
+    asyncio.run(exercise())
+    assert "Dependency health iteration failed (protocol_error)" in caplog.text
+    assert "private diagnostic payload" not in caplog.text
+
+
+def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
+    entered = threading.Event()
+    release = threading.Event()
+    second_entered = threading.Event()
+    calls = []
+
+    def checker(dependency):
+        calls.append(dependency.dependency_id)
+        if dependency.dependency_id == "executable:first":
+            entered.set()
+            assert release.wait(timeout=5)
+        else:
+            second_entered.set()
+        return DependencyCheckResult.success()
+
+    async def exercise():
+        dependencies = [ExecutableDependency("first"), ExecutableDependency("second")]
+        monitor = DependencyHealthMonitor(
+            bind_dependencies(dependencies, [_registration(name, check=checker) for name in ("first", "second")]),
+            timeout_s=0.05,
+            max_concurrency=1,
+        )
+        try:
+            observation = asyncio.create_task(monitor.run_once())
+            assert await asyncio.to_thread(entered.wait, 2)
+            await observation
+            assert all(record.reason_code is DependencyReasonCode.TIMEOUT for record in monitor.records())
+            await monitor.run_once()
+            assert calls == ["executable:first"]
+            assert not second_entered.is_set()
+            release.set()
+            assert await asyncio.to_thread(second_entered.wait, 2)
+        finally:
+            release.set()
+            await monitor.stop()
+
+    asyncio.run(exercise())

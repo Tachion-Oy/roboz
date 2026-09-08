@@ -4,6 +4,9 @@
 
 - Treat wildcard characters in project and workspace names literally when
   deriving permissions, preventing writes from extending into other directories.
+- Keep dependency health scheduling alive after observation failures and allow
+  a stopped scheduler task to restart, with sanitized diagnostics. Infer checker
+  registrations from the first dependency for each ID, matching core binding.
 
 - Allow `RoboSprawl.librarian_capabilities` to configure maintenance per project
   and recursive foreground names. The default remains snapshots, consolidation,

@@ -346,6 +346,11 @@ inferred; custom kinds require explicit registrations.
 codes, and executable, OpenAI-compatible discovery, and service-owned protocol
 probes. These inspect protocols without importing provider SDKs. The monitor
 bounds concurrency and prevents overlapping checks after observation timeouts.
+An observation timeout leaves an active checker holding its concurrency slot
+until it finishes; probes should bound their own I/O. Cancelling a thread-backed
+check cannot terminate its worker. Unexpected observation failures are reported
+with sanitized diagnostics and retried on the next interval. Calling `start()`
+also restarts a scheduler task that has exited.
 Consumers own scheduler start/stop and readiness decisions; an unavailable
 resource does not automatically make an application unready.
 

@@ -28,6 +28,7 @@ from roboz.dependencies import (
     ExternalDependencyKind,
     LazyExternalDependency,
     bind_dependencies,
+    dedupe_external_dependencies,
 )
 from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
 from roboz.llm import EndpointLike, LLMEndpoint
@@ -255,13 +256,13 @@ def inspect_dependencies(
                 ExternalDependencyKind.EXECUTABLE: check_executable,
                 ExternalDependencyKind.MODEL_ENDPOINT: check_openai_compatible_endpoint,
             }
-            unique = {item.dependency_id: item for item in discovered}
-            if any(item.kind not in checks for item in unique.values()):
+            unique = dedupe_external_dependencies(discovered)
+            if any(item.kind not in checks for item in unique):
                 raise DependencyContractError(
                     "custom dependency kind requires an explicit checker registration"
                 )
             registrations = tuple(
                 DependencyRegistration(item.dependency_id, item.kind, checks[item.kind])
-                for item in unique.values()
+                for item in unique
             )
         return bind_dependencies(discovered, registrations)

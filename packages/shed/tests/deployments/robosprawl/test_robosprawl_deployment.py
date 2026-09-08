@@ -225,3 +225,30 @@ def test_recipe_binds_custom_librarian_capabilities_per_project(tmp_path, empty)
     assert len(seen) == 2
     if not empty:
         assert seen[0][2][0] is not seen[1][2][0]
+
+
+def test_inspection_infers_registration_from_first_duplicate(tmp_path):
+    from roboshed.dependency_health import check_executable
+    from roboshed.deployments.robosprawl import RoboSprawlBundle, inspect_dependencies
+    from roboz import ExecutableDependency, ExternalDependencyKind, LazyExternalDependency
+
+    first = ExecutableDependency("python")
+    later = LazyExternalDependency(
+        first.dependency_id,
+        ExternalDependencyKind.NETWORK_SERVICE,
+        {},
+        lambda: (_ for _ in ()).throw(AssertionError("must not materialize")),
+    )
+
+    def factory(project, *, endpoint_getter, event_sinks):
+        return RoboSprawlBundle(_specialist("root").build())
+
+    bound, = inspect_dependencies(
+        factory,
+        project=Project(Workspace(tmp_path), "project"),
+        endpoint_getter=lambda: None,
+        registrations=None,
+        additional_dependencies=(first, later),
+    )
+    assert bound.dependency is first
+    assert bound.check is check_executable

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import os
 import ssl
 import time
@@ -20,6 +21,8 @@ from roboz.dependencies import (
     ExternalDependency,
     ExternalDependencyKind,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DependencyReasonCode(StrEnum):
@@ -119,8 +122,12 @@ class DependencyHealthMonitor:
         return None if record is None else record.model_copy(deep=True)
 
     async def start(self) -> None:
-        """Start periodic observation without changing caller readiness state."""
-        if self._scheduler is None:
+        """Start or restart periodic observation without changing caller readiness state."""
+        if self._scheduler is None or self._scheduler.done():
+            if self._scheduler is not None and not self._scheduler.cancelled():
+                error = self._scheduler.exception()
+                if error is not None:
+                    self._log_iteration_failure(error)
             self._scheduler = asyncio.create_task(
                 self._schedule(), name="dependency-health"
             )
@@ -140,7 +147,11 @@ class DependencyHealthMonitor:
         self._inflight.clear()
 
     async def run_once(self) -> None:
-        """Observe registered dependencies without overlapping an in-flight check."""
+        """Observe dependencies without overlapping an in-flight check.
+
+        Timeouts bound observation waits. Active checkers retain their concurrency
+        slots until completion, including workers that cannot be cancelled.
+        """
         await asyncio.gather(
             *(self._observe(dependency_id) for dependency_id in self._dependencies)
         )
@@ -148,9 +159,20 @@ class DependencyHealthMonitor:
     async def _schedule(self) -> None:
         while True:
             started = self._monotonic()
-            await self.run_once()
+            try:
+                await self.run_once()
+            except Exception as exc:
+                self._log_iteration_failure(exc)
             delay = max(0.0, self._interval_s - (self._monotonic() - started))
             await self._sleep(delay)
+
+    @staticmethod
+    def _log_iteration_failure(error: BaseException) -> None:
+        """Report a scheduler failure without exposing provider exception payloads."""
+        logger.warning(
+            "Dependency health iteration failed (%s).",
+            reason_code_for_exception(error).value,
+        )
 
     async def _observe(self, dependency_id: str) -> None:
         existing = self._inflight.get(dependency_id)
@@ -207,6 +229,8 @@ class DependencyHealthMonitor:
     def _clear_inflight(
         self, dependency_id: str, task: asyncio.Task[DependencyCheckResult]
     ) -> None:
+        if not task.cancelled():
+            task.exception()
         if self._inflight.get(dependency_id) is task:
             self._inflight.pop(dependency_id, None)
 

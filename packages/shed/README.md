@@ -112,7 +112,9 @@ explicitly shared lazy clients. The factory returns uninvoked agents; consumers
 own interaction and shutdown. `roboz.dependencies` supplies exact dependency
 registration and binding; `roboshed.dependency_health` supplies probes and health
 monitoring without a web framework or provider SDK.
-Permission policies treat configured folder names literally.
+Permission policies treat configured folder names literally. Health scheduling
+retries observation failures; timed-out workers retain their concurrency slots
+until completion.
 See [agent factories](../../docs/agent-factories.md) for the contracts and examples.
 
 The `robosprawl` skill from `roboshed.skills` covers workspace orientation and the HUD
