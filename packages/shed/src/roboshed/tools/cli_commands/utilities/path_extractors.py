@@ -30,18 +30,19 @@ def grep_path_args(argv: list[str]) -> list[int]:
 
     Options may follow operands. ``--`` ends options, and ``-e``
     removes the positional pattern. Pattern files and other auxiliary inputs are
-    rejected along with unknown options before execution.
+    rejected along with unknown options and recursive symlink-following flags
+    before execution.
     """
     return _search_paths(
         argv,
         parse_options(
             argv,
-            flags="-E -F -G -P -i -w -x -z -s -v -V -b -n -H -h -o -q -a -I -r -R -L -l -c -T -Z -U "
+            flags="-E -F -G -P -i -w -x -z -s -v -V -b -n -H -h -o -q -a -I -r -L -l -c -T -Z -U "
             "--extended-regexp --fixed-strings --basic-regexp --perl-regexp "
             "--ignore-case --no-ignore-case --word-regexp --line-regexp --null-data "
             "--no-messages --invert-match --byte-offset --line-number --line-buffered "
             "--with-filename --no-filename --only-matching --quiet --silent --text "
-            "--recursive --dereference-recursive --files-without-match --files-with-matches "
+            "--recursive --files-without-match --files-with-matches "
             "--count --initial-tab --null --no-group-separator --binary",
             values="-e --regexp -m --max-count -A --after-context -B --before-context "
             "-C --context -d --directories -D --devices --label --binary-files "
@@ -56,18 +57,19 @@ def rg_path_args(argv: list[str]) -> list[int]:
     """Return ripgrep search inputs, distinguishing patterns from file operands.
 
     ``--files`` has no positional pattern. Separate and attached non-path option
-    values are supported; auxiliary files and subprocess preprocessors are not.
+    values are supported; auxiliary files, subprocess preprocessors, and recursive
+    symlink-following flags are not.
     """
     return _search_paths(
         argv,
         parse_options(
             argv,
-            flags="-i -s -S -F -P -U -w -x -v -a -n -N -H -I -l -0 -c -o -q -b -L -u -h -V "
+            flags="-i -s -S -F -P -U -w -x -v -a -n -N -H -I -l -0 -c -o -q -b -u -h -V "
             "--ignore-case --case-sensitive --smart-case --fixed-strings --pcre2 "
             "--multiline --multiline-dotall --word-regexp --line-regexp --invert-match "
             "--text --line-number --no-line-number --with-filename --no-filename "
             "--files-with-matches --files-without-match --null --count --count-matches "
-            "--only-matching --quiet --byte-offset --follow --hidden --no-ignore "
+            "--only-matching --quiet --byte-offset --hidden --no-ignore "
             "--no-ignore-dot --no-ignore-exclude --no-ignore-files --no-ignore-global "
             "--no-ignore-parent --no-ignore-vcs --no-require-git --no-messages "
             "--no-config --no-unicode --unicode --crlf --null-data --no-mmap "

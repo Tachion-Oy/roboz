@@ -132,6 +132,22 @@ def test_rg_files_mode_has_no_pattern_and_glob_values_are_not_paths() -> None:
 
 
 @pytest.mark.parametrize(
+    ("extractor", "token"),
+    [
+        (grep_path_args, "-R"),
+        (grep_path_args, "--dereference-recursive"),
+        (rg_path_args, "-L"),
+        (rg_path_args, "--follow"),
+    ],
+)
+def test_search_symlink_option_names_remain_valid_as_patterns_and_paths(
+    extractor: PathExtractor, token: str
+) -> None:
+    assert extractor(["-e", token, "src"]) == [2]
+    assert extractor(["needle", "--", token]) == [2]
+
+
+@pytest.mark.parametrize(
     ("extractor", "argv", "indices"),
     [
         (head_path_args, ["a", "-n", "2", "b"], [0, 3]),

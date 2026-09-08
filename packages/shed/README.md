@@ -75,6 +75,11 @@ Migration from the former permissive parser:
   instead of disappearing from argv.
 - Pass supported options in `argv`; execution ignores `POSIXLY_CORRECT` and
   `RIPGREP_CONFIG_PATH` so environment settings cannot change argument parsing.
+- Recursive symlink-following options (`grep -R`/`--dereference-recursive` and
+  `rg -L`/`--follow`) are rejected before execution because nested symlink
+  targets are not individually authorized. Use `grep -r`/`--recursive` or plain
+  `rg` for recursive search that skips nested symlinks, and pass any intended
+  symlink targets as explicit file operands for permission checks.
 
 Public input models and tool signatures are unchanged. Custom `CmdSpec`
 extractors remain responsible for validating their executable's grammar.

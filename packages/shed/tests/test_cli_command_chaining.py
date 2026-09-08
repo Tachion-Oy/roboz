@@ -1105,6 +1105,12 @@ def test_cli_parser_guards_outside_symlinks_before_execution(
 @pytest.mark.parametrize(
     ("command", "argv"),
     [
+        ("grep", ["-R", "needle", "."]),
+        ("grep", ["--dereference-recursive", "needle", "."]),
+        ("grep", ["needle", ".", "-nR"]),
+        ("rg", ["-L", "needle", "."]),
+        ("rg", ["--follow", "needle", "."]),
+        ("rg", ["needle", ".", "-nL"]),
         ("grep", ["-fprivate-link", "allowed.txt"]),
         ("grep", ["--file", "private-link", "allowed.txt"]),
         ("grep", ["--exclude-from=private-link", "needle", "allowed.txt"]),
@@ -1187,6 +1193,45 @@ def test_cli_parser_executes_supported_inputs(
     result = _last_execute_file_command_value(messages)
     assert expected in result
     assert "exited with code" not in result
+
+
+@pytest.mark.parametrize(
+    ("command", "flags"),
+    [("grep", ["-r"]), ("grep", ["--recursive"]), ("rg", [])],
+)
+def test_recursive_search_skips_nested_symlinks(
+    tmp_path: Path, command: str, flags: list[str]
+) -> None:
+    import shutil
+
+    if shutil.which(command) is None:
+        pytest.skip(f"{command} is not installed")
+    workspace = tmp_path / "workspace"
+    nested = workspace / "nested"
+    nested.mkdir(parents=True)
+    (nested / "allowed.txt").write_text("needle PUBLIC_SENTINEL\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    private = outside / "private.txt"
+    private.write_text("needle OUTSIDE_SENTINEL\n")
+    (nested / "file-link").symlink_to(private)
+    (nested / "directory-link").symlink_to(outside, target_is_directory=True)
+    tools = get_run_file_command(
+        base=workspace,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[PermissionRule("**", {Operation.READ})],
+    )
+    _, messages = _invoke_cli_with_tools(
+        tools,
+        RunFileCommands(
+            chain="and",
+            file_commands=[RunFileCommand(command=command, argv=[*flags, "needle", "."])],
+        ),
+    )
+    result = _last_execute_file_command_value(messages)
+    assert "PUBLIC_SENTINEL" in result
+    assert "exited with code" not in result
+    assert all("OUTSIDE_SENTINEL" not in message.content for message in messages)
 
 
 def test_cli_parser_execution_ignores_ambient_argument_configuration(

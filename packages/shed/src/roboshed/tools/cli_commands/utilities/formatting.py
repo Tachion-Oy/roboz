@@ -45,6 +45,7 @@ def format_cli_commands_help(specs: Sequence[CmdSpec]) -> str:
         "  - Built-in commands accept a supported option grammar: unknown/abbreviated options and missing values are parse errors.",
         "  - Use -- before dash-prefixed file operands; find roots instead need an explicit ./ prefix. Options may follow operands for other commands.",
         "  - Search with PATTERN path or -e PATTERN path; option values such as --max-count 20 and -g '*.py' are not file operands.",
+        "  - Recursive search: use grep -r/--recursive or plain rg. Symlink-following options grep -R/--dereference-recursive and rg -L/--follow are unsupported; pass intended symlink targets as explicit file operands for permission checks.",
         "  - Auxiliary file options (-f/--file, --ignore-file, --exclude-from, --files0-from, --reference, find reference predicates) and subprocess preprocessors are unsupported.",
         "  - cp/mv target-directory values must be separate literal tokens: -t DIR or --target-directory DIR. Unmatched path globs are parse errors.",
         "  - Execution ignores POSIXLY_CORRECT and RIPGREP_CONFIG_PATH so inherited settings cannot change validated argument semantics.",

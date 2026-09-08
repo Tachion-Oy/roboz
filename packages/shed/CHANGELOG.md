@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- Reject `grep -R`/`--dereference-recursive` and `rg -L`/`--follow` before
+  execution so recursive search cannot use these options to read through nested
+  symlinks outside guarded paths. **Compatibility:** use `grep -r`/`--recursive`
+  or plain `rg`; pass intended symlink targets explicitly for permission checks.
 - Check CLI file operands across `--`, trailing options, and search-pattern
   options while preserving stdin markers. Reject unsupported/abbreviated options,
   auxiliary file inputs, and preprocessors before execution. **Compatibility:**
