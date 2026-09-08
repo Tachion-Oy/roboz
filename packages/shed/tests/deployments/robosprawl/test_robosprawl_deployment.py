@@ -147,18 +147,18 @@ def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
 def test_recipe_binds_fresh_project_capabilities_and_default_maintenance(tmp_path):
     seen = []
 
-    def capabilities(project):
-        seen.append(project)
-        return (Capability(),)
+    def capability(permissions):
+        seen.append(permissions)
+        return Capability()
 
     memory = MockLLMEndpoint([])
-    deployment = RoboSprawl(capabilities=capabilities, memory_endpoint=memory)
+    deployment = RoboSprawl(capabilities=(capability,), memory_endpoint=memory)
     projects = [Project(Workspace(tmp_path / name), name) for name in ("one", "two")]
     factories = [
         deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
         for project in projects
     ]
-    assert seen == projects
+    assert seen == [project.permissions for project in projects]
     assert (
         factories[0].orchestrator.capabilities[-1]
         is not factories[1].orchestrator.capabilities[-1]

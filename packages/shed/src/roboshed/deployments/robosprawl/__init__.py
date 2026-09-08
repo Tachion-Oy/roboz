@@ -13,7 +13,7 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.workspace import Project
+from roboshed.workspace import Project, WorkspacePermissions
 from roboz.agent import Agent, run_background_agent
 from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
 from roboz.runtime import EventSink, Output, default_event_sinks
@@ -109,34 +109,43 @@ class RoboSprawl:
 
     Consumers choose capabilities and endpoints. This deployment derives project
     instructions, recursive watched names, and the ordered Librarian maintenance
-    capabilities. DeploymentFactory supplies the live root endpoint per run.
+    capabilities. Supply configured capabilities or factories accepting project
+    permissions, such as FileCommands and FileEditing. Project context is a format
+    string resolved from the shared Project at construction time. DeploymentFactory
+    supplies the live root endpoint per run.
     """
 
-    capabilities: Callable[[Project], Sequence[AgentCapability]]
+    capabilities: Sequence[
+        AgentCapability | Callable[[WorkspacePermissions], AgentCapability]
+    ]
     memory_endpoint: EndpointLike
     subagents: tuple[SubAgentSpec, ...] = ()
     interaction_mode: Output | None = Output.CLI
-    instructions: Callable[[Project], str] | None = None
+    project_context: str = (
+        "## Project context\n"
+        "File tool base: {project.workspace.resolved_root}\n"
+        "Project: {project.slug}\n"
+        "Writable project directory: {project.root}\n"
+        "Read-only directory: {project.workspace.readonly_dir}\n"
+        "Shared directory: {project.workspace.shared_dir}\n"
+        "Conversation logs: {project.logs}\n"
+        "Snapshots: {project.snapshots}\n"
+        "Memory: {project.memory}"
+    )
 
     def __call__(
         self, project: Project, /, *, orchestrator_endpoint: EndpointLike
     ) -> AgenticFactory:
         """Derive configured definitions without constructing clients or starting work."""
-        workspace = project.workspace
-        instructions = (
-            f"File tool base: {workspace.resolved_root}. Project: {project.slug}. "
-            f"Your writable project directory is {project.root}. "
-            f"Read-only shared files are in {workspace.readonly_dir}; "
-            f"writes in {workspace.shared_dir} require user confirmation."
-        )
-        if self.instructions is not None:
-            instructions += " " + self.instructions(project)
         root = orchestrator(
             agent_endpoint=orchestrator_endpoint,
             interaction_mode=self.interaction_mode,
             subagents=self.subagents,
-            capabilities=self.capabilities(project),
-            instructions=instructions,
+            capabilities=tuple(
+                capability(project.permissions) if callable(capability) else capability
+                for capability in self.capabilities
+            ),
+            instructions=self.project_context.format(project=project),
         )
         names = root.agent_names()
         return AgenticFactory(

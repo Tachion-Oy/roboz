@@ -135,9 +135,7 @@ from roboshed.workspace import Project, Workspace
 
 project = Project(Workspace(Path("./data")), "example")
 deployment = RoboSprawl(
-    capabilities=lambda project: (
-        FileCommands(project.permissions), FileEditing(project.permissions),
-    ),
+    capabilities=(FileCommands, FileEditing),
     memory_endpoint=MockLLMEndpoint([]),
 )
 factory = deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
@@ -147,10 +145,11 @@ agent, background_agents = factory.build()
 `RoboSprawl` selects the persistent orchestrator, derives project locations, and
 composes Librarian snapshotting, consolidation, retention, and 120-second cadence
 in that order. Watched names include nested specialists. Consumers select a
-project-dependent capability callback, a memory endpoint, optional specialists,
-and their interaction mode. The optional `instructions(project)` callback adds
-consumer-specific guidance such as artifact-link markup. The capability callback
-runs for every recipe invocation, allowing fresh project-bound capabilities.
+sequence of configured capabilities or permission factories, a memory endpoint, optional specialists,
+and their interaction mode. The `project_context` template supplies the actual paths from `{project}` at
+construction time. Select the `robosprawl` skill for static orientation and HUD
+guidance; the skill does not embed a deployment’s paths. Permission factories run for every recipe invocation, binding fresh capabilities
+to the current project.
 
 The recipe also works directly with `DeploymentFactory` for repeated host runs.
 This example constructs the graph without running it. Configure endpoints or

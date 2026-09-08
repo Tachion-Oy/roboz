@@ -111,3 +111,8 @@ own interaction and shutdown. `roboz.dependencies` supplies exact dependency
 registration and binding; `roboshed.dependency_health` supplies probes and health
 monitoring without a web framework or provider SDK.
 See [agent factories](../../docs/agent-factories.md) for the contracts and examples.
+
+The `robosprawl` skill from `roboshed.skills` covers workspace orientation and the HUD
+file-link/markdown contract. Select it through
+`Capability(auto_loaded_skills=(robosprawl,))` for compatible consumers. It uses project
+paths supplied through `RoboSprawl.project_context` instead of choosing a workspace layout.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the `robosprawl` orientation skill following PeffaHub’s hub, Librarian, and HUD guidance. Resolve actual paths separately through `RoboSprawl.project_context`; obsolete safe-script behavior is omitted.
+
+- Configure `RoboSprawl` with a capability sequence and project instruction template; permission factories bind during each run, so consumers need no configuration callbacks.
+
 - Move `ModelSelector` from `roboshed.deployments.models` to
   `roboz.llm.endpoints`, also exported by `roboz.llm`. Update imports; selection
   behavior is unchanged. See `docs/context-migration.md`.
