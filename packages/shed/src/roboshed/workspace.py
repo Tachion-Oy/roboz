@@ -1,6 +1,7 @@
 """Workspace structure and derived project permissions for agent compositions."""
 
 from dataclasses import dataclass
+from glob import escape
 from pathlib import Path
 from typing import TypedDict
 
@@ -162,18 +163,25 @@ class Project:
 
         Other writes and all paths outside the workspace are denied. Deriving
         the tool policy creates no directories and starts no runtime work.
+        Configured folder names are literal, including glob metacharacters.
         """
         workspace = self.workspace
         writes = {Operation.CREATE, Operation.DELETE}
-        shared = PermissionRule(f"{workspace.shared}/**", writes)
+        project_pattern = escape(f"{workspace.projects}/{self.slug}")
+        shared_pattern = escape(workspace.shared)
+        shared = (
+            PermissionRule(shared_pattern, writes),
+            PermissionRule(f"{shared_pattern}/**", writes),
+        )
         return WorkspacePermissions(
             base=workspace.resolved_root,
             allow=(
                 PermissionRule("**", {Operation.READ}),
-                PermissionRule(f"{workspace.projects}/{self.slug}/**", writes),
-                shared,
+                PermissionRule(project_pattern, writes),
+                PermissionRule(f"{project_pattern}/**", writes),
+                *shared,
             ),
-            ask=(shared,),
+            ask=shared,
             takes_precedence=ActionVerdict.allow,
         )
 

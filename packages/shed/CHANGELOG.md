@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Treat wildcard characters in project and workspace names literally when
+  deriving permissions, preventing writes from extending into other directories.
+
 - Allow `RoboSprawl.librarian_capabilities` to configure maintenance per project
   and recursive foreground names. The default remains snapshots, consolidation,
   retention, and a 120-second cadence, in that order.

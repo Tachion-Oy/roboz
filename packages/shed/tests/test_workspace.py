@@ -181,3 +181,29 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
         pipe=EventPipe(),
     )
     assert verdict == expected and len(prompts) == 1
+
+
+@pytest.mark.parametrize(
+    "projects,shared,slug,sibling",
+    [
+        ("projects", "shared", "*", "projects/other"),
+        ("projects", "shared", "**", "projects/other/nested"),
+        ("projects", "team?", "mine", "team1"),
+        ("work[ab]", "shared", "mine", "worka/mine"),
+    ],
+)
+def test_project_permission_paths_treat_globs_as_literal_names(
+    tmp_path, projects, shared, slug, sibling
+):
+    from roboshed.tools.utils import check_rule
+
+    project = Project(Workspace(tmp_path, projects=projects, shared=shared), slug)
+    policy = project.permissions
+    for operation in (Operation.CREATE, Operation.DELETE):
+        for location in (project.root, project.root / "file.txt"):
+            assert check_rule(location, operation, list(policy.allow), policy.base)
+            assert not check_rule(location, operation, list(policy.ask), policy.base)
+        for location in (project.workspace.shared_dir, project.workspace.shared_dir / "file.txt"):
+            assert check_rule(location, operation, list(policy.allow), policy.base)
+            assert check_rule(location, operation, list(policy.ask), policy.base)
+        assert not check_rule(tmp_path / sibling / "file.txt", operation, list(policy.allow), policy.base)

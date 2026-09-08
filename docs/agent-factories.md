@@ -354,3 +354,5 @@ Project-scoped tools can use `FileCommands(project.permissions)` and
 and writes in the current project, asks before shared-area writes, and denies
 other writes or paths outside the workspace. Policy construction has no filesystem
 side effects; hosts still own directory preparation and tool invocation.
+Project slugs and configured workspace folder names are literal paths: wildcard
+characters in their names do not expand the derived permission rules.
