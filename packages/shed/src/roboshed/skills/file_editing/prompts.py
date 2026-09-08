@@ -91,7 +91,7 @@ Full-file rewrite (also creates the file if missing):
 
 ### Working with `__RC__` (explore, then edit)
 
-Use **`__ST__`** for **targeted reads** so **`old_string`** matches reality:
+Use **`__RC__`** for **targeted reads** so **`old_string`** matches reality:
 
 - **`cat -n path`** — line numbers; copy only real file content (not the `cat -n` prefix column).
 - **`rg -n`** or **`grep -n`** — find matches and line context.

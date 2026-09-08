@@ -47,6 +47,7 @@
   see `docs/agent-factories.md` for migration guidance.
 - Skip conversation files with invalid UTF-8 during snapshot processing without
   modifying the source or preventing valid conversations from being summarized.
+- Direct targeted reads in file-editing guidance to the configured command tool.
 
 - Preserve conversation history when compaction cannot produce a replacement within its context budget, and report current usage and headroom after successful compaction.
 
