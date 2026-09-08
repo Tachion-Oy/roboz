@@ -246,4 +246,9 @@ def test_installed_contracts_use_isolated_environment_and_propagate_failures(
     assert any(str(tmp_path / "candidate.whl") + "[openai]" in command for command in calls)
     base_check = next(i for i, command in enumerate(calls) if published.ENDPOINTS_BASE_SMOKE in command)
     extra_install = next(i for i, command in enumerate(calls) if str(tmp_path / "candidate.whl") + "[openai]" in command)
+    endpoint_check = next(
+        i for i, command in enumerate(calls)
+        if published.ENDPOINTS_SMOKE in command
+    )
     assert base_check < extra_install
+    assert extra_install < endpoint_check
