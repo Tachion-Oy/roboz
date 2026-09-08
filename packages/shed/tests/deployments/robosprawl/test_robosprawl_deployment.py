@@ -2,7 +2,7 @@ import pytest
 from roboshed.agents import librarian as librarian_definition
 from roboshed.agents import orchestrator
 from roboshed.capabilities import ConversationSnapshots, MaintenanceCadence
-from roboshed.deployments.robosprawl import AgenticFactory
+from roboshed.deployments.robosprawl import AgenticFactory, RoboSprawl
 from roboshed.workspace import Project, Workspace
 
 from roboz import Empty, stop
@@ -116,3 +116,66 @@ def test_background_specialist_names_cannot_overlap_the_foreground(tmp_path):
     with pytest.raises(ValueError, match="librarian names"):
         factory.build()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
+    from dataclasses import replace
+    from pathlib import Path
+    from roboshed.deployments.robosprawl import inspect_dependencies
+
+    project = Project(
+        Workspace(tmp_path / "absent", shared="team"),
+        "project",
+        logs_dir=Path("logs-custom"),
+    )
+    inspected = []
+
+    def failing(project, *, endpoint_getter, event_sinks):
+        inspected.append(project)
+        project.root.mkdir(parents=True)
+        raise RuntimeError("recipe failed")
+
+    with pytest.raises(RuntimeError, match="recipe failed"):
+        inspect_dependencies(
+            failing, project=project, endpoint_getter=lambda: None, registrations=()
+        )
+    assert replace(inspected[0], workspace=project.workspace) == project
+    assert not inspected[0].workspace.resolved_root.exists()
+    assert not project.workspace.resolved_root.exists()
+
+
+def test_recipe_binds_fresh_project_capabilities_and_default_maintenance(tmp_path):
+    seen = []
+
+    def capabilities(project):
+        seen.append(project)
+        return (Capability(),)
+
+    memory = MockLLMEndpoint([])
+    deployment = RoboSprawl(capabilities=capabilities, memory_endpoint=memory)
+    projects = [Project(Workspace(tmp_path / name), name) for name in ("one", "two")]
+    factories = [
+        deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
+        for project in projects
+    ]
+    assert seen == projects
+    assert (
+        factories[0].orchestrator.capabilities[-1]
+        is not factories[1].orchestrator.capabilities[-1]
+    )
+    for project, factory in zip(projects, factories, strict=True):
+        assert str(project.root) in factory.orchestrator.system_prompt
+        assert "<file src=" not in factory.orchestrator.system_prompt
+        assert factory.librarian is not None
+        assert factory.librarian.agent_endpoint is memory
+        snapshots, consolidation, retention, cadence = factory.librarian.capabilities
+        assert (
+            snapshots.agent_names
+            == consolidation.agent_names
+            == cadence.agent_names
+            == {"orchestrator"}
+        )
+        assert retention.project == project
+        assert cadence.seconds == 120
+        factory.build()
+        assert not project.workspace.root.exists()

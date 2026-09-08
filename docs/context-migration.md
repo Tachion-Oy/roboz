@@ -17,6 +17,12 @@ existing top-level `roboz` authoring exports remain available.
 binding also belong to `roboz.dependencies`: import `DependencyChecker`,
 `DependencyRegistration`, `BoundDependency`, `DependencyContractError`, and
 `bind_dependencies` there instead of `roboshed.dependencies.contract`.
+Health checks and monitoring live in `roboshed.dependency_health`, replacing
+`roboshed.dependencies.health`. The former Shed dependency package is removed.
+
+Import `ModelSelector` from `roboz.llm` or `roboz.llm.endpoints` instead of
+`roboshed.deployments.models`. Selection remains lazy and preserves each
+endpoint's cached client; the former Shed model-selection module is removed.
 
 ## Replace context classes and resource wrappers
 

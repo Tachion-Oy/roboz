@@ -235,7 +235,7 @@ from importlib.util import find_spec
 import importlib, pkgutil, roboshed
 for module in pkgutil.walk_packages(roboshed.__path__, roboshed.__name__ + '.'):
     importlib.import_module(module.name)
-assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_endpoints', 'roboz_proton_bridge'))
+assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_endpoints', 'roboz_proton_bridge', 'fastapi', 'robosprawl'))
 """)
             workflow = root / "shed_workflows.py"
             shutil.copyfile(ROOT / "tests/e2e/test_shed_workflows.py", workflow)

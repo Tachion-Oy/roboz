@@ -246,12 +246,61 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     assert bundle.background_agents == ()
 
 
+def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> None:
+    from roboshed.agents import orchestrator
+    from roboshed.deployments.robosprawl import AgenticFactory, DeploymentFactory
+    from roboz import ExternalDependencyKind, LazyExternalDependency
+    from roboz.llm import LLMEndpoint
+
+    project = Project(Workspace(tmp_path), "standalone")
+    endpoints = []
+    routes = []
+    observed = []
+    sink_calls = []
+    borrowed = LazyExternalDependency(
+        "model:test:borrowed", ExternalDependencyKind.MODEL_ENDPOINT, {},
+        lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed", max_context_tokens=4096),
+    )
+
+    def recipe(project, *, orchestrator_endpoint):
+        routes.append(orchestrator_endpoint)
+        endpoint = MockLLMEndpoint([
+            {"action": "stop", "rationale": "user requested stop", "value": "complete"},
+        ])
+        endpoints.append(endpoint)
+        return AgenticFactory(
+            project=project,
+            orchestrator=orchestrator(agent_endpoint=endpoint, interaction_mode=Output.CLI),
+        )
+
+    def sinks():
+        events = []
+        sink_calls.append(events)
+        return (events.append,)
+
+    deployment = DeploymentFactory(recipe, event_sink_factory=sinks)
+    first = deployment(project, endpoint_getter=lambda: borrowed, event_sinks=(observed.append,))
+    second = deployment(project, endpoint_getter=lambda: borrowed, event_sinks=(observed.append,))
+    assert not project.root.exists()
+    assert first.agent is not second.agent
+    assert first.agent.pipe is not second.agent.pipe
+    assert endpoints[0] is not endpoints[1]
+    assert routes[0] is not routes[1]
+    assert routes[0].external_dependencies() == routes[1].external_dependencies() == (borrowed,)
+    assert "materialized" not in borrowed.__dict__
+    assert routes[0].materialize() is routes[1].materialize()
+    assert first.agent.invoke()[0].value == second.agent.invoke()[0].value == "complete"
+    assert sink_calls[0] and sink_calls[1] and observed
+    assert list(project.logs.rglob("*.json"))
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         test_guarded_read_edit_read_and_denied_escape(Path(directory))
     print("PASS guarded read/edit/read and denied escape")
 
     for scenario in (
+        test_repeated_deployment_construction_without_a_web_host,
         test_conversation_snapshot_memory_retention,
         test_conversation_snapshot_memory_with_separate_models,
         test_persistent_orchestrator_delegates_and_accepts_another_request,

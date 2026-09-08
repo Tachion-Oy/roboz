@@ -125,7 +125,8 @@ message-visibility window.
 The package contains agent and LLM primitives, models, runtime and persistence
 infrastructure, dependencies, skills, tooling, and foundational control/interaction tools.
 `roboz.dependencies` also validates exact dependency registrations and binds
-checker callbacks without running them.
+checker callbacks without running them. Shed supplies health probes and scheduling
+through `roboshed.dependency_health`.
 `roboz.llm.ModelSelector` selects among lazy model endpoints without constructing
 clients and can supply the current endpoint to a `DependencyRoute`.
 Provider catalogs and SDK integrations, guarded file and CLI tools, and application

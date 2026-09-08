@@ -98,3 +98,16 @@ context classes have been removed. Existing tool builders retain their keyword
 arguments, defaults, permission checks, cancellation, and timeout behavior.
 See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
 for low-level context fields and state ownership.
+
+
+Use `RoboSprawl` from `roboshed.deployments.robosprawl` to configure project
+capabilities and a memory endpoint. It derives the persistent orchestrator,
+project instructions, and Librarian maintenance. For repeatable CLI or server
+construction, pass this recipe to `DeploymentFactory`; custom recipes can return
+`AgenticFactory` directly. Use core's `roboz.llm.ModelSelector` for lazy model
+selection. Recipes allocate fresh stateful inputs while allowing
+explicitly shared lazy clients. The factory returns uninvoked agents; consumers
+own interaction and shutdown. `roboz.dependencies` supplies exact dependency
+registration and binding; `roboshed.dependency_health` supplies probes and health
+monitoring without a web framework or provider SDK.
+See [agent factories](../../docs/agent-factories.md) for the contracts and examples.
