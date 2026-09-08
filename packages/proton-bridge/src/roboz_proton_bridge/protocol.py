@@ -34,7 +34,7 @@ class EmailHeader(StrEnum):
     MESSAGE_ID = "Message-ID"
     IN_REPLY_TO = "In-Reply-To"
     REFERENCES = "References"
-    REQUEST_ID = "X-Peffa-Request-Id"
+    REQUEST_ID = "X-Roboz-Request-Id"
 
 
 class ImapResponseStatus(StrEnum):

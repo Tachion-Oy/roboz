@@ -84,7 +84,7 @@ class _FakeImap:
 
     def uid(self, command: str, *args: object) -> tuple[str, list[bytes]]:
         if command == "SEARCH":
-            if args[:3] == (None, "HEADER", "X-Peffa-Request-Id"):
+            if args[:3] == (None, "HEADER", "X-Roboz-Request-Id"):
                 return "OK", [self.existing_uids]
             self.search_calls.append(args)
             return "OK", [self.search_uids]
@@ -246,7 +246,7 @@ def test_proton_bridge_provider_creates_a_complete_sender_side_draft() -> None:
     assert "To: person@example.com" in message
     assert "Cc: copy@example.com" in message
     assert "Bcc: hidden@example.com" in message
-    assert "X-Peffa-Request-Id: request-1" in message
+    assert "X-Roboz-Request-Id: request-1" in message
 
 
 def test_proton_bridge_embeds_signature_in_plain_and_html_draft() -> None:

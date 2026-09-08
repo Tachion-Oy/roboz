@@ -59,8 +59,10 @@ threaded reply drafts. Reading an Inbox message marks it read. Drafts/Sent reads
 are read-only. There is no send operation. Attachments follow file permissions;
 operations retain cancellation, timeouts, bounds, and safe provider errors.
 
-The existing `X-Peffa-Request-Id` mail header is retained for draft idempotency
-compatibility. It is a wire identifier, not an application dependency.
+Draft idempotency uses the `X-Roboz-Request-Id` mail header. When migrating
+existing drafts, rename their previous request-ID header to this header before
+retrying draft creation; drafts with only the previous header are not detected
+as duplicates.
 
 ## Testing
 
