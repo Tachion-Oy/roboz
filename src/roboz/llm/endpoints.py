@@ -1,13 +1,18 @@
-"""Language-model endpoint contracts and deterministic test endpoint."""
+"""Language-model endpoint contracts, selection, and deterministic test endpoints."""
 
 import json
 from collections.abc import Callable, Mapping
+from threading import Lock
 from typing import Any, Final, Literal, cast
 
 from pydantic import BaseModel, Field, field_validator
 
 from roboz.models import Message, Role
-from roboz.tooling.dependencies import ExternalDependencyReference, ModelEndpointDependency
+from roboz.dependencies import (
+    ExternalDependencyReference,
+    LazyExternalDependency,
+    ModelEndpointDependency,
+)
 
 type JSONValue = (
     None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
@@ -150,6 +155,54 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
             "model_name": self.model_name,
             "endpoint_type": "llm",
         }
+
+
+class ModelSelector:
+    """Select models by stable identity without materializing their clients."""
+
+    def __init__(
+        self,
+        models: Mapping[str, LazyExternalDependency[LLMEndpoint]],
+        *,
+        default: LazyExternalDependency[LLMEndpoint],
+    ) -> None:
+        """Copy the catalog and validate identities and the initial selection."""
+        self.models = dict(models)
+        self._models_by_id = {
+            endpoint.dependency_id: endpoint for endpoint in self.models.values()
+        }
+        if len(self._models_by_id) != len(models):
+            raise ValueError("selectable model ids must be unique")
+        if default.dependency_id not in self._models_by_id:
+            raise ValueError("default model must be selectable")
+        self._selected_model_id = default.dependency_id
+        self._lock = Lock()
+
+    @property
+    def selected_model_id(self) -> str:
+        """Return the current selection under the selector lock."""
+        with self._lock:
+            return self._selected_model_id
+
+    @property
+    def selected_endpoint(self) -> LazyExternalDependency[LLMEndpoint]:
+        """Return the selected lazy endpoint without resolving it."""
+        with self._lock:
+            return self._models_by_id[self._selected_model_id]
+
+    def endpoint(self, model_id: str) -> LazyExternalDependency[LLMEndpoint]:
+        """Look up an endpoint without changing the selection."""
+        try:
+            return self._models_by_id[model_id]
+        except KeyError:
+            raise KeyError(model_id) from None
+
+    def select(self, model_id: str) -> None:
+        """Change the selection atomically; reject unknown identities."""
+        with self._lock:
+            if model_id not in self._models_by_id:
+                raise KeyError(model_id)
+            self._selected_model_id = model_id
 
 
 class MockLLMEndpoint:

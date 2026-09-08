@@ -123,7 +123,12 @@ message-visibility window.
 | `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
 
 The package contains agent and LLM primitives, models, runtime and persistence
-infrastructure, skills, tooling, and foundational control/interaction tools.
+infrastructure, dependencies, skills, tooling, and foundational control/interaction tools.
+`roboz.dependencies` also validates exact dependency registrations and binds
+checker callbacks without running them. Shed supplies health probes and scheduling
+through `roboshed.dependency_health`.
+`roboz.llm.ModelSelector` selects among lazy model endpoints without constructing
+clients and can supply the current endpoint to a `DependencyRoute`.
 Provider catalogs and SDK integrations, guarded file and CLI tools, and application
 integrations belong in companion packages and are not dependencies of Roboz.
 Install `roboz-endpoints[openai]` for the initial OpenRouter, Cerebras, and Groq

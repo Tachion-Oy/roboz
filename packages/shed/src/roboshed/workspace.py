@@ -1,6 +1,7 @@
-"""Workspace structure and explicit permissions for reusable agent compositions."""
+"""Workspace structure and derived project permissions for agent compositions."""
 
 from dataclasses import dataclass
+from glob import escape
 from pathlib import Path
 from typing import TypedDict
 
@@ -77,10 +78,10 @@ def _within(root: Path, name: str) -> Path:
 
 @dataclass(frozen=True)
 class Workspace:
-    """Named read-only, shared, and project areas; names do not grant permissions.
+    """Named read-only, shared, and project areas with derived project permissions.
 
-    Constructing a workspace has no filesystem side effects. Hosts decide when
-    to create directories and which tools may read or write them.
+    Project.permissions describes the area's read/write boundaries for tools.
+    Constructing a workspace has no filesystem side effects; hosts create directories.
     """
 
     root: Path
@@ -155,6 +156,34 @@ class Project:
     def root(self) -> Path:
         """Return this project's artifact root."""
         return self.workspace.project_dir(self.slug)
+
+    @property
+    def permissions(self) -> WorkspacePermissions:
+        """Read inside the workspace, write this project, and confirm shared writes.
+
+        Other writes and all paths outside the workspace are denied. Deriving
+        the tool policy creates no directories and starts no runtime work.
+        Configured folder names are literal, including glob metacharacters.
+        """
+        workspace = self.workspace
+        writes = {Operation.CREATE, Operation.DELETE}
+        project_pattern = escape(f"{workspace.projects}/{self.slug}")
+        shared_pattern = escape(workspace.shared)
+        shared = (
+            PermissionRule(shared_pattern, writes),
+            PermissionRule(f"{shared_pattern}/**", writes),
+        )
+        return WorkspacePermissions(
+            base=workspace.resolved_root,
+            allow=(
+                PermissionRule("**", {Operation.READ}),
+                PermissionRule(project_pattern, writes),
+                PermissionRule(f"{project_pattern}/**", writes),
+                *shared,
+            ),
+            ask=shared,
+            takes_precedence=ActionVerdict.allow,
+        )
 
     def _persistence_dir(self, path: Path) -> Path:
         """Resolve explicit absolute storage or validate project-relative storage."""

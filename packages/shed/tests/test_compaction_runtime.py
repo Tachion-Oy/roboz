@@ -24,7 +24,10 @@ from roboz.llm import LLMEndpoint, MockLLMEndpoint, estimate_conversation_tokens
 from roboz.models import MessageKind
 from roboz.runtime import EventPipe
 from roboz.runtime.events import MessageEvent, RuntimeEvent
-from roboz.tooling import ExternalDependencyKind, LazyExternalDependency
+from roboz.dependencies import (
+    ExternalDependencyKind,
+    LazyExternalDependency,
+)
 
 
 def _messages():

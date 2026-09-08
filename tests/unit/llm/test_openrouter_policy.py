@@ -3,7 +3,10 @@
 from typing import Final
 
 from roboz.llm import LLMEndpoint, with_openrouter_policy
-from roboz.tooling import ExternalDependencyKind, LazyExternalDependency
+from roboz.dependencies import (
+    ExternalDependencyKind,
+    LazyExternalDependency,
+)
 
 _API_NAME: Final[str] = "openrouter"
 _MODEL_NAME: Final[str] = "z-ai/glm-5.3"

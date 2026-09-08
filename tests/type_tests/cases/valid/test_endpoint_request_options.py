@@ -3,7 +3,10 @@ from roboz.llm import EndpointLike, with_openrouter_policy
 from typing import assert_type
 
 from roboz.llm import LLMEndpoint, with_request_options
-from roboz.tooling import ExternalDependencyKind, LazyExternalDependency
+from roboz.dependencies import (
+    ExternalDependencyKind,
+    LazyExternalDependency,
+)
 
 
 endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")

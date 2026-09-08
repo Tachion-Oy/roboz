@@ -12,7 +12,7 @@ from roboz.models import Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
 from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
 from roboz.tooling.context import Ctx
-from roboz.tooling.dependencies import (
+from roboz.dependencies import (
     ExternalDependency,
     ExternalDependencySource,
     dedupe_external_dependencies,

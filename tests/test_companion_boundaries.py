@@ -21,7 +21,9 @@ def test_shed_library_does_not_import_integrations():
         tree = ast.parse(path.read_text())
         imports = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
+            # Relative imports refer to modules within Shed, even when a local
+            # module shares its name with a forbidden external integration.
+            if isinstance(node, ast.ImportFrom) and node.level == 0:
                 imports.append(node.module or "")
             elif isinstance(node, ast.Import):
                 imports.extend(alias.name for alias in node.names)

@@ -129,46 +129,42 @@ needed. Already-bound `Capability(...)` inputs are returned unchanged.
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
-from roboshed.agents import librarian, orchestrator
-from roboshed.capabilities import (
-    ArtifactRetention, ConversationSnapshots, FileCommands, FileEditing,
-    MaintenanceCadence, MemoryConsolidation,
-)
-from roboshed.deployments.robosprawl import AgenticFactory
-from roboshed.workspace import Project, Workspace, WorkspacePermissions
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.deployments.robosprawl import RoboSprawl
+from roboshed.workspace import Project, Workspace
 
 project = Project(Workspace(Path("./data")), "example")
-permissions = WorkspacePermissions.local(project.root)
-root = orchestrator(
-    agent_endpoint=MockLLMEndpoint([]),
-    capabilities=(FileCommands(permissions), FileEditing(permissions)),
+deployment = RoboSprawl(
+    capabilities=(FileCommands, FileEditing),
+    memory_endpoint=MockLLMEndpoint([]),
 )
-memory_agent = librarian(
-    agent_endpoint=MockLLMEndpoint([]),
-    capabilities=(
-        ConversationSnapshots(project, root.agent_names()),
-        MemoryConsolidation(project, root.agent_names()),
-        ArtifactRetention(project),
-        MaintenanceCadence(project, root.agent_names()),
-    ),
-)
-factory = AgenticFactory(project=project, orchestrator=root, librarian=memory_agent)
+factory = deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
 agent, background_agents = factory.build()
 ```
 
+`RoboSprawl` selects the persistent orchestrator, derives project locations, and
+composes Librarian snapshotting, consolidation, retention, and 120-second cadence
+in that order. Watched names include nested specialists. Consumers select a
+sequence of configured capabilities or permission factories, a memory endpoint, optional specialists,
+and their interaction mode. The `project_context` template supplies the actual paths from `{project}` at
+construction time. Select the `robosprawl` skill for static orientation and HUD
+guidance; the skill does not embed a deployment’s paths. Permission factories run for every recipe invocation, binding fresh capabilities
+to the current project. Override `librarian_capabilities` with a callable accepting
+`(project, names)` and returning the desired capability sequence. It runs once
+per recipe invocation; `names` is the frozen set of recursive foreground agent
+names. The returned order is preserved. Supply at least one capability that
+provides a default tool: the Librarian runs a non-agentic maintenance pipeline.
+
+The recipe also works directly with `DeploymentFactory` for repeated host runs.
 This example constructs the graph without running it. Configure endpoints or
 scripted responses before calling `agent.invoke()`. Construction creates no
 folders, materializes no providers, and starts no threads.
 
-Both role inputs are ordinary `AgentDefinition` objects. `orchestrator()` supplies
-the persistent collaboration prompt and stop tool. `librarian()` selects a
-deterministic loop and accepts caller-selected capabilities in execution order.
-The example composes snapshotting, consolidation, retention, and cadence from
-`roboshed.capabilities`; each owns its settings and builds its own tools.
-Supply automatic work and a stopping policy. `MaintenanceCadence` goes last: it
-waits while watched conversations are active and stops when the project is idle.
-Capabilities can also be used independently, such as retention with cadence and
-no model. Derive the watch set from `root.agent_names()` to include specialists.
+For custom root or maintenance behavior, `AgenticFactory` accepts ordinary
+`AgentDefinition` objects. `orchestrator()` supplies the persistent collaboration
+prompt and stop tool. `librarian()` accepts caller-selected capabilities in
+execution order. Individual maintenance capabilities remain independently usable;
+put `MaintenanceCadence` last and derive watched names from `root.agent_names()`.
 
 The orchestrator stays available across tasks and stops when the user asks,
 including standing instructions. It selects no memory location. Use a plain
@@ -276,3 +272,92 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 No compatibility constructors, import shims, or generic `AgentBundle` wrapper are provided.
 Conversation, snapshot, memory, and HTTP formats remain unchanged. This is an
 unreleased breaking API change; versions and publication are separate work.
+
+
+## Repeated construction for any host
+
+`DeploymentFactory` evaluates a `DeploymentRecipe` once per call, then builds the
+returned `AgenticFactory`. The recipe receives a project and a live orchestrator
+endpoint reference. It controls capability choices, prompts, interaction mode,
+and dependency allocation. A CLI and a web server can consume the same factory:
+
+```python
+from roboshed.agents import orchestrator
+from roboshed.deployments.robosprawl import AgenticFactory, DeploymentFactory
+from roboz.runtime import Output
+
+
+def recipe(project, *, orchestrator_endpoint):
+    return AgenticFactory(
+        project=project,
+        orchestrator=orchestrator(
+            agent_endpoint=orchestrator_endpoint,
+            interaction_mode=Output.CLI,
+        ),
+    )
+
+
+factory = DeploymentFactory(recipe)
+bundle = factory(project, endpoint_getter=lambda: selected_endpoint, event_sinks=())
+bundle.agent.invoke()
+```
+
+The shared `RunFactory` protocol is the single host construction contract:
+`(project, *, endpoint_getter, event_sinks) -> RoboSprawlBundle`. Constructing a
+bundle never invokes its agents, starts threads, or creates persistence files.
+Hosts retain the returned background agents and own invocation and shutdown.
+
+The recipe is evaluated anew for each run. Allocate mutable scripted endpoints
+and other run-owned inputs inside it. Captured lazy production endpoints remain
+shared deliberately; their targets retain responsibility for materialization and
+caching. The factory neither deep-copies supplied objects nor closes borrowed
+clients. An optional `event_sink_factory` allocates extra sinks once per build;
+these precede supplied host sinks. Capabilities receive the constructed pipe, so
+runtime controls can be bound before invocation without post-build patching.
+
+`roboz.DependencyRoute(getter)` delegates materialization and discovery to the
+current target. It accepts concrete dependencies and dependency references and
+never has a separate dependency identity. Root inference and capabilities using
+the default endpoint follow the same route. Independently supplied memory
+endpoints retain their own selection.
+
+`roboz.llm.ModelSelector` (defined in `roboz.llm.endpoints`) accepts a labeled
+catalog and default
+lazy endpoint. Selection validates identities under a lock without constructing
+clients. Consumers decide what the catalog contains and whether changes apply to
+new runs or a particular existing run.
+
+## Dependency inspection and health
+
+Use `inspect_dependencies` from the shared deployment profile to build against
+a temporary project with the configured folder names, collect foreground and
+background dependencies, and bind exact registrations. Supply selectable but
+currently unused models through `additional_dependencies`. Temporary inspection
+storage is removed on success and failure.
+
+`roboz.dependencies` owns `DependencyRegistration`, `BoundDependency`,
+`DependencyContractError`, and `bind_dependencies` for exact ID/kind
+binding. Explicit registrations must equal the discovered graph; duplicate,
+missing, extra, or mismatched registrations are rejected before checks run.
+When registrations are omitted, only executable and model endpoint checks are
+inferred; custom kinds require explicit registrations.
+
+`roboshed.dependency_health` provides the monitor, sanitized records and reason
+codes, and executable, OpenAI-compatible discovery, and service-owned protocol
+probes. These inspect protocols without importing provider SDKs. The monitor
+bounds concurrency and prevents overlapping checks after observation timeouts.
+An observation timeout leaves an active checker holding its concurrency slot
+until it finishes; probes should bound their own I/O. Cancelling a thread-backed
+check cannot terminate its worker. Unexpected observation failures are reported
+with sanitized diagnostics and retried on the next interval. Calling `start()`
+also restarts a scheduler task that has exited.
+Consumers own scheduler start/stop and readiness decisions; an unavailable
+resource does not automatically make an application unready.
+
+Project-scoped tools can use `FileCommands(project.permissions)` and
+`FileEditing(project.permissions)`. The shared policy allows workspace reads
+and writes in the current project, asks before shared-area writes, and denies
+other writes or paths outside the workspace. Policy construction has no filesystem
+side effects; hosts still own directory preparation and tool invocation.
+Project slugs and configured workspace folder names are literal paths: wildcard
+characters in their names do not expand the derived permission rules.

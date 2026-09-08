@@ -7,7 +7,7 @@ import pytest
 from roboz import Ctx
 from roboz.models import Message, Str
 from roboz.tooling.decorators import factory, tool
-from roboz.tooling.dependencies import (
+from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependencyKind,
     LazyExternalDependency,

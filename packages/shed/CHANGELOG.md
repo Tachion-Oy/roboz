@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Treat wildcard characters in project and workspace names literally when
+  deriving permissions, preventing writes from extending into other directories.
+- Keep dependency health scheduling alive after observation failures and allow
+  a stopped scheduler task to restart, with sanitized diagnostics. Infer checker
+  registrations from the first dependency for each ID, matching core binding.
+
+- Allow `RoboSprawl.librarian_capabilities` to configure maintenance per project
+  and recursive foreground names. The default remains snapshots, consolidation,
+  retention, and a 120-second cadence, in that order.
+
+- Add the `robosprawl` orientation skill following PeffaHub’s hub, Librarian, and HUD guidance. Resolve actual paths separately through `RoboSprawl.project_context`; obsolete safe-script behavior is omitted.
+
+- Configure `RoboSprawl` with a capability sequence and project instruction template; permission factories bind during each recipe invocation, so consumers need no configuration callbacks.
+
+- Move `ModelSelector` from `roboshed.deployments.models` to
+  `roboz.llm.endpoints`, also exported by `roboz.llm`. Update imports; selection
+  behavior is unchanged. See `docs/context-migration.md`.
+
+- Move registration and binding from `roboshed.dependencies.contract` to
+  `roboz.dependencies`, and health checks from `roboshed.dependencies.health` to
+  `roboshed.dependency_health`. Update imports to these paths; the former
+  dependency package is removed. See `docs/context-migration.md`.
+
+- Add the `RoboSprawl` deployment recipe: consumers select project capabilities and models while shared composition derives project instructions, recursive agent names, and Librarian maintenance. Host-specific instructions and interaction channels remain explicit inputs.
+
+- Derive standard workspace boundaries with `Project.permissions`: workspace reads, project writes, confirmation for shared writes, and denial elsewhere. No application permission factory is needed.
+
+- Add recipe-driven `DeploymentFactory`, reusable `RunFactory` and model selection, isolated dependency inspection, and exact registrations with safe health monitoring. Recipes explicitly own dependency reuse; construction starts no agents or background tasks.
+
 - Breaking: move email input models into `roboshed.tools.email.inputs`; they
   remain exported from `roboshed.tools.email`. Remove `roboshed.assistant`,
   `roboshed.demo`, and the `roboz-demo` command. Compose file agents directly

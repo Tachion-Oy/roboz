@@ -5,7 +5,10 @@ from typing import Final, Literal, overload
 
 from roboz.llm.binding import with_request_options
 from roboz.llm.endpoints import JSONValue, LLMEndpoint, RequestOptions
-from roboz.tooling import ExternalDependencyReference, LazyExternalDependency
+from roboz.dependencies import (
+    ExternalDependencyReference,
+    LazyExternalDependency,
+)
 
 type OpenRouterReasoningEffort = Literal["low", "high", "max"]
 type OpenRouterSort = Literal["throughput"]

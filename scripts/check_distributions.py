@@ -71,6 +71,21 @@ def wheels_for(dist: Path, *, core_only: bool = False) -> dict[str, Path]:
 CORE_SMOKE = """
 from importlib.util import find_spec
 import roboz as rz
+from roboz.dependencies import DependencyRegistration, DependencyRoute, ExecutableDependency, ExternalDependencyKind, LazyExternalDependency, bind_dependencies
+from roboz.llm import LLMEndpoint, ModelSelector
+assert find_spec("roboz.tooling.dependencies") is None
+resource = ExecutableDependency("python")
+route = DependencyRoute(lambda: resource)
+assert route.materialize() is resource
+assert route.external_dependencies() == (resource,)
+registration = DependencyRegistration(resource.dependency_id, resource.kind, lambda dependency: True)
+bound, = bind_dependencies([resource], [registration])
+assert bound.dependency is resource and bound.check is registration.check
+def unexpected_resolution():
+    raise AssertionError("selection must not construct clients")
+model = LazyExternalDependency[LLMEndpoint]("model:test:one", ExternalDependencyKind.MODEL_ENDPOINT, {}, unexpected_resolution)
+selector = ModelSelector({"One": model}, default=model)
+assert selector.selected_endpoint is model
 assert all(find_spec(n) is None for n in ("roboz.agents", "roboz.workspace", "roboz.tools.snapshot_conversations", "roboz.tools.compactification"))
 from roboz.llm import MockLLMEndpoint
 assert all(find_spec(n) is None for n in ('roboshed', 'roboz_endpoints', 'roboz_proton_bridge', 'openai', 'pydantic_settings', 'fastapi'))
@@ -220,7 +235,7 @@ from importlib.util import find_spec
 import importlib, pkgutil, roboshed
 for module in pkgutil.walk_packages(roboshed.__path__, roboshed.__name__ + '.'):
     importlib.import_module(module.name)
-assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_endpoints', 'roboz_proton_bridge'))
+assert all(find_spec(n) is None for n in ('openai', 'pydantic_settings', 'roboz_endpoints', 'roboz_proton_bridge', 'fastapi', 'robosprawl'))
 """)
             workflow = root / "shed_workflows.py"
             shutil.copyfile(ROOT / "tests/e2e/test_shed_workflows.py", workflow)

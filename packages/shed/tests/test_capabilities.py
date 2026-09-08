@@ -54,7 +54,7 @@ def test_compaction_without_any_endpoint_fails_before_starting_work():
 
 def test_compaction_preserves_live_lazy_endpoint_selection():
     from roboz.llm import LLMEndpoint
-    from roboz.tooling.dependencies import (
+    from roboz.dependencies import (
         ExternalDependencyReference,
         LazyExternalDependency,
     )
