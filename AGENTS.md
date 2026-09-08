@@ -11,7 +11,7 @@ This workspace contains four independently versioned distributions:
 | --- | --- | --- |
 | `roboz` | `roboz` | `CHANGELOG.md` |
 | `roboshed` | `roboshed` | `packages/shed/CHANGELOG.md` |
-| `roboz-openai` | `roboz_openai` | `packages/openai/CHANGELOG.md` |
+| `roboz-endpoints` | `roboz_endpoints` | `packages/endpoints/CHANGELOG.md` |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `packages/proton-bridge/CHANGELOG.md` |
 
 Before editing, inspect the working tree and identify every affected

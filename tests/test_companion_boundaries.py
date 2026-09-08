@@ -8,11 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_shed_library_does_not_import_integrations():
     forbidden = {
         "openai",
-        "roboz_openai",
+        "roboz_endpoints",
         "roboz_proton_bridge",
-        "peffa",
-        "peffashed",
-        "peffahub",
         "firecrawl",
         "pydantic_settings",
         "groq",
@@ -34,7 +31,7 @@ def test_shed_library_does_not_import_integrations():
 def test_each_companion_has_only_its_own_required_dependencies():
     expected = {
         "shed": {"roboz", "pydantic"},
-        "openai": {"roboz", "openai"},
+        "endpoints": {"roboz"},
         "proton-bridge": {"roboz", "roboshed", "pydantic", "pydantic-settings"},
     }
     for directory, dependencies in expected.items():
@@ -45,3 +42,5 @@ def test_each_companion_has_only_its_own_required_dependencies():
             requirement.split(">=")[0] for requirement in project["dependencies"]
         } == dependencies
         assert "roboz>=0.1.1,<0.2.0" in project["dependencies"]
+        if directory == "endpoints":
+            assert project["optional-dependencies"] == {"openai": ["openai>=2.8.1,<3"]}

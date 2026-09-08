@@ -6,7 +6,7 @@ This repository builds four independently versioned distributions:
 | --- | --- | --- | --- |
 | `roboz` | `roboz` | `0.1.1` (pre-alpha project) | Agent, tool, skill, control, event, and persistence primitives |
 | `roboshed` | `roboshed` | `0.1.0a1` | Agent factories, workspace, capabilities, memory, guarded files, and neutral email tools |
-| `roboz-openai` | `roboz_openai` | `0.1.0a1` | OpenAI-compatible Chat Completions and OpenRouter constructors |
+| `roboz-endpoints` | `roboz_endpoints` | `0.1.0a1` | Model catalogues and optional SDK adapters |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `0.1.0b1` | Proton Bridge mailbox and draft adapter |
 
 Core installs only Pydantic, python-dotenv, and Rich. Companions require core
@@ -29,6 +29,8 @@ uv sync --locked --dev
 uv build --all-packages --out-dir dist/first-slice
 uv venv /tmp/roboz-trial --python 3.13
 uv pip install --python /tmp/roboz-trial/bin/python dist/first-slice/*.whl
+uv pip install --python /tmp/roboz-trial/bin/python \
+  'dist/first-slice/roboz_endpoints-0.1.0a1-py3-none-any.whl[openai]'
 ```
 
 Use a new output directory if yours contains wheels from older versions. For
@@ -44,12 +46,24 @@ used. The core source distribution excludes companion source trees.
 
 ## Models and email
 
-Configure models through `roboz_openai.openrouter_endpoint` or
-`roboz_openai.openai_endpoint`, supplying a model ID and context limit.
-Pass the resulting endpoint to an agent definition or an individual capability.
-See the [OpenAI adapter guide](../packages/openai/README.md) and
-[Proton guide](../packages/proton-bridge/README.md) for provider configuration.
-Applications own model selection, credentials, email signatures, and startup.
+Install `roboz-endpoints[openai]` to use the initial OpenRouter, Cerebras, and Groq
+models. This installs core automatically. The base companion supports catalogue
+inspection without an SDK; there is no endpoint-related extra on core.
+
+```python
+from roboz_endpoints import openrouter
+from roboz.llm import with_openrouter_policy
+
+endpoint = with_openrouter_policy(openrouter.z_ai__glm_5_3, reasoning_effort="low")
+```
+
+Pass the endpoint to an agent definition or an individual capability. For manual
+routes, configure `roboz_endpoints.adapters.openai_compatible.OpenAICompatibleAdapter`
+and use its `chat_endpoint` or `transcription_endpoint` methods. See the
+[endpoint guide](../packages/endpoints/README.md)
+for all four models, credentials, client ownership, and the breaking migration
+from `roboz-openai`. See the [Proton guide](../packages/proton-bridge/README.md)
+for email configuration. Applications own model selection and startup.
 
 ## Compose an application
 
@@ -98,7 +112,7 @@ After publication:
 
 ```bash
 pip install roboz
-pip install 'roboz[shed,openai]'
+pip install 'roboz[shed]' 'roboz-endpoints[openai]'
 pip install 'roboz[proton-bridge-beta]'
 pip install 'roboz-proton-bridge==0.1.0b1'
 ```
@@ -127,6 +141,6 @@ capabilities. `roboz` supplies the primitives used to build them.
 It consumes these distributions. Personal signatures, Tero connections, and
 business-specific defaults remain configuration or local extensions.
 
-Document backends, packaged UI delivery, other providers, Firecrawl, timesheets,
+Document backends, packaged UI delivery, additional SDK adapters, Firecrawl, timesheets,
 and Hub migration remain deferred until this installation has been tried.
 Codex is excluded.

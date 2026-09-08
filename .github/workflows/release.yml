@@ -1,7 +1,7 @@
 name: Release one Python package
 on:
   push:
-    tags: ['roboz-v*', 'roboshed-v*', 'roboz-openai-v*', 'roboz-proton-bridge-v*']
+    tags: ['roboz-v*', 'roboshed-v*', 'roboz-endpoints-v*', 'roboz-proton-bridge-v*']
   workflow_dispatch:
     inputs:
       package:
@@ -11,7 +11,7 @@ on:
         options:
           - roboz
           - roboshed
-          - roboz-openai
+          - roboz-endpoints
           - roboz-proton-bridge
 permissions:
   contents: read

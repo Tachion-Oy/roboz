@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
 
-from scripts.check_distributions import CORE_SMOKE
+from scripts.check_distributions import CORE_SMOKE, ENDPOINTS_BASE_SMOKE, ENDPOINTS_SMOKE
 from scripts.release_package import PROJECTS, ROOT, project_version
 
 INDEXES = {
@@ -263,6 +263,11 @@ for name in {[name, *workspace_dependencies(name)]!r}:
 """)
     if name == "roboz":
         check(CORE_SMOKE)
+    if name == "roboz-endpoints":
+        check(ENDPOINTS_BASE_SMOKE)
+        install(f"{wheel}[openai]")
+        run(str(python), "-I", "-m", "pip", "--isolated", "check")
+        check(ENDPOINTS_SMOKE)
     if name in {"roboz", "roboshed"}:
         source = (
             "test_core_workflows.py" if name == "roboz" else "test_shed_workflows.py"
@@ -274,7 +279,7 @@ for name in {[name, *workspace_dependencies(name)]!r}:
         # Exercise real adapters with scripted HTTP/IMAP, without provider credentials.
         source = (
             "test_endpoints.py"
-            if name == "roboz-openai"
+            if name == "roboz-endpoints"
             else "test_proton_bridge_email.py"
         )
         contract = root / source

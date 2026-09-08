@@ -189,7 +189,9 @@ site:
 
 ```python
 from roboz.llm import with_request_options
+from roboz_endpoints import openrouter
 
+catalog_endpoint = openrouter.z_ai__glm_5_3
 planning_endpoint = with_request_options(
     catalog_endpoint,
     extra_body={"reasoning": {"effort": "high"}},

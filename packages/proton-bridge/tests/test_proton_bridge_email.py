@@ -84,7 +84,7 @@ class _FakeImap:
 
     def uid(self, command: str, *args: object) -> tuple[str, list[bytes]]:
         if command == "SEARCH":
-            if args[:3] == (None, "HEADER", "X-Peffa-Request-Id"):
+            if args[:3] == (None, "HEADER", "X-Roboz-Request-Id"):
                 return "OK", [self.existing_uids]
             self.search_calls.append(args)
             return "OK", [self.search_uids]
@@ -180,13 +180,13 @@ def _signature(*, warnings: tuple[str, ...] = ()) -> EmailSignature:
         plain_text="Tommi Markkanen\nCTO\nTachion",
         html=(
             "<strong>Tommi Markkanen</strong><br>CTO<br>"
-            '<img src="cid:peffahub-signature-image" alt="Tachion">'
+            '<img src="cid:roboz-signature-image" alt="Tachion">'
         ),
         inline_image=EmailInlineImage(
             data=b"signature image",
             filename="tachion-wordmark-email-2x.png",
             content_type="image/png",
-            content_id="peffahub-signature-image",
+            content_id="roboz-signature-image",
         ),
         warnings=warnings,
     )
@@ -246,7 +246,7 @@ def test_proton_bridge_provider_creates_a_complete_sender_side_draft() -> None:
     assert "To: person@example.com" in message
     assert "Cc: copy@example.com" in message
     assert "Bcc: hidden@example.com" in message
-    assert "X-Peffa-Request-Id: request-1" in message
+    assert "X-Roboz-Request-Id: request-1" in message
 
 
 def test_proton_bridge_embeds_signature_in_plain_and_html_draft() -> None:
@@ -265,10 +265,10 @@ def test_proton_bridge_embeds_signature_in_plain_and_html_draft() -> None:
     html = html_body.get_content()
     assert "Draft body" in html
     assert "Tommi Markkanen" in html
-    assert 'src="cid:peffahub-signature-image"' in html
+    assert 'src="cid:roboz-signature-image"' in html
     (image,) = [part for part in message.walk() if part["Content-ID"] is not None]
     assert image.get_content_type() == "image/png"
-    assert image["Content-ID"] == "<peffahub-signature-image>"
+    assert image["Content-ID"] == "<roboz-signature-image>"
     assert image.get_content_disposition() == "inline"
     assert image.get_filename() == "tachion-wordmark-email-2x.png"
     assert image.get_payload(decode=True) == b"signature image"

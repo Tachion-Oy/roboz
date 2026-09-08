@@ -8,7 +8,7 @@ _REPOSITORY_ROOT = Path(__file__).parents[1]
 _SOURCE_ROOTS = (
     _REPOSITORY_ROOT / "src",
     _REPOSITORY_ROOT / "packages" / "shed" / "src",
-    _REPOSITORY_ROOT / "packages" / "openai" / "src",
+    _REPOSITORY_ROOT / "packages" / "endpoints" / "src",
     _REPOSITORY_ROOT / "packages" / "proton-bridge" / "src",
 )
 

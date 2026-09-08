@@ -85,8 +85,8 @@ late provider results are ignored without forcibly killing worker threads.
 Summarization messages and model-call events use the supplied pipe.
 
 The public tool name and persisted caller are `compactify_messages_when_needed`.
-This tool incorporates the continuation prompts used by PeffaHub/PeffaShed while
-retaining RoboSprawl's caller name. The old `robosprawl.compaction` import is
+This tool owns the shared continuation prompts and retains RoboSprawl's caller
+name. The old `robosprawl.compaction` import is
 replaced by `roboshed.tools`. Shed also owns the shared summarizer and Librarian
 memory pipeline; core provides the mechanisms they use.
 

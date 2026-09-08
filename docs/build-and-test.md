@@ -20,7 +20,12 @@ The last command installs built wheels into temporary environments outside the
 checkout and can download dependencies. It checks core, each companion, and combined extras in separate pip environments.
 It verifies import locations, dependency consistency, metadata, licenses, and
 `py.typed`, then repeats installations with wheels rebuilt from source archives
-using `uv build --no-sources`. Providers are scripted; no credentials are needed.
+using `uv build --no-sources`. Endpoint installs cover both the SDK-free base and
+the `[openai]` extra; the latter runs real SDK contracts with simulated HTTP.
+Both endpoint installations also run consumer typing checks against the installed
+package, covering named model types and invalid model use.
+Providers are scripted; no credentials are needed. Use the CI uv version
+(currently 0.12.10) when regenerating `uv.lock` to avoid unrelated lock-format changes.
 
 This page centralizes local build/test validation for contributors.
 It mirrors the repository CI flow.
@@ -50,6 +55,30 @@ uv sync --locked --dev
 Follow [`testing-practices.md`](testing-practices.md) when adding or changing
 tests. The commands below validate the suite; they do not replace the need for
 focused tests with minimal, well-scoped mocking.
+
+### Endpoint catalogue generation
+
+Model records in `packages/endpoints/src/roboz_endpoints/inventory.py` are the
+source for runtime model attributes and generated typing declarations that Pylance
+reads. After changing those records, or public catalogue signatures or docstrings,
+run from the repository root:
+
+```bash
+uv run python scripts/generate_endpoint_catalog.py
+uv run python scripts/generate_endpoint_catalog.py --check
+```
+
+Review and commit the inventory and generated `catalog.pyi`, `inventory.pyi`,
+and `__init__.pyi` together. Do not maintain individual model properties or edit
+these generated files by hand. Provider definitions also belong in the inventory;
+the generator discovers them from its `CATALOGS` mapping. Update the endpoint
+README's model table and relevant runtime/typing tests with model changes.
+
+`--check` fails on missing or stale output without writing files. The normal
+pytest suite checks freshness, including in CI. Wheels and source archives ship
+the generated files; imports and builds do not regenerate them, and consumers need
+no generator or editor configuration. See the
+[endpoint maintenance instructions](../packages/endpoints/README.md#maintain-the-inventory).
 
 ### Unit test suite
 
@@ -148,14 +177,14 @@ GitHub Actions or nonlocal platforms have passed.
 Run the statement coverage gates independently for each distribution:
 
 ```bash
-uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge \
+uv run pytest --cov=roboshed --cov=roboz_endpoints --cov=roboz_proton_bridge \
   --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json \
   --junitxml=reports/pytest.xml
 uv run python scripts/check_coverage.py reports/coverage.json
 uv run pytest tests/e2e --no-cov
 ```
 
-Floors are core 95%, Shed 90%, OpenAI 90%, and Proton Bridge 89%. They are
+Floors are core 95%, Shed 90%, Endpoints 90%, and Proton Bridge 89%. They are
 statement coverage, compared without rounding; high coverage in another package
 cannot compensate for a failure. Missing package coverage also fails.
 
@@ -184,10 +213,10 @@ Check preparation locally before committing or tagging (use the version you
 actually prepared):
 
 ```bash
-uv run python scripts/release_package.py --package roboz-openai --check
+uv run python scripts/release_package.py --package roboz-endpoints --check
 uv lock --check
 # Example after preparing version 0.1.0a2:
-uv run python scripts/release_package.py roboz-openai-v0.1.0a2 --check
+uv run python scripts/release_package.py roboz-endpoints-v0.1.0a2 --check
 ```
 
 The release workflow first checks preparation and lockfile consistency. For a
@@ -206,7 +235,7 @@ downloads and checks it, then ends. It has no input that enables production.
 Rehearsals use declared versions, including explicitly chosen development or
 prerelease versions on a rehearsal branch. They do not generate temporary versions.
 Stage the required Roboz packages first, at the versions declared in the rehearsal
-checkout: core before Shed/OpenAI, then core and Shed before Proton Bridge.
+checkout: core before Shed/Endpoints, then core and Shed before Proton Bridge.
 The checker downloads those dependency wheels explicitly from TestPyPI and uses
 PyPI only for third-party dependencies. It does not use a combined index search
 or the candidate bundle to satisfy Roboz dependencies. Pip still checks that
@@ -221,7 +250,7 @@ Preparation → full verification → select package → TestPyPI upload
 ```
 
 Before production upload, the selected TestPyPI wheel must install and pass its
-contracts with dependencies from real PyPI. For example, OpenAI cannot rely on
+contracts with dependencies from real PyPI. For example, Endpoints cannot rely on
 an unpublished core API. Publish required dependency releases first. The final
 upload uses the same selected wheel and source archive, with no intervening build.
 
@@ -229,7 +258,7 @@ Both index checks download the exact wheel and source archive and compare their
 SHA-256 hashes with the verified candidates. The wheel is installed into a new
 environment outside the checkout, with pip configuration/source overrides cleared.
 Checks cover `pip check`, version/import locations, core or Shed workflows and
-the Shed CLI, or the OpenAI/Proton adapter contracts using fake HTTP/IMAP services.
+the Shed CLI, or the Endpoints/Proton adapter contracts using fake HTTP/IMAP services.
 The dependency installation is independent of `uv.lock`; default development
 and CI tests continue to use the lockfile.
 
@@ -246,9 +275,9 @@ The index checker can also be run against saved candidate artifacts:
 
 ```bash
 # Anonymous read-only checks; these commands never upload.
-uv run python -m scripts.check_published_package --package roboz-openai \
+uv run python -m scripts.check_published_package --package roboz-endpoints \
   --index testpypi --dependency-index testpypi --candidates "$release_dir"
-uv run python -m scripts.check_published_package --package roboz-openai \
+uv run python -m scripts.check_published_package --package roboz-endpoints \
   --index pypi --dependency-index pypi --candidates "$release_dir"
 ```
 

@@ -31,7 +31,6 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 shed = ["roboshed>=0.1.0a1,<0.2.0"]
-openai = ["roboz-openai>=0.1.0a1,<0.2.0"]
 proton-bridge-beta = ["roboz-proton-bridge>=0.1.0b1,<0.2.0"]
 
 [tool.uv.workspace]
@@ -40,7 +39,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 roboz = { workspace = true }
 roboshed = { workspace = true }
-roboz-openai = { workspace = true }
+roboz-endpoints = { workspace = true }
 roboz-proton-bridge = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
@@ -58,7 +57,7 @@ Documentation = "https://github.com/Tachion-Oy/roboz/tree/main/docs"
 [tool.pytest.ini_options]
 addopts = "--cov=roboz --cov-report=term-missing --ignore=tests/type_tests"
 python_files = ["test_*.py", "tests_*.py"]
-testpaths = ["tests", "packages/shed/tests", "packages/openai/tests", "packages/proton-bridge/tests"]
+testpaths = ["tests", "packages/shed/tests", "packages/endpoints/tests", "packages/proton-bridge/tests"]
 
 [tool.ruff.lint]
 select = ["D", "E4", "E7", "E9", "F"]
@@ -75,7 +74,7 @@ convention = "google"
 [dependency-groups]
 dev = [
     "roboshed",
-    "roboz-openai",
+    "roboz-endpoints[openai]",
     "roboz-proton-bridge",
     "pyright>=1.1.411",
     "pytest>=7.0",

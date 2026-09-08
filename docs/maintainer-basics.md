@@ -14,10 +14,10 @@ of installation). Python's import names are a separate thing:
 | --- | --- | --- |
 | `roboz` | `roboz` | Reusable primitives |
 | `roboshed` | `roboshed` | Agent factories, workspace, capabilities, and ready-made tools |
-| `roboz-openai` | `roboz_openai` | Model-provider adapter |
+| `roboz-endpoints` | `roboz_endpoints` | Model catalogues and optional SDK adapters |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | Optional email adapter |
 
-After publication, `pip install 'roboz[shed,openai]'` requests extra
+After publication, `pip install 'roboz[shed]' 'roboz-endpoints[openai]'` requests extra
 dependencies. An **extra is a dependency shortcut**, not a separately versioned
 plugin. Separate distributions let Proton remain beta without making every
 package beta. Installation does not activate an adapter or install the external
