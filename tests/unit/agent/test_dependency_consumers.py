@@ -1,7 +1,7 @@
 """Dependency contracts exercised by deployment registration and health consumers.
 
-The consumer below follows PeffaHub's ID/kind matching and explicit checker
-dispatch. It uses Roboz resources and needs no application checkout or service.
+The consumer below matches dependency IDs and kinds before explicitly dispatching
+checkers. It uses Roboz resources and needs no application checkout or service.
 """
 
 import subprocess

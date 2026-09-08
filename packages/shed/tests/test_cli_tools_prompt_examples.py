@@ -162,17 +162,17 @@ def prompt_workspace(tmp_path: Path) -> Path:
     src = tmp_path / "src"
     src.mkdir()
     (src / "main.py").write_text(
-        'def main():\n    print("peffa")\n\n# TODO: refine\ndef helper():\n    pass\n'
+        'def main():\n    print("sample")\n\n# TODO: refine\ndef helper():\n    pass\n'
     )
     (tmp_path / "big_file.py").write_text("".join(f"line {i}\n" for i in range(1, 501)))
     (tmp_path / "file.txt").write_text("alpha\nbeta\npattern line\n")
     (tmp_path / "old.py").write_text("a\n")
     (tmp_path / "new.py").write_text("b\n")
-    (tmp_path / "peffa").mkdir()
+    (tmp_path / "sample").mkdir()
     (tmp_path / "site-packages").mkdir()
     deep = (
         tmp_path
-        / "peffa_solutions"
+        / "sample_solutions"
         / "game_player"
         / "game_player_data"
         / "conversations"
@@ -255,11 +255,11 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
                 chain="pipe",
                 file_commands=[
                     RunFileCommand(
-                        command="rg", argv=["-n", "peffa|site-packages", "."]
+                        command="rg", argv=["-n", "sample|site-packages", "."]
                     )
                 ],
             ),
-            [["rg", "-n", "peffa|site-packages", "{BASE}"]],
+            [["rg", "-n", "sample|site-packages", "{BASE}"]],
         ),
         (
             RunFileCommands(
@@ -293,7 +293,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
                         argv=[
                             "-n",
                             "needle",
-                            "peffa_solutions/game_player/game_player_data/conversations/",
+                            "sample_solutions/game_player/game_player_data/conversations/",
                         ],
                     )
                 ],
@@ -303,7 +303,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
                     "rg",
                     "-n",
                     "needle",
-                    "{BASE}/peffa_solutions/game_player/game_player_data/conversations",
+                    "{BASE}/sample_solutions/game_player/game_player_data/conversations",
                 ]
             ],
         ),
@@ -330,7 +330,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
                 chain="and",
                 file_commands=[
                     RunFileCommand(
-                        command="find", argv=[".", "-type", "d", "-name", "peffa"]
+                        command="find", argv=[".", "-type", "d", "-name", "sample"]
                     ),
                     RunFileCommand(
                         command="find",
@@ -339,7 +339,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
                 ],
             ),
             [
-                ["find", "{BASE}", "-type", "d", "-name", "peffa"],
+                ["find", "{BASE}", "-type", "d", "-name", "sample"],
                 ["find", "{BASE}", "-type", "d", "-name", "site-packages"],
             ],
         ),

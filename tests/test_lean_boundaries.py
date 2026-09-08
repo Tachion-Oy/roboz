@@ -14,8 +14,6 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "firecrawl",
     "groq",
     "openai",
-    "peffahub",
-    "peffashed",
     "shed",
     "roboshed",
     "robosprawl",
