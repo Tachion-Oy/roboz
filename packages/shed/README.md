@@ -102,7 +102,9 @@ for low-level context fields and state ownership.
 
 Use `RoboSprawl` from `roboshed.deployments.robosprawl` to configure project
 capabilities and a memory endpoint. It derives the persistent orchestrator,
-project instructions, and Librarian maintenance. For repeatable CLI or server
+project instructions, and Librarian maintenance. Its `librarian_capabilities`
+callable can override the default maintenance sequence using each run's project
+and recursive foreground names. For repeatable CLI or server
 construction, pass this recipe to `DeploymentFactory`; custom recipes can return
 `AgenticFactory` directly. Use core's `roboz.llm.ModelSelector` for lazy model
 selection. Recipes allocate fresh stateful inputs while allowing

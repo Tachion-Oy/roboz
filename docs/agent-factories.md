@@ -149,7 +149,11 @@ sequence of configured capabilities or permission factories, a memory endpoint, 
 and their interaction mode. The `project_context` template supplies the actual paths from `{project}` at
 construction time. Select the `robosprawl` skill for static orientation and HUD
 guidance; the skill does not embed a deployment’s paths. Permission factories run for every recipe invocation, binding fresh capabilities
-to the current project.
+to the current project. Override `librarian_capabilities` with a callable accepting
+`(project, names)` and returning the desired capability sequence. It runs once
+per recipe invocation; `names` is the frozen set of recursive foreground agent
+names. The returned order is preserved. Supply at least one capability that
+provides a default tool: the Librarian runs a non-agentic maintenance pipeline.
 
 The recipe also works directly with `DeploymentFactory` for repeated host runs.
 This example constructs the graph without running it. Configure endpoints or

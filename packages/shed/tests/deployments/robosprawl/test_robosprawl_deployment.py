@@ -179,3 +179,49 @@ def test_recipe_binds_fresh_project_capabilities_and_default_maintenance(tmp_pat
         assert cadence.seconds == 120
         factory.build()
         assert not project.workspace.root.exists()
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_recipe_binds_custom_librarian_capabilities_per_project(tmp_path, empty):
+    from roboshed.capabilities import ArtifactRetention
+
+    seen = []
+
+    def maintenance(project, names):
+        capabilities = () if empty else (
+            MaintenanceCadence(project, names, seconds=17),
+            ArtifactRetention(project, max_log_files=8),
+        )
+        seen.append((project, names, capabilities))
+        return capabilities
+
+    child = _specialist(
+        "child", (SubAgentSpec(_specialist("nested"), "ask_nested", "Delegate."),)
+    )
+    memory = MockLLMEndpoint([])
+    deployment = RoboSprawl(
+        capabilities=(),
+        memory_endpoint=memory,
+        librarian_capabilities=maintenance,
+        subagents=(SubAgentSpec(child, "ask_child", "Delegate."),),
+    )
+    for name in ("one", "two"):
+        project = Project(Workspace(tmp_path / name), name)
+        factory = deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
+        assert seen[-1][:2] == (project, {"orchestrator", "child", "nested"})
+        assert factory.librarian is not None
+        assert factory.librarian.capabilities == seen[-1][2]
+        assert factory.librarian.agent_endpoint is memory
+        if not empty:
+            cadence, retention = factory.librarian.capabilities
+            assert cadence.seconds == 17
+            assert retention.max_log_files == 8
+            assert cadence.project is retention.project is project
+            factory.build()
+        else:
+            with pytest.raises(ValueError, match="No default tools"):
+                factory.build()
+        assert not project.workspace.root.exists()
+    assert len(seen) == 2
+    if not empty:
+        assert seen[0][2][0] is not seen[1][2][0]

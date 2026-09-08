@@ -1,10 +1,10 @@
 """Project-based root and Librarian composition for RoboSprawl."""
 
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import NamedTuple, Protocol
-import tempfile
 from pathlib import Path
+from typing import NamedTuple, Protocol
 
 from roboshed.agents import librarian, orchestrator
 from roboshed.capabilities import (
@@ -13,11 +13,12 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
+from roboshed.dependency_health import (
+    check_executable,
+    check_openai_compatible_endpoint,
+)
 from roboshed.workspace import Project, WorkspacePermissions
 from roboz.agent import Agent, run_background_agent
-from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
-from roboz.runtime import EventSink, Output, default_event_sinks
-from roboz.llm import EndpointLike, LLMEndpoint
 from roboz.dependencies import (
     BoundDependency,
     DependencyContractError,
@@ -28,10 +29,9 @@ from roboz.dependencies import (
     LazyExternalDependency,
     bind_dependencies,
 )
-from roboshed.dependency_health import (
-    check_executable,
-    check_openai_compatible_endpoint,
-)
+from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
+from roboz.llm import EndpointLike, LLMEndpoint
+from roboz.runtime import EventSink, Output, default_event_sinks
 from roboz.tooling.context import Ctx
 
 
@@ -103,6 +103,17 @@ class AgenticFactory:
         return RoboSprawlBundle(agent=root, background_agents=background)
 
 
+def _default_librarian_capabilities(
+    project: Project, names: frozenset[str]
+) -> tuple[AgentCapability, ...]:
+    return (
+        ConversationSnapshots(project, names),
+        MemoryConsolidation(project, names),
+        ArtifactRetention(project),
+        MaintenanceCadence(project, names),
+    )
+
+
 @dataclass(frozen=True, kw_only=True)
 class RoboSprawl:
     """Configure the persistent project orchestrator and its memory maintenance.
@@ -111,14 +122,20 @@ class RoboSprawl:
     instructions, recursive watched names, and the ordered Librarian maintenance
     capabilities. Supply configured capabilities or factories accepting project
     permissions, such as FileCommands and FileEditing. Project context is a format
-    string resolved from the shared Project at construction time. DeploymentFactory
-    supplies the live root endpoint per run.
+    string resolved from the shared Project at construction time. The
+    librarian_capabilities callable receives that project and the recursive
+    foreground names on each invocation, returning capabilities in execution
+    order. Its default selects snapshots, consolidation, retention, and a
+    120-second cadence. DeploymentFactory supplies the live root endpoint per run.
     """
 
     capabilities: Sequence[
         AgentCapability | Callable[[WorkspacePermissions], AgentCapability]
     ]
     memory_endpoint: EndpointLike
+    librarian_capabilities: Callable[
+        [Project, frozenset[str]], Sequence[AgentCapability]
+    ] = _default_librarian_capabilities
     subagents: tuple[SubAgentSpec, ...] = ()
     interaction_mode: Output | None = Output.CLI
     project_context: str = (
@@ -153,12 +170,7 @@ class RoboSprawl:
             orchestrator=root,
             librarian=librarian(
                 agent_endpoint=self.memory_endpoint,
-                capabilities=(
-                    ConversationSnapshots(project, names),
-                    MemoryConsolidation(project, names),
-                    ArtifactRetention(project),
-                    MaintenanceCadence(project, names),
-                ),
+                capabilities=self.librarian_capabilities(project, names),
             ),
         )
 
