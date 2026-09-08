@@ -55,7 +55,7 @@ def load_conversation_run(path: Path) -> ConversationRun | None:
         return ConversationRun.model_validate_json(
             path.read_text(encoding=UTF8_ENCODING)
         )
-    except (OSError, ValidationError):
+    except (OSError, UnicodeDecodeError, ValidationError):
         return None
 
 

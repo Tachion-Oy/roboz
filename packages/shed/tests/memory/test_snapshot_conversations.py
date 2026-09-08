@@ -647,12 +647,25 @@ def test_snapshot_translates_provider_request_failure(
         )(input=Empty(), messages=[])
 
 
-def test_snapshot_counts_invalid_and_unwatched_runs(tmp_path: Path) -> None:
+@pytest.mark.parametrize("invalid_content", [b"not json", b'{"content": "\xff"}'])
+def test_snapshot_counts_invalid_and_unwatched_runs(
+    tmp_path: Path, invalid_content: bytes
+) -> None:
     conversation_root = tmp_path / "runs"
     snapshot_root = tmp_path / "snapshots"
     invalid = conversation_root / "broken.json"
     invalid.parent.mkdir(parents=True)
-    invalid.write_text("not json", encoding="utf-8")
+    invalid.write_bytes(invalid_content)
+    _write_run(
+        conversation_root,
+        rows=[
+            _row(
+                sequence=1,
+                created_at=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+                content="Remember the valid neighboring conversation.",
+            )
+        ],
+    )
     _write_run(
         conversation_root,
         agent_name="unwatched",
@@ -669,10 +682,16 @@ def test_snapshot_counts_invalid_and_unwatched_runs(tmp_path: Path) -> None:
         _ctx(
             conversation_root=conversation_root,
             snapshot_root=snapshot_root,
-            endpoint=MockLLMEndpoint([]),
+            endpoint=MockLLMEndpoint([{"value": "Valid conversation summary."}]),
         )
     )(input=Empty(), messages=[])
 
-    assert "scanned=2" in result.value
+    assert "scanned=3" in result.value
     assert "skipped_invalid=1" in result.value
     assert "skipped_agent=1" in result.value
+    assert "created=1" in result.value
+    artifacts = list(snapshot_root.rglob("*.md"))
+    assert len(artifacts) == 1
+    assert artifacts[0].parent == snapshot_root / _DEFAULT_CONVERSATION
+    assert "Valid conversation summary." in artifacts[0].read_text(encoding="utf-8")
+    assert invalid.read_bytes() == invalid_content
