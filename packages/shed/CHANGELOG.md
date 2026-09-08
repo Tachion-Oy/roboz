@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Derive standard workspace boundaries with `Project.permissions`: workspace reads, project writes, confirmation for shared writes, and denial elsewhere. No application permission factory is needed.
+
 - Breaking: move email input models into `roboshed.tools.email.inputs`; they
   remain exported from `roboshed.tools.email`. Remove `roboshed.assistant`,
   `roboshed.demo`, and the `roboz-demo` command. Compose file agents directly

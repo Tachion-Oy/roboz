@@ -276,3 +276,9 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 No compatibility constructors, import shims, or generic `AgentBundle` wrapper are provided.
 Conversation, snapshot, memory, and HTTP formats remain unchanged. This is an
 unreleased breaking API change; versions and publication are separate work.
+
+Project-scoped tools can use `FileCommands(project.permissions)` and
+`FileEditing(project.permissions)`. The shared policy allows workspace reads
+and writes in the current project, asks before shared-area writes, and denies
+other writes or paths outside the workspace. Policy construction has no filesystem
+side effects; hosts still own directory preparation and tool invocation.
