@@ -6,6 +6,12 @@
   `roboz-endpoints[openai]` directly for the endpoint catalogue and SDK adapter;
   it installs core automatically. See `packages/endpoints/README.md` for migration.
 
+- Breaking: move dependency primitives from `roboz.tooling.dependencies` and
+  `roboz.tooling` to `roboz.dependencies`. Update those imports; the existing
+  top-level `roboz` authoring API remains available. See `docs/context-migration.md`.
+
+- Add `DependencyRoute` for live caller-owned selections. Materialization and discovery delegate to the current target without introducing a separate identity or caching the selection.
+
 - Breaking: capability builders receive `build(pipe, *, default_endpoint)`.
   Capabilities own their tool-specific endpoint choices and receive the agent
   endpoint as a fallback, independently of runtime controls. Lazy/live
@@ -19,6 +25,13 @@
 - Breaking: `roboz[shed]` now installs `roboshed` instead of `roboz-shed`. Update direct requirements to `roboshed` and imports from `roboz_shed` to `roboshed`; no compatibility package is provided.
 
 ### Added
+
+- Select lazy model endpoints with `ModelSelector` from `roboz.llm` or
+  `roboz.llm.endpoints`, without requiring Shed or constructing clients.
+
+- Bind exact dependency registrations with `roboz.dependencies`, independently
+  of Shed. Registration types, checker callbacks, and contract errors now live
+  alongside dependency discovery and resolution primitives.
 
 - Add `ExternalDependencyReference` for replaceable resources. Endpoint helpers
   preserve live selection and discovery through contexts, tools, and agents,

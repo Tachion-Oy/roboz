@@ -14,7 +14,7 @@ import pytest
 
 import roboz as rz
 from roboz.llm import LLMEndpoint, resolve_endpoint
-from roboz.tooling.dependencies import dedupe_external_dependencies
+from roboz.dependencies import dedupe_external_dependencies
 
 
 @dataclass(frozen=True)

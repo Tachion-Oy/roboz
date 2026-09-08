@@ -7,6 +7,17 @@ from roboz.agent import (
     run_background_agent,
     run_subagent,
 )
+from roboz.dependencies import (
+    DependencyRoute,
+    ExecutableDependency,
+    ExternalDependency,
+    ExternalDependencyKind,
+    ExternalDependencyReference,
+    ExternalDependencySource,
+    LazyExternalDependency,
+    ModelEndpointDependency,
+    NetworkServiceDependency,
+)
 from roboz.models import (
     AgentBaseModel,
     All,
@@ -24,18 +35,7 @@ from roboz.models import (
     Strs,
 )
 from roboz.skill import Skill
-from roboz.tooling import (
-    ExecutableDependency,
-    ExternalDependency,
-    ExternalDependencyKind,
-    ExternalDependencyReference,
-    ExternalDependencySource,
-    Factory,
-    LazyExternalDependency,
-    ModelEndpointDependency,
-    NetworkServiceDependency,
-    Tool,
-)
+from roboz.tooling import Factory, Tool
 from roboz.tooling.context import Ctx
 from roboz.tooling.decorators import factory, tool
 from roboz.tools import (
@@ -54,6 +54,7 @@ __all__ = [
     "All",
     "BackgroundAgentStatus",
     "Empty",
+    "DependencyRoute",
     "ExecutableDependency",
     "ExternalDependency",
     "ExternalDependencyKind",

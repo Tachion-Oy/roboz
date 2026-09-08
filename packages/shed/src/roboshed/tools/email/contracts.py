@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
-from roboz.tooling import NetworkServiceDependency
+from roboz.dependencies import NetworkServiceDependency
 
 
 class EmailMailbox(StrEnum):

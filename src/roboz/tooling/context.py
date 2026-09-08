@@ -5,7 +5,7 @@ from keyword import iskeyword
 from types import MappingProxyType
 from typing import Any
 
-from roboz.tooling.dependencies import (
+from roboz.dependencies import (
     ExternalDependency,
     ExternalDependencySource,
     dedupe_external_dependencies,

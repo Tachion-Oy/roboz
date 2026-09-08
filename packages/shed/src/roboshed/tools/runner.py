@@ -29,7 +29,7 @@ from roboshed.tools.cli_commands.utilities.formatting import _framed_cli_output
 from roboz import Ctx
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation, TruncationSpec
-from roboz.tooling import (
+from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependency,
     ExternalDependencySource,

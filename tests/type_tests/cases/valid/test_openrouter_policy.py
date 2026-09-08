@@ -1,5 +1,8 @@
 from roboz.llm import LLMEndpoint, with_openrouter_policy
-from roboz.tooling import ExternalDependencyKind, LazyExternalDependency
+from roboz.dependencies import (
+    ExternalDependencyKind,
+    LazyExternalDependency,
+)
 
 endpoint = LLMEndpoint(client=object(), model_name="model", api_name="openrouter")
 configured: LLMEndpoint = with_openrouter_policy(

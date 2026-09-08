@@ -4,6 +4,20 @@ The context API now has one class: `roboz.Ctx`. This is a breaking authoring API
 change in the Unreleased core and Shed changes. Dependency discovery and resource
 identities remain available to deployment registration and health consumers.
 
+## Dependency imports
+
+Dependency identity, discovery, lazy resolution, and live routing belong to
+`roboz.dependencies`. Agents, endpoints, and tools consume the same primitives.
+Import dependency types and `dedupe_external_dependencies` from that module;
+replace imports from `roboz.tooling.dependencies` or dependency imports from
+`roboz.tooling`. The removed tooling paths have no forwarding aliases. The
+existing top-level `roboz` authoring exports remain available.
+
+`roboz.tooling` owns `Ctx`, `Tool`, and `Factory`. Dependency registration and
+binding also belong to `roboz.dependencies`: import `DependencyChecker`,
+`DependencyRegistration`, `BoundDependency`, `DependencyContractError`, and
+`bind_dependencies` there instead of `roboshed.dependencies.contract`.
+
 ## Replace context classes and resource wrappers
 
 | Previous API | Replacement |
@@ -159,29 +173,14 @@ construction. Its constructor and ID/kind validation are unchanged; failed
 resolutions are not cached. It now also implements `ExternalDependencyReference`
 and discovers itself without materializing.
 
-For a route that can select different model IDs, inherit the reference ABC
-instead of subclassing a lazy resource and capturing the first model's metadata:
+For a route that can select different model IDs, supply a getter to
+`DependencyRoute`. The selected resource retains its identity and client cache:
 
 ```python
-from collections.abc import Callable
 import roboz as rz
-from roboz.llm import LLMEndpoint, with_request_options
+from roboz.llm import with_request_options
 
-class ModelRoute(rz.ExternalDependencyReference[LLMEndpoint]):
-    __slots__ = ("get_endpoint",)
-
-    def __init__(self, get_endpoint: Callable[[], rz.LazyExternalDependency[LLMEndpoint]]):
-        self.get_endpoint = get_endpoint
-
-    def materialize(self) -> LLMEndpoint:
-        selected = self.get_endpoint()
-        return selected.materialize()
-
-    def external_dependencies(self) -> tuple[rz.ExternalDependency, ...]:
-        selected = self.get_endpoint()
-        return (selected,)
-
-route = ModelRoute(lambda: selected_model)
+route = rz.DependencyRoute(lambda: selected_model)
 configured = with_request_options(route, extra_body={"reasoning": {"effort": "low"}})
 ctx = rz.Ctx(endpoint=configured)
 ```

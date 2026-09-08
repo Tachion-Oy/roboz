@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -10,7 +9,7 @@ from roboz import (
     Empty,
     ExternalDependency,
     ExternalDependencyKind,
-    ExternalDependencyReference,
+    DependencyRoute,
     LazyExternalDependency,
     Message,
     Str,
@@ -25,17 +24,6 @@ from roboz.llm import (
 )
 from roboz.llm.binding import resolve_transcription_endpoint
 from roboz.runtime.events import RunLifecycleEvent
-
-
-class Reference[T: ExternalDependency](ExternalDependencyReference[T]):
-    def __init__(self, getter: Callable[[], LazyExternalDependency[T]]) -> None:
-        self.getter = getter
-
-    def materialize(self) -> T:
-        return self.getter().materialize()
-
-    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
-        return (self.getter(),)
 
 
 @factory
@@ -78,12 +66,15 @@ def test_reference_switches_through_context_tools_and_agent(policy: str) -> None
             )
 
         return LazyExternalDependency(
-            f"model:api-{name}:{name}", ExternalDependencyKind.MODEL_ENDPOINT, {}, construct
+            f"model:api-{name}:{name}",
+            ExternalDependencyKind.MODEL_ENDPOINT,
+            {},
+            construct,
         )
 
     first, second = lazy("first"), lazy("second")
     selected = first
-    reference = Reference(lambda: selected)
+    reference = DependencyRoute(lambda: selected)
     endpoint = reference
     if policy == "options":
         body = {"reasoning": {"effort": "low"}}
@@ -163,7 +154,7 @@ def test_selected_lazy_validates_and_retries_failed_resolution(mismatch: str) ->
     selected = LazyExternalDependency(
         good.dependency_id, good.kind, {}, lambda: next(results)
     )
-    reference = with_request_options(Reference(lambda: selected), extra_body={})
+    reference = with_request_options(DependencyRoute(lambda: selected), extra_body={})
     for _ in range(2):
         with pytest.raises(ValueError, match=f"different dependency {mismatch}"):
             reference.materialize()
@@ -178,7 +169,7 @@ def test_transcription_reference_and_invalid_materialized_endpoints() -> None:
     lazy = LazyExternalDependency(
         transcript.dependency_id, transcript.kind, {}, lambda: transcript
     )
-    reference = Reference(lambda: lazy)
+    reference = DependencyRoute(lambda: lazy)
     assert resolve_transcription_endpoint(reference) is transcript
     with pytest.raises(TypeError, match="LLMEndpoint"):
         resolve_endpoint(cast(Any, reference))
@@ -189,7 +180,7 @@ def test_transcription_reference_and_invalid_materialized_endpoints() -> None:
         resolve_transcription_endpoint(
             cast(
                 Any,
-                Reference(
+                DependencyRoute(
                     lambda: LazyExternalDependency(
                         llm.dependency_id, llm.kind, {}, lambda: llm
                     )
@@ -233,7 +224,7 @@ def test_switch_during_provider_call_keeps_inflight_endpoint() -> None:
 
     first, second = lazy("first"), lazy("second")
     selected = first
-    reference = with_request_options(Reference(lambda: selected), extra_body={})
+    reference = with_request_options(DependencyRoute(lambda: selected), extra_body={})
     with ThreadPoolExecutor() as pool:
         inflight = pool.submit(
             call_llm_api, reference, [Message(role="user", content="Hi")]
@@ -247,3 +238,16 @@ def test_switch_during_provider_call_keeps_inflight_endpoint() -> None:
         assert inflight.result(timeout=5)[0] == "first"
     assert call_llm_api(reference, [Message(role="user", content="Hi")])[0] == "second"
     assert requests == ["first", "second"]
+
+
+def test_route_follows_concrete_dependencies_and_nested_references() -> None:
+    from roboz import ExecutableDependency
+
+    selected = ExecutableDependency("python")
+    inner = DependencyRoute(lambda: selected)
+    outer = DependencyRoute(lambda: inner)
+    assert outer.external_dependencies() == (selected,)
+    assert outer.materialize() is selected
+    selected = ExecutableDependency("git")
+    assert outer.external_dependencies() == (selected,)
+    assert outer.materialize() is selected

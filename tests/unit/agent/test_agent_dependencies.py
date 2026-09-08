@@ -8,7 +8,7 @@ from roboz.llm.endpoints import LLMEndpoint, MockLLMEndpoint
 from roboz.models import Empty, Message
 from roboz.skill.core import Skill
 from roboz.tooling.decorators import factory
-from roboz.tooling.dependencies import ExecutableDependency
+from roboz.dependencies import ExecutableDependency
 
 
 @factory

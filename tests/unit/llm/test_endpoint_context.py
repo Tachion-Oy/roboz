@@ -8,7 +8,7 @@ from roboz.llm import (
     resolve_endpoint,
     with_request_options,
 )
-from roboz.tooling.dependencies import ExternalDependencyKind, LazyExternalDependency
+from roboz.dependencies import ExternalDependencyKind, LazyExternalDependency
 
 
 def test_with_request_options_copies_endpoint_and_body() -> None:

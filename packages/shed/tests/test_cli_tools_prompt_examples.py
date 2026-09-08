@@ -14,7 +14,7 @@ from roboz.agent import Agent
 from roboz.tools import stop
 from roboz.models import Message, Stop
 from roboz.models import Role
-from roboz.tooling import ExecutableDependency
+from roboz.dependencies import ExecutableDependency
 from roboz.llm import MockLLMEndpoint
 
 from roboshed.models import (

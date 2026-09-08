@@ -48,7 +48,7 @@ from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
 from roboz.tooling.context import Ctx
 from roboz.tooling.core import Factory, Tool
-from roboz.tooling.dependencies import (
+from roboz.dependencies import (
     ExternalDependency,
     ExternalDependencyReference,
     ExternalDependencySource,

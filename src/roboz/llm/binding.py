@@ -12,7 +12,7 @@ from roboz.llm.endpoints import (
     TranscriptionEndpointLike,
     copy_request_options,
 )
-from roboz.tooling.dependencies import (
+from roboz.dependencies import (
     ExternalDependency,
     ExternalDependencyReference,
     LazyExternalDependency,
