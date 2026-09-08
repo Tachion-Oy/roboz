@@ -1218,3 +1218,44 @@ def test_guard_items_mv_target_directory_flag_expands_per_source(
     assert items[1].location == (target / "a.txt")
     assert items[2].location == src_b
     assert items[3].location == (target / "b.txt")
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+def test_transfer_destination_flags_after_separator_are_filenames(
+    tmp_path: Path, command: str
+) -> None:
+    (tmp_path / "-t").write_text("first")
+    (tmp_path / "source").write_text("second")
+    (tmp_path / "destination").mkdir()
+    input = RunFileCommands(
+        chain="and",
+        file_commands=[
+            RunFileCommand(command=command, argv=["--", "-t", "source", "destination"]),
+        ],
+    )
+    items = _guard_items(input, tmp_path, _SPECS_BY_NAME[command])
+    assert [(item.operation, item.location.name) for item in items] == [
+        (Operation.READ if command == "cp" else Operation.DELETE, "-t"),
+        (Operation.CREATE, "-t"),
+        (Operation.READ if command == "cp" else Operation.DELETE, "source"),
+        (Operation.CREATE, "source"),
+    ]
+    assert items[1].location.parent == tmp_path / "destination"
+    assert items[3].location.parent == tmp_path / "destination"
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+def test_no_target_directory_checks_destination_itself(
+    tmp_path: Path, command: str
+) -> None:
+    (tmp_path / "source").mkdir()
+    (tmp_path / "destination").mkdir()
+    input = RunFileCommands(
+        chain="and",
+        file_commands=[
+            RunFileCommand(command=command, argv=["-T", "source", "destination"]),
+        ],
+    )
+    items = _guard_items(input, tmp_path, _SPECS_BY_NAME[command])
+    assert items[1].operation == Operation.CREATE
+    assert items[1].location == tmp_path / "destination"

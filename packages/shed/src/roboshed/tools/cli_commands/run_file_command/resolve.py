@@ -271,6 +271,10 @@ def _guard_items(
     resolved_paths, resolved_argv, path_indices, path_groups = _resolve_paths_and_argv(
         input, base, spec
     )
+    if any(not group for group in path_groups):
+        raise ValueError(
+            "Path glob matched no files; specify an existing or literal path"
+        )
     ready_command = input.file_commands[0].model_copy(update={"argv": resolved_argv})
     value = _ready_value(
         command=spec.name,
@@ -317,12 +321,14 @@ def _relocation_guard_items(
         return []
 
     target_dir_mode = _move_target_directory_index(raw_argv) is not None
+    _, no_target_dir = _move_destination_options(raw_argv)
     items: list[GuardFileSingle] = []
     for destination_token in destination_tokens:
         for source, destination in _move_destinations(
             source_paths=source_paths,
             destination_token=destination_token,
             target_dir_mode=target_dir_mode,
+            no_target_dir=no_target_dir,
         ):
             items.append(
                 GuardFileSingle(
@@ -351,18 +357,36 @@ def _move_source_destination_indices(
 
 
 def _move_target_directory_index(raw_argv: list[str]) -> int | None:
-    for i, tok in enumerate(raw_argv[:-1]):
-        if tok in {"-t", "--target-directory"}:
-            return i + 1
-    return None
+    return _move_destination_options(raw_argv)[0]
+
+
+def _move_destination_options(raw_argv: list[str]) -> tuple[int | None, bool]:
+    target = None
+    no_target_dir = False
+    i = 0
+    while i < len(raw_argv):
+        token = raw_argv[i]
+        if token == "--":
+            break
+        if token in {"-t", "--target-directory"}:
+            i += 1
+            target = i
+        elif token in {"-T", "--no-target-directory"}:
+            no_target_dir = True
+        i += 1
+    return target, no_target_dir
 
 
 def _move_destinations(
-    *, source_paths: list[Path], destination_token: Path, target_dir_mode: bool
+    *,
+    source_paths: list[Path],
+    destination_token: Path,
+    target_dir_mode: bool,
+    no_target_dir: bool = False,
 ) -> list[tuple[Path, Path]]:
     if not source_paths:
         return []
-    if target_dir_mode or destination_token.is_dir():
+    if target_dir_mode or (not no_target_dir and destination_token.is_dir()):
         return [(source, destination_token / source.name) for source in source_paths]
     if len(source_paths) == 1:
         return [(source_paths[0], destination_token)]
@@ -391,9 +415,14 @@ def resolve_input(
         return invalid_input
 
     spec = _specs_by_name(specs)[input.file_commands[0].command.strip().lower()]
-    return ResolvedFileCommand(
-        original_input=input, items=_guard_items(input, base, spec)
-    )
+    try:
+        items = _guard_items(input, base, spec)
+    except ValueError as error:
+        return ParseError(
+            message=f"{error}\n\n{cli_help_message(specs, ctx)}",
+            truncation=Truncation(threshold=0, severity=Severity.LIGHT),
+        )
+    return ResolvedFileCommand(original_input=input, items=items)
 
 
 resolve_input._prepare_ctx = partial(

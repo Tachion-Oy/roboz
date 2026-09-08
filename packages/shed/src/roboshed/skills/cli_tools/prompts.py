@@ -114,8 +114,8 @@ Disable ignore filtering explicitly:
 - **file_commands**: each entry has `command`, `argv` (all subprocess-style tokens in order), and optional `stdin`.
 - **Argument parsing**: use supported, fully spelled options; unknown options and missing values return a parse error. Use `--` before dash-prefixed file names, or give an explicit path such as `./-notes`. `find` roots need the explicit path form.
 - **Search patterns and values**: use `PATTERN path` or `-e PATTERN path`. Values for options such as `--max-count 20`, `--lines=80`, and `-g '*.py'` are kept as values. `rg --files path` lists files without a pattern.
-- **Unsupported inputs**: do not use pattern files, explicit ignore/exclusion files, indirect file lists, reference-file options, or subprocess preprocessors. Supply search patterns directly with `-e`, explicit file operands, and filter globs with `-g`/`--include`/`--exclude` as applicable.
-- **Copy/move destinations**: use separate literal tokens for `-t DIR` or `--target-directory DIR`.
+- **Unsupported inputs**: do not use pattern files, explicit ignore/exclusion files, indirect file lists, reference-file options, or subprocess preprocessors. Supply search patterns directly with `-e`, explicit file operands, and filter globs with `-g`/`--include`/`--exclude` as applicable. Unmatched path globs return a parse error.
+- **Copy/move destinations**: use separate literal tokens for `-t DIR` or `--target-directory DIR`; `-T` treats the destination as the target itself.
 - **chain**: required on every call. `"pipe"` chains stdout→stdin; `"and"` runs sequentially.
 - **Normal shell semantics**: this is the same behavior as `|` and `&&` in a regular shell; only the JSON shape is different.
 - **When to use which**: use `"pipe"` only when the next command consumes stdin (`cat|grep`, `grep|wc`). For independent commands (`find` then `find`, `ls` then `find`), use `"and"`.

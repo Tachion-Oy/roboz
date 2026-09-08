@@ -61,6 +61,7 @@ Search patterns and option values are distinct from file operands. Use
 `grep -e needle notes.txt`, `rg --max-count 20 needle src`, or
 `rg -g '*.py' needle src`. `rg --files src` does not consume a pattern.
 The stdin marker `-` remains stdin for read commands; for `tee` it names a file.
+Copy/move destination parsing honors `--`, `-t DIR`, and `-T`.
 
 Migration from the former permissive parser:
 
@@ -70,7 +71,8 @@ Migration from the former permissive parser:
   explicit ignore/exclusion files, indirect file lists (`--files0-from`),
   reference-file options, and subprocess preprocessors are rejected.
 - Supply copy/move target directories as separate literal tokens (`-t DIR` or
-  `--target-directory DIR`).
+  `--target-directory DIR`). Globs that match no files return a parse error
+  instead of disappearing from argv.
 
 Public input models and tool signatures are unchanged. Custom `CmdSpec`
 extractors remain responsible for validating their executable's grammar.

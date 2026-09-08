@@ -1120,6 +1120,7 @@ def test_cli_parser_guards_outside_symlinks_before_execution(
         ("head", ["--lin", "1", "private-link"]),
         ("cat", ["--number=yes", "private-link"]),
         ("head", ["allowed.txt", "--lines"]),
+        ("rg", ["needle", "missing-*.txt"]),
     ],
 )
 def test_cli_parser_rejects_unaccounted_arguments_before_guard_or_executor(

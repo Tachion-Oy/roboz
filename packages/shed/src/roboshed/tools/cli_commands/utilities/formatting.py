@@ -46,7 +46,7 @@ def format_cli_commands_help(specs: Sequence[CmdSpec]) -> str:
         "  - Use -- before dash-prefixed file operands; find roots instead need an explicit ./ prefix. Options may follow operands for other commands.",
         "  - Search with PATTERN path or -e PATTERN path; option values such as --max-count 20 and -g '*.py' are not file operands.",
         "  - Auxiliary file options (-f/--file, --ignore-file, --exclude-from, --files0-from, --reference, find reference predicates) and subprocess preprocessors are unsupported.",
-        "  - cp/mv target-directory values must be separate literal tokens: -t DIR or --target-directory DIR.",
+        "  - cp/mv target-directory values must be separate literal tokens: -t DIR or --target-directory DIR. Unmatched path globs are parse errors.",
         "  - Guards check explicit path operands or the implicit working directory. Directory descendants and implicit configuration/ignore files are not individually authorized; this is not a process sandbox.",
         "",
     ]
