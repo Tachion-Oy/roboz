@@ -50,6 +50,9 @@
 - Respect copy/move destination modes when checking permissions, including `--`
   and `-T`. Reject unmatched path globs before execution instead of dropping them
   from argv; see the README's file CLI migration guidance.
+- Keep CLI execution consistent with validated arguments by ignoring
+  `POSIXLY_CORRECT` and `RIPGREP_CONFIG_PATH`. Pass supported options explicitly
+  in argv; see the README's environment compatibility guidance.
 
 - Reject relative project persistence paths that escape through traversal or
   symlinks. External logs, snapshots, and memory require explicit absolute paths;

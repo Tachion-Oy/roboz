@@ -147,6 +147,7 @@ def _install_subprocess_spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, o
         text: bool,
         timeout: float,
         input: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> CompletedProcess[str]:
         calls.append({"argv": list(argv), "cwd": Path(cwd), "stdin": input})
         if Path(argv[0]).name == "diff":

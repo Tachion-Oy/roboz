@@ -73,6 +73,8 @@ Migration from the former permissive parser:
 - Supply copy/move target directories as separate literal tokens (`-t DIR` or
   `--target-directory DIR`). Globs that match no files return a parse error
   instead of disappearing from argv.
+- Pass supported options in `argv`; execution ignores `POSIXLY_CORRECT` and
+  `RIPGREP_CONFIG_PATH` so environment settings cannot change argument parsing.
 
 Public input models and tool signatures are unchanged. Custom `CmdSpec`
 extractors remain responsible for validating their executable's grammar.

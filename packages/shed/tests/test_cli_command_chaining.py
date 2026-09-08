@@ -1187,3 +1187,31 @@ def test_cli_parser_executes_supported_inputs(
     result = _last_execute_file_command_value(messages)
     assert expected in result
     assert "exited with code" not in result
+
+
+def test_cli_parser_execution_ignores_ambient_argument_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    if shutil.which("rg") is None:
+        pytest.skip("rg is not installed")
+    (tmp_path / "allowed.txt").write_text("needle PUBLIC_SENTINEL\n")
+    config = tmp_path / "rg-config"
+    config.write_text("--regexp=never-matches\n")
+    monkeypatch.setenv("RIPGREP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("POSIXLY_CORRECT", "1")
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    _, messages = _invoke_cli_with_tools(
+        tools,
+        RunFileCommands(
+            chain="and",
+            file_commands=[
+                RunFileCommand(command="rg", argv=["needle", "allowed.txt"]),
+                RunFileCommand(command="grep", argv=["allowed.txt", "-e", "needle"]),
+            ],
+        ),
+    )
+    result = _last_execute_file_command_value(messages)
+    assert result.count("needle PUBLIC_SENTINEL") == 2
+    assert "exited with code" not in result

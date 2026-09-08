@@ -47,6 +47,7 @@ def format_cli_commands_help(specs: Sequence[CmdSpec]) -> str:
         "  - Search with PATTERN path or -e PATTERN path; option values such as --max-count 20 and -g '*.py' are not file operands.",
         "  - Auxiliary file options (-f/--file, --ignore-file, --exclude-from, --files0-from, --reference, find reference predicates) and subprocess preprocessors are unsupported.",
         "  - cp/mv target-directory values must be separate literal tokens: -t DIR or --target-directory DIR. Unmatched path globs are parse errors.",
+        "  - Execution ignores POSIXLY_CORRECT and RIPGREP_CONFIG_PATH so inherited settings cannot change validated argument semantics.",
         "  - Guards check explicit path operands or the implicit working directory. Directory descendants and implicit configuration/ignore files are not individually authorized; this is not a process sandbox.",
         "",
     ]

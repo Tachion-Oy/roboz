@@ -193,7 +193,7 @@ Each bullet below shows **one** JSON payload shape for **one** `<<RUN_FILE_COMMA
 
 Note: which commands are permitted and how paths map to operations follow **`help`** and the tool specifications for this deployment.
 
-Path guards authorize explicit operands or an implicit working directory. They do not individually authorize descendants visited by a directory command or implicit ignore/configuration files. These tools are not a process sandbox.
+Path guards authorize explicit operands or an implicit working directory. They do not individually authorize descendants visited by a directory command or implicit ignore/configuration files. These tools are not a process sandbox. Execution ignores `POSIXLY_CORRECT` and `RIPGREP_CONFIG_PATH` to keep argument parsing consistent with validation.
 """
 
 INSTRUCTIONS: Final[str] = _INSTRUCTIONS_TEMPLATE.replace(
