@@ -23,7 +23,13 @@ class ArgPattern:
 
 @dataclass
 class CmdSpec:
-    """Spec for a permitted CLI command."""
+    """Spec for a permitted CLI command.
+
+    A custom path extractor must validate its executable's supported grammar,
+    return every explicit path operand, and raise ``ValueError`` for unsupported
+    arguments. Returning no indices asks the resolver to guard the working
+    directory; it does not establish that the executable performs no file I/O.
+    """
 
     name: str
     path_extractor: PathExtractor | None = None

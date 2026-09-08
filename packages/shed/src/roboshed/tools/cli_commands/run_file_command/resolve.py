@@ -52,9 +52,15 @@ def _validate_input(
         )
 
     spec = specs_by_name[cmd]
-    path_indices = set(
-        resolve_path_indices(list(cli_command.argv), spec.path_extractor)
-    )
+    try:
+        path_indices = set(
+            resolve_path_indices(list(cli_command.argv), spec.path_extractor)
+        )
+    except ValueError as error:
+        return ParseError(
+            message=str(error),
+            truncation=Truncation(threshold=0, severity=Severity.LIGHT),
+        )
     args_error = _validate_args_for_spec(list(cli_command.argv), spec, path_indices)
     if args_error:
         return ParseError(

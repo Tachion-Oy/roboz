@@ -548,12 +548,14 @@ def test_validate_input_arg_allows_pipe_for_regex() -> None:
     assert _validate_input(input, FILE_COMMANDS) is None
 
 
-def test_validate_input_invalid_path_leading_hyphen() -> None:
-    """Leading-hyphen path tokens are allowed unless command rules reject them."""
+def test_validate_input_requires_separator_for_leading_hyphen_paths() -> None:
+    """Dash-prefixed files require -- or an explicit path prefix."""
     input = RunFileCommands(
         chain="pipe",
         file_commands=[RunFileCommand(command="cat", argv=["-bad"])],
     )
+    assert isinstance(_validate_input(input, FILE_COMMANDS), ParseError)
+    input.file_commands[0].argv = ["--", "-bad"]
     assert _validate_input(input, FILE_COMMANDS) is None
 
 

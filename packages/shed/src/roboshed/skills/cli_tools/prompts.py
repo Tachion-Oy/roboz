@@ -20,7 +20,7 @@ Use the **`<<RUN_FILE_COMMAND_TOOL>>`** tool with the configured working directo
 
 Invoke **`command: help`** with empty `argv`. The tool returns **one combined document**:
 
-1. **Commands** — allowed command names, forbidden argument substrings, input JSON shape, chaining (`pipe` / `and`), and worked examples.
+1. **Commands** — allowed command names, argument restrictions, input JSON shape, chaining (`pipe` / `and`), and worked examples.
 2. **Permissions** — same content as the host's path guard: how relative paths use the working directory, **allowed** and **denied** operation patterns (which paths allow read/create/delete), precedence (allow vs deny when both match), default when no rule matches, overwrite vs CREATE/DELETE, optional **ask** rules, and **tool-specific behaviors** (e.g. `tee`, `cp`, `mv`).
 
 That runtime output is authoritative for **this** session. This skill describes usage patterns; it does not duplicate your live allow/deny lines.
@@ -112,6 +112,10 @@ Disable ignore filtering explicitly:
 ```
 
 - **file_commands**: each entry has `command`, `argv` (all subprocess-style tokens in order), and optional `stdin`.
+- **Argument parsing**: use supported, fully spelled options; unknown options and missing values return a parse error. Use `--` before dash-prefixed file names, or give an explicit path such as `./-notes`. `find` roots need the explicit path form.
+- **Search patterns and values**: use `PATTERN path` or `-e PATTERN path`. Values for options such as `--max-count 20`, `--lines=80`, and `-g '*.py'` are kept as values. `rg --files path` lists files without a pattern.
+- **Unsupported inputs**: do not use pattern files, explicit ignore/exclusion files, indirect file lists, reference-file options, or subprocess preprocessors. Supply search patterns directly with `-e`, explicit file operands, and filter globs with `-g`/`--include`/`--exclude` as applicable.
+- **Copy/move destinations**: use separate literal tokens for `-t DIR` or `--target-directory DIR`.
 - **chain**: required on every call. `"pipe"` chains stdout→stdin; `"and"` runs sequentially.
 - **Normal shell semantics**: this is the same behavior as `|` and `&&` in a regular shell; only the JSON shape is different.
 - **When to use which**: use `"pipe"` only when the next command consumes stdin (`cat|grep`, `grep|wc`). For independent commands (`find` then `find`, `ls` then `find`), use `"and"`.
@@ -188,6 +192,8 @@ Each bullet below shows **one** JSON payload shape for **one** `<<RUN_FILE_COMMA
 {"chain": "pipe", "file_commands": [{"command": "mv", "argv": ["old_name.txt", "new_name.txt"]}]}
 
 Note: which commands are permitted and how paths map to operations follow **`help`** and the tool specifications for this deployment.
+
+Path guards authorize explicit operands or an implicit working directory. They do not individually authorize descendants visited by a directory command or implicit ignore/configuration files. These tools are not a process sandbox.
 """
 
 INSTRUCTIONS: Final[str] = _INSTRUCTIONS_TEMPLATE.replace(

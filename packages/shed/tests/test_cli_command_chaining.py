@@ -1050,3 +1050,139 @@ def test_and_denied_later_command_breaks_before_execution(tmp_path: Path) -> Non
     denied_entries = _caller_entries(messages, caller="operation_guard")
     _, last_guard_payload = denied_entries[-1]
     assert last_guard_payload.get("status") == "denied"
+
+
+@pytest.mark.parametrize(
+    ("command", "argv"),
+    [
+        ("cat", ["--", "-private"]),
+        ("cat", ["private-link", "-n"]),
+        ("grep", ["needle", "--", "-private"]),
+        ("rg", ["needle", "--", "-private"]),
+        ("grep", ["--max-count", "1", "needle", "private-link"]),
+        ("rg", ["-e", "needle", "private-link"]),
+        ("rg", ["--files", "private-link"]),
+        ("tee", ["private-link", "-a"]),
+        ("touch", ["private-link", "-c"]),
+    ],
+)
+def test_cli_parser_guards_outside_symlinks_before_execution(
+    tmp_path: Path, command: str, argv: list[str]
+) -> None:
+    base = tmp_path / "workspace"
+    base.mkdir()
+    outside = tmp_path / "outside.txt"
+    content = "needle OUTSIDE_SENTINEL\n"
+    outside.write_text(content)
+    original_stat = outside.stat()
+    (base / "-private").symlink_to(outside)
+    (base / "private-link").symlink_to(outside)
+    tools = get_run_file_command(
+        base=base,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[
+            PermissionRule("**", {Operation.READ, Operation.CREATE, Operation.DELETE})
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(
+        tools,
+        RunFileCommands(
+            chain="and",
+            file_commands=[
+                RunFileCommand(command=command, argv=argv, stdin="new content\n")
+            ],
+        ),
+    )
+    assert (
+        _caller_entries(messages, caller="operation_guard")[-1][1]["status"] == "denied"
+    )
+    assert "execute_file_command" not in _extract_callers(messages)
+    assert all("OUTSIDE_SENTINEL" not in message.content for message in messages)
+    assert outside.read_text() == content
+    assert outside.stat().st_mtime_ns == original_stat.st_mtime_ns
+
+
+@pytest.mark.parametrize(
+    ("command", "argv"),
+    [
+        ("grep", ["-fprivate-link", "allowed.txt"]),
+        ("grep", ["--file", "private-link", "allowed.txt"]),
+        ("grep", ["--exclude-from=private-link", "needle", "allowed.txt"]),
+        ("rg", ["--ignore-file", "private-link", "needle", "allowed.txt"]),
+        ("rg", ["--pre=private-link", "needle", "allowed.txt"]),
+        ("rg", ["--pre-glob=*.txt", "needle", "allowed.txt"]),
+        ("wc", ["--files0-from=private-link"]),
+        ("diff", ["-Xprivate-link", "a", "b"]),
+        ("diff", ["-uXprivate-link", "a", "b"]),
+        ("touch", ["--reference=private-link", "allowed.txt"]),
+        ("find", ["-files0-from", "private-link"]),
+        ("find", [".", "-newer", "private-link"]),
+        ("head", ["--lin", "1", "private-link"]),
+        ("cat", ["--number=yes", "private-link"]),
+        ("head", ["allowed.txt", "--lines"]),
+    ],
+)
+def test_cli_parser_rejects_unaccounted_arguments_before_guard_or_executor(
+    tmp_path: Path, command: str, argv: list[str]
+) -> None:
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    _, messages = _invoke_cli_with_tools(
+        tools,
+        RunFileCommands(
+            chain="and",
+            file_commands=[RunFileCommand(command=command, argv=argv)],
+        ),
+    )
+    result = _caller_entries(messages, caller="run_file_command")[-1][1]
+    assert result["kind"] == "parse_error"
+    assert "Available CLI commands" in result["message"]
+    assert "operation_guard" not in _extract_callers(messages)
+    assert "execute_file_command" not in _extract_callers(messages)
+
+
+@pytest.mark.parametrize(
+    ("command", "argv", "stdin", "expected"),
+    [
+        ("cat", ["--", "-public"], None, "needle PUBLIC_SENTINEL"),
+        ("cat", ["./-public", "-n"], None, "needle PUBLIC_SENTINEL"),
+        (
+            "grep",
+            ["--max-count", "1", "needle", "--", "-public"],
+            None,
+            "needle PUBLIC_SENTINEL",
+        ),
+        (
+            "rg",
+            ["-g", "*.txt", "-e", "needle", "allowed.txt"],
+            None,
+            "needle PUBLIC_SENTINEL",
+        ),
+        ("rg", ["--files", "allowed.txt"], None, "allowed.txt"),
+        ("cat", ["--", "-"], "STDIN_SENTINEL\n", "STDIN_SENTINEL"),
+        ("head", ["--lines=1", "allowed.txt"], None, "needle PUBLIC_SENTINEL"),
+    ],
+)
+def test_cli_parser_executes_supported_inputs(
+    tmp_path: Path, command: str, argv: list[str], stdin: str | None, expected: str
+) -> None:
+    import shutil
+
+    if shutil.which(command) is None:
+        pytest.skip(f"{command} is not installed")
+    (tmp_path / "-public").write_text("needle PUBLIC_SENTINEL\n")
+    (tmp_path / "allowed.txt").write_text("needle PUBLIC_SENTINEL\n")
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[PermissionRule("**", {Operation.READ})],
+    )
+    _, messages = _invoke_cli_with_tools(
+        tools,
+        RunFileCommands(
+            chain="and",
+            file_commands=[RunFileCommand(command=command, argv=argv, stdin=stdin)],
+        ),
+    )
+    result = _last_execute_file_command_value(messages)
+    assert expected in result
+    assert "exited with code" not in result

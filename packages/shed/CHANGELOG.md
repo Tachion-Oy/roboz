@@ -42,6 +42,12 @@
 
 ### Fixed
 
+- Check CLI file operands across `--`, trailing options, and search-pattern
+  options while preserving stdin markers. Reject unsupported/abbreviated options,
+  auxiliary file inputs, and preprocessors before execution. **Compatibility:**
+  see the README's file CLI migration guidance for the stricter supported grammar.
+  Recursive descendant authorization remains separate from this parser fix.
+
 - Reject relative project persistence paths that escape through traversal or
   symlinks. External logs, snapshots, and memory require explicit absolute paths;
   see `docs/agent-factories.md` for migration guidance.
