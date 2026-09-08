@@ -41,7 +41,7 @@ python -m pip install roboz
 ```
 
 Optional tools and adapters are separate distributions in this repository:
-`roboshed`, `roboz-openai`, and `roboz-proton-bridge`. Start with the
+`roboshed`, `roboz-endpoints`, and `roboz-proton-bridge`. Start with the
 [installation and add-on guide](docs/addons.md) to build their wheels and compose
 agents from capabilities. These companion releases must be
 published before their named PyPI installs and convenience extras are usable.
@@ -126,6 +126,9 @@ The package contains agent and LLM primitives, models, runtime and persistence
 infrastructure, skills, tooling, and foundational control/interaction tools.
 Provider catalogs and SDK integrations, guarded file and CLI tools, and application
 integrations belong in companion packages and are not dependencies of Roboz.
+Install `roboz-endpoints[openai]` for the initial OpenRouter, Cerebras, and Groq
+catalogues; it installs core automatically. See the
+[endpoint guide](packages/endpoints/README.md) for model selection and SDK adapters.
 
 `roboz.deployment` supplies generic agent definitions, capability contracts,
 and specialist composition. Capabilities accept tool-specific endpoints and pass

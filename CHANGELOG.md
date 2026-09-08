@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: remove the `roboz[openai]` extra. Install
+  `roboz-endpoints[openai]` directly for the endpoint catalogue and SDK adapter;
+  it installs core automatically. See `packages/endpoints/README.md` for migration.
+
 - Breaking: capability builders receive `build(pipe, *, default_endpoint)`.
   Capabilities own their tool-specific endpoint choices and receive the agent
   endpoint as a fallback, independently of runtime controls. Lazy/live

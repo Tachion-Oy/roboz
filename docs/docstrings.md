@@ -104,7 +104,7 @@ does not enable D401. Review also checks factual accuracy, useful contract
 details, and suitability for model prompts.
 
 The repository policy test in [`../tests/test_docstrings.py`](../tests/test_docstrings.py)
-additionally checks all shipped modules in core, Shed, OpenAI, and Proton
+additionally checks all shipped modules in core, Shed, Endpoints, and Proton
 Bridge, including underscore modules, and every `@tool` or `@factory` callable
 because Ruff's public-symbol rules do not cover all of those cases. Run
 `uv run ruff check` and `uv run pytest tests/test_docstrings.py` from the

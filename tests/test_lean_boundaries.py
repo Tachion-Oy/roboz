@@ -18,7 +18,7 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "roboshed",
     "robosprawl",
     "fastapi",
-    "roboz_openai",
+    "roboz_endpoints",
     "roboz_proton_bridge",
 }
 
@@ -30,6 +30,7 @@ def test_addon_namespaces_are_absent() -> None:
     assert find_spec("roboz.tools.snapshot_conversations") is None
     assert find_spec("roboz.tools.compactification") is None
     assert find_spec("roboz.llm.providers") is None
+    assert find_spec("roboz_openai") is None
 
 
 def test_primitives_do_not_import_addon_integrations() -> None:
@@ -66,6 +67,5 @@ def test_base_dependency_set_is_primitive_only() -> None:
     extras = metadata["project"]["optional-dependencies"]
     assert extras == {
         "shed": ["roboshed>=0.1.0a1,<0.2.0"],
-        "openai": ["roboz-openai>=0.1.0a1,<0.2.0"],
         "proton-bridge-beta": ["roboz-proton-bridge>=0.1.0b1,<0.2.0"],
     }

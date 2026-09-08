@@ -57,7 +57,7 @@ def test_manual_rehearsal_has_no_production_switch():
     assert set(inputs["package"]["options"]) == {
         "roboz",
         "roboshed",
-        "roboz-openai",
+        "roboz-endpoints",
         "roboz-proton-bridge",
     }
     assert (

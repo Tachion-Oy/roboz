@@ -191,7 +191,7 @@ def test_staged_dependencies_use_only_testpypi_and_exclude_extras(
         root.mkdir()
         (root / "pyproject.toml").write_text(
             f'[project]\nversion = "1.2.3"\ndependencies = {json.dumps(dependencies)}\n'
-            '[project.optional-dependencies]\nopenai = ["roboz-openai>=1"]\n'
+            '[project.optional-dependencies]\nendpoints = ["roboz-endpoints>=1"]\n'
         )
         projects[name] = root
         dist = root / "dist"
@@ -230,7 +230,7 @@ def test_installed_contracts_use_isolated_environment_and_propagate_failures(
     monkeypatch.setattr(published.subprocess, "run", run)
     with pytest.raises(subprocess.CalledProcessError):
         published.check_install(
-            "roboz-openai", "0.1.0a1", tmp_path / "candidate.whl", [], tmp_path
+            "roboz-endpoints", "0.1.0a1", tmp_path / "candidate.whl", [], tmp_path
         )
     package_install = next(
         command for command in calls if str(tmp_path / "candidate.whl") in command
@@ -243,3 +243,7 @@ def test_installed_contracts_use_isolated_environment_and_propagate_failures(
     assert any(
         "test_endpoints.py" in argument for command in calls for argument in command
     )
+    assert any(str(tmp_path / "candidate.whl") + "[openai]" in command for command in calls)
+    base_check = next(i for i, command in enumerate(calls) if published.ENDPOINTS_BASE_SMOKE in command)
+    extra_install = next(i for i, command in enumerate(calls) if str(tmp_path / "candidate.whl") + "[openai]" in command)
+    assert base_check < extra_install

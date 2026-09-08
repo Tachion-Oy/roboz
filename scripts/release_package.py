@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = {
     "roboz": ROOT,
     "roboshed": ROOT / "packages/shed",
-    "roboz-openai": ROOT / "packages/openai",
+    "roboz-endpoints": ROOT / "packages/endpoints",
     "roboz-proton-bridge": ROOT / "packages/proton-bridge",
 }
 

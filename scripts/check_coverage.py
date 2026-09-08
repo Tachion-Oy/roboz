@@ -7,7 +7,7 @@ from pathlib import Path
 FLOORS = {
     "src/roboz/": 95,
     "packages/shed/src/roboshed/": 90,
-    "packages/openai/src/roboz_openai/": 90,
+    "packages/endpoints/src/roboz_endpoints/": 90,
     "packages/proton-bridge/src/roboz_proton_bridge/": 89,
 }
 

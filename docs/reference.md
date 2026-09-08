@@ -126,12 +126,18 @@ effort. A lazy endpoint remains lazy and keeps its canonical dependency identity
 The options are defensively copied, are excluded from endpoint serialization and
 redacted metadata, and replace any options already attached to that endpoint copy.
 
+The optional `roboz-endpoints[openai]` companion supplies the model catalogue;
+see its [endpoint guide](../packages/endpoints/README.md).
+
 For OpenRouter, keep catalog model names canonical (for example
 `z-ai/glm-5.3`, never `z-ai/glm-5.3:nitro`) and attach routing policy where the
 endpoint is composed:
 
 ```python
 from roboz.llm import with_openrouter_policy
+from roboz_endpoints import openrouter
+
+canonical_endpoint = openrouter.z_ai__glm_5_3
 
 orchestrator_endpoint = with_openrouter_policy(
     canonical_endpoint,

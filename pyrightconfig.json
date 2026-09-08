@@ -1,7 +1,7 @@
 {
 	"pythonVersion": "3.13",
-	"include": ["src", "packages/shed/src", "packages/openai/src", "packages/proton-bridge/src"],
-	"extraPaths": ["src", "packages/shed/src", "packages/openai/src", "packages/proton-bridge/src"],
+	"include": ["src", "packages/shed/src", "packages/endpoints/src", "packages/proton-bridge/src"],
+	"extraPaths": ["src", "packages/shed/src", "packages/endpoints/src", "packages/proton-bridge/src"],
 	"venvPath": ".",
 	"venv": ".venv",
 
