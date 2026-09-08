@@ -75,8 +75,5 @@ class AgenticFactory:
                 definition,
                 initial_messages=(self.project.memory, *definition.initial_messages),
             )
-        root = definition.build(
-            event_sinks=event_sinks,
-            event_sink_factory=sinks,
-        )
+        root = definition.build(event_sinks=event_sinks, event_sink_factory=sinks)
         return RoboSprawlBundle(agent=root, background_agents=background)
