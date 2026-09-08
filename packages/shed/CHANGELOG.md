@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- Reject relative project persistence paths that escape through traversal or
+  symlinks. External logs, snapshots, and memory require explicit absolute paths;
+  see `docs/agent-factories.md` for migration guidance.
+
 - Preserve conversation history when compaction cannot produce a replacement within its context budget, and report current usage and headroom after successful compaction.
 
 ## 0.1.0a1

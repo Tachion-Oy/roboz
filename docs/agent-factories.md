@@ -208,9 +208,10 @@ startup races, and shutdown handling. A CLI can invoke the root on its main thre
 ## Workspace and capability inputs
 
 Workspace areas describe roles, not permissions. Projects expose `logs`,
-`snapshots`, and `memory`. Persistence paths may be project-relative or absolute
-and must not overlap. `project.artifact_dir(name)` resolves an additional folder
-inside the project. No dynamic configuration keys become Python attributes.
+`snapshots`, and `memory`. Persistence paths must not overlap. Relative paths
+must remain inside the project, including after symlink resolution; external
+storage requires an explicit absolute path. `project.artifact_dir(name)` resolves
+an additional folder inside the project. No dynamic configuration keys become Python attributes.
 
 Applications select and configure `roboshed.capabilities`. RoboSprawl assembles
 its capability tuple; any future user-facing selection belongs in Sprawl.
@@ -222,6 +223,10 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 80%; Sprawl explicitly chooses 60%.
 
 ## Migration
+
+- Relative project persistence paths may no longer escape the project through
+  `..` or symlinks. Use an explicit absolute path for external logs, snapshots,
+  or memory storage.
 
 - The optional distribution and namespace are `roboshed`; `roboz[shed]` installs it.
 - Import generic definitions and capability contracts from `roboz.deployment`,

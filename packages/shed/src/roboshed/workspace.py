@@ -129,9 +129,10 @@ class Workspace:
 class Project:
     """One workspace project and its persistence locations.
 
-    Persistence paths may be project-relative or explicitly absolute, allowing
-    hosts to place logs separately from artifacts. Other artifact paths must
-    remain inside the project's root. No directories are created here.
+    Relative persistence paths must remain inside the project's root, including
+    after symlink resolution. External storage requires an explicit absolute
+    path. Other artifact paths must remain inside the project's root.
+    No directories are created here.
     """
 
     workspace: Workspace
@@ -155,20 +156,26 @@ class Project:
         """Return this project's artifact root."""
         return self.workspace.project_dir(self.slug)
 
+    def _persistence_dir(self, path: Path) -> Path:
+        """Resolve explicit absolute storage or validate project-relative storage."""
+        if path.is_absolute():
+            return path.resolve()
+        return _within(self.root, str(path))
+
     @property
     def logs(self) -> Path:
         """Return the conversation-log root, partitioned by agent name."""
-        return (self.root / self.logs_dir).resolve()
+        return self._persistence_dir(self.logs_dir)
 
     @property
     def snapshots(self) -> Path:
         """Return the conversation snapshot root."""
-        return (self.root / self.snapshots_dir).resolve()
+        return self._persistence_dir(self.snapshots_dir)
 
     @property
     def memory(self) -> Path:
         """Return the consolidated memory root."""
-        return (self.root / self.memory_dir).resolve()
+        return self._persistence_dir(self.memory_dir)
 
     def artifact_dir(self, name: str) -> Path:
         """Resolve an additional artifact folder without creating it."""
