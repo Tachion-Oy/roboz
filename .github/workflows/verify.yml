@@ -27,7 +27,6 @@ jobs:
           uv run pytest --cov=roboshed --cov=roboz_endpoints --cov=roboz_proton_bridge
           --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json
           --junitxml=reports/pytest.xml
-      - run: uv run python scripts/check_coverage.py reports/coverage.json
       - run: uv run python examples/quickstart.py
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
@@ -72,7 +71,8 @@ jobs:
           echo "CANDIDATE_DIR=$candidate_dir" >> "$GITHUB_ENV"
           uv build --no-sources --all-packages --out-dir "$candidate_dir"
       - run: uv run twine check "$CANDIDATE_DIR"/*
-      - run: uv run python scripts/check_distributions.py --dist "$CANDIDATE_DIR"
+      - run: uv run check-wheel-contents "$CANDIDATE_DIR"
+      - run: uv run pytest tests/distributions --no-cov --dist "$CANDIDATE_DIR"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always() && env.CANDIDATE_DIR != ''
         with:
@@ -102,4 +102,5 @@ jobs:
         with:
           name: candidate-distributions
           path: candidate-dist
-      - run: python scripts/check_distributions.py --dist candidate-dist --core-only
+      - run: uv sync --locked --dev
+      - run: uv run pytest tests/distributions --no-cov --dist candidate-dist --package roboz

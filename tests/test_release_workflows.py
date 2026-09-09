@@ -27,45 +27,34 @@ def test_ci_cannot_publish_and_keeps_shared_verification():
             )
 
 
-def test_release_requires_preparation_staging_and_production_approval_environment():
+def test_release_requires_validation_before_approved_production_upload():
     release = workflow("release.yml")
     jobs = release["jobs"]
+    assert set(release["on"]) == {"push"}
+    assert set(release["on"]["push"]["tags"]) == {
+        "roboz-v*",
+        "roboshed-v*",
+        "roboz-endpoints-v*",
+        "roboz-proton-bridge-v*",
+    }
     assert jobs["verify"]["needs"] == "preparation"
     assert set(jobs["select"]["needs"]) == {"preparation", "verify"}
-    assert jobs["publish-testpypi"]["needs"] == "select"
-    assert set(jobs["check-testpypi"]["needs"]) == {"preparation", "publish-testpypi"}
-    assert jobs["publish"]["needs"] == "check-testpypi"
+    assert jobs["publish"]["needs"] == "select"
     assert jobs["publish"]["environment"] == "pypi"
-    assert jobs["publish-testpypi"]["environment"] == "testpypi"
-    assert set(jobs["check-pypi"]["needs"]) == {"preparation", "publish"}
+    assert jobs["publish"]["if"] == (
+        "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')"
+    )
     publishers = {
         name
         for name, job in jobs.items()
         if job.get("permissions", {}).get("id-token") == "write"
     }
-    assert publishers == {"publish", "publish-testpypi"}
-    for name in publishers:
-        assert not any(
-            "checkout" in step.get("uses", "") for step in jobs[name]["steps"]
-        )
-
-
-def test_manual_rehearsal_has_no_production_switch():
-    release = workflow("release.yml")
-    inputs = release["on"]["workflow_dispatch"]["inputs"]
-    assert set(inputs) == {"package"}
-    assert set(inputs["package"]["options"]) == {
-        "roboz",
-        "roboshed",
-        "roboz-endpoints",
-        "roboz-proton-bridge",
-    }
-    assert (
-        release["jobs"]["publish"]["if"]
-        == "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')"
+    assert publishers == {"publish"}
+    steps = jobs["publish"]["steps"]
+    assert not any(
+        "checkout" in step.get("uses", "") or "run" in step for step in steps
     )
-    check = release["jobs"]["check-testpypi"]["steps"][-1]
-    assert (
-        check["env"]["DEPENDENCY_INDEX"]
-        == "${{ github.event_name == 'push' && 'pypi' || 'testpypi' }}"
-    )
+    assert steps[-1]["uses"].startswith("pypa/gh-action-pypi-publish@")
+    assert steps[-1].get("with", {}).get("skip-existing", "false") == "false"
+    assert "--published-dependencies" in str(jobs["select"]["steps"])
+    assert "testpypi" not in str(release).lower()
