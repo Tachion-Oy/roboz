@@ -115,7 +115,7 @@ def _conversation_snapshot_memory_retention(
     project_slug = "test"
     logs = sandbox.project_logs_dir(project_slug)
     snapshots = sandbox.project_snapshots_dir(project_slug)
-    memory_dir = sandbox.project_memory_dir(project_slug)
+    memory_root = sandbox.project_memory_dir(project_slug)
     author = Agent(
         name="author",
         interaction_mode=None,
@@ -172,9 +172,9 @@ def _conversation_snapshot_memory_retention(
     )
     result, _ = librarian.invoke()
     assert "project idle" in result.value
-    memory = list(memory_dir.glob("*.md"))
-    assert len(memory) == 1
-    assert "blue robot emblem" in memory[0].read_text()
+    memory_files = list(memory_root.glob("*.md"))
+    assert len(memory_files) == 1
+    assert "blue robot emblem" in memory_files[0].read_text()
     # Retention happens after consolidation: the memory survives its sources.
     assert not source.exists()
     assert not list(snapshots.rglob("*.md"))

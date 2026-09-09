@@ -133,9 +133,9 @@ class Sandbox(_SandboxLayout):
     directories; hosts own filesystem preparation.
     """
 
-    logs_dir: Path = Path("logs")
-    snapshots_dir: Path = Path("snapshots")
-    memory_dir: Path = Path("memory")
+    logs: Path = Path("logs")
+    snapshots: Path = Path("snapshots")
+    memory: Path = Path("memory")
 
     def __post_init__(self) -> None:
         """Validate layout and project-relative persistence configuration."""
@@ -145,13 +145,14 @@ class Sandbox(_SandboxLayout):
     def _persistence_dirs(self, slug: str) -> tuple[Path, Path, Path]:
         """Resolve and validate the persistence locations for one project slug."""
         root = self.project_dir(slug)
+
         def resolve(path: Path) -> Path:
             return path.resolve() if path.is_absolute() else _within(root, str(path))
 
         paths = (
-            resolve(self.logs_dir),
-            resolve(self.snapshots_dir),
-            resolve(self.memory_dir),
+            resolve(self.logs),
+            resolve(self.snapshots),
+            resolve(self.memory),
         )
         if any(
             a.is_relative_to(b) or b.is_relative_to(a)

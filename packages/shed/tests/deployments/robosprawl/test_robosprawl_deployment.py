@@ -145,7 +145,7 @@ def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
     sandbox = Sandbox(
         tmp_path / "absent",
         shared="team",
-        logs_dir=Path("logs-custom"),
+        logs=Path("logs-custom"),
     )
     inspected = []
 
