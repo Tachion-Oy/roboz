@@ -1,6 +1,6 @@
 """RoboSprawl orientation and HUD output, following PeffaHub and Robozium.
 
-The original HUD guidance is retained with workspace-relative path derivation.
+The original HUD guidance is retained with sandbox-relative path derivation.
 """
 
 # MIT License
@@ -34,7 +34,7 @@ robosprawl = Skill(
     description="RoboSprawl orientation, project permissions, Librarian memory, and HUD output.",
     instructions="""## RoboSprawl orientation
 
-The host selects models, capabilities, workspace layout, and project persistence
+The host selects models, capabilities, sandbox layout, and project persistence
 folders. Roboz and Roboshed supply reusable agent, tool, skill, and deployment
 mechanisms. Describe available capabilities from the current tools and skills;
 do not assume an unavailable tool exists.
@@ -43,13 +43,13 @@ Use the runtime-supplied file tool base, project slug, writable project director
 read-only directory, and shared directory. The role name does not determine the
 project directory. Use the supplied paths instead of guessing folder names.
 
-## Workspace permissions
+## Sandbox permissions
 
-- Reads are contained within the workspace.
+- Reads are contained within the sandbox.
 - Writes within the current project's directory are allowed.
 - Writes to the shared directory require user confirmation.
 - The read-only area and other projects are not writable.
-- Paths outside the workspace are denied.
+- Paths outside the sandbox are denied.
 - Confirmation can reject an allowed write; it cannot authorize a denied path.
 
 ## Librarian maintenance

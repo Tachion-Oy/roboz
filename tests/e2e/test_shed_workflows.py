@@ -13,7 +13,7 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.workspace import Project, Workspace, WorkspacePermissions
+from roboshed.sandbox import PermissionPolicy, Sandbox
 
 from roboz import Agent, stop
 from roboz.deployment import AgentDefinition, Capability
@@ -22,13 +22,13 @@ from roboz.runtime import EventPipe, Output, PersistenceSink
 
 
 def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    note = workspace / "note.txt"
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+    note = sandbox / "note.txt"
     note.write_text("before-marker")
     outside = tmp_path / "private.txt"
     outside.write_text("private-marker")
-    (workspace / "escape.txt").symlink_to(outside)
+    (sandbox / "escape.txt").symlink_to(outside)
 
     def read(path: str) -> dict:
         return {
@@ -38,7 +38,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
             "file_commands": [{"command": "cat", "argv": [path]}],
         }
 
-    permissions = WorkspacePermissions.local(workspace)
+    permissions = PermissionPolicy.local(sandbox)
     agent = AgentDefinition(
         name="file_worker",
         system_prompt="Complete the file task and stop.",
@@ -111,7 +111,11 @@ def test_conversation_snapshot_memory_with_separate_models(tmp_path: Path) -> No
 def _conversation_snapshot_memory_retention(
     tmp_path: Path, *, separate_endpoints: bool
 ) -> None:
-    paths = Project(Workspace(tmp_path), "test")
+    sandbox = Sandbox(tmp_path)
+    project_slug = "test"
+    logs = sandbox.project_logs_dir(project_slug)
+    snapshots = sandbox.project_snapshots_dir(project_slug)
+    memory_dir = sandbox.project_memory_dir(project_slug)
     author = Agent(
         name="author",
         interaction_mode=None,
@@ -119,7 +123,7 @@ def _conversation_snapshot_memory_retention(
         system_prompt="Remember the project decision.",
         initial_messages=["The project uses a blue robot emblem."],
         event_pipe=EventPipe(
-            event_sinks=[PersistenceSink.for_path(paths.logs / "author")]
+            event_sinks=[PersistenceSink.for_path(logs / "author")]
         ),
         agent_endpoint=MockLLMEndpoint(
             [
@@ -132,7 +136,7 @@ def _conversation_snapshot_memory_retention(
         ),
     )
     author.invoke()
-    source = next((paths.logs / "author").rglob("*.json"))
+    source = next((logs / "author").rglob("*.json"))
     responses = [
         {"value": "The project uses a blue robot emblem."},
         {"value": "Retain the blue robot emblem decision."},
@@ -141,35 +145,41 @@ def _conversation_snapshot_memory_retention(
         agent_endpoint=None if separate_endpoints else MockLLMEndpoint(responses),
         capabilities=(
             ConversationSnapshots(
-                paths,
+                sandbox,
+                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
                 token_growth_threshold=1,
             ),
             MemoryConsolidation(
-                paths,
+                sandbox,
+                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
                 min_pending_snapshots=1,
             ),
             ArtifactRetention(
-                paths, max_snapshot_files=0, max_log_files=0, max_memory_files=1
+                sandbox,
+                project_slug,
+                max_snapshot_files=0,
+                max_log_files=0,
+                max_memory_files=1,
             ),
-            MaintenanceCadence(paths, {"author"}, seconds=0),
+            MaintenanceCadence(sandbox, project_slug, {"author"}, seconds=0),
         ),
     ).build(
-        event_sink_factory=lambda name: (PersistenceSink.for_path(paths.logs / name),)
+        event_sink_factory=lambda name: (PersistenceSink.for_path(logs / name),)
     )
     result, _ = librarian.invoke()
     assert "project idle" in result.value
-    memory = list(paths.memory.glob("*.md"))
+    memory = list(memory_dir.glob("*.md"))
     assert len(memory) == 1
     assert "blue robot emblem" in memory[0].read_text()
     # Retention happens after consolidation: the memory survives its sources.
     assert not source.exists()
-    assert not list(paths.snapshots.rglob("*.md"))
-    assert not any(path.is_dir() for path in paths.snapshots.iterdir())
-    assert list((paths.logs / "librarian").rglob("*.json"))
+    assert not list(snapshots.rglob("*.md"))
+    assert not any(path.is_dir() for path in snapshots.iterdir())
+    assert list((logs / "librarian").rglob("*.json"))
 
 
 def test_persistent_orchestrator_delegates_and_accepts_another_request(
@@ -226,9 +236,12 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         subagents=(SubAgentSpec(child, "delegate", "Run the specialist."),),
         interaction_mode=Output.API,
     )
-    project = Project(Workspace(tmp_path), "collaboration")
+    sandbox = Sandbox(tmp_path)
+    project_slug = "collaboration"
     events = []
-    bundle = AgenticFactory(project=project, orchestrator=definition).build(
+    bundle = AgenticFactory(
+        sandbox=sandbox, project_slug=project_slug, orchestrator=definition
+    ).build(
         event_sinks=(events.append,)
     )
     replies = Replies()
@@ -240,8 +253,9 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     assert result.value == "session ended"
     assert len(replies.prompts) == 2
     assert any("specialist result" in m.content for m in messages)
-    assert list((project.logs / "orchestrator").rglob("*.json"))
-    assert list((project.logs / "specialist").rglob("*.json"))
+    logs = sandbox.project_logs_dir(project_slug)
+    assert list((logs / "orchestrator").rglob("*.json"))
+    assert list((logs / "specialist").rglob("*.json"))
     assert any(getattr(event, "agent_name", None) == "specialist" for event in events)
     assert bundle.background_agents == ()
 
@@ -252,7 +266,8 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
     from roboz import ExternalDependencyKind, LazyExternalDependency
     from roboz.llm import LLMEndpoint
 
-    project = Project(Workspace(tmp_path), "standalone")
+    sandbox = Sandbox(tmp_path)
+    project_slug = "standalone"
     endpoints = []
     routes = []
     observed = []
@@ -262,14 +277,15 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
         lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed", max_context_tokens=4096),
     )
 
-    def recipe(project, *, orchestrator_endpoint):
+    def recipe(sandbox, project_slug, *, orchestrator_endpoint):
         routes.append(orchestrator_endpoint)
         endpoint = MockLLMEndpoint([
             {"action": "stop", "rationale": "user requested stop", "value": "complete"},
         ])
         endpoints.append(endpoint)
         return AgenticFactory(
-            project=project,
+            sandbox=sandbox,
+            project_slug=project_slug,
             orchestrator=orchestrator(agent_endpoint=endpoint, interaction_mode=Output.CLI),
         )
 
@@ -279,9 +295,19 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
         return (events.append,)
 
     deployment = DeploymentFactory(recipe, event_sink_factory=sinks)
-    first = deployment(project, endpoint_getter=lambda: borrowed, event_sinks=(observed.append,))
-    second = deployment(project, endpoint_getter=lambda: borrowed, event_sinks=(observed.append,))
-    assert not project.root.exists()
+    first = deployment(
+        sandbox,
+        project_slug,
+        endpoint_getter=lambda: borrowed,
+        event_sinks=(observed.append,),
+    )
+    second = deployment(
+        sandbox,
+        project_slug,
+        endpoint_getter=lambda: borrowed,
+        event_sinks=(observed.append,),
+    )
+    assert not sandbox.project_dir(project_slug).exists()
     assert first.agent is not second.agent
     assert first.agent.pipe is not second.agent.pipe
     assert endpoints[0] is not endpoints[1]
@@ -291,7 +317,7 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
     assert routes[0].materialize() is routes[1].materialize()
     assert first.agent.invoke()[0].value == second.agent.invoke()[0].value == "complete"
     assert sink_calls[0] and sink_calls[1] and observed
-    assert list(project.logs.rglob("*.json"))
+    assert list(sandbox.project_logs_dir(project_slug).rglob("*.json"))
 
 
 if __name__ == "__main__":
