@@ -24,23 +24,25 @@ from roboshed.tools.cli_commands.utilities.path_extractors import (
 
 
 @pytest.mark.parametrize(
-    "extractor",
+    ("extractor", "flag"),
     [
-        cat_path_args,
-        diff_path_args,
-        ls_path_args,
-        mkdir_path_args,
-        tee_path_args,
-        touch_path_args,
-        wc_path_args,
+        (cat_path_args, "-n"),
+        (diff_path_args, "-a"),
+        (ls_path_args, "-a"),
+        (mkdir_path_args, "-p"),
+        (tee_path_args, "-a"),
+        (touch_path_args, "-a"),
+        (wc_path_args, "-l"),
     ],
 )
-def test_trailing_path_commands_use_final_non_flag_tokens(
+def test_path_commands_keep_operands_before_and_after_options(
     extractor: PathExtractor,
+    flag: str,
 ) -> None:
-    """Commands like cat, ls, tee, and mkdir use trailing operands as paths."""
-    assert extractor(["-a", "first.txt", "second.txt"]) == [1, 2]
-    assert extractor(["first.txt", "-a"]) == []
+    assert extractor([flag, "first.txt", "second.txt"]) == [1, 2]
+    assert extractor(["first.txt", flag]) == [0]
+    assert extractor(["first.txt", flag, "second.txt"]) == [0, 2]
+    assert extractor(["--", "-private", "--"]) == [1, 2]
 
 
 @pytest.mark.parametrize("extractor", [grep_path_args, rg_path_args])
@@ -99,3 +101,93 @@ def test_resolve_path_indices_filters_and_sorts_extractor_output() -> None:
         2,
     ]
     assert resolve_path_indices(["a"], None) == []
+
+
+@pytest.mark.parametrize("extractor", [grep_path_args, rg_path_args])
+@pytest.mark.parametrize(
+    ("argv", "indices"),
+    [
+        (["needle", "--", "-private"], [2]),
+        (["--", "-pattern", "-private"], [2]),
+        (["-e", "needle", "private", "-n"], [2]),
+        (["private", "-e", "needle"], [0]),
+        (["-in", "pattern", "private"], [2]),
+        (["-ne", "-pattern", "private"], [2]),
+        (["--regexp=needle", "private"], [1]),
+        (["--max-count", "1", "needle", "private"], [3]),
+        (["-m1", "needle", "private"], [2]),
+        (["needle", "-"], []),
+    ],
+)
+def test_search_grammar_preserves_pattern_and_operand_roles(
+    extractor: PathExtractor, argv: list[str], indices: list[int]
+) -> None:
+    assert extractor(argv) == indices
+
+
+def test_rg_files_mode_has_no_pattern_and_glob_values_are_not_paths() -> None:
+    assert rg_path_args(["--files", "private"]) == [1]
+    assert rg_path_args(["-g", "*.py", "needle", "src"]) == [3]
+    assert rg_path_args(["--glob=*.py", "needle", "src"]) == [2]
+
+
+@pytest.mark.parametrize(
+    ("extractor", "token"),
+    [
+        (grep_path_args, "-R"),
+        (grep_path_args, "--dereference-recursive"),
+        (rg_path_args, "-L"),
+        (rg_path_args, "--follow"),
+    ],
+)
+def test_search_symlink_option_names_remain_valid_as_patterns_and_paths(
+    extractor: PathExtractor, token: str
+) -> None:
+    assert extractor(["-e", token, "src"]) == [2]
+    assert extractor(["needle", "--", token]) == [2]
+
+
+@pytest.mark.parametrize(
+    ("extractor", "argv", "indices"),
+    [
+        (head_path_args, ["a", "-n", "2", "b"], [0, 3]),
+        (tail_path_args, ["-n+2", "a"], [1]),
+        (head_path_args, ["--lines=2", "-"], []),
+        (mkdir_path_args, ["-m", "700", "a", "-p"], [2]),
+        (touch_path_args, ["-d", "yesterday", "a"], [2]),
+        (diff_path_args, ["-I", "^#", "a", "b"], [2, 3]),
+        (ls_path_args, ["--color", "a"], [1]),
+        (ls_path_args, ["--color=always", "a"], [1]),
+        (find_path_args, ["-L", "a", "(", "-name", "*.py", ")"], [1]),
+        (find_path_args, ["-name", "-exec"], []),
+        (tee_path_args, ["-"], [0]),
+        (cp_path_args, ["--", "-t", "a", "b"], [1, 2, 3]),
+        (cp_path_args, ["-t", "--", "a"], [1, 2]),
+    ],
+)
+def test_command_specific_option_values(
+    extractor: PathExtractor, argv: list[str], indices: list[int]
+) -> None:
+    assert extractor(argv) == indices
+
+
+@pytest.mark.parametrize(
+    ("extractor", "argv"),
+    [
+        (cat_path_args, ["--unknown", "a"]),
+        (cat_path_args, ["--number=yes", "a"]),
+        (grep_path_args, ["-e"]),
+        (rg_path_args, ["--glob"]),
+        (head_path_args, ["a", "--lines"]),
+        (cp_path_args, ["-t"]),
+        (cp_path_args, ["-t", "a", "-t", "b", "c"]),
+        (mv_path_args, ["-T", "-t", "a", "b"]),
+        (cp_path_args, ["-t", "dest*", "src"]),
+        (find_path_args, [".", "-name"]),
+    ],
+)
+def test_incomplete_or_unsupported_grammar_is_rejected(
+    extractor: PathExtractor, argv: list[str]
+) -> None:
+    with pytest.raises(ValueError):
+        extractor(argv)

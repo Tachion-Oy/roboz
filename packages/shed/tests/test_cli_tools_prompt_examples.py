@@ -147,6 +147,7 @@ def _install_subprocess_spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, o
         text: bool,
         timeout: float,
         input: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> CompletedProcess[str]:
         calls.append({"argv": list(argv), "cwd": Path(cwd), "stdin": input})
         if Path(argv[0]).name == "diff":
@@ -394,10 +395,10 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
             RunFileCommands(
                 chain="pipe",
                 file_commands=[
-                    RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
+                    RunFileCommand(command="grep", argv=["-n", "-r", "TODO", "src/"])
                 ],
             ),
-            [["grep", "-n", "-R", "TODO", "{BASE}/src"]],
+            [["grep", "-n", "-r", "TODO", "{BASE}/src"]],
         ),
         (
             RunFileCommands(
@@ -473,7 +474,7 @@ def test_prompt_examples_real_subprocess_output_semantics(
             RunFileCommands(
                 chain="pipe",
                 file_commands=[
-                    RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
+                    RunFileCommand(command="grep", argv=["-n", "-r", "TODO", "src/"])
                 ],
             ),
             "TODO",

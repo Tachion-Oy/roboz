@@ -20,7 +20,7 @@ Use the **`<<RUN_FILE_COMMAND_TOOL>>`** tool with the configured working directo
 
 Invoke **`command: help`** with empty `argv`. The tool returns **one combined document**:
 
-1. **Commands** — allowed command names, forbidden argument substrings, input JSON shape, chaining (`pipe` / `and`), and worked examples.
+1. **Commands** — allowed command names, argument restrictions, input JSON shape, chaining (`pipe` / `and`), and worked examples.
 2. **Permissions** — same content as the host's path guard: how relative paths use the working directory, **allowed** and **denied** operation patterns (which paths allow read/create/delete), precedence (allow vs deny when both match), default when no rule matches, overwrite vs CREATE/DELETE, optional **ask** rules, and **tool-specific behaviors** (e.g. `tee`, `cp`, `mv`).
 
 That runtime output is authoritative for **this** session. This skill describes usage patterns; it does not duplicate your live allow/deny lines.
@@ -28,7 +28,7 @@ That runtime output is authoritative for **this** session. This skill describes 
 ## Choose command by intent
 
 - **Discover directories/files:** `find`, `ls`
-- **Locate symbols or text quickly in code:** **`rg`** (preferred); fallback **`grep`** with `-R` and `-n`
+- **Locate symbols or text quickly in code:** **`rg`** (preferred); fallback **`grep`** with `-r` and `-n`
 - **Know size before reading:** `wc -l`
 - **Read the start or end of a file:** `head`, `tail`
 - **Print a whole file:** `cat` only when needed (see truncation below)
@@ -59,7 +59,7 @@ This protects result semantics. A silently cut `rg`/`grep`/`cat` output can make
 
 **What to do instead:** Prefer **narrow, targeted** inspection so each result stays bounded:
 
-- **`rg`** or **`grep`** (with `-n`; add `-R` for `grep` when searching trees) to find symbols, classes, or TODOs.
+- **`rg`** or **`grep`** (with `-n`; add `-r` for `grep` when searching trees) to find symbols, classes, or TODOs.
 - **Bounded search first:** `rg --count PATTERN path` or `rg --max-count 20 PATTERN path`.
 - **`head`** and **`tail`** to read the start or end of a file explicitly.
 - **`wc`** for line counts when you need to know size before reading.
@@ -112,6 +112,11 @@ Disable ignore filtering explicitly:
 ```
 
 - **file_commands**: each entry has `command`, `argv` (all subprocess-style tokens in order), and optional `stdin`.
+- **Argument parsing**: use supported, fully spelled options; unknown options and missing values return a parse error. Use `--` before dash-prefixed file names, or give an explicit path such as `./-notes`. `find` roots need the explicit path form.
+- **Search patterns and values**: use `PATTERN path` or `-e PATTERN path`. Values for options such as `--max-count 20`, `--lines=80`, and `-g '*.py'` are kept as values. `rg --files path` lists files without a pattern.
+- **Recursive search**: use `grep -r`/`--recursive` or plain `rg` to skip nested symlinks. `grep -R`/`--dereference-recursive` and `rg -L`/`--follow` are unsupported; pass intended symlink targets as explicit file operands for permission checks.
+- **Unsupported inputs**: do not use pattern files, explicit ignore/exclusion files, indirect file lists, reference-file options, or subprocess preprocessors. Supply search patterns directly with `-e`, explicit file operands, and filter globs with `-g`/`--include`/`--exclude` as applicable. Unmatched path globs return a parse error.
+- **Copy/move destinations**: use separate literal tokens for `-t DIR` or `--target-directory DIR`; `-T` treats the destination as the target itself.
 - **chain**: required on every call. `"pipe"` chains stdout→stdin; `"and"` runs sequentially.
 - **Normal shell semantics**: this is the same behavior as `|` and `&&` in a regular shell; only the JSON shape is different.
 - **When to use which**: use `"pipe"` only when the next command consumes stdin (`cat|grep`, `grep|wc`). For independent commands (`find` then `find`, `ls` then `find`), use `"and"`.
@@ -161,9 +166,9 @@ Each bullet below shows **one** JSON payload shape for **one** `<<RUN_FILE_COMMA
 
 {"file_commands": [{"command": "find", "argv": [".", "-name", "*.py"]}, {"command": "find", "argv": [".", "-type", "d"]}], "chain": "and"}
 
-- **grep** — Recursive tree search under a directory (GNU `grep` needs `-R` when the path is a folder); line numbers via `-n`.
+- **grep** — Recursive tree search under a directory, skipping nested symlinks (`-r`); line numbers via `-n`.
 
-{"chain": "pipe", "file_commands": [{"command": "grep", "argv": ["-n", "-R", "TODO", "src/"]}]}
+{"chain": "pipe", "file_commands": [{"command": "grep", "argv": ["-n", "-r", "TODO", "src/"]}]}
 
 - **find** — One `argv`: search roots first, then predicates (same subprocess order as CLI `find`).
 
@@ -188,6 +193,8 @@ Each bullet below shows **one** JSON payload shape for **one** `<<RUN_FILE_COMMA
 {"chain": "pipe", "file_commands": [{"command": "mv", "argv": ["old_name.txt", "new_name.txt"]}]}
 
 Note: which commands are permitted and how paths map to operations follow **`help`** and the tool specifications for this deployment.
+
+Path guards authorize explicit operands or an implicit working directory. They do not individually authorize descendants visited by a directory command or implicit ignore/configuration files. These tools are not a process sandbox. Execution ignores `POSIXLY_CORRECT` and `RIPGREP_CONFIG_PATH` to keep argument parsing consistent with validation.
 """
 
 INSTRUCTIONS: Final[str] = _INSTRUCTIONS_TEMPLATE.replace(

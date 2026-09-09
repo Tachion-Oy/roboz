@@ -15,6 +15,7 @@ from roboshed.tools.cli_commands.utilities.path_extractors import (
     ls_path_args,
     mkdir_path_args,
     mv_path_args,
+    pwd_path_args,
     rg_path_args,
     tail_path_args,
     tee_path_args,
@@ -31,7 +32,7 @@ RG = CmdSpec(
         ArgPattern(pattern=re.compile(r"--pre-glob"), position=None),
     ],
 )
-PWD = CmdSpec(name="pwd")
+PWD = CmdSpec(name="pwd", path_extractor=pwd_path_args)
 CAT = CmdSpec(name="cat", path_extractor=cat_path_args)
 HEAD = CmdSpec(name="head", path_extractor=head_path_args)
 TAIL = CmdSpec(name="tail", path_extractor=tail_path_args)
@@ -122,6 +123,7 @@ GIO = CmdSpec(
     allowed_patterns=[
         ArgPattern(pattern=re.compile(r"trash"), position=0),
         ArgPattern(pattern=re.compile(r"trash"), position=None),
+        ArgPattern(pattern=re.compile(r"--"), position=None),
     ],
     hint="Use argv starting with trash; moves files to trash (safer than rm).",
 )

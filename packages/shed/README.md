@@ -49,6 +49,46 @@ access. Compose task-oriented agents directly with `AgentDefinition`.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
+## File CLI argument parsing
+
+Built-in file commands accept an explicit subset of their Unix argument grammar.
+Options may follow file operands, and `--` ends option parsing. For example,
+`cat notes.txt -n` checks `notes.txt`, and `cat -- -notes` checks the dash-named
+file. `find` uses its own grammar: global options, search roots, then predicates;
+write a dash-named root as `./-notes`.
+
+Search patterns and option values are distinct from file operands. Use
+`grep -e needle notes.txt`, `rg --max-count 20 needle src`, or
+`rg -g '*.py' needle src`. `rg --files src` does not consume a pattern.
+The stdin marker `-` remains stdin for read commands; for `tee` it names a file.
+Copy/move destination parsing honors `--`, `-t DIR`, and `-T`.
+
+Migration from the former permissive parser:
+
+- Spell out long options; unknown or abbreviated options now return a parse
+  error. Supply required values, and use `--` or `./` for dash-named files.
+- Supply patterns directly using `-e`. Pattern-file options (`-f`/`--file`),
+  explicit ignore/exclusion files, indirect file lists (`--files0-from`),
+  reference-file options, and subprocess preprocessors are rejected.
+- Supply copy/move target directories as separate literal tokens (`-t DIR` or
+  `--target-directory DIR`). Globs that match no files return a parse error
+  instead of disappearing from argv.
+- Pass supported options in `argv`; execution ignores `POSIXLY_CORRECT` and
+  `RIPGREP_CONFIG_PATH` so environment settings cannot change argument parsing.
+- Recursive symlink-following options (`grep -R`/`--dereference-recursive` and
+  `rg -L`/`--follow`) are rejected before execution because nested symlink
+  targets are not individually authorized. Use `grep -r`/`--recursive` or plain
+  `rg` for recursive search that skips nested symlinks, and pass any intended
+  symlink targets as explicit file operands for permission checks.
+
+Public input models and tool signatures are unchanged. Custom `CmdSpec`
+extractors remain responsible for validating their executable's grammar.
+
+These guards check explicit operands, or the working directory for implicit
+inputs. They do not check each descendant visited by recursive commands or each
+implicit configuration/ignore file. Fixing argument parsing does not make these
+tools a process sandbox or resolve directory-traversal permission gaps.
+
 ## Conversation compaction
 
 The following fragment belongs inside an agent or tool builder. `endpoint` is

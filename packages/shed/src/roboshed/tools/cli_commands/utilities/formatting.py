@@ -42,6 +42,14 @@ def format_cli_commands_help(specs: Sequence[CmdSpec]) -> str:
         "  - chain (required): \"pipe\" same as '|' (stdout->stdin between commands) or \"and\" same as '&&' (sequential, no passthrough)",
         '  - Use "pipe" only when the next command consumes stdin (e.g. cat|grep, grep|wc). For independent commands (e.g. find + find, ls + find), use "and".',
         "  - One or more commands per call; no shell syntax (|, ;, &&) in command strings (behavior analogy only; use chain + file_commands).",
+        "  - Built-in commands accept a supported option grammar: unknown/abbreviated options and missing values are parse errors.",
+        "  - Use -- before dash-prefixed file operands; find roots instead need an explicit ./ prefix. Options may follow operands for other commands.",
+        "  - Search with PATTERN path or -e PATTERN path; option values such as --max-count 20 and -g '*.py' are not file operands.",
+        "  - Recursive search: use grep -r/--recursive or plain rg. Symlink-following options grep -R/--dereference-recursive and rg -L/--follow are unsupported; pass intended symlink targets as explicit file operands for permission checks.",
+        "  - Auxiliary file options (-f/--file, --ignore-file, --exclude-from, --files0-from, --reference, find reference predicates) and subprocess preprocessors are unsupported.",
+        "  - cp/mv target-directory values must be separate literal tokens: -t DIR or --target-directory DIR. Unmatched path globs are parse errors.",
+        "  - Execution ignores POSIXLY_CORRECT and RIPGREP_CONFIG_PATH so inherited settings cannot change validated argument semantics.",
+        "  - Guards check explicit path operands or the implicit working directory. Directory descendants and implicit configuration/ignore files are not individually authorized; this is not a process sandbox.",
         "",
     ]
     hints: dict[str, str] = {

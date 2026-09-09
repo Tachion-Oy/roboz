@@ -73,6 +73,22 @@
 
 ### Fixed
 
+- Reject `grep -R`/`--dereference-recursive` and `rg -L`/`--follow` before
+  execution so recursive search cannot use these options to read through nested
+  symlinks outside guarded paths. **Compatibility:** use `grep -r`/`--recursive`
+  or plain `rg`; pass intended symlink targets explicitly for permission checks.
+- Check CLI file operands across `--`, trailing options, and search-pattern
+  options while preserving stdin markers. Reject unsupported/abbreviated options,
+  auxiliary file inputs, and preprocessors before execution. **Compatibility:**
+  see the README's file CLI migration guidance for the stricter supported grammar.
+  Recursive descendant authorization remains separate from this parser fix.
+- Respect copy/move destination modes when checking permissions, including `--`
+  and `-T`. Reject unmatched path globs before execution instead of dropping them
+  from argv; see the README's file CLI migration guidance.
+- Keep CLI execution consistent with validated arguments by ignoring
+  `POSIXLY_CORRECT` and `RIPGREP_CONFIG_PATH`. Pass supported options explicitly
+  in argv; see the README's environment compatibility guidance.
+
 - Reject relative project persistence paths that escape through traversal or
   symlinks. External logs, snapshots, and memory require explicit absolute paths;
   see `docs/agent-factories.md` for migration guidance.

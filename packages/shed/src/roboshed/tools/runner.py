@@ -1,5 +1,6 @@
 """Run guarded command payloads."""
 
+import os
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -42,6 +43,11 @@ def run_cli_argv(
     argv: list[str], cwd: Path, stdin: str | None, command_line: str
 ) -> tuple[bool, str]:
     """Run argv. Return (True, output) on success or (False, formatted error)."""
+    environment = os.environ.copy()
+    # Keep executable parsing aligned with the validated GNU-style argv. A
+    # ripgrep config can inject arguments that never went through the resolver.
+    environment.pop("POSIXLY_CORRECT", None)
+    environment.pop("RIPGREP_CONFIG_PATH", None)
     result = subprocess.run(
         argv,
         cwd=cwd,
@@ -49,6 +55,7 @@ def run_cli_argv(
         text=True,
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
         input=stdin,
+        env=environment,
     )
     out = (result.stdout or "") + (result.stderr or "")
     return _format_run_result(result.returncode, out, command_line)
