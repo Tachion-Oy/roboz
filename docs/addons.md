@@ -5,7 +5,7 @@ This repository builds four independently versioned distributions:
 | Distribution | Import | Version | Contents |
 | --- | --- | --- | --- |
 | `roboz` | `roboz` | `0.1.1` (pre-alpha project) | Agent, tool, skill, control, event, and persistence primitives |
-| `roboshed` | `roboshed` | `0.1.0a1` | Agent factories, workspace, capabilities, memory, guarded files, and neutral email tools |
+| `roboshed` | `roboshed` | `0.1.0a1` | Agent factories, sandbox policy, capabilities, memory, guarded files, and neutral email tools |
 | `roboz-endpoints` | `roboz_endpoints` | `0.1.0a1` | Model catalogues and optional SDK adapters |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | `0.1.0b1` | Proton Bridge mailbox and draft adapter |
 
@@ -73,9 +73,9 @@ from roboz import stop
 from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
-from roboshed.workspace import WorkspacePermissions
+from roboshed.sandbox import PermissionPolicy
 
-permissions = WorkspacePermissions.local(Path("./workspace"))
+permissions = PermissionPolicy.local(Path("./sandbox"))
 agent = AgentDefinition(
     name="file_worker",
     system_prompt="Complete the user's task, then call stop.",
@@ -96,7 +96,7 @@ orchestrator and Librarian presets. Each capability owns its tools and skills
 and receives the owning agent's event pipe once per build.
 
 See [agent factories](agent-factories.md) for persistent orchestration, common
-workspace structure, permission injection, and API migration.
+sandbox structure, permission injection, and API migration.
 
 Another email adapter implements `roboshed.tools.email.EmailService`.
 `ResolvedFileCommand[Input, Payload]` and `GuardFilesResult[Input, Payload]` retain

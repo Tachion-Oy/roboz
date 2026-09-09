@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Breaking: replace the public Shed `Workspace` and `Project` primitives with a
+  single `Sandbox`. Configure tier and persistence paths once, derive the policy
+  with `sandbox.permissions(project_slug)`, and pass the sandbox plus slug to
+  RoboSprawl deployment factories. Import `Sandbox` and the standalone
+  `PermissionPolicy` from `roboshed.sandbox`. The tiered permission behavior is
+  unchanged.
+
 ## 0.1.0a2 - 2026-09-09
 
 - Treat wildcard characters in project and workspace names literally when

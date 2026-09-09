@@ -9,7 +9,7 @@ profiles; applications configure and host them.
 | `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `AgentDefinition` |
 | `roboshed.capabilities` | Reusable file, compaction, and maintenance capabilities, alongside `tools` and `skills` |
 | `roboshed.deployments.robosprawl` | Project composition, defined directly in the package `__init__.py` |
-| Other Shed modules | Workspace/project structure, permissions, memory and file tools |
+| Other Shed modules | Sandbox structure and policy, memory, and file tools |
 | Application | Configuration, model selection, permission policy, UI conventions, startup and shutdown |
 
 Other deployment profiles can live alongside `robosprawl` in `roboshed.deployments`.
@@ -54,7 +54,7 @@ agent = worker.build()
 result, messages = agent.invoke()
 ```
 
-This works with only `roboz` installed. A definition needs no project, workspace,
+This works with only `roboz` installed. A definition needs no project, sandbox,
 memory folder, provider companion, or host. Without supplied sinks it selects no
 persistence or event output. `initial_messages` are explicit caller inputs.
 
@@ -131,14 +131,14 @@ from pathlib import Path
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
 from roboshed.deployments.robosprawl import RoboSprawl
-from roboshed.workspace import Project, Workspace
+from roboshed.sandbox import Sandbox
 
-project = Project(Workspace(Path("./data")), "example")
+sandbox = Sandbox(Path("./data"))
 deployment = RoboSprawl(
     capabilities=(FileCommands, FileEditing),
     memory_endpoint=MockLLMEndpoint([]),
 )
-factory = deployment(project, orchestrator_endpoint=MockLLMEndpoint([]))
+factory = deployment(sandbox, "example", orchestrator_endpoint=MockLLMEndpoint([]))
 agent, background_agents = factory.build()
 ```
 
@@ -146,11 +146,11 @@ agent, background_agents = factory.build()
 composes Librarian snapshotting, consolidation, retention, and 120-second cadence
 in that order. Watched names include nested specialists. Consumers select a
 sequence of configured capabilities or permission factories, a memory endpoint, optional specialists,
-and their interaction mode. The `project_context` template supplies the actual paths from `{project}` at
-construction time. Select the `robosprawl` skill for static orientation and HUD
+and their interaction mode. The `project_context` template supplies the actual
+paths derived from the sandbox and project slug at construction time. Select the `robosprawl` skill for static orientation and HUD
 guidance; the skill does not embed a deployment’s paths. Permission factories run for every recipe invocation, binding fresh capabilities
 to the current project. Override `librarian_capabilities` with a callable accepting
-`(project, names)` and returning the desired capability sequence. It runs once
+`(sandbox, project_slug, names)` and returning the desired capability sequence. It runs once
 per recipe invocation; `names` is the frozen set of recursive foreground agent
 names. The returned order is preserved. Supply at least one capability that
 provides a default tool: the Librarian runs a non-agentic maintenance pipeline.
@@ -170,9 +170,10 @@ The orchestrator stays available across tasks and stops when the user asks,
 including standing instructions. It selects no memory location. Use a plain
 definition with a task-specific prompt for task-oriented behavior.
 
-`AgenticFactory` binds the project and definitions. It seeds root initial context
-from `project.memory` by default; `seed_initial_messages_from_memory=False`
-disables this. It constructs fresh log sinks at `project.logs / agent.name`.
+`AgenticFactory` binds the sandbox, project slug, and definitions. It seeds root
+initial context from `sandbox.project_memory_dir(project_slug)` by default;
+`seed_initial_messages_from_memory=False` disables this. It constructs fresh log
+sinks below `sandbox.project_logs_dir(project_slug)`.
 `include_cli_output` defaults to false. Builds do not mutate either definition.
 Foreground and background trees must have disjoint agent names. The Librarian
 persists separately; caller foreground sinks do not follow it.
@@ -201,25 +202,31 @@ Sprawl runs the root in its own worker thread. Its run control retains backgroun
 pipes and observes background thread lifecycle events, preserving cancellation,
 startup races, and shutdown handling. A CLI can invoke the root on its main thread.
 
-## Workspace and capability inputs
+## Sandbox and capability inputs
 
-Workspace areas describe roles, not permissions. Projects expose `logs`,
-`snapshots`, and `memory`. Persistence paths must not overlap. Relative paths
-must remain inside the project, including after symlink resolution; external
-storage requires an explicit absolute path. `project.artifact_dir(name)` resolves
-an additional folder inside the project. No dynamic configuration keys become Python attributes.
+The sandbox defines its tier and persistence paths once. Its path methods derive
+project logs, snapshots, memory, and additional artifact locations from a slug.
+Persistence paths must not overlap. Relative paths must remain inside the project,
+including after symlink resolution; external storage requires an explicit absolute
+path. No dynamic configuration keys become Python attributes.
 
 Applications select and configure `roboshed.capabilities`. RoboSprawl assembles
 its capability tuple; any future user-facing selection belongs in Sprawl.
 Capabilities do not depend on a named deployment profile.
 
-File capabilities take concrete `WorkspacePermissions`; configure them from the
-project before creating the definition. `Compactification` uses its owning
+File capabilities take a concrete `PermissionPolicy`; obtain the standard policy
+from `sandbox.permissions(project_slug)` before creating the definition.
+`Compactification` uses its owning
 endpoint unless given another, and shares its pipe. Its default threshold is
 80%; Sprawl explicitly chooses 60%.
 
 ## Migration
 
+- Replace the old public layout/project values with one `Sandbox` from
+  `roboshed.sandbox`. Configure
+  its tier and persistence folder names once, call `sandbox.permissions(slug)`
+  for tools, and use its `project_*_dir(slug)` methods for persistence. Project
+  identity and lifecycle objects belong to the consuming application.
 - Relative project persistence paths may no longer escape the project through
   `..` or symlinks. Use an explicit absolute path for external logs, snapshots,
   or memory storage.
@@ -235,7 +242,7 @@ endpoint unless given another, and shares its pipe. Its default threshold is
   use the same protocol; no compatibility result class is retained.
 - Call `AgentDefinition.build()` without a project. Supply persistence explicitly
   through `event_sink_factory` and initial context through `initial_messages`.
-- Pass the project into `AgenticFactory(project=..., ...)`, then unpack
+- Pass `sandbox=...` and `project_slug=...` into `AgenticFactory`, then unpack
   `agent, background_agents = factory.build(event_sinks=...)`. Call `agent.invoke()`.
 - Replace capability `build(pipe, agent_endpoint)` with
   `build(pipe, *, default_endpoint: EndpointLike | None)`. Store tool-specific
@@ -277,7 +284,7 @@ unreleased breaking API change; versions and publication are separate work.
 ## Repeated construction for any host
 
 `DeploymentFactory` evaluates a `DeploymentRecipe` once per call, then builds the
-returned `AgenticFactory`. The recipe receives a project and a live orchestrator
+returned `AgenticFactory`. The recipe receives a sandbox, project slug, and a live orchestrator
 endpoint reference. It controls capability choices, prompts, interaction mode,
 and dependency allocation. A CLI and a web server can consume the same factory:
 
@@ -287,9 +294,10 @@ from roboshed.deployments.robosprawl import AgenticFactory, DeploymentFactory
 from roboz.runtime import Output
 
 
-def recipe(project, *, orchestrator_endpoint):
+def recipe(sandbox, project_slug, *, orchestrator_endpoint):
     return AgenticFactory(
-        project=project,
+        sandbox=sandbox,
+        project_slug=project_slug,
         orchestrator=orchestrator(
             agent_endpoint=orchestrator_endpoint,
             interaction_mode=Output.CLI,
@@ -298,12 +306,17 @@ def recipe(project, *, orchestrator_endpoint):
 
 
 factory = DeploymentFactory(recipe)
-bundle = factory(project, endpoint_getter=lambda: selected_endpoint, event_sinks=())
+bundle = factory(
+    sandbox,
+    "example",
+    endpoint_getter=lambda: selected_endpoint,
+    event_sinks=(),
+)
 bundle.agent.invoke()
 ```
 
 The shared `RunFactory` protocol is the single host construction contract:
-`(project, *, endpoint_getter, event_sinks) -> RoboSprawlBundle`. Constructing a
+`(sandbox, project_slug, *, endpoint_getter, event_sinks) -> RoboSprawlBundle`. Constructing a
 bundle never invokes its agents, starts threads, or creates persistence files.
 Hosts retain the returned background agents and own invocation and shutdown.
 
@@ -354,10 +367,10 @@ also restarts a scheduler task that has exited.
 Consumers own scheduler start/stop and readiness decisions; an unavailable
 resource does not automatically make an application unready.
 
-Project-scoped tools can use `FileCommands(project.permissions)` and
-`FileEditing(project.permissions)`. The shared policy allows workspace reads
+Project-scoped tools can use `FileCommands(sandbox.permissions(project_slug))`
+and `FileEditing(sandbox.permissions(project_slug))`. The shared policy allows sandbox reads
 and writes in the current project, asks before shared-area writes, and denies
-other writes or paths outside the workspace. Policy construction has no filesystem
+other writes or paths outside the sandbox. Policy construction has no filesystem
 side effects; hosts still own directory preparation and tool invocation.
-Project slugs and configured workspace folder names are literal paths: wildcard
+Project slugs and configured sandbox folder names are literal paths: wildcard
 characters in their names do not expand the derived permission rules.

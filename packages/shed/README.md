@@ -1,6 +1,6 @@
 # roboshed
 
-Reusable agent factories, capabilities, workspaces, tools, and skills built on Roboz. Version `0.1.0a1`
+Reusable agent factories, capabilities, sandbox policies, tools, and skills built on Roboz. Version `0.1.0a1`
 is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
 
 Includes guarded Unix file commands, Python patch editing, CLI/file/email
@@ -13,9 +13,9 @@ from roboz import stop
 from roboz.deployment import AgentDefinition, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
-from roboshed.workspace import WorkspacePermissions
+from roboshed.sandbox import PermissionPolicy
 
-permissions = WorkspacePermissions.local(Path("./workspace"))
+permissions = PermissionPolicy.local(Path("./sandbox"))
 agent = AgentDefinition(
     name="file_worker",
     system_prompt="Complete the user's task, then call stop.",
@@ -44,8 +44,10 @@ Runtime controls remain separate from endpoints. The Librarian accepts an ordere
 `capabilities` sequence. Snapshot and consolidation capabilities each expose an
 `endpoint`; `agent_endpoint` supplies their shared default. Retention and cadence
 need no model. Each capability owns its settings and project inputs. Select permission policies through
-`roboshed.workspace.WorkspacePermissions`; workspace structure does not grant
-access. Compose task-oriented agents directly with `AgentDefinition`.
+`roboshed.sandbox.PermissionPolicy`, or configure one `Sandbox` and derive
+the standard tiered policy with `sandbox.permissions(project_slug)`. The sandbox
+also derives all project persistence paths. Compose task-oriented agents directly
+with `AgentDefinition`.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
@@ -117,7 +119,7 @@ retries observation failures; timed-out workers retain their concurrency slots
 until completion.
 See [agent factories](../../docs/agent-factories.md) for the contracts and examples.
 
-The `robosprawl` skill from `roboshed.skills` covers workspace orientation and the HUD
+The `robosprawl` skill from `roboshed.skills` covers sandbox orientation and the HUD
 file-link/markdown contract. Select it through
 `Capability(auto_loaded_skills=(robosprawl,))` for compatible consumers. It uses project
-paths supplied through `RoboSprawl.project_context` instead of choosing a workspace layout.
+paths supplied through `RoboSprawl.project_context` instead of choosing a sandbox layout.
