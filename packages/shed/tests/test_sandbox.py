@@ -2,124 +2,133 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from roboshed.workspace import Project, Workspace, WorkspacePermissions
+from roboshed.sandbox import PermissionPolicy, Sandbox
 from roboshed.models import ActionVerdict, Operation
 from roboshed.tools.utils import check_allow_deny_permission
 
 from roboz import Ctx
 
 
-def test_workspace_names_and_persistence_are_independently_configurable(tmp_path):
-    workspace = Workspace(
-        tmp_path / "root", readonly="references", shared="team", projects="jobs"
-    )
-    project = Project(
-        workspace,
-        "research",
+def test_sandbox_names_and_persistence_are_independently_configurable(tmp_path):
+    sandbox = Sandbox(
+        tmp_path / "root",
+        readonly="references",
+        shared="team",
+        projects="jobs",
         logs_dir=tmp_path / "separate-logs",
         snapshots_dir=Path("summaries"),
         memory_dir=Path("knowledge"),
     )
-    assert project.root == tmp_path / "root/jobs/research"
-    assert project.logs == tmp_path / "separate-logs"
-    assert project.snapshots == project.root / "summaries"
-    assert project.artifact_dir("reports/draft") == project.root / "reports/draft"
-    assert workspace.shared_dir == tmp_path / "root/team"
-    assert not workspace.root.exists()
+    project_root = sandbox.project_dir("research")
+    assert project_root == tmp_path / "root/jobs/research"
+    assert sandbox.project_logs_dir("research") == tmp_path / "separate-logs"
+    assert sandbox.project_snapshots_dir("research") == project_root / "summaries"
+    assert sandbox.artifact_dir("research", "reports/draft") == (
+        project_root / "reports/draft"
+    )
+    assert sandbox.shared_dir == tmp_path / "root/team"
+    assert not sandbox.root.exists()
     with pytest.raises(ValueError, match="inside"):
-        project.artifact_dir("../escape")
+        sandbox.artifact_dir("research", "../escape")
     with pytest.raises(ValueError, match="overlap"):
-        replace(project, memory_dir=Path("summaries/nested"))
+        replace(sandbox, memory_dir=Path("summaries/nested"))
     with pytest.raises(ValueError, match="overlap"):
-        Workspace(tmp_path, shared="readonly/nested")
+        Sandbox(tmp_path, shared="readonly/nested")
 
 
 @pytest.mark.parametrize("field", ["logs_dir", "snapshots_dir", "memory_dir"])
-def test_project_accepts_nested_relative_persistence_without_creating_dirs(
+def test_sandbox_accepts_nested_relative_persistence_without_creating_dirs(
     tmp_path: Path, field: str
 ):
-    workspace = Workspace(tmp_path / "workspace")
-    project = Project(workspace, "research", **{field: Path("storage/nested")})
-    assert getattr(project, field.removesuffix("_dir")) == (
-        project.root / "storage/nested"
-    )
-    assert not workspace.root.exists()
+    sandbox = Sandbox(tmp_path / "sandbox", **{field: Path("storage/nested")})
+    method = getattr(sandbox, f"project_{field}")
+    assert method("research") == sandbox.project_dir("research") / "storage/nested"
+    assert not sandbox.root.exists()
 
 
 @pytest.mark.parametrize("field", ["logs_dir", "snapshots_dir", "memory_dir"])
 @pytest.mark.parametrize("path", ["../escape", "nested/../../escape", "."])
-def test_project_rejects_relative_persistence_outside_project(
+def test_sandbox_rejects_relative_persistence_outside_project(
     tmp_path: Path, field: str, path: str
 ):
-    workspace = Workspace(tmp_path / "workspace")
     with pytest.raises(ValueError, match="inside"):
-        Project(workspace, "research", **{field: Path(path)})
-    assert not workspace.root.exists()
+        Sandbox(tmp_path / "sandbox", **{field: Path(path)})
+    assert not tmp_path.joinpath("sandbox").exists()
 
 
 @pytest.mark.parametrize("field", ["logs_dir", "snapshots_dir", "memory_dir"])
-def test_project_rejects_escaping_persistence_symlink(tmp_path: Path, field: str):
-    workspace = Workspace(tmp_path / "workspace")
-    project_root = workspace.project_dir("research")
+def test_sandbox_rejects_escaping_persistence_symlink(tmp_path: Path, field: str):
+    sandbox = Sandbox(tmp_path / "sandbox", **{field: Path("linked/nested")})
+    project_root = sandbox.project_dir("research")
     project_root.mkdir(parents=True)
     outside = tmp_path / "outside"
     outside.mkdir()
     (project_root / "linked").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="inside"):
-        Project(workspace, "research", **{field: Path("linked/nested")})
+        getattr(sandbox, f"project_{field}")("research")
     assert not (outside / "nested").exists()
 
 
 @pytest.mark.parametrize("field", ["logs_dir", "snapshots_dir", "memory_dir"])
-def test_project_accepts_absolute_external_persistence(tmp_path: Path, field: str):
-    workspace = Workspace(tmp_path / "workspace")
+def test_sandbox_accepts_absolute_external_persistence(tmp_path: Path, field: str):
     outside = tmp_path / "outside"
-    project = Project(workspace, "research", **{field: outside / "nested/../storage"})
-    assert getattr(project, field.removesuffix("_dir")) == outside / "storage"
-    assert not workspace.root.exists()
+    sandbox = Sandbox(
+        tmp_path / "sandbox", **{field: outside / "nested/../storage"}
+    )
+    assert getattr(sandbox, f"project_{field}")("research") == outside / "storage"
+    assert not sandbox.root.exists()
     assert not outside.exists()
 
 
 @pytest.mark.parametrize("field", ["logs_dir", "snapshots_dir", "memory_dir"])
 @pytest.mark.parametrize("absolute", [False, True])
 @pytest.mark.parametrize("nested", [False, True])
-def test_project_rejects_overlapping_persistence(
+def test_sandbox_rejects_overlapping_persistence(
     tmp_path: Path, field: str, absolute: bool, nested: bool
 ):
-    project = Project(Workspace(tmp_path / "workspace"), "research")
+    sandbox = Sandbox(tmp_path / "sandbox")
     other = "memory" if field == "logs_dir" else "logs"
     path = Path(other) / "nested" if nested else Path(other)
     if absolute:
-        path = project.root / path
+        path = sandbox.project_dir("research") / path
     with pytest.raises(ValueError, match="overlap"):
-        replace(project, **{field: path})
-    assert not project.workspace.root.exists()
+        changed = replace(sandbox, **{field: path})
+        getattr(changed, f"project_{field}")("research")
+    assert not sandbox.root.exists()
 
 
 @pytest.mark.parametrize("project_scoped", [False, True])
-def test_workspace_denies_escape_and_symlink_target(tmp_path: Path, project_scoped):
+def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped):
     from roboshed.models import ActionVerdict, Operation
     from roboshed.tools.guard import resolve_allow_verdict
 
-    root = tmp_path / "workspace"
+    root = tmp_path / "sandbox"
     root.mkdir()
     outside = tmp_path / "outside.txt"
     outside.write_text("private")
     (root / "link.txt").symlink_to(outside)
-    project = Project(Workspace(root), "research")
-    workspace = project.permissions if project_scoped else WorkspacePermissions.local(root)
+    sandbox = Sandbox(root)
+    policy = (
+        sandbox.permissions("research")
+        if project_scoped
+        else PermissionPolicy.local(root)
+    )
     ctx = Ctx(
-        base=workspace.base,
-        takes_precedence=workspace.takes_precedence,
-        allow=list(workspace.allow),
+        base=policy.base,
+        takes_precedence=policy.takes_precedence,
+        allow=list(policy.allow),
         deny=[],
         ask=[],
-        default_verdict=workspace.default_verdict,
+        default_verdict=policy.default_verdict,
     )
     for path in [outside, root / ".." / "outside.txt", root / "link.txt"]:
         assert resolve_allow_verdict(path, Operation.READ, ctx)[0] == ActionVerdict.deny
     assert (
-        resolve_allow_verdict((project.root if project_scoped else root) / "new.txt", Operation.CREATE, ctx)[0]
+        resolve_allow_verdict(
+            (sandbox.project_dir("research") if project_scoped else root) / "new.txt",
+            Operation.CREATE,
+            ctx,
+        )[0]
         == ActionVerdict.allow
     )
 
@@ -138,12 +147,11 @@ def test_workspace_denies_escape_and_symlink_target(tmp_path: Path, project_scop
         ("../outside", Operation.CREATE, False),
     ],
 )
-def test_configured_workspace_permission_boundaries(tmp_path, area, operation, allowed):
-    project = Project(
-        Workspace(tmp_path / "root", readonly="references", shared="team", projects="work"),
-        "my-project",
+def test_configured_sandbox_permission_boundaries(tmp_path, area, operation, allowed):
+    sandbox = Sandbox(
+        tmp_path / "root", readonly="references", shared="team", projects="work"
     )
-    policy = project.permissions
+    policy = sandbox.permissions("my-project")
     verdict = check_allow_deny_permission(
         location=policy.base / area / "file.txt",
         op_type=operation,
@@ -163,8 +171,8 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
     from roboshed.tools import utils
     from roboz.runtime import EventPipe
 
-    project = Project(Workspace(tmp_path / "root"), "my-project")
-    policy = project.permissions
+    sandbox = Sandbox(tmp_path / "root")
+    policy = sandbox.permissions("my-project")
     prompts = []
 
     def interact(message, *, with_reply):
@@ -174,7 +182,7 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
 
     monkeypatch.setattr(utils, "interact_with_user", interact)
     verdict, _ = utils.check_ask_permission(
-        location=project.workspace.shared_dir / "file.txt",
+        location=sandbox.shared_dir / "file.txt",
         op_type=Operation.CREATE,
         ask_rules=policy.ask,
         base_path=policy.base,
@@ -197,13 +205,16 @@ def test_project_permission_paths_treat_globs_as_literal_names(
 ):
     from roboshed.tools.utils import check_rule
 
-    project = Project(Workspace(tmp_path, projects=projects, shared=shared), slug)
-    policy = project.permissions
+    sandbox = Sandbox(tmp_path, projects=projects, shared=shared)
+    policy = sandbox.permissions(slug)
     for operation in (Operation.CREATE, Operation.DELETE):
-        for location in (project.root, project.root / "file.txt"):
+        for location in (
+            sandbox.project_dir(slug),
+            sandbox.project_dir(slug) / "file.txt",
+        ):
             assert check_rule(location, operation, list(policy.allow), policy.base)
             assert not check_rule(location, operation, list(policy.ask), policy.base)
-        for location in (project.workspace.shared_dir, project.workspace.shared_dir / "file.txt"):
+        for location in (sandbox.shared_dir, sandbox.shared_dir / "file.txt"):
             assert check_rule(location, operation, list(policy.allow), policy.base)
             assert check_rule(location, operation, list(policy.ask), policy.base)
         assert not check_rule(tmp_path / sibling / "file.txt", operation, list(policy.allow), policy.base)

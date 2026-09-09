@@ -1,4 +1,4 @@
-"""Workspace structure and derived project permissions for agent compositions."""
+"""Filesystem sandbox layout and derived permissions for agent compositions."""
 
 from dataclasses import dataclass
 from glob import escape
@@ -23,8 +23,8 @@ class ToolOptions(TypedDict):
 
 
 @dataclass(frozen=True)
-class WorkspacePermissions:
-    """An explicit base and permission policy; no application directory layout."""
+class PermissionPolicy:
+    """An explicit tool boundary independent of application lifecycle concepts."""
 
     base: Path
     allow: tuple[PermissionRule, ...] = ()
@@ -34,7 +34,7 @@ class WorkspacePermissions:
     takes_precedence: ActionVerdict = ActionVerdict.deny
 
     @classmethod
-    def local(cls, base: Path) -> "WorkspacePermissions":
+    def local(cls, base: Path) -> "PermissionPolicy":
         """Allow operations inside this root; deny paths outside it.
 
         These tool guards are not an operating-system sandbox. The demo uses
@@ -77,12 +77,8 @@ def _within(root: Path, name: str) -> Path:
 
 
 @dataclass(frozen=True)
-class Workspace:
-    """Named read-only, shared, and project areas with derived project permissions.
-
-    Project.permissions describes the area's read/write boundaries for tools.
-    Constructing a workspace has no filesystem side effects; hosts create directories.
-    """
+class _SandboxLayout:
+    """Private layout mechanism for a sandbox's named filesystem areas."""
 
     root: Path
     readonly: str = "readonly"
@@ -90,18 +86,18 @@ class Workspace:
     projects: str = "projects"
 
     def __post_init__(self) -> None:
-        """Reject escaping or overlapping workspace areas."""
+        """Reject escaping or overlapping sandbox areas."""
         paths = [self.readonly_dir, self.shared_dir, self.projects_dir]
         if any(
             a.is_relative_to(b) or b.is_relative_to(a)
             for i, a in enumerate(paths)
             for b in paths[i + 1 :]
         ):
-            raise ValueError("workspace areas must not overlap")
+            raise ValueError("sandbox areas must not overlap")
 
     @property
     def resolved_root(self) -> Path:
-        """Return the absolute workspace root."""
+        """Return the absolute sandbox root."""
         return self.root.resolve()
 
     @property
@@ -127,54 +123,61 @@ class Workspace:
 
 
 @dataclass(frozen=True)
-class Project:
-    """One workspace project and its persistence locations.
+class Sandbox(_SandboxLayout):
+    """One filesystem boundary and its slug-scoped paths and tool permissions.
 
-    Relative persistence paths must remain inside the project's root, including
+    This is a tool-level guard, not an operating-system sandbox. Relative
+    persistence paths remain inside the selected project's root, including
     after symlink resolution. External storage requires an explicit absolute
-    path. Other artifact paths must remain inside the project's root.
-    No directories are created here.
+    path. Constructing the sandbox and deriving paths or permissions creates no
+    directories; hosts own filesystem preparation.
     """
 
-    workspace: Workspace
-    slug: str
     logs_dir: Path = Path("logs")
     snapshots_dir: Path = Path("snapshots")
     memory_dir: Path = Path("memory")
 
     def __post_init__(self) -> None:
-        """Validate identity and disjoint persistence locations."""
-        paths = [self.logs, self.snapshots, self.memory]
+        """Validate layout and project-relative persistence configuration."""
+        super().__post_init__()
+        self._persistence_dirs("__sandbox_validation__")
+
+    def _persistence_dirs(self, slug: str) -> tuple[Path, Path, Path]:
+        """Resolve and validate the persistence locations for one project slug."""
+        root = self.project_dir(slug)
+        def resolve(path: Path) -> Path:
+            return path.resolve() if path.is_absolute() else _within(root, str(path))
+
+        paths = (
+            resolve(self.logs_dir),
+            resolve(self.snapshots_dir),
+            resolve(self.memory_dir),
+        )
         if any(
             a.is_relative_to(b) or b.is_relative_to(a)
             for i, a in enumerate(paths)
             for b in paths[i + 1 :]
         ):
             raise ValueError("persistence folders must not overlap")
+        return paths
 
-    @property
-    def root(self) -> Path:
-        """Return this project's artifact root."""
-        return self.workspace.project_dir(self.slug)
+    def permissions(self, slug: str) -> PermissionPolicy:
+        """Read inside the sandbox, write one project, and confirm shared writes.
 
-    @property
-    def permissions(self) -> WorkspacePermissions:
-        """Read inside the workspace, write this project, and confirm shared writes.
-
-        Other writes and all paths outside the workspace are denied. Deriving
+        Other writes and all paths outside the sandbox are denied. Deriving
         the tool policy creates no directories and starts no runtime work.
         Configured folder names are literal, including glob metacharacters.
         """
-        workspace = self.workspace
+        self.project_dir(slug)
         writes = {Operation.CREATE, Operation.DELETE}
-        project_pattern = escape(f"{workspace.projects}/{self.slug}")
-        shared_pattern = escape(workspace.shared)
+        project_pattern = escape(f"{self.projects}/{slug}")
+        shared_pattern = escape(self.shared)
         shared = (
             PermissionRule(shared_pattern, writes),
             PermissionRule(f"{shared_pattern}/**", writes),
         )
-        return WorkspacePermissions(
-            base=workspace.resolved_root,
+        return PermissionPolicy(
+            base=self.resolved_root,
             allow=(
                 PermissionRule("**", {Operation.READ}),
                 PermissionRule(project_pattern, writes),
@@ -185,27 +188,18 @@ class Project:
             takes_precedence=ActionVerdict.allow,
         )
 
-    def _persistence_dir(self, path: Path) -> Path:
-        """Resolve explicit absolute storage or validate project-relative storage."""
-        if path.is_absolute():
-            return path.resolve()
-        return _within(self.root, str(path))
+    def project_logs_dir(self, slug: str) -> Path:
+        """Return the conversation-log root for one project."""
+        return self._persistence_dirs(slug)[0]
 
-    @property
-    def logs(self) -> Path:
-        """Return the conversation-log root, partitioned by agent name."""
-        return self._persistence_dir(self.logs_dir)
+    def project_snapshots_dir(self, slug: str) -> Path:
+        """Return the conversation snapshot root for one project."""
+        return self._persistence_dirs(slug)[1]
 
-    @property
-    def snapshots(self) -> Path:
-        """Return the conversation snapshot root."""
-        return self._persistence_dir(self.snapshots_dir)
+    def project_memory_dir(self, slug: str) -> Path:
+        """Return the consolidated memory root for one project."""
+        return self._persistence_dirs(slug)[2]
 
-    @property
-    def memory(self) -> Path:
-        """Return the consolidated memory root."""
-        return self._persistence_dir(self.memory_dir)
-
-    def artifact_dir(self, name: str) -> Path:
+    def artifact_dir(self, slug: str, name: str) -> Path:
         """Resolve an additional artifact folder without creating it."""
-        return _within(self.root, name)
+        return _within(self.project_dir(slug), name)

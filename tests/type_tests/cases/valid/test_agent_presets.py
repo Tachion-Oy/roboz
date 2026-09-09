@@ -7,14 +7,14 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.workspace import Project
+from roboshed.sandbox import Sandbox
 
 from roboz.deployment import AgentCapability, AgentDefinition
 from roboz.llm import EndpointLike
 
 
 def configure(
-    project: Project, endpoint: EndpointLike, capability: AgentCapability
+    sandbox: Sandbox, endpoint: EndpointLike, capability: AgentCapability
 ) -> None:
     assert_type(
         orchestrator(agent_endpoint=endpoint, capabilities=(capability,)),
@@ -28,10 +28,14 @@ def configure(
     assert_type(
         librarian(
             capabilities=(
-                ConversationSnapshots(project, {"orchestrator"}, endpoint=endpoint),
-                MemoryConsolidation(project, {"orchestrator"}, endpoint=endpoint),
-                ArtifactRetention(project),
-                MaintenanceCadence(project, {"orchestrator"}),
+                ConversationSnapshots(
+                    sandbox, "project", {"orchestrator"}, endpoint=endpoint
+                ),
+                MemoryConsolidation(
+                    sandbox, "project", {"orchestrator"}, endpoint=endpoint
+                ),
+                ArtifactRetention(sandbox, "project"),
+                MaintenanceCadence(sandbox, "project", {"orchestrator"}),
             )
         ),
         AgentDefinition,

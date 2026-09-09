@@ -27,7 +27,7 @@ from roboshed.tools.consolidate_memory import consolidate_memory
 from roboshed.tools.purge_files import purge_files
 from roboshed.tools.sleep_between_runs import sleep_between_runs
 from roboshed.tools.snapshot_conversations import snapshot_conversations
-from roboshed.workspace import Project, WorkspacePermissions
+from roboshed.sandbox import PermissionPolicy, Sandbox
 from roboz.deployment import AgentCapability, Capability
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe
@@ -38,7 +38,7 @@ from roboz.tooling.context import Ctx
 class FileCommands(AgentCapability):
     """Guarded read commands, optionally accompanied by their orientation skill."""
 
-    permissions: WorkspacePermissions
+    permissions: PermissionPolicy
     auto_load_skill: bool = True
 
     def build(
@@ -60,7 +60,7 @@ class FileCommands(AgentCapability):
 class FileEditing(AgentCapability):
     """Literal patch editing with caller-selected file permissions."""
 
-    permissions: WorkspacePermissions
+    permissions: PermissionPolicy
     auto_load_skill: bool = True
 
     def build(
@@ -108,7 +108,8 @@ class ConversationSnapshots(AgentCapability):
     summary tolerance is a finite, non-negative percentage above max_chars.
     """
 
-    project: Project
+    sandbox: Sandbox
+    project_slug: str
     agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     token_growth_threshold: int = 20_000
@@ -140,9 +141,13 @@ class ConversationSnapshots(AgentCapability):
                 snapshot_conversations(
                     Ctx(
                         endpoint=endpoint,
-                        conversation_root=self.project.logs,
-                        snapshot_root=self.project.snapshots,
-                        memory_root=self.project.memory,
+                        conversation_root=self.sandbox.project_logs_dir(
+                            self.project_slug
+                        ),
+                        snapshot_root=self.sandbox.project_snapshots_dir(
+                            self.project_slug
+                        ),
+                        memory_root=self.sandbox.project_memory_dir(self.project_slug),
                         agent_names=set(self.agent_names),
                         token_growth_threshold=self.token_growth_threshold,
                         max_chars=self.max_chars,
@@ -163,7 +168,8 @@ class MemoryConsolidation(AgentCapability):
     seconds; summary tolerance is a finite, non-negative percentage above max_chars.
     """
 
-    project: Project
+    sandbox: Sandbox
+    project_slug: str
     agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     min_pending_snapshots: int = 3
@@ -196,9 +202,13 @@ class MemoryConsolidation(AgentCapability):
                 consolidate_memory(
                     Ctx(
                         endpoint=endpoint,
-                        snapshot_root=self.project.snapshots,
-                        memory_root=self.project.memory,
-                        conversation_root=self.project.logs,
+                        snapshot_root=self.sandbox.project_snapshots_dir(
+                            self.project_slug
+                        ),
+                        memory_root=self.sandbox.project_memory_dir(self.project_slug),
+                        conversation_root=self.sandbox.project_logs_dir(
+                            self.project_slug
+                        ),
                         agent_names=set(self.agent_names),
                         min_pending_snapshots=self.min_pending_snapshots,
                         max_pending_age_seconds=self.max_pending_age_seconds,
@@ -216,7 +226,8 @@ class MemoryConsolidation(AgentCapability):
 class ArtifactRetention(AgentCapability):
     """Automatic retention limits for project logs, snapshots, and memory."""
 
-    project: Project
+    sandbox: Sandbox
+    project_slug: str
     max_log_files: int = 500
     max_snapshot_files: int = 100
     max_memory_files: int = 10
@@ -229,14 +240,14 @@ class ArtifactRetention(AgentCapability):
             default_tools=(
                 purge_files(
                     Ctx(
-                        folders=[self.project.logs],
+                        folders=[self.sandbox.project_logs_dir(self.project_slug)],
                         pattern="*.json",
                         max_files=self.max_log_files,
                     )
                 ).copy(name=PURGE_LOGS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.project.snapshots],
+                        folders=[self.sandbox.project_snapshots_dir(self.project_slug)],
                         pattern="*.md",
                         max_files=self.max_snapshot_files,
                         prune_empty_directories=True,
@@ -244,7 +255,7 @@ class ArtifactRetention(AgentCapability):
                 ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.project.memory],
+                        folders=[self.sandbox.project_memory_dir(self.project_slug)],
                         pattern="*.md",
                         max_files=self.max_memory_files,
                     )
@@ -261,7 +272,8 @@ class MaintenanceCadence(AgentCapability):
     Waiting observes the owning agent's cancellation independently of any model.
     """
 
-    project: Project
+    sandbox: Sandbox
+    project_slug: str
     agent_names: Collection[str]
     seconds: float = 120.0
 
@@ -275,7 +287,9 @@ class MaintenanceCadence(AgentCapability):
                     Ctx(
                         seconds=self.seconds,
                         is_cancelled=lambda: pipe.cancelled,
-                        conversation_root=self.project.logs,
+                        conversation_root=self.sandbox.project_logs_dir(
+                            self.project_slug
+                        ),
                         agent_names=set(self.agent_names),
                     )
                 ).copy(name=SLEEP_BETWEEN_RUNS_TOOL_NAME),
