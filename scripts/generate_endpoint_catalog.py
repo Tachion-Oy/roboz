@@ -12,7 +12,7 @@ from pathlib import Path
 from roboz_endpoints import inventory
 from roboz_endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
 from roboz_endpoints.catalog import Catalog
-from roboz_endpoints.specs import ChatModelSpec
+from roboz_endpoints._inventory_codegen import collection_declaration, spec_type_name
 
 
 HEADER = '''"""Generated types for Pylance; DO NOT EDIT.
@@ -38,6 +38,8 @@ def render() -> dict[str, str]:
         "    api_name: str",
         "    models: tuple[Spec, ...]",
         "    models_by_attribute: Mapping[str, Spec]",
+        "    _adapter: OpenAICompatibleAdapter",
+        "    _stream: bool",
     ]
     for method in (Catalog.__init__, Catalog.configured, Catalog.__dir__):
         signature = str(inspect.signature(method))
@@ -66,18 +68,9 @@ def render() -> dict[str, str]:
     ]
     exports = []
     for name, collection in inventory.CATALOGS.items():
-        spec_types = {type(model).__name__ for model in collection.models}
-        spec_type = next(iter(spec_types)) if len(spec_types) == 1 else "ModelSpec"
-        class_name = f"_{name}_Catalog"
-        inventory_lines.extend(["", f"class {class_name}(Catalog[{spec_type}]):"])
-        for attribute, model in collection.models_by_attribute.items():
-            endpoint = "LLMEndpoint" if isinstance(model, ChatModelSpec) else "TranscriptionEndpoint"
-            inventory_lines.append(f"    {attribute}: LazyExternalDependency[{endpoint}]")
-        if not collection.models:
-            inventory_lines.append("    ...")
+        spec_type = spec_type_name(collection.models_by_attribute)
+        inventory_lines.extend(["", *collection_declaration(name, collection.models_by_attribute)])
         inventory_lines.extend([
-            "",
-            f"{name}: {class_name}",
             f"{name.upper()}_MODELS: tuple[{spec_type}, ...]",
         ])
         exports.append(f"from roboz_endpoints.inventory import {name} as {name}")

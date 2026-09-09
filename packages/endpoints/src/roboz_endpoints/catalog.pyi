@@ -18,6 +18,8 @@ class Catalog[Spec: ModelSpec]:
     api_name: str
     models: tuple[Spec, ...]
     models_by_attribute: Mapping[str, Spec]
+    _adapter: OpenAICompatibleAdapter
+    _stream: bool
 
     def __init__(self, *, adapter: OpenAICompatibleAdapter, models: Mapping[str, Spec], stream: bool = True) -> None:
         """Configure a collection without loading SDKs or reading credentials."""
