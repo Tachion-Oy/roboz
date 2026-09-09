@@ -196,6 +196,41 @@ installed interpreter, so source-tree imports cannot satisfy the install gate.
 
 ## Release preparation and TestPyPI rehearsals
 
+### RoboSprawl integration rehearsal
+
+This branch prepares `roboz==0.1.2.dev2`, `roboshed==0.1.0a2`, and
+`roboz-endpoints==0.1.0a2` for TestPyPI. Run the existing manual release workflow
+from the same preparation commit for core first, then Shed and Endpoints. The
+Proton Bridge distribution is validated with the workspace but is not published
+as part of this rehearsal. Production tags are not needed.
+
+Before the companion runs, add pending TestPyPI publishers for `roboshed` and
+`roboz-endpoints`: GitHub owner `Tachion-Oy`, repository `roboz`, workflow
+`release.yml`, environment `testpypi`. The existing `roboz` publisher is reused.
+Account setup is performed at https://test.pypi.org/manage/account/publishing/.
+
+After all three runs succeed, a fresh Python 3.13+ environment can install the
+published wheels with pip. Download only the named Roboz packages from TestPyPI;
+resolve their ordinary dependencies on PyPI:
+
+```bash
+rehearsal_wheels="$(mktemp -d)"
+python -m pip --isolated download --no-deps --only-binary=:all: \
+  --index-url https://test.pypi.org/simple/ --dest "$rehearsal_wheels" \
+  roboz==0.1.2.dev2 roboshed==0.1.0a2 roboz-endpoints==0.1.0a2
+python -m pip --isolated install --index-url https://pypi.org/simple/ \
+  "$rehearsal_wheels/roboz-0.1.2.dev2-py3-none-any.whl" \
+  "$rehearsal_wheels/roboshed-0.1.0a2-py3-none-any.whl" \
+  "$rehearsal_wheels/roboz_endpoints-0.1.0a2-py3-none-any.whl[openai]"
+python -m pip check
+```
+
+RoboSprawl automates equivalent downloads with lockfile hash verification. Its
+normal `scripts/install.sh` uses a named, explicit TestPyPI index for the three
+packages; no Roboz source checkout or publishing credential is needed.
+
+### Preparation checks
+
 Prepare the repository before tagging or starting a rehearsal. Choose the version
 in the selected distribution's `pyproject.toml`, update affected dependency bounds,
 write the release notes, run `uv lock`, and commit the reviewed preparation.

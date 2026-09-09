@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a2 - 2026-09-09
+
 - Treat wildcard characters in project and workspace names literally when
   deriving permissions, preventing writes from extending into other directories.
 - Keep dependency health scheduling alive after observation failures and allow
