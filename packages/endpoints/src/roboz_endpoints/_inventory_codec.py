@@ -277,5 +277,5 @@ def read_module(path: Path) -> Inventory:
         if len(values) != 1:
             raise ValueError("expected exactly one embedded inventory literal")
         return parse_document(ast.literal_eval(values[0]))
-    except (ValueError, SyntaxError, RecursionError) as error:
+    except (TypeError, ValueError, SyntaxError, RecursionError) as error:
         raise ValueError(f"{path}: {error}") from error

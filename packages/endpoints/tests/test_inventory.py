@@ -12,6 +12,8 @@ import pytest
 
 from roboz_endpoints import cli
 from roboz_endpoints._inventory_codec import (
+    DATA_NAME,
+    MARKER,
     bundled_inventory,
     document_from_inventory,
     parse_document,
@@ -363,6 +365,13 @@ def test_exports_do_not_execute_generated_python(project):
         cli.main(["inventory", "export", "--from-module", str(module), "--force"]) == 0
     )
     assert read_json(path) == bundled_inventory()
+
+
+def test_malformed_generated_literal_reports_its_path(tmp_path):
+    module = tmp_path / "malformed_models.py"
+    module.write_text(f"{MARKER}\n{DATA_NAME} = {{[1]: 2}}\n")
+    with pytest.raises(ValueError, match=str(module)):
+        read_module(module)
 
 
 def test_explicit_paths_overwrite_protection_and_failed_publication(
