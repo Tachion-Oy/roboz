@@ -78,9 +78,10 @@ uv run pyright
 bash scripts/run_type_tests.sh
 
 release_dir="$(mktemp -d)"
-uv build --all-packages --out-dir "$release_dir"
+uv build --no-sources --all-packages --out-dir "$release_dir"
 uv run twine check "$release_dir"/*
-uv run python scripts/check_distributions.py --dist "$release_dir"
+uv run check-wheel-contents "$release_dir"
+uv run pytest tests/distributions --no-cov --dist "$release_dir"
 ```
 
 If project metadata or dependencies changed, run `uv lock` first, review the
@@ -108,6 +109,7 @@ When explicitly preparing a release, additionally:
    `uv.lock` together.
 3. Validate the intended tag with
    `uv run python scripts/release_package.py <distribution>-v<version> --check`.
+   This checks tag/version agreement; review changelog contents and date manually.
 4. Re-run the full release gate on the reviewed release commit.
 
 Tag creation and publication remain explicit maintainer actions. Successful
@@ -119,4 +121,3 @@ When reporting completion, summarize affected distributions and user-visible
 behavior, list documentation and changelog updates, and report every validation
 command and result. Clearly identify any skipped or blocked check and its
 impact on release confidence.
-

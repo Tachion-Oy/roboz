@@ -13,14 +13,15 @@ bash scripts/run_type_tests.sh
 release_dir="$(mktemp -d)"
 uv build --no-sources --all-packages --out-dir "$release_dir"
 uv run twine check "$release_dir"/*
-uv run python scripts/check_distributions.py --dist "$release_dir"
+uv run check-wheel-contents "$release_dir"
+uv run pytest tests/distributions --no-cov --dist "$release_dir"
 ```
 
 The last command installs built wheels into temporary environments outside the
 checkout and can download dependencies. It checks core, each companion, and combined extras in separate pip environments.
 It verifies import locations, dependency consistency, metadata, licenses, and
-`py.typed`, then repeats installations with wheels rebuilt from source archives
-using `uv build --no-sources`. Endpoint installs cover both the SDK-free base and
+`py.typed`. The normal `uv build --no-sources` builds each wheel from its source
+archive. Endpoint installs cover both the SDK-free base and
 the `[openai]` extra; the latter runs real SDK contracts with simulated HTTP.
 Both endpoint installations also run consumer typing checks against the installed
 package, covering named model types and invalid model use.
@@ -106,7 +107,8 @@ uv run pytest
 Notes:
 
 - pytest configuration lives in `pyproject.toml`
-- type tests are excluded from default pytest run and are executed separately
+- type tests and distribution installation tests are excluded from default pytest
+  runs and are executed separately
 - Ruff enforces the [docstring guide](docstrings.md) on shipped source; tests,
   examples, and maintenance scripts are exempt from docstring-only rules
 
@@ -163,8 +165,8 @@ It requires every job in `.github/workflows/verify.yml` to succeed; failures,
 cancellations, and skipped required jobs cannot produce a green aggregate.
 Pull requests (including forks), pushes to `main`, and manual dispatch run the
 same validation. The shared workflow is named **Tests and packaging**. Only the
-separately triggered release workflow can publish; its manual runs publish to
-TestPyPI only, while package tags can proceed to production approval.
+separately triggered package-tag release workflow can publish, after production
+approval. There is no TestPyPI stage or manual publication dispatch.
 
 - Python 3.13 and 3.14 run all core and companion tests and the quickstart.
 - Quality runs Ruff, Pyright, and positive/negative typing contracts once.
@@ -191,19 +193,17 @@ GitHub Actions or nonlocal platforms have passed.
 
 ## Coverage and deterministic end-to-end tests
 
-Run the statement coverage gates independently for each distribution:
+Collect statement coverage for all four distributions:
 
 ```bash
 uv run pytest --cov=roboshed --cov=roboz_endpoints --cov=roboz_proton_bridge \
   --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json \
   --junitxml=reports/pytest.xml
-uv run python scripts/check_coverage.py reports/coverage.json
 uv run pytest tests/e2e --no-cov
 ```
 
-Floors are core 95%, Shed 90%, Endpoints 90%, and Proton Bridge 89%. They are
-statement coverage, compared without rounding; high coverage in another package
-cannot compensate for a failure. Missing package coverage also fails.
+Coverage reports help identify missing tests. There are no fixed percentage
+thresholds; failing tests still fail CI.
 
 `tests/e2e/` scripts exercise real agents/tools/events/persistence with scripted
 provider boundaries. They cover guarded read/edit/read, traversal and symlink
@@ -211,152 +211,67 @@ escape denial, parent/child completion, and conversation → snapshot → memory
 retention. The same files are copied outside the checkout and executed by the
 installed interpreter, so source-tree imports cannot satisfy the install gate.
 
-## Release preparation and TestPyPI rehearsals
+## Installed-distribution checks
 
-### RoboSprawl integration rehearsal
+Run `uv run pytest tests/distributions --no-cov --dist DIR` against a fresh
+candidate directory. Add `--package roboz` (or another distribution name) to
+select a package. Missing wheel/sdist pairs fail the check.
 
-This branch prepares `roboz==0.1.2.dev2`, `roboshed==0.1.0a2`, and
-`roboz-endpoints==0.1.0a2` for TestPyPI. Run the existing manual release workflow
-from the same preparation commit for core first, then Shed and Endpoints. The
-Proton Bridge distribution is validated with the workspace but is not published
-as part of this rehearsal. Production tags are not needed.
+The suite owns a small environment fixture and normal consumer tests. It copies
+only the relevant tests into a temporary directory and runs them using the
+installed interpreter, isolated from the checkout and development configuration.
+Pip checks dependencies; the tests check imports, optional SDK isolation, lazy
+endpoints, package metadata and typing files. Existing E2E and adapter contracts
+run against the installed packages with simulated provider boundaries.
 
-Register and publish the new companion projects **one at a time**. TestPyPI
-permits only one pending publisher for the same owner/repository/workflow/
-environment combination, even when the proposed project names differ:
+Default pytest runs omit this directory, so they neither create consumer
+environments nor download dependencies. The explicit installation suite may
+download from PyPI and needs network access.
 
-1. At https://test.pypi.org/manage/account/publishing/, add a pending publisher
-   for one companion: owner `Tachion-Oy`, repository `roboz`, workflow
-   `release.yml`, environment `testpypi`.
-2. Run the release workflow for that companion and wait for successful
-   publication. Its pending publisher becomes a normal publisher.
-3. Add the other companion's pending publisher with the same configuration,
-   then publish that companion. Either companion can go first after core.
+## Preparing and publishing a release
 
-If a pending registration already exists, publish that named package first;
-do not add another matching pending publisher or delete the working core
-publisher. The existing `roboz` registration remains usable. See
-[PyPI's explanation of the pending-identity constraint](https://github.com/pypi/warehouse/issues/20006).
-
-After all three runs succeed, a fresh Python 3.13+ environment can install the
-published wheels with pip. Download only the named Roboz packages from TestPyPI;
-resolve their ordinary dependencies on PyPI:
+Choose the package version, update its changelog and any required dependency
+bounds, then run `uv lock`. Review the release notes and date manually, leaving
+an empty Unreleased section. The tag checker only verifies package/version
+agreement; it does not parse the changelog.
 
 ```bash
-rehearsal_wheels="$(mktemp -d)"
-python -m pip --isolated download --no-deps --only-binary=:all: \
-  --index-url https://test.pypi.org/simple/ --dest "$rehearsal_wheels" \
-  roboz==0.1.2.dev2 roboshed==0.1.0a2 roboz-endpoints==0.1.0a2
-python -m pip --isolated install --index-url https://pypi.org/simple/ \
-  "$rehearsal_wheels/roboz-0.1.2.dev2-py3-none-any.whl" \
-  "$rehearsal_wheels/roboshed-0.1.0a2-py3-none-any.whl" \
-  "$rehearsal_wheels/roboz_endpoints-0.1.0a2-py3-none-any.whl[openai]"
-python -m pip check
-```
-
-RoboSprawl automates equivalent downloads with lockfile hash verification. Its
-normal `scripts/install.sh` uses a named, explicit TestPyPI index for the three
-packages; no Roboz source checkout or publishing credential is needed.
-
-### Preparation checks
-
-Prepare the repository before tagging or starting a rehearsal. Choose the version
-in the selected distribution's `pyproject.toml`, update affected dependency bounds,
-write the release notes, run `uv lock`, and commit the reviewed preparation.
-Version choice and the accuracy of release notes remain maintainer judgments.
-The workflow never changes versions or infers patch/minor/major compatibility.
-
-The selected changelog must start with an empty `## Unreleased` section, followed
-by `## <version> - YYYY-MM-DD` and nonempty release notes. Brackets around the
-version are also accepted. Dates must be valid and not in the future (UTC).
-Other packages may still have Unreleased changes. Historical undated entries do
-not need rewriting, but the selected release must have a date. Existing staged
-versions are not automatically release-prepared by this tooling change.
-
-Check preparation locally before committing or tagging (use the version you
-actually prepared):
-
-```bash
-uv run python scripts/release_package.py --package roboz-endpoints --check
-uv lock --check
-# Example after preparing version 0.1.0a2:
+# Use the actual version selected for release:
 uv run python scripts/release_package.py roboz-endpoints-v0.1.0a2 --check
+uv lock --check
 ```
 
-The release workflow first checks preparation and lockfile consistency. For a
-tagged release it also rejects a version already present on PyPI. Only then does
-it call the complete shared verification workflow. It selects the package from
-the verified candidate bundle with `release_package.py <tag> --from-dist <dir>`.
-Selection copies its wheel and source archive byte-for-byte, refuses an occupied
-output directory, and does not rebuild them.
+After review, a pushed `<distribution>-v<version>` tag runs:
 
-To rehearse without production publication, open **Actions → Release one Python
-package → Run workflow**, choose the prepared branch/ref and one package, and
-start the run. The workflow must first be present on the default branch for the
-manual run button to appear. The run uploads only that package to TestPyPI,
-downloads and checks it, then ends. It has no input that enables production.
+1. Tag/version validation and the complete shared verification workflow.
+2. Installation of the selected candidate wheel with dependencies from PyPI.
+3. Selection of its already-tested wheel and sdist without rebuilding.
+4. The configured `pypi` environment approval, followed by Trusted Publishing.
 
-Rehearsals use declared versions, including explicitly chosen development or
-prerelease versions on a rehearsal branch. They do not generate temporary versions.
-Stage the required Roboz packages first, at the versions declared in the rehearsal
-checkout: core before Shed/Endpoints, then core and Shed before Proton Bridge.
-The checker downloads those dependency wheels explicitly from TestPyPI and uses
-PyPI only for third-party dependencies. It does not use a combined index search
-or the candidate bundle to satisfy Roboz dependencies. Pip still checks that
-the staged versions satisfy the selected package's declared bounds.
-
-Tagged releases follow this route:
-
-```text
-Preparation → full verification → select package → TestPyPI upload
-  → download/install/contracts with real PyPI dependencies
-  → pypi environment approval → PyPI upload → download/install/contracts
-```
-
-Before production upload, the selected TestPyPI wheel must install and pass its
-contracts with dependencies from real PyPI. For example, Endpoints cannot rely on
-an unpublished core API. Publish required dependency releases first. The final
-upload uses the same selected wheel and source archive, with no intervening build.
-
-Both index checks download the exact wheel and source archive and compare their
-SHA-256 hashes with the verified candidates. The wheel is installed into a new
-environment outside the checkout, with pip configuration/source overrides cleared.
-Checks cover `pip check`, version/import locations, core or Shed workflows and
-the Shed CLI, or the Endpoints/Proton adapter contracts using fake HTTP/IMAP services.
-The dependency installation is independent of `uv.lock`; default development
-and CI tests continue to use the lockfile.
-
-Index availability is retried for up to three minutes. Hash conflicts and failed
-package contracts fail immediately. An existing TestPyPI archive is reused only
-when its hash matches; missing archives in a matching partial upload are staged
-for upload. Both files are downloaded and verified afterward, including when no
-upload was needed. Changed contents under an existing filename require a new
-version, even if the old file was deleted. Production duplicates fail instead of
-being skipped. After a successful upload followed by a failed check, rerun the
-failed verification job; do not start another production release of that version.
-
-The index checker can also be run against saved candidate artifacts:
+The selected-wheel check can also run locally:
 
 ```bash
-# Anonymous read-only checks; these commands never upload.
-uv run python -m scripts.check_published_package --package roboz-endpoints \
-  --index testpypi --dependency-index testpypi --candidates "$release_dir"
-uv run python -m scripts.check_published_package --package roboz-endpoints \
-  --index pypi --dependency-index pypi --candidates "$release_dir"
+uv run pytest tests/distributions --no-cov --dist "$release_dir" \
+  --package roboz-endpoints --published-dependencies
 ```
 
-Run `actionlint .github/workflows/*.yml` when editing workflows. The focused
-regression tests are `tests/test_release_package.py`,
-`tests/test_published_package.py`, and `tests/test_release_workflows.py`.
-They use simulated network/process boundaries and require no live services.
-Passing these tests does not establish that account permissions or actual
-publication work: complete an explicitly initiated TestPyPI rehearsal after the
-[one-time publisher setup](maintainer-basics.md#publisher-setup).
+This mode installs only the selected candidate; companion dependencies come
+from PyPI, independently of workspace overrides and the development lockfile.
+Publish dependency releases first: core before Shed/Endpoints, then core and
+Shed before Proton. An unavailable or incompatible dependency fails this check.
 
-Python distribution is pip/PyPI. Workspace source overrides support development;
-the distribution gate uses pip's resolver to test published requirement metadata
-with the freshly built packages. `uv.lock` governs development checks, not
-consumers' independent installations. Do not rewrite source paths inside CI or
-replace wheel verification with editable installs. See
-[uv packaging guidance](https://docs.astral.sh/uv/guides/package/) for checking
-builds with sources disabled. Containerization is outside this change.
+There is no TestPyPI stage, index client, or automatic post-publication polling.
+The standard PyPA publishing action uploads the verified archives and rejects
+duplicates. A publication does not become reversible because a release is alpha
+or development. If necessary, prepare a corrected version and consider yanking
+the old release. Re-running the failed publishing job is appropriate only when
+no conflicting files have already been uploaded.
+
+Configure the PyPI Trusted Publisher and GitHub approval environment as described
+in [maintainer basics](maintainer-basics.md#publisher-setup). A successful local
+test run does not establish those external permissions, and makes no upload.
+
+When editing workflows, run `actionlint .github/workflows/*.yml`. Focused
+regression tests are `tests/test_release_package.py` and
+`tests/test_release_workflows.py`; they require no live services. Historical
+verification reports describe earlier tooling and are not current instructions.
