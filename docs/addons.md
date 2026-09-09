@@ -37,7 +37,7 @@ Use a new output directory if yours contains wheels from older versions. For
 automated staged core-only, Shed-only, Proton, adapter, and extras checks:
 
 ```bash
-uv run python scripts/check_distributions.py --dist dist/first-slice
+uv run pytest tests/distributions --no-cov --dist dist/first-slice
 ```
 
 The verifier installs exact local wheels outside the checkout and may download

@@ -106,66 +106,39 @@ the current `<0.2.0` bounds intentionally exclude core 0.2.
 
 ## Releasing in practice
 
-1. Choose the affected package's version; update its `pyproject.toml`, changelog
-   and any affected dependency bounds. Run `uv lock` and commit the lock changes.
-2. Run [the validation commands](build-and-test.md). Build wheels and source
-   archives, then test installation outside the checkout using
-   `scripts/check_distributions.py`. Passing source tests alone does not prove
-   the installed package works.
-3. Review and merge the release preparation. Validate the intended tag with
-   `uv run python scripts/release_package.py roboz-proton-bridge-v0.1.0b2 --check`
-   (example: requires that package's version to be `0.1.0b2`, with dated release
-   notes and an empty Unreleased section). Also run `uv lock --check`.
-4. Tag the reviewed commit with `<distribution>-v<version>` and push that tag.
-   The [release workflow](../.github/workflows/release.yml) first checks preparation
-   and version availability, then validates the whole workspace. It publishes
-   only the tagged package to TestPyPI and checks installation with real PyPI
-   dependencies. If successful, it waits at the configured production approval.
-5. Review the verified package/version and choose **Approve and deploy** in the
-   GitHub run's **Review deployments** dialog. Production uses the same verified
-   archives, without rebuilding. The workflow checks a fresh download and
-   installation from PyPI afterward; a failed post-publication check reports a
-   problem but cannot undo an upload. Optionally create a GitHub Release
-   using the same changelog notes. A Git tag identifies source; a GitHub Release
-   presents notes; a PyPI release holds installable artifacts. They are distinct.
+1. Choose the affected package's version; update its metadata, changelog, and any
+   affected dependency bounds. Run `uv lock` and review the lockfile changes.
+2. Run the [full validation commands](build-and-test.md), including the installed
+   distribution pytest suite against fresh wheels and source archives.
+3. Review the release notes and date, then validate the intended tag with
+   `uv run python scripts/release_package.py <distribution>-v<version> --check`.
+   The checker verifies the tag and declared version; changelog review is manual.
+4. Tag the reviewed commit and push that tag. The release workflow validates the
+   workspace and tests the selected wheel with dependencies resolved from PyPI.
+   Publish required dependency releases first.
+5. Approve the `pypi` deployment in GitHub. The standard PyPA action publishes
+   the same verified wheel and source archive without rebuilding. There is no
+   TestPyPI stage or automated post-publication download check.
 
-A wheel (`.whl`) is the built installation artifact; a source distribution
-(`.tar.gz`) allows building from source. See [PyPA's packaging flow](https://packaging.python.org/en/latest/flow/).
-
-Use the manual TestPyPI route to exercise uploading and installing before the
-first production release. Choose one package in **Actions → Release one Python
-package → Run workflow**; manual runs end after TestPyPI checks and cannot publish
-to production. See [the rehearsal guide](build-and-test.md#release-preparation-and-testpypi-rehearsals)
-for version preparation, dependency ordering, and retry behavior.
+The four distributions remain independently versioned. A development or alpha
+release can be published through the same route. Creating a tag, approving a
+deployment, and uploading a package remain explicit maintainer actions.
 
 ### Publisher setup
 
-TestPyPI and PyPI have separate accounts, projects, and Trusted Publisher settings.
-Establish ownership for each distribution being published on the selected index.
-For new projects that share the same publisher configuration, register one pending
-publisher, publish that package, then register the next. The index allows only
-one pending project per publisher identity; completed projects can share it.
-Configure each publisher for owner
-`Tachion-Oy`, repository `roboz`, workflow `release.yml`, and the matching GitHub
-environment: `testpypi` for TestPyPI, `pypi` for production.
+Configure a PyPI Trusted Publisher for owner `Tachion-Oy`, repository `roboz`,
+workflow `release.yml`, environment `pypi`. Establish ownership for each
+distribution. For new names, configure pending publishers and publish packages
+one at a time; completed projects can share the publisher configuration.
 
-In GitHub **Settings → Environments**, create those environments. Configure
-`pypi` with the maintainer as a required reviewer; leave self-approval available
-if that maintainer also initiates releases. Restrict production deployments to
-the four package release tag patterns and protect those tags with repository
-rulesets. TestPyPI does not need a second approval after manually starting a
-rehearsal. Protect any branches permitted to publish to TestPyPI as appropriate.
+In GitHub **Settings → Environments**, configure `pypi` with the maintainer as a
+required reviewer. Restrict deployments to the four package release tag patterns.
+The YAML environment name alone does not enforce approval; configure required
+reviewers before enabling production publishing.
 
-**The environment name in YAML does not enforce approval by itself.** Required
-reviewers must be configured in GitHub before enabling production publishing.
-If the repository's visibility/plan does not support required reviewers, keep
-production publishing disabled until an explicit approval mechanism is available.
-These account settings cannot be established by local repository checks.
-
-The workflow gives OIDC permission only to the two publishing jobs; those jobs
-download artifacts and upload them without checking out or building source.
-Configure production trust only after a TestPyPI rehearsal succeeds. These
-workflow changes themselves create no tags and publish no packages.
+OIDC permission belongs only to the publishing job, which downloads artifacts and
+uploads them without checking out or building source. The existing TestPyPI
+account configuration is no longer used by this repository's release workflow.
 See [PyPA's publishing walkthrough](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/).
 
 For a bad release, publish a corrected version. Consider **yanking** the bad one:

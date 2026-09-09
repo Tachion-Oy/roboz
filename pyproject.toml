@@ -73,6 +73,7 @@ convention = "google"
 
 [dependency-groups]
 dev = [
+    "check-wheel-contents>=0.6",
     "roboshed",
     "roboz-endpoints[openai]",
     "roboz-proton-bridge",

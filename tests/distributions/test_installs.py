@@ -1,0 +1,202 @@
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+from scripts.release_package import ROOT
+
+WORKFLOWS = {
+    "core": "tests/e2e/test_core_workflows.py",
+    "shed": "tests/e2e/test_shed_workflows.py",
+    "endpoints-openai": "packages/endpoints/tests/test_endpoints.py",
+    "proton": "packages/proton-bridge/tests/test_proton_bridge_email.py",
+}
+
+
+def test_installed_contracts(consumer):
+    case, python, root, env = consumer
+    command = [str(python), "-I", "-m", "pytest", "-c", str(root / "pytest.ini")]
+    # A separate invocation checks lazy imports before adapter tests import SDKs.
+    subprocess.run([*command, "test_contracts.py"], cwd=root, env=env, check=True)
+    if case in WORKFLOWS:
+        contract = root / "test_workflow.py"
+        shutil.copyfile(ROOT / WORKFLOWS[case], contract)
+        subprocess.run([*command, str(contract)], cwd=root, env=env, check=True)
+
+
+def test_installed_endpoint_types(consumer):
+    case, python, root, env = consumer
+    if case not in {"endpoints", "endpoints-openai"}:
+        pytest.skip("Endpoint consumer typing only")
+    config = root / "pyrightconfig.json"
+    config.write_text(
+        json.dumps({"typeCheckingMode": "standard", "pythonVersion": "3.13"})
+    )
+    cases = ROOT / "tests/type_tests/cases"
+    valid = root / "valid.py"
+    shutil.copyfile(cases / "valid/test_endpoint_catalog.py", valid)
+    command = [
+        sys.executable,
+        "-m",
+        "pyright",
+        "--project",
+        str(config),
+        "--pythonpath",
+        str(python),
+    ]
+    subprocess.run([*command, str(valid)], cwd=root, env=env, check=True)
+    for name, rule in (
+        ("test_unknown_catalogue_model.py", "reportAttributeAccessIssue"),
+        ("test_transcription_as_chat.py", "reportArgumentType"),
+    ):
+        invalid = root / name
+        shutil.copyfile(cases / "expected_failures" / name, invalid)
+        result = subprocess.run(
+            [*command, "--outputjson", str(invalid)],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        errors = [
+            item
+            for item in json.loads(result.stdout)["generalDiagnostics"]
+            if item["severity"] == "error"
+        ]
+        assert len(errors) == 1 and errors[0].get("rule") == rule, errors
+
+
+def test_installed_inventory_workflow(consumer):
+    case, python, root, env = consumer
+    if case not in {"endpoints", "endpoints-openai"}:
+        pytest.skip("Endpoint inventory only")
+    project = root / "inventory-project"
+    project.mkdir()
+    executable = python.with_name(
+        "roboz-endpoints.exe" if os.name == "nt" else "roboz-endpoints"
+    )
+
+    def run(*args, answer="", expected=0):
+        result = subprocess.run(
+            [str(executable), "inventory", *args],
+            input=answer,
+            cwd=project,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == expected, result.stdout + result.stderr
+
+    run("export")
+    editable = project / "models.json"
+    bundled = editable.read_bytes()
+    data = json.loads(bundled)
+    fixture = ROOT / "tests/type_tests/fixtures/models.json"
+    data["providers"].update(json.loads(fixture.read_text())["providers"])
+    editable.write_text(json.dumps(data))
+    run("import")
+
+    module = project / "project_models.py"
+    run("export", "--from-module", str(module), "--path", "roundtrip.json")
+    exported = json.loads((project / "roundtrip.json").read_text())
+    assert exported["providers"]["custom"]["timeout_s"] == 12
+    assert (
+        exported["providers"]["groq"]["models"] == data["providers"]["groq"]["models"]
+    )
+    assert list(exported["providers"]) == list(data["providers"])
+
+    subprocess.run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            f"import sys; sys.path.insert(0, {str(project)!r})\n"
+            "import project_models as models\n"
+            "assert models.custom.chat.dependency_id == 'model:custom:custom/chat'\n"
+            "assert models.custom.audio.redacted_metadata()['endpoint_type'] == 'transcription'\n"
+            "assert models.custom.chat is models.custom.chat\n"
+            "assert 'openai' not in sys.modules\n"
+            "assert 'materialized' not in models.custom.chat.__dict__\n",
+        ],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+
+    config = root / "inventory-pyrightconfig.json"
+    config.write_text(
+        json.dumps({"typeCheckingMode": "standard", "pythonVersion": "3.13"})
+    )
+    type_command = [
+        sys.executable,
+        "-m",
+        "pyright",
+        "--project",
+        str(config),
+        "--pythonpath",
+        str(python),
+    ]
+    cases = ROOT / "tests/type_tests/cases"
+    for source, expected, rule in (
+        ("valid/test_user_inventory.py", 0, None),
+        (
+            "expected_failures/test_unknown_user_inventory_model.py",
+            1,
+            "reportAttributeAccessIssue",
+        ),
+        (
+            "expected_failures/test_user_inventory_transcription_as_chat.py",
+            1,
+            "reportArgumentType",
+        ),
+    ):
+        target = project / Path(source).name
+        target.write_text(
+            (cases / source)
+            .read_text()
+            .replace("tests.type_tests.fixtures.inventory_models", "project_models")
+        )
+        checked = subprocess.run(
+            [*type_command, "--outputjson", str(target)],
+            cwd=project,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert checked.returncode == expected, checked.stdout + checked.stderr
+        if rule:
+            errors = [
+                item
+                for item in json.loads(checked.stdout)["generalDiagnostics"]
+                if item["severity"] == "error"
+            ]
+            assert len(errors) == 1 and errors[0].get("rule") == rule, errors
+
+    before = editable.read_bytes(), module.read_bytes()
+    run("reset", answer="no\n", expected=1)
+    assert (editable.read_bytes(), module.read_bytes()) == before
+    run("reset", answer="yes\n")
+    assert editable.read_bytes() == bundled
+    run("export", "--from-module", str(module), "--path", "reset.json")
+    assert (project / "reset.json").read_bytes() == bundled
+    subprocess.run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            f"import sys; sys.path.insert(0, {str(project)!r})\n"
+            "import project_models as models\n"
+            "assert not hasattr(models, 'custom')\n"
+            "assert not hasattr(models.groq, 'new_chat')\n"
+            "assert models.groq.whisper_large_v3_turbo.dependency_id\n"
+            "assert 'openai' not in sys.modules\n",
+        ],
+        cwd=root,
+        env=env,
+        check=True,
+    )

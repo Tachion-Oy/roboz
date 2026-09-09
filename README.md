@@ -30,10 +30,9 @@ full record.
 
 ## Install
 
-The current integration rehearsal is on **TestPyPI**, using `roboz==0.1.2.dev2`,
-`roboshed==0.1.0a2`, and `roboz-endpoints==0.1.0a2`. Follow the
-[TestPyPI installation instructions](docs/build-and-test.md#robosprawl-integration-rehearsal).
-The ordinary PyPI commands below become usable after production publication.
+The PyPI commands below require a published release. For an unpublished checkout,
+[build and test the local wheels](docs/build-and-test.md). Maintainers publish
+[reviewed package tags directly to PyPI](docs/build-and-test.md#preparing-and-publishing-a-release).
 
 ```bash
 uv add roboz
