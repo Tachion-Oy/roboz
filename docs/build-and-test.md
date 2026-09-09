@@ -196,6 +196,53 @@ installed interpreter, so source-tree imports cannot satisfy the install gate.
 
 ## Release preparation and TestPyPI rehearsals
 
+### RoboSprawl integration rehearsal
+
+This branch prepares `roboz==0.1.2.dev2`, `roboshed==0.1.0a2`, and
+`roboz-endpoints==0.1.0a2` for TestPyPI. Run the existing manual release workflow
+from the same preparation commit for core first, then Shed and Endpoints. The
+Proton Bridge distribution is validated with the workspace but is not published
+as part of this rehearsal. Production tags are not needed.
+
+Register and publish the new companion projects **one at a time**. TestPyPI
+permits only one pending publisher for the same owner/repository/workflow/
+environment combination, even when the proposed project names differ:
+
+1. At https://test.pypi.org/manage/account/publishing/, add a pending publisher
+   for one companion: owner `Tachion-Oy`, repository `roboz`, workflow
+   `release.yml`, environment `testpypi`.
+2. Run the release workflow for that companion and wait for successful
+   publication. Its pending publisher becomes a normal publisher.
+3. Add the other companion's pending publisher with the same configuration,
+   then publish that companion. Either companion can go first after core.
+
+If a pending registration already exists, publish that named package first;
+do not add another matching pending publisher or delete the working core
+publisher. The existing `roboz` registration remains usable. See
+[PyPI's explanation of the pending-identity constraint](https://github.com/pypi/warehouse/issues/20006).
+
+After all three runs succeed, a fresh Python 3.13+ environment can install the
+published wheels with pip. Download only the named Roboz packages from TestPyPI;
+resolve their ordinary dependencies on PyPI:
+
+```bash
+rehearsal_wheels="$(mktemp -d)"
+python -m pip --isolated download --no-deps --only-binary=:all: \
+  --index-url https://test.pypi.org/simple/ --dest "$rehearsal_wheels" \
+  roboz==0.1.2.dev2 roboshed==0.1.0a2 roboz-endpoints==0.1.0a2
+python -m pip --isolated install --index-url https://pypi.org/simple/ \
+  "$rehearsal_wheels/roboz-0.1.2.dev2-py3-none-any.whl" \
+  "$rehearsal_wheels/roboshed-0.1.0a2-py3-none-any.whl" \
+  "$rehearsal_wheels/roboz_endpoints-0.1.0a2-py3-none-any.whl[openai]"
+python -m pip check
+```
+
+RoboSprawl automates equivalent downloads with lockfile hash verification. Its
+normal `scripts/install.sh` uses a named, explicit TestPyPI index for the three
+packages; no Roboz source checkout or publishing credential is needed.
+
+### Preparation checks
+
 Prepare the repository before tagging or starting a rehearsal. Choose the version
 in the selected distribution's `pyproject.toml`, update affected dependency bounds,
 write the release notes, run `uv lock`, and commit the reviewed preparation.

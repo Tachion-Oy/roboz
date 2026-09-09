@@ -95,9 +95,9 @@ prereleases unless opted into; explicit prerelease bounds in our extras opt in.
 The `proton-bridge-beta` extra name is merely our label, not an enforced channel.
 See [PyPA's versioning guide](https://packaging.python.org/en/latest/discussions/versioning/).
 
-Important: core currently says `0.1.1` but has a “Pre-Alpha” classifier.
-Installers treat that version as final; the classifier is informational.
-Decide whether that communicates the intended maturity before publication.
+Installers determine prerelease status from the version in each package's
+`pyproject.toml`; the “Pre-Alpha” classifier is informational. A version such
+as `0.1.1` is final, while `0.1.2.dev2` is a development prerelease.
 Beta labels are maintainer judgments, not evidence of live-service testing.
 
 Release only affected packages. A Proton fix need not bump core. A core API
@@ -141,8 +141,11 @@ for version preparation, dependency ordering, and retry behavior.
 ### Publisher setup
 
 TestPyPI and PyPI have separate accounts, projects, and Trusted Publisher settings.
-Establish ownership (or pending publishers for new projects) for each of the four
-distribution names on each index. Configure each publisher for owner
+Establish ownership for each distribution being published on the selected index.
+For new projects that share the same publisher configuration, register one pending
+publisher, publish that package, then register the next. The index allows only
+one pending project per publisher identity; completed projects can share it.
+Configure each publisher for owner
 `Tachion-Oy`, repository `roboz`, workflow `release.yml`, and the matching GitHub
 environment: `testpypi` for TestPyPI, `pypi` for production.
 

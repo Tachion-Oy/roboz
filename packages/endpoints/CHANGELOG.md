@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a2 - 2026-09-09
+
 ### Changed
 
 - Model data is maintained once in the inventory; catalogue attributes and

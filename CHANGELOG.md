@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev2 - 2026-09-09
+
 - Breaking: remove the `roboz[openai]` extra. Install
   `roboz-endpoints[openai]` directly for the endpoint catalogue and SDK adapter;
   it installs core automatically. See `packages/endpoints/README.md` for migration.
