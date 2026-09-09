@@ -141,8 +141,11 @@ for version preparation, dependency ordering, and retry behavior.
 ### Publisher setup
 
 TestPyPI and PyPI have separate accounts, projects, and Trusted Publisher settings.
-Establish ownership (or pending publishers for new projects) for each of the four
-distribution names on each index. Configure each publisher for owner
+Establish ownership for each distribution being published on the selected index.
+For new projects that share the same publisher configuration, register one pending
+publisher, publish that package, then register the next. The index allows only
+one pending project per publisher identity; completed projects can share it.
+Configure each publisher for owner
 `Tachion-Oy`, repository `roboz`, workflow `release.yml`, and the matching GitHub
 environment: `testpypi` for TestPyPI, `pypi` for production.
 

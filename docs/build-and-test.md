@@ -204,10 +204,22 @@ from the same preparation commit for core first, then Shed and Endpoints. The
 Proton Bridge distribution is validated with the workspace but is not published
 as part of this rehearsal. Production tags are not needed.
 
-Before the companion runs, add pending TestPyPI publishers for `roboshed` and
-`roboz-endpoints`: GitHub owner `Tachion-Oy`, repository `roboz`, workflow
-`release.yml`, environment `testpypi`. The existing `roboz` publisher is reused.
-Account setup is performed at https://test.pypi.org/manage/account/publishing/.
+Register and publish the new companion projects **one at a time**. TestPyPI
+permits only one pending publisher for the same owner/repository/workflow/
+environment combination, even when the proposed project names differ:
+
+1. At https://test.pypi.org/manage/account/publishing/, add a pending publisher
+   for one companion: owner `Tachion-Oy`, repository `roboz`, workflow
+   `release.yml`, environment `testpypi`.
+2. Run the release workflow for that companion and wait for successful
+   publication. Its pending publisher becomes a normal publisher.
+3. Add the other companion's pending publisher with the same configuration,
+   then publish that companion. Either companion can go first after core.
+
+If a pending registration already exists, publish that named package first;
+do not add another matching pending publisher or delete the working core
+publisher. The existing `roboz` registration remains usable. See
+[PyPI's explanation of the pending-identity constraint](https://github.com/pypi/warehouse/issues/20006).
 
 After all three runs succeed, a fresh Python 3.13+ environment can install the
 published wheels with pip. Download only the named Roboz packages from TestPyPI;
