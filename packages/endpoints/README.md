@@ -131,7 +131,154 @@ providers use the OpenAI-compatible SDK path. Future adapters can translate
 other SDKs into the client interface consumed by the core wrappers; this package
 currently supplies no other adapter implementation.
 
-## Maintain the inventory
+## Edit your project's inventory
+
+Export the installed inventory, edit the JSON, and import it into your project:
+
+```bash
+# Run from your application's project root.
+roboz-endpoints inventory export
+# Edit models.json; copy an existing entry to add a model or provider.
+roboz-endpoints inventory import
+```
+
+The default editable file is `./models.json`. Import generates `project_models.py`
+beside it, including both runtime collections and precise Pylance declarations.
+Use the generated module from Python:
+
+```python
+from project_models import openrouter, groq
+
+chat = openrouter.z_ai__glm_5_3
+voice = groq.whisper_large_v3_turbo
+```
+
+Use `--path` on either command for another JSON location, and `--output` on
+import for another Python module location, such as `src/my_app/project_models.py`.
+In that case, import from `my_app.project_models`. Parent directories must exist.
+Paths are relative to the command's working directory; there is no root search,
+environment activation, or change to Python's normal import path. The same CLI
+is available as `python -m roboz_endpoints inventory ...`.
+
+### Add models and providers
+
+The exported file is the complete starting example. It has `schema_version: 1`
+and a `providers` object. Each provider's key is its collection name and `api_name`.
+Provider settings are `base_url`, `api_key_env`, `timeout_s` (default `60.0`), and
+`stream` (default `true`). Export writes these defaults explicitly.
+
+Add a chat entry inside an existing provider's `models` object:
+
+```json
+"new_chat": {
+  "model_id": "YOUR_CHAT_MODEL_ID",
+  "endpoint_type": "llm",
+  "max_context_tokens": 128000
+}
+```
+
+Supply the model's actual context limit. After re-importing, select
+`openrouter.new_chat` if you added this entry to OpenRouter.
+
+Add a transcription entry in the same way; it has no chat context limit:
+
+```json
+"new_voice": {
+  "model_id": "YOUR_TRANSCRIPTION_MODEL_ID",
+  "endpoint_type": "transcription"
+}
+```
+
+Add a new provider inside `providers`, including both kinds if needed:
+
+```json
+"my_service": {
+  "base_url": "https://models.example.com/v1",
+  "api_key_env": "MY_SERVICE_API_KEY",
+  "timeout_s": 60.0,
+  "stream": true,
+  "models": {
+    "chat": {
+      "model_id": "YOUR_CHAT_MODEL_ID",
+      "endpoint_type": "llm",
+      "max_context_tokens": 128000
+    },
+    "voice": {
+      "model_id": "YOUR_TRANSCRIPTION_MODEL_ID",
+      "endpoint_type": "transcription"
+    }
+  }
+}
+```
+
+These are entries to insert into the corresponding JSON object; separate adjacent
+entries with commas. Version 1 supports OpenAI-compatible services. Credential
+fields contain environment-variable names, never secret values. Runtime explicit
+keys and per-call policies belong in application configuration. Collection and
+model names must be public, normalized Python identifiers; model names cannot
+hide catalogue methods or attributes. Invalid documents, duplicate JSON keys,
+unknown fields, and unsupported versions fail before output is replaced.
+
+After editing, regenerate and restart your application:
+
+```bash
+roboz-endpoints inventory import --path ./models.json --force
+```
+
+```python
+from project_models import my_service
+
+chat = my_service.chat
+voice = my_service.voice
+independent_chat = my_service.configured(timeout_s=30.0).chat
+```
+
+Existing outputs require `--force` for export/import. Import replaces the entire
+project snapshot: removed entries disappear, and omitted bundled entries are not
+filled back in. Package upgrades do not alter a generated snapshot. Imports from
+`roboz_endpoints` still select the original bundled collections and retain their
+existing types; custom names and their autocomplete belong to your generated module.
+
+The module embeds its data, so it remains usable across application restarts and
+can move with your application without the JSON file. Keep the JSON for future
+editing, and commit/package the generated module with your application. Editing
+JSON alone has no runtime effect. No registration script, SDK, credentials, or
+network access is needed for these commands or for inspecting collections.
+Install the SDK extra and configure credentials when you materialize endpoints.
+
+Do not edit the generated module. Recover an editable copy from it without
+executing its Python code:
+
+```bash
+roboz-endpoints inventory export --from-module ./project_models.py --path ./recovered.json
+```
+
+### Reset to installed defaults
+
+```bash
+roboz-endpoints inventory reset
+# Displays both paths and the installed package version, then asks:
+# Discard custom inventory changes and restore installed defaults? [y/N]
+```
+
+Only `y` or `yes` confirms; blank input, another answer, EOF, or interruption
+cancels. Reset has no confirmation-bypass flag. Use the same `--path` and
+`--output` options as import when resetting other locations.
+
+Reset discards customizations in **both** JSON and generated Python, restoring
+the inventory bundled with the currently installed package. It regenerates the
+module so bundled-provider imports still work, but custom providers and model
+attributes disappear. There is no automatic backup; export a copy first if you
+may want the customizations later. Restart applications after resetting.
+
+Reset can repair malformed JSON and damaged generated code bearing its identifying
+header. It refuses unrelated Python files and does nothing if neither target
+exists. If only one file exists, confirmation covers restoring both. Each file
+replacement is atomic, but the pair is not a single filesystem transaction:
+if the second replacement fails, the error identifies the changed file and asks
+you to rerun reset. Installed package files and credential settings are untouched.
+
+## Maintain the bundled inventory
 
 **Edit model data in [inventory.py](src/roboz_endpoints/inventory.py), then
 regenerate the editor declarations.** Add one entry to the provider's mapping:

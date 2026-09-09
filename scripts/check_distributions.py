@@ -63,7 +63,13 @@ def wheels_for(dist: Path, *, core_only: bool = False) -> dict[str, Path]:
                     "roboz_endpoints/specs.py",
                     "roboz_endpoints/inventory.py",
                     "roboz_endpoints/adapters/openai_compatible.py",
+                    "roboz_endpoints/cli.py",
+                    "roboz_endpoints/__main__.py",
+                    "roboz_endpoints/_inventory_codec.py",
+                    "roboz_endpoints/_inventory_codegen.py",
                 } <= set(names)
+                entry_points = archive.read(next(n for n in names if n.endswith("/entry_points.txt"))).decode()
+                assert "roboz-endpoints = roboz_endpoints.cli:main" in entry_points
         wheels[name] = wheel
     return wheels
 
@@ -175,6 +181,79 @@ def check_endpoint_types(python: Path, root: Path, env: dict[str, str]) -> None:
             if diagnostic["severity"] == "error"
         ]
         assert len(errors) == 1 and errors[0].get("rule") == rule, errors
+    check_inventory_workflow(python, root, env, command)
+
+
+def check_inventory_workflow(python: Path, root: Path, env: dict[str, str], type_command: list[str]) -> None:
+    """Exercise installed inventory commands, generated typing, and confirmed reset."""
+    project = root / "inventory-project"
+    project.mkdir()
+    executable = python.with_name("roboz-endpoints.exe" if os.name == "nt" else "roboz-endpoints")
+
+    def command(*args: str, answer: str = "", success: int = 0) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            [str(executable), "inventory", *args], input=answer,
+            cwd=project, env=env, capture_output=True, text=True,
+        )
+        assert result.returncode == success, result.stdout + result.stderr
+        return result
+
+    command("export")
+    editable = project / "models.json"
+    bundled = editable.read_bytes()
+    data = json.loads(bundled)
+    fixture = ROOT / "tests/type_tests/fixtures/models.json"
+    data["providers"].update(json.loads(fixture.read_text())["providers"])
+    editable.write_text(json.dumps(data))
+    command("import")
+    module = project / "project_models.py"
+    command("export", "--from-module", str(module), "--path", "roundtrip.json")
+    exported = json.loads((project / "roundtrip.json").read_text())
+    assert exported["providers"]["custom"]["timeout_s"] == 12
+    assert exported["providers"]["groq"]["models"] == data["providers"]["groq"]["models"]
+    assert list(exported["providers"]) == list(data["providers"])
+
+    def inspect(code: str) -> None:
+        subprocess.run(
+            [str(python), "-I", "-c", f"import sys; sys.path.insert(0, {str(project)!r})\n" + code],
+            cwd=root, env=env, check=True,
+        )
+
+    inspect("""
+import project_models as models
+assert models.custom.chat.dependency_id == 'model:custom:custom/chat'
+assert models.custom.audio.redacted_metadata()['endpoint_type'] == 'transcription'
+assert models.custom.chat is models.custom.chat
+assert 'openai' not in sys.modules
+assert 'materialized' not in models.custom.chat.__dict__
+""")
+    cases = ROOT / "tests/type_tests/cases"
+    for case, expected, rule in (
+        ("valid/test_user_inventory.py", 0, None),
+        ("expected_failures/test_unknown_user_inventory_model.py", 1, "reportAttributeAccessIssue"),
+        ("expected_failures/test_user_inventory_transcription_as_chat.py", 1, "reportArgumentType"),
+    ):
+        target = project / Path(case).name
+        target.write_text((cases / case).read_text().replace("tests.type_tests.fixtures.inventory_models", "project_models"))
+        checked = subprocess.run([*type_command, "--outputjson", str(target)], cwd=project, env=env, capture_output=True, text=True)
+        assert checked.returncode == expected, checked.stdout + checked.stderr
+        if rule:
+            errors = [d for d in json.loads(checked.stdout)["generalDiagnostics"] if d["severity"] == "error"]
+            assert len(errors) == 1 and errors[0].get("rule") == rule, errors
+    before = (editable.read_bytes(), module.read_bytes())
+    command("reset", answer="no\n", success=1)
+    assert (editable.read_bytes(), module.read_bytes()) == before
+    command("reset", answer="yes\n")
+    assert editable.read_bytes() == bundled
+    command("export", "--from-module", str(module), "--path", "reset.json")
+    assert (project / "reset.json").read_bytes() == bundled
+    inspect("""
+import project_models as models
+assert not hasattr(models, 'custom')
+assert not hasattr(models.groq, 'new_chat')
+assert models.groq.whisper_large_v3_turbo.dependency_id
+assert 'openai' not in sys.modules
+""")
 
 
 def check_installs(dist: Path, root: Path, *, core_only: bool = False) -> None:

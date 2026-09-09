@@ -68,12 +68,14 @@ class OpenAICompatibleAdapter:
 
     def _validate_settings(self, model: str) -> None:
         """Reject invalid route settings without reading credentials or importing SDKs."""
-        if (
-            not model.strip()
-            or not self._api_name.strip()
-            or not self._api_key_env.strip()
-        ):
+        if not model.strip():
             raise ValueError("model, api_name, and api_key_env must be non-empty")
+        self._validate_service_settings()
+
+    def _validate_service_settings(self) -> None:
+        """Validate service configuration independently of any model selection."""
+        if not self._api_name.strip() or not self._api_key_env.strip():
+            raise ValueError("api_name and api_key_env must be non-empty")
         if not math.isfinite(self._timeout_s) or self._timeout_s <= 0:
             raise ValueError("timeout_s must be finite and positive")
         url = urlsplit(self._base_url)

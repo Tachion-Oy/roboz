@@ -21,6 +21,12 @@ from roboz_endpoints import cerebras, groq, openrouter
 from roboz_endpoints.specs import ChatModelSpec
 
 
+def test_service_validation_message_names_only_service_fields():
+    adapter = OpenAICompatibleAdapter(api_name="", api_key_env="")
+    with pytest.raises(ValueError, match=r"^api_name and api_key_env must be non-empty$"):
+        adapter._validate_service_settings()
+
+
 @pytest.mark.parametrize(
     "provider_class,attribute",
     [

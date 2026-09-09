@@ -78,7 +78,24 @@ README's model table and relevant runtime/typing tests with model changes.
 pytest suite checks freshness, including in CI. Wheels and source archives ship
 the generated files; imports and builds do not regenerate them, and consumers need
 no generator or editor configuration. See the
-[endpoint maintenance instructions](../packages/endpoints/README.md#maintain-the-inventory).
+[endpoint maintenance instructions](../packages/endpoints/README.md#maintain-the-bundled-inventory).
+
+Project inventories use the packaged `roboz-endpoints inventory export`, `import`,
+and confirmed `reset` commands. These generate a separate application module;
+they never change the bundled data or stubs. Both generators share provider type
+declaration rendering. After changing that rendering, regenerate the committed
+consumer typing fixture as well as checking the bundled declarations:
+
+```bash
+uv run roboz-endpoints inventory import --path tests/type_tests/fixtures/models.json \
+  --output tests/type_tests/fixtures/inventory_models.py --force
+uv run python scripts/generate_endpoint_catalog.py --check
+```
+
+The inventory tests check fixture freshness and SDK-free operation. The installed
+distribution checks also exercise console entry points, JSON round trips,
+generated consumer typing, reset cancellation, and confirmed restoration outside
+the checkout for the base wheel, SDK extra, and source-archive rebuilds.
 
 ### Unit test suite
 

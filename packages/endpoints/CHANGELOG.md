@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Export model inventories as editable JSON and import them into a project-local
+  Python module with lazy collections and precise Pylance types. Add or update
+  chat models, transcription models, and OpenAI-compatible providers without
+  editing the installed package. A confirmed reset restores both project files
+  to the currently installed bundled inventory.
+
 ## 0.1.0a2 - 2026-09-09
 
 ### Changed
