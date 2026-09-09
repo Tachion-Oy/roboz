@@ -11,6 +11,9 @@ import-names = ["roboz_endpoints"]
 classifiers = ["Development Status :: 3 - Alpha", "Typing :: Typed"]
 dependencies = ["roboz>=0.1.2.dev2,<0.2.0"]
 
+[project.scripts]
+roboz-endpoints = "roboz_endpoints.cli:main"
+
 [project.optional-dependencies]
 openai = ["openai>=2.8.1,<3"]
 
