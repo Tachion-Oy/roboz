@@ -1,5 +1,8 @@
+import os
 from pathlib import Path
+import subprocess
 
+import pytest
 import yaml
 
 
@@ -17,7 +20,11 @@ def test_ci_cannot_publish_and_keeps_shared_verification():
     ci = workflow("ci.yml")
     verify = workflow("verify.yml")
     assert ci["jobs"]["verify"]["uses"] == "./.github/workflows/verify.yml"
-    assert verify["on"] == {"workflow_call": ""}
+    assert set(verify["on"]) == {"workflow_call"}
+    assert "with" not in ci["jobs"]["verify"]
+    source = verify["on"]["workflow_call"]["inputs"]["source-sha"]
+    assert source["required"] == "false"
+    assert source["default"] == ""
     for document in (ci, verify):
         assert document["permissions"] == {"contents": "read"}
         for job in document["jobs"].values():
@@ -27,22 +34,24 @@ def test_ci_cannot_publish_and_keeps_shared_verification():
             )
 
 
-def test_release_requires_validation_before_approved_production_upload():
+def test_release_requires_manual_validation_before_production_upload():
     release = workflow("release.yml")
     jobs = release["jobs"]
-    assert set(release["on"]) == {"push"}
-    assert set(release["on"]["push"]["tags"]) == {
-        "roboz-v*",
-        "roboshed-v*",
-        "roboz-endpoints-v*",
-        "roboz-proton-bridge-v*",
+    assert set(release["on"]) == {"workflow_dispatch"}
+    inputs = release["on"]["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"tag"}
+    assert inputs["tag"]["type"] == "string"
+    assert inputs["tag"]["required"] == "true"
+    assert release["concurrency"] == {
+        "group": "release-${{ inputs.tag }}",
+        "cancel-in-progress": "false",
     }
     assert jobs["verify"]["needs"] == "preparation"
     assert set(jobs["select"]["needs"]) == {"preparation", "verify"}
     assert jobs["publish"]["needs"] == "select"
     assert jobs["publish"]["environment"] == "pypi"
     assert jobs["publish"]["if"] == (
-        "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')"
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
     )
     publishers = {
         name
@@ -58,3 +67,63 @@ def test_release_requires_validation_before_approved_production_upload():
     assert steps[-1].get("with", {}).get("skip-existing", "false") == "false"
     assert "--published-dependencies" in str(jobs["select"]["steps"])
     assert "testpypi" not in str(release).lower()
+
+
+def test_every_release_source_checkout_uses_the_resolved_commit():
+    release = workflow("release.yml")["jobs"]
+    verify = workflow("verify.yml")
+    steps = release["preparation"]["steps"]
+    prepare = next(step for step in steps if step.get("id") == "prepare")
+    assert prepare["env"]["RELEASE_TAG"] == "${{ inputs.tag }}"
+    assert '--resolve --base-commit "$GITHUB_SHA"' in prepare["run"]
+    assert (
+        release["preparation"]["outputs"]["sha"] == "${{ steps.prepare.outputs.sha }}"
+    )
+    checkout = next(
+        step for step in steps if "actions/checkout@" in step.get("uses", "")
+    )
+    assert checkout["with"]["fetch-depth"] == "0"
+    assert (
+        "ref" not in checkout["with"]
+    )  # workflow and resolver come from invocation SHA
+    assert release["verify"]["uses"] == "./.github/workflows/verify.yml"
+    assert (
+        release["verify"]["with"]["source-sha"]
+        == "${{ needs.preparation.outputs.sha }}"
+    )
+    for job in verify["jobs"].values():
+        checkouts = [
+            step for step in job["steps"] if "actions/checkout@" in step.get("uses", "")
+        ]
+        assert len(checkouts) == 1
+        assert checkouts[0]["with"]["ref"] == "${{ inputs.source-sha || github.sha }}"
+    selected_checkout = release["select"]["steps"][0]
+    assert "actions/checkout@" in selected_checkout["uses"]
+    assert selected_checkout["with"]["ref"] == "${{ needs.preparation.outputs.sha }}"
+    selection = next(
+        step
+        for step in release["select"]["steps"]
+        if "--from-dist" in step.get("run", "")
+    )
+    assert selection["env"]["RELEASE_TAG"] == "${{ inputs.tag }}"
+
+
+@pytest.mark.parametrize(
+    ("event", "ref", "allowed"),
+    [
+        ("workflow_dispatch", "refs/heads/main", True),
+        ("workflow_dispatch", "refs/heads/feature", False),
+        ("workflow_dispatch", "refs/tags/roboz-v0.1.0", False),
+        ("push", "refs/heads/main", False),
+        ("push", "refs/tags/roboz-v0.1.0", False),
+        ("pull_request", "refs/pull/1/merge", False),
+    ],
+)
+def test_release_entrypoint_rejects_other_events_and_refs(event, ref, allowed):
+    guard = workflow("release.yml")["jobs"]["preparation"]["steps"][0]
+    result = subprocess.run(
+        ["bash", "-e", "-c", guard["run"]],
+        env={**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref},
+        capture_output=True,
+    )
+    assert (result.returncode == 0) is allowed

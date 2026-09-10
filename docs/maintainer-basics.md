@@ -113,28 +113,60 @@ the current `<0.2.0` bounds intentionally exclude core 0.2.
 3. Review the release notes and date, then validate the intended tag with
    `uv run python scripts/release_package.py <distribution>-v<version> --check`.
    The checker verifies the tag and declared version; changelog review is manual.
-4. Tag the reviewed commit and push that tag. The release workflow validates the
-   workspace and tests the selected wheel with dependencies resolved from PyPI.
+4. Merge the preparation into `main`, tag the reviewed commit with
+   `<distribution>-v<version>`, and push that tag. A tag identifies a candidate;
+   pushing it does not publish anything.
+5. Open **Actions → Release one Python package → Run workflow**. Keep the
+   workflow branch set to **main**, enter the existing package tag in **tag**,
+   and start the run. This explicitly requests publication after validation.
    Publish required dependency releases first.
-5. Approve the `pypi` deployment in GitHub. The standard PyPA action publishes
-   the same verified wheel and source archive without rebuilding. There is no
-   TestPyPI stage or automated post-publication download check.
+6. The workflow resolves the tag to a fixed commit, validates the workspace at
+   that commit, and tests the selected wheel with dependencies from PyPI. The
+   standard PyPA action then publishes that wheel and source archive without
+   rebuilding. If the `pypi` environment requires approval, approve the deployment
+   after the verification and artifact-selection jobs pass.
 
-The four distributions remain independently versioned. A development or alpha
-release can be published through the same route. Creating a tag, approving a
-deployment, and uploading a package remain explicit maintainer actions.
+Production publishing currently supports `roboz`, `roboshed`, and
+`roboz-endpoints`. Proton Bridge remains part of workspace validation but is not
+enabled for publication. Packages remain independently versioned; development,
+alpha, and stable releases use the same route. No version bump or upload of
+another package is required unless its own changes or dependency bounds require
+a release.
+
+The tag must exist and identify a commit already in `main` at the time the
+workflow starts. Its version must match that package's metadata at the tagged
+commit. Older merged candidates remain valid even if `main` has advanced. Branch
+names and raw commit hashes are not release inputs. All checks and builds use the
+resolved candidate commit; `main` supplies the workflow definition. There is no
+TestPyPI stage or separate validation-only release mode.
 
 ### Publisher setup
 
-Configure a PyPI Trusted Publisher for owner `Tachion-Oy`, repository `roboz`,
-workflow `release.yml`, environment `pypi`. Establish ownership for each
-distribution. For new names, configure pending publishers and publish packages
-one at a time; completed projects can share the publisher configuration.
+Each PyPI project grants upload permission separately. Register the same Trusted
+Publisher identity on `roboz`, `roboshed`, and `roboz-endpoints`: owner
+`Tachion-Oy`, repository `roboz`, workflow `release.yml`, environment `pypi`.
+These are three package permissions for one workflow identity. Existing
+registrations continue to work with manual releases; no API tokens are needed.
+See [PyPI's explanation of one publisher serving many projects](https://docs.pypi.org/trusted-publishers/internals/#why-is-the-pypi-project-to-publisher-relationship-many-many).
 
-In GitHub **Settings → Environments**, configure `pypi` with the maintainer as a
-required reviewer. Restrict deployments to the four package release tag patterns.
-The YAML environment name alone does not enforce approval; configure required
-reviewers before enabling production publishing.
+In GitHub **Settings → Environments → pypi**, use **Selected branches and tags**
+with exactly one rule: **Ref type: Branch**, **Name pattern: main**. Remove the
+old package tag rules when migrating to the manual workflow. GitHub evaluates
+the workflow's ref for this rule, while the workflow validates the candidate
+tag separately. This setting does not protect `main` against changes.
+
+For the current private repository with a sole maintainer, starting the manual
+release is the explicit publication action. GitHub plan restrictions currently
+prevent configuring required environment reviewers. Before publishing from a
+public repository, configure the maintainer as a required reviewer on `pypi`.
+The YAML environment name alone does not enforce approval. Configure protection
+for `main` and release tags as part of opening the repository to contributors.
+
+To enable another distribution, ensure its path is listed in `PROJECTS`, add its
+name to `PUBLISHABLE_PROJECTS` in the release helper, and register this same
+publisher identity on its PyPI project. For a new PyPI name, configure a pending
+publisher first; establish new projects one at a time. No extra GitHub environment
+or deployment pattern is required.
 
 OIDC permission belongs only to the publishing job, which downloads artifacts and
 uploads them without checking out or building source. The existing TestPyPI
@@ -159,7 +191,6 @@ to merge and support. Set realistic response expectations and decline features
 outside the project's scope. Periodically test updated dependencies as well as
 the locked environment. See [Best Practices for Maintainers](https://opensource.guide/best-practices/).
 
-**Next step:** try the built packages from a clean consumer project, including
-controlled live model/email checks. Then settle the public compatibility policy
-and publish the initial packages: core first, Shed/model adapter next, Proton
-last. Build the Hub against those installed dependencies.
+Try published packages from a clean consumer project, including controlled live
+integration checks where relevant. Consumer applications should use the
+independently released dependencies they require.
