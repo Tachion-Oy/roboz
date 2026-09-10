@@ -165,8 +165,9 @@ It requires every job in `.github/workflows/verify.yml` to succeed; failures,
 cancellations, and skipped required jobs cannot produce a green aggregate.
 Pull requests (including forks), pushes to `main`, and manual dispatch run the
 same validation. The shared workflow is named **Tests and packaging**. Only the
-separately triggered package-tag release workflow can publish, after production
-approval. There is no TestPyPI stage or manual publication dispatch.
+manually started release workflow can publish an explicitly selected existing
+package tag. Starting that workflow requests publication after successful
+verification and any configured environment approval. There is no TestPyPI stage.
 
 - Python 3.13 and 3.14 run all core and companion tests and the quickstart.
 - Quality runs Ruff, Pyright, and positive/negative typing contracts once.
@@ -241,12 +242,39 @@ uv run python scripts/release_package.py roboz-endpoints-v0.1.0a3 --check
 uv lock --check
 ```
 
-After review, a pushed `<distribution>-v<version>` tag runs:
+After review, merge the release preparation into `main`, create the
+`<distribution>-v<version>` tag on the reviewed commit, and push it. Pushing a tag
+does not publish. Open **Actions → Release one Python package → Run workflow**,
+choose workflow branch **main**, and enter the existing tag in **tag**. Starting
+the run requests publication of that package after all checks pass:
 
-1. Tag/version validation and the complete shared verification workflow.
-2. Installation of the selected candidate wheel with dependencies from PyPI.
-3. Selection of its already-tested wheel and sdist without rebuilding.
-4. The configured `pypi` environment approval, followed by Trusted Publishing.
+1. Require manual invocation from `main`; resolve an existing supported package
+   tag to its commit and require that commit to be in `main`'s history at workflow
+   invocation. Validate the package name and version against metadata at that
+   commit, not against newer metadata on `main`.
+2. Run the complete shared verification workflow against that fixed source SHA.
+3. Install the selected candidate wheel with dependencies from PyPI.
+4. Select its already-tested wheel and sdist without rebuilding.
+5. Publish through the shared `pypi` environment, after any configured approval.
+
+The run summary records the package, version, tag, and resolved source commit.
+The workflow definition comes from `main`; every source checkout in verification
+and selection uses the candidate SHA. Ordinary CI omits this source override and
+continues testing its own event commit. Concurrent release runs for the same tag
+are serialized without cancelling the active run.
+
+The release helper can validate an existing candidate without uploading:
+
+```bash
+# Substitute the existing tag you want to validate:
+uv run python scripts/release_package.py roboz-endpoints-v0.1.0a3 --resolve \
+  --base-commit "$(git rev-parse origin/main)"
+```
+
+The base commit is the snapshot of `main` used to define eligible candidates;
+the workflow supplies its own `GITHUB_SHA`. Both annotated and lightweight tags
+are accepted. Branch names, raw commit hashes, absent tags, unmerged candidates,
+and mismatched versions fail before verification or publication.
 
 The selected-wheel check can also run locally:
 
@@ -257,8 +285,9 @@ uv run pytest tests/distributions --no-cov --dist "$release_dir" \
 
 This mode installs only the selected candidate; companion dependencies come
 from PyPI, independently of workspace overrides and the development lockfile.
-Publish dependency releases first: core before Shed/Endpoints, then core and
-Shed before Proton. An unavailable or incompatible dependency fails this check.
+Publish required core dependency releases before Shed/Endpoints. An unavailable
+or incompatible dependency fails this check. Proton Bridge is still built and
+tested with the workspace, but production publishing is currently disabled for it.
 
 There is no TestPyPI stage, index client, or automatic post-publication polling.
 The standard PyPA publishing action uploads the verified archives and rejects
