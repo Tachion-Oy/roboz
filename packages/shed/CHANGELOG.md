@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Breaking: replace the RoboSprawl configuration/factory layers with
+  `robosprawl(...)`, returning a core `Deployment`. Presets return
+  `DeployableAgent`; orchestrators accept direct `subagents` and
+  `background_agents` definitions. Remove `AgenticFactory`, `DeploymentFactory`,
+  `DeploymentRecipe`, `RunFactory`, and `RoboSprawlBundle`; unpack build results
+  as `agent, background_agents`. Move `inspect_dependencies` to
+  `roboshed.dependency_health`, accepting a temporary-sandbox-to-deployment
+  callback. Project memory and maintenance defaults are preserved.
+  See `docs/agent-factories.md` for migration.
+
 ## 0.1.0a3 - 2026-09-10
 
 - Breaking: replace the public Shed `Workspace` and `Project` primitives with a

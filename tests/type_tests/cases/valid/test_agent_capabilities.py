@@ -3,7 +3,7 @@ from typing import assert_type
 from roboz import Agent
 from roboz.deployment import (
     AgentCapability,
-    AgentDefinition,
+    DeployableAgent,
     Capability,
 )
 from roboz.llm import EndpointLike, MockLLMEndpoint
@@ -31,7 +31,7 @@ endpoint_free: AgentCapability = EndpointFree()
 
 
 endpoint: EndpointLike = MockLLMEndpoint([])
-definition = AgentDefinition(
+definition = DeployableAgent(
     name="custom",
     agent_endpoint=endpoint,
     system_prompt="Use the configured capabilities.",

@@ -1,14 +1,14 @@
-# Agent definitions, factories, and ownership
+# Deployable agents and deployments
 
 Core describes and constructs agents. Shed supplies concrete agents and deployment
 profiles; applications configure and host them.
 
 | Module | Owns |
 | --- | --- |
-| `roboz.deployment` | `AgentDefinition`, `AgentCapability`, `Capability`, `SubAgentSpec` |
-| `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `AgentDefinition` |
+| `roboz.deployment` | `DeployableAgent`, `Deployment`, `AgentCapability`, `Capability` |
+| `roboshed.agents` | `orchestrator()` and `librarian()`, both returning `DeployableAgent` |
 | `roboshed.capabilities` | Reusable file, compaction, and maintenance capabilities, alongside `tools` and `skills` |
-| `roboshed.deployments.robosprawl` | Project composition, defined directly in the package `__init__.py` |
+| `roboshed.deployments.robosprawl` | The `robosprawl(...)` function returning a configured `Deployment` |
 | Other Shed modules | Sandbox structure and policy, memory, and file tools |
 | Application | Configuration, model selection, permission policy, UI conventions, startup and shutdown |
 
@@ -17,7 +17,7 @@ Core imports none of these application modules.
 
 ## Capabilities and skills
 
-Both `AgentDefinition` and preset callers configure `capabilities` only. A capability is a configured feature
+Both `DeployableAgent` and preset callers configure `capabilities` only. A capability is a configured feature
 such as file editing or compaction. It assembles the runtime tools and instructions
 needed to provide that feature. Applications choose capabilities; they do not pass
 parallel tool and skill lists into `orchestrator()` or `librarian()`.
@@ -32,17 +32,17 @@ For example, `FileEditing` bundles a guarded patch tool with its editing instruc
 
 The orchestrator always supplies `stop`. `Agent` supplies user
 interaction independently of selected capabilities. Only the lower-level `Agent`
-and concrete `Capability` expose tool and skill fields; `AgentDefinition` has a
+and concrete `Capability` expose tool and skill fields; `DeployableAgent` has a
 single capability list.
 
 ## Generic construction
 
 ```python
 from roboz import stop
-from roboz.deployment import AgentDefinition, Capability
+from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 
-worker = AgentDefinition(
+worker = DeployableAgent(
     name="worker",
     system_prompt="Complete the task and stop.",
     capabilities=(Capability(tools=(stop,)),),
@@ -73,14 +73,47 @@ its already-bound inputs unchanged. Runtime-bound implementations such as
 `lambda: pipe.cancelled` for cancellation callbacks. Supplied endpoints
 and already-bound capability tools remain caller-owned; recreate response-consuming mocks per run.
 
-`SubAgentSpec(definition, tool_name, tool_description)` nests specialists. Builds
-reject duplicate recursive agent names before allocating sinks or capabilities.
-The `event_sinks` build argument follows the root and specialists. An optional
-`event_sink_factory(name)` supplies fresh, agent-specific sinks independently;
-parent-specific sinks never leak to children. Core does not choose log locations.
-To add root-only automatic work, append a `Capability(default_tools=(... ,))`
-to the root definition's capability tuple. The deployment uses this same path to
-wire background start tools; no separate tool-injection build argument exists.
+Each definition has two recursive slots of the same type:
+`subagents: tuple[DeployableAgent, ...]` and
+`background_agents: tuple[DeployableAgent, ...]`. Sub-agents become selectable
+delegation tools, named and described by the child definition. They run
+synchronously. Background agents become default start/heartbeat tools named
+`start_background_agent_<name>`; they run in daemon threads when their parent
+is invoked. No spec object or invocation flags are needed.
+
+Builds reject duplicate names anywhere in the graph before allocating sinks or
+capabilities. `agent_names()` includes all agents;
+`agent_names(include_background=False)` excludes entire background branches.
+The `event_sinks` build argument follows synchronous children only. An optional
+`event_sink_factory(name)` supplies fresh agent-specific sinks independently,
+including for background agents and their descendants.
+
+To retain background agents for host control, put the root definition in a
+`Deployment`. Given configured `root`, `specialist`, and `maintenance` definitions:
+
+```python
+from dataclasses import replace
+from roboz.deployment import Deployment
+
+deployment = Deployment(
+    root=replace(
+        root,
+        subagents=(specialist,),
+        background_agents=(maintenance,),
+    ),
+    initial_messages=("Additional startup context.",),
+)
+agent, background_agents = deployment.build()
+result, messages = agent.invoke()
+```
+
+`Deployment.build()` returns a plain `tuple[Agent, tuple[Agent, ...]]`. The
+background tuple contains every background invocation target, including those
+nested below sub-agents or other background agents. Traversal visits sub-agents
+first, then background branches, retaining each background before its descendants.
+Deployment context precedes the root's existing initial messages without changing
+the definition. Construction invokes no agents, starts no threads, writes no
+persistence files, and materializes no providers.
 
 ## Tool endpoints
 
@@ -107,7 +140,7 @@ if endpoint is None:
 ```
 
 The chosen endpoint goes straight into the tool constructor. The capability
-also supplies the owning pipe as a separate runtime input. `AgentDefinition`
+also supplies the owning pipe as a separate runtime input. `DeployableAgent`
 only provides `default_endpoint=self.agent_endpoint`; it does not select the
 models for individual tools or construct endpoints.
 
@@ -124,83 +157,59 @@ current selection. Enumerate the actual bound resources with
 `agent.external_dependencies()`; no separate capability endpoint registry is
 needed. Already-bound `Capability(...)` inputs are returned unchanged.
 
-## The RoboSprawl deployment profile
+## The RoboSprawl deployment instance
 
 ```python
 from pathlib import Path
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
-from roboshed.deployments.robosprawl import RoboSprawl
+from roboshed.deployments.robosprawl import robosprawl
 from roboshed.sandbox import Sandbox
 
 sandbox = Sandbox(Path("./data"))
-deployment = RoboSprawl(
+deployment = robosprawl(
+    sandbox, "example",
+    orchestrator_endpoint=MockLLMEndpoint([]),
     capabilities=(FileCommands, FileEditing),
     memory_endpoint=MockLLMEndpoint([]),
 )
-factory = deployment(sandbox, "example", orchestrator_endpoint=MockLLMEndpoint([]))
-agent, background_agents = factory.build()
+agent, background_agents = deployment.build()
 ```
 
-`RoboSprawl` selects the persistent orchestrator, derives project locations, and
-composes Librarian snapshotting, consolidation, retention, and 120-second cadence
-in that order. Watched names include nested specialists. Consumers select a
-sequence of configured capabilities or permission factories, a memory endpoint, optional specialists,
-and their interaction mode. The `project_context` template supplies the actual
-paths derived from the sandbox and project slug at construction time. Select the `robosprawl` skill for static orientation and HUD
-guidance; the skill does not embed a deployment’s paths. Permission factories run for every recipe invocation, binding fresh capabilities
-to the current project. Override `librarian_capabilities` with a callable accepting
-`(sandbox, project_slug, names)` and returning the desired capability sequence. It runs once
-per recipe invocation; `names` is the frozen set of recursive foreground agent
-names. The returned order is preserved. Supply at least one capability that
-provides a default tool: the Librarian runs a non-agentic maintenance pipeline.
+`robosprawl(...)` returns an ordinary `Deployment` instance. It binds project
+permissions and context, constructs the orchestrator, and adds the Librarian to
+the root's `background_agents` tuple. Caller-supplied `subagents` and
+`background_agents` are ordinary `DeployableAgent` definitions.
 
-The recipe also works directly with `DeploymentFactory` for repeated host runs.
-This example constructs the graph without running it. Configure endpoints or
-scripted responses before calling `agent.invoke()`. Construction creates no
-folders, materializes no providers, and starts no threads.
+The default maintenance sequence remains snapshots, consolidation, retention,
+and a 120-second cadence. Override `librarian_capabilities` with
+`(sandbox, project_slug, names) -> Sequence[AgentCapability]`; it runs once per
+composition and receives recursive foreground names only. Supply automatic work
+and a stopping policy, normally `MaintenanceCadence` last.
 
-For custom root or maintenance behavior, `AgenticFactory` accepts ordinary
-`AgentDefinition` objects. `orchestrator()` supplies the persistent collaboration
-prompt and stop tool. `librarian()` accepts caller-selected capabilities in
-execution order. Individual maintenance capabilities remain independently usable;
-put `MaintenanceCadence` last and derive watched names from `root.agent_names()`.
+Memory is seeded from `sandbox.project_memory_dir(project_slug)`;
+`seed_initial_messages_from_memory=False` disables it. Agent-specific sinks
+persist below `sandbox.project_logs_dir(project_slug)`.
+`include_cli_output` defaults to false. The `project_context` template supplies
+actual project paths; the separate `robosprawl` skill supplies static orientation
+and HUD guidance.
 
-The orchestrator stays available across tasks and stops when the user asks,
-including standing instructions. It selects no memory location. Use a plain
-definition with a task-specific prompt for task-oriented behavior.
-
-`AgenticFactory` binds the sandbox, project slug, and definitions. It seeds root
-initial context from `sandbox.project_memory_dir(project_slug)` by default;
-`seed_initial_messages_from_memory=False` disables this. It constructs fresh log
-sinks below `sandbox.project_logs_dir(project_slug)`.
-`include_cli_output` defaults to false. Builds do not mutate either definition.
-Foreground and background trees must have disjoint agent names. The Librarian
-persists separately; caller foreground sinks do not follow it.
+The orchestrator remains available across tasks until the user asks it to stop,
+including standing instructions. Use a plain definition with a task-specific
+prompt for task-oriented behavior. This example builds only; supply configured
+endpoints or scripted responses before invoking it.
 
 ## Invocation and threading
 
-The factory returns `RoboSprawlBundle`, a named tuple defined in the deployment
-package. Its fields identify the runnable root and background agents:
+Invoke the returned root directly and retain the background tuple for control.
+Use each agent's existing `pipe.cancel()` or `pipe.interrupt()` as appropriate;
+the deployment does not add a lifecycle API or propagate signals between agents.
 
-```python
-bundle = factory.build()
-result, messages = bundle.agent.invoke()
-background_agents = bundle.background_agents
-```
-
-Tuple unpacking also works: `agent, background_agents = factory.build()`.
-The named tuple carries references only; it has no forwarding or lifecycle
-methods. The host retains `background_agents` for cancellation and shutdown.
-
-`Agent.invoke()` runs synchronously on the calling thread. The deployment wires
-`run_background_agent` into the root's default tools; that tool starts and tracks
-the Librarian's daemon thread. Subsequent calls reuse a live background thread.
-Specialist delegation is synchronous on the root's thread.
-
-Sprawl runs the root in its own worker thread. Its run control retains background
-pipes and observes background thread lifecycle events, preserving cancellation,
-startup races, and shutdown handling. A CLI can invoke the root on its main thread.
+The parent runs its background-start tools automatically in its default
+sequence. A first call starts the background agent; subsequent calls return a
+heartbeat while its thread is alive, or restart it after it exits. Background
+work may continue after the parent finishes. Hosts own cancellation and shutdown,
+including lifecycle observation and any waiting for threads to finish.
 
 ## Sandbox and capability inputs
 
@@ -222,6 +231,23 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 
 ## Migration
 
+- Rename `AgentDefinition` imports to `DeployableAgent`.
+- Remove `SubAgentSpec`: put child definitions directly in `subagents`.
+  Delegation tools now use each child's `name` and `description`. Update
+  model-facing tool references to the child's existing name; do not rename
+  persisted agent identities merely to preserve an old delegation-tool alias.
+- Put background definitions directly in `background_agents`. Their start
+  tools are always defaults; no background/default flags are accepted.
+- Replace the `RoboSprawl` configuration class with one `robosprawl(...)` call
+  supplying its sandbox, slug, endpoints, and choices together.
+- `DeploymentFactory`, `DeploymentRecipe`, `RunFactory`, and
+  `RoboSprawlBundle` are removed. Use ordinary composition functions and tuple
+  unpacking instead of `bundle.agent` or `bundle.background_agents`.
+- Import `inspect_dependencies` from `roboshed.dependency_health`. Its callback
+  now receives only the temporary sandbox and returns a `Deployment`; capture
+  the project slug and endpoint choices in that callback.
+
+
 - Replace the old public layout/project values with one `Sandbox` from
   `roboshed.sandbox`. Configure
   its tier and persistence folder names once, call `sandbox.permissions(slug)`
@@ -236,14 +262,15 @@ endpoint unless given another, and shares its pipe. Its default threshold is
   agent presets from `roboshed.agents`, reusable capabilities from
   `roboshed.capabilities`, and the project deployment from
   `roboshed.deployments.robosprawl`.
-- Move all direct `AgentDefinition` tool/skill fields into
+- Move all direct `DeployableAgent` tool/skill fields into
   `capabilities=(Capability(tools=(...), default_tools=(...), skills=(...),
   auto_loaded_skills=(...)), ...)`. Already-bound and runtime-bound capabilities
   use the same protocol; no compatibility result class is retained.
-- Call `AgentDefinition.build()` without a project. Supply persistence explicitly
+- Call `DeployableAgent.build()` without a project. Supply persistence explicitly
   through `event_sink_factory` and initial context through `initial_messages`.
-- Pass `sandbox=...` and `project_slug=...` into `AgenticFactory`, then unpack
-  `agent, background_agents = factory.build(event_sinks=...)`. Call `agent.invoke()`.
+- Replace `AgenticFactory` with `Deployment(root=...)`. Supply initial context
+  and agent-specific sinks explicitly, or use `robosprawl(...)` for project policy.
+  Unpack `agent, background_agents = deployment.build(event_sinks=...)`.
 - Replace capability `build(pipe, agent_endpoint)` with
   `build(pipe, *, default_endpoint: EndpointLike | None)`. Store tool-specific
   endpoint overrides as ordinary capability fields. Select each explicit value
@@ -252,7 +279,7 @@ endpoint unless given another, and shares its pipe. Its default threshold is
 - Endpoint inputs use `EndpointLike` from `roboz.llm`: configured endpoints or
   lazy/live references. Endpoint creation receives no runtime controls.
 - Replace `LibrarianDefinition`/`LibrarianConstructor` with
-  `librarian(capabilities=(...), agent_endpoint=...)`, returning `AgentDefinition`.
+  `librarian(capabilities=(...), agent_endpoint=...)`, returning `DeployableAgent`.
   Configure project and watched names on the selected maintenance capabilities.
   Replace `LibrarianTuning` with settings on `ConversationSnapshots`,
   `MemoryConsolidation`, `ArtifactRetention`, and `MaintenanceCadence`.
@@ -271,7 +298,7 @@ endpoint unless given another, and shares its pipe. Its default threshold is
   `skills`, and `auto_loaded_skills` from orchestrator calls into a capability
   returning `Capability`.
 - `roboshed.assistant`, `roboshed.demo`, and the `roboz-demo` command are removed.
-  Compose task-oriented file agents with `AgentDefinition`, `FileCommands`,
+  Compose task-oriented file agents with `DeployableAgent`, `FileCommands`,
   `FileEditing`, and a stop capability. Supply persistence through build sinks.
 - Email input models live in `roboshed.tools.email.inputs` and remain exported
   from `roboshed.tools.email`; the top-level `roboshed.email_inputs` is removed.
@@ -283,50 +310,16 @@ unreleased breaking API change; versions and publication are separate work.
 
 ## Repeated construction for any host
 
-`DeploymentFactory` evaluates a `DeploymentRecipe` once per call, then builds the
-returned `AgenticFactory`. The recipe receives a sandbox, project slug, and a live orchestrator
-endpoint reference. It controls capability choices, prompts, interaction mode,
-and dependency allocation. A CLI and a web server can consume the same factory:
+Call the composition function for each project/run, then call `build()`.
+A function or closure can allocate response-consuming mock endpoints and
+run-owned capabilities. Supplied lazy production endpoints remain shared
+deliberately; nothing is deep-copied or closed by deployment construction.
+Calling `build()` twice on the same definition creates fresh runtime state but
+does not reset caller-supplied mocks or already-bound tools.
 
-```python
-from roboshed.agents import orchestrator
-from roboshed.deployments.robosprawl import AgenticFactory, DeploymentFactory
-from roboz.runtime import Output
-
-
-def recipe(sandbox, project_slug, *, orchestrator_endpoint):
-    return AgenticFactory(
-        sandbox=sandbox,
-        project_slug=project_slug,
-        orchestrator=orchestrator(
-            agent_endpoint=orchestrator_endpoint,
-            interaction_mode=Output.CLI,
-        ),
-    )
-
-
-factory = DeploymentFactory(recipe)
-bundle = factory(
-    sandbox,
-    "example",
-    endpoint_getter=lambda: selected_endpoint,
-    event_sinks=(),
-)
-bundle.agent.invoke()
-```
-
-The shared `RunFactory` protocol is the single host construction contract:
-`(sandbox, project_slug, *, endpoint_getter, event_sinks) -> RoboSprawlBundle`. Constructing a
-bundle never invokes its agents, starts threads, or creates persistence files.
-Hosts retain the returned background agents and own invocation and shutdown.
-
-The recipe is evaluated anew for each run. Allocate mutable scripted endpoints
-and other run-owned inputs inside it. Captured lazy production endpoints remain
-shared deliberately; their targets retain responsibility for materialization and
-caching. The factory neither deep-copies supplied objects nor closes borrowed
-clients. An optional `event_sink_factory` allocates extra sinks once per build;
-these precede supplied host sinks. Capabilities receive the constructed pipe, so
-runtime controls can be bound before invocation without post-build patching.
+Pass composed caller sinks directly to `build(event_sinks=...)`. Live model
+routing is an ordinary endpoint input such as `DependencyRoute(getter)`; it
+does not require a deployment-specific host protocol.
 
 `roboz.DependencyRoute(getter)` delegates materialization and discovery to the
 current target. It accepts concrete dependencies and dependency references and
@@ -342,11 +335,13 @@ new runs or a particular existing run.
 
 ## Dependency inspection and health
 
-Use `inspect_dependencies` from the shared deployment profile to build against
-a temporary project with the configured folder names, collect foreground and
-background dependencies, and bind exact registrations. Supply selectable but
-currently unused models through `additional_dependencies`. Temporary inspection
-storage is removed on success and failure.
+Use `inspect_dependencies` from `roboshed.dependency_health` with a
+`Callable[[Sandbox], Deployment]`, the configured `sandbox`, and
+`registrations`. The callback receives an isolated sandbox with the configured
+folder names. It returns a deployment to build without invocation; the root's
+existing `external_dependencies()` follows both sub-agent and background tools.
+Supply selectable but currently unused models through `additional_dependencies`.
+Temporary inspection storage is removed on success and failure.
 
 `roboz.dependencies` owns `DependencyRegistration`, `BoundDependency`,
 `DependencyContractError`, and `bind_dependencies` for exact ID/kind

@@ -139,8 +139,10 @@ Install `roboz-endpoints[openai]` for the initial OpenRouter, Cerebras, and Groq
 catalogues; it installs core automatically. See the
 [endpoint guide](packages/endpoints/README.md) for model selection and SDK adapters.
 
-`roboz.deployment` supplies generic agent definitions, capability contracts,
-and specialist composition. Capabilities accept tool-specific endpoints and pass
+`roboz.deployment` supplies recursive `DeployableAgent` definitions, capability
+contracts, and `Deployment`. Put agent definitions directly in `subagents` or
+`background_agents`; deployment builds return the root and background agents
+for direct invocation and control. Capabilities accept tool-specific endpoints and pass
 them directly to their tools, using the owning agent's endpoint as the default. `roboshed` supplies orchestrator/Librarian
 factories, concrete capabilities, memory tools, and workspace structure. These are described in [agent factories](docs/agent-factories.md). Configured file and compaction capabilities live in `roboshed.capabilities`,
 alongside `roboshed.tools` and `roboshed.skills`. The project deployment lives in

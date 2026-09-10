@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Breaking: replace `AgentDefinition` and `SubAgentSpec` with recursive
+  `DeployableAgent` definitions. Put child definitions directly in `subagents`
+  or `background_agents`; delegation tools use the child's name and description,
+  and background agents start through default tools. `Deployment.build()` returns
+  the root and background agents for direct invocation and host control.
+  See `docs/agent-factories.md` for migration.
+
 ## 0.1.2.dev2 - 2026-09-09
 
 - Breaking: remove the `roboz[openai]` extra. Install

@@ -1,10 +1,7 @@
-"""Sandbox-scoped root and Librarian composition for RoboSprawl."""
+"""RoboSprawl project policy expressed as a configured Deployment."""
 
-import tempfile
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
-from pathlib import Path
-from typing import NamedTuple, Protocol
+from dataclasses import replace
 
 from roboshed.agents import librarian, orchestrator
 from roboshed.capabilities import (
@@ -13,100 +10,10 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.dependency_health import (
-    check_executable,
-    check_openai_compatible_endpoint,
-)
 from roboshed.sandbox import PermissionPolicy, Sandbox
-from roboz.agent import Agent, run_background_agent
-from roboz.dependencies import (
-    BoundDependency,
-    DependencyContractError,
-    DependencyRegistration,
-    DependencyRoute,
-    ExternalDependency,
-    ExternalDependencyKind,
-    LazyExternalDependency,
-    bind_dependencies,
-    dedupe_external_dependencies,
-)
-from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
-from roboz.llm import EndpointLike, LLMEndpoint
-from roboz.runtime import EventSink, Output, default_event_sinks
-from roboz.tooling.context import Ctx
-
-
-class RoboSprawlBundle(NamedTuple):
-    """The runnable root and background agents retained for host cancellation."""
-
-    agent: Agent
-    background_agents: tuple[Agent, ...] = ()
-
-
-@dataclass(frozen=True, kw_only=True)
-class AgenticFactory:
-    """Bind a root definition and optional Librarian to one sandbox project.
-
-    Construction never invokes an agent or starts a thread. The root starts
-    background work through its default tools; the host owns shutdown.
-    """
-
-    sandbox: Sandbox
-    project_slug: str
-    orchestrator: AgentDefinition
-    librarian: AgentDefinition | None = None
-    seed_initial_messages_from_memory: bool = True
-    include_cli_output: bool = False
-
-    def agent_names(self) -> frozenset[str]:
-        """Validate the foreground tree and its separation from the Librarian."""
-        names = self.orchestrator.agent_names()
-        if self.librarian is not None and names & self.librarian.agent_names():
-            raise ValueError("librarian names must differ from foreground agents")
-        return names
-
-    def build(self, *, event_sinks: Sequence[EventSink] = ()) -> RoboSprawlBundle:
-        """Return the root and background agents, with their start tools wired.
-
-        Invoke the root directly. Retain the background tuple for cancellation
-        and shutdown; constructing the bundle starts no work.
-        """
-        self.agent_names()
-
-        def sinks(name: str) -> tuple[EventSink, ...]:
-            return default_event_sinks(
-                data_path=self.sandbox.project_logs_dir(self.project_slug) / name,
-                include_cli=self.include_cli_output,
-            )
-
-        background = (
-            ()
-            if self.librarian is None
-            else (self.librarian.build(event_sink_factory=sinks),)
-        )
-        starts = tuple(
-            run_background_agent(Ctx(agent=agent)).copy(
-                name=f"start_background_agent_{agent.name}"
-            )
-            for agent in background
-        )
-        definition = replace(
-            self.orchestrator,
-            capabilities=(
-                *self.orchestrator.capabilities,
-                Capability(default_tools=starts),
-            ),
-        )
-        if self.seed_initial_messages_from_memory:
-            definition = replace(
-                definition,
-                initial_messages=(
-                    self.sandbox.project_memory_dir(self.project_slug),
-                    *definition.initial_messages,
-                ),
-            )
-        root = definition.build(event_sinks=event_sinks, event_sink_factory=sinks)
-        return RoboSprawlBundle(agent=root, background_agents=background)
+from roboz.deployment import AgentCapability, DeployableAgent, Deployment
+from roboz.llm import EndpointLike
+from roboz.runtime import Output, default_event_sinks
 
 
 def _default_librarian_capabilities(
@@ -120,30 +27,22 @@ def _default_librarian_capabilities(
     )
 
 
-@dataclass(frozen=True, kw_only=True)
-class RoboSprawl:
-    """Configure the persistent project orchestrator and its memory maintenance.
-
-    Consumers choose capabilities and endpoints. This deployment derives project
-    instructions, recursive watched names, and the ordered Librarian maintenance
-    capabilities. Supply configured capabilities or factories accepting project
-    permissions, such as FileCommands and FileEditing. Project context is a format
-    string resolved from the shared Sandbox and active project slug at construction
-    time. The librarian_capabilities callable receives that sandbox, slug, and the
-    recursive foreground names on each invocation, returning capabilities in
-    execution order. Its default selects snapshots, consolidation, retention, and
-    a 120-second cadence. DeploymentFactory supplies the live root endpoint per run.
-    """
-
+def robosprawl(
+    sandbox: Sandbox,
+    project_slug: str,
+    /,
+    *,
+    orchestrator_endpoint: EndpointLike,
     capabilities: Sequence[
         AgentCapability | Callable[[PermissionPolicy], AgentCapability]
-    ]
-    memory_endpoint: EndpointLike
+    ],
+    memory_endpoint: EndpointLike,
     librarian_capabilities: Callable[
         [Sandbox, str, frozenset[str]], Sequence[AgentCapability]
-    ] = _default_librarian_capabilities
-    subagents: tuple[SubAgentSpec, ...] = ()
-    interaction_mode: Output | None = Output.CLI
+    ] = _default_librarian_capabilities,
+    subagents: Sequence[DeployableAgent] = (),
+    background_agents: Sequence[DeployableAgent] = (),
+    interaction_mode: Output | None = Output.CLI,
     project_context: str = (
         "## Project context\n"
         "File tool base: {sandbox.resolved_root}\n"
@@ -154,148 +53,57 @@ class RoboSprawl:
         "Conversation logs: {project_logs}\n"
         "Snapshots: {project_snapshots}\n"
         "Memory: {project_memory}"
-    )
+    ),
+    seed_initial_messages_from_memory: bool = True,
+    include_cli_output: bool = False,
+) -> Deployment:
+    """Configure a project orchestrator and Librarian without building or running them.
 
-    def __call__(
-        self,
-        sandbox: Sandbox,
-        project_slug: str,
-        /,
-        *,
-        orchestrator_endpoint: EndpointLike,
-    ) -> AgenticFactory:
-        """Derive configured definitions without constructing clients or starting work."""
-        permissions = sandbox.permissions(project_slug)
-        root = orchestrator(
-            agent_endpoint=orchestrator_endpoint,
-            interaction_mode=self.interaction_mode,
-            subagents=self.subagents,
-            capabilities=tuple(
-                capability(permissions) if callable(capability) else capability
-                for capability in self.capabilities
-            ),
-            instructions=self.project_context.format(
-                sandbox=sandbox,
-                project_slug=project_slug,
-                project_root=sandbox.project_dir(project_slug),
-                project_logs=sandbox.project_logs_dir(project_slug),
-                project_snapshots=sandbox.project_snapshots_dir(project_slug),
-                project_memory=sandbox.project_memory_dir(project_slug),
-            ),
-        )
-        names = root.agent_names()
-        return AgenticFactory(
+    Bind capability factories to this project's permissions. The maintenance
+    callback receives the sandbox, slug, and recursive foreground names; its
+    default selects snapshots, consolidation, retention, and a 120-second cadence.
+    Register the Librarian as an ordinary background child in the root's default
+    execution sequence. Project memory precedes other initial context, and each
+    agent gets its own persistence sinks when the deployment is built.
+    """
+    permissions = sandbox.permissions(project_slug)
+    root = orchestrator(
+        agent_endpoint=orchestrator_endpoint,
+        interaction_mode=interaction_mode,
+        subagents=subagents,
+        background_agents=background_agents,
+        capabilities=tuple(
+            capability(permissions) if callable(capability) else capability
+            for capability in capabilities
+        ),
+        instructions=project_context.format(
             sandbox=sandbox,
             project_slug=project_slug,
-            orchestrator=root,
-            librarian=librarian(
-                agent_endpoint=self.memory_endpoint,
-                capabilities=self.librarian_capabilities(
-                    sandbox, project_slug, names
-                ),
-            ),
-        )
+            project_root=sandbox.project_dir(project_slug),
+            project_logs=sandbox.project_logs_dir(project_slug),
+            project_snapshots=sandbox.project_snapshots_dir(project_slug),
+            project_memory=sandbox.project_memory_dir(project_slug),
+        ),
+    )
+    maintenance = librarian(
+        agent_endpoint=memory_endpoint,
+        capabilities=librarian_capabilities(
+            sandbox, project_slug, root.agent_names(include_background=False)
+        ),
+    )
+    return Deployment(
+        root=replace(
+            root,
+            background_agents=(*root.background_agents, maintenance),
+        ),
+        initial_messages=(sandbox.project_memory_dir(project_slug),)
+        if seed_initial_messages_from_memory
+        else (),
+        event_sink_factory=lambda name: default_event_sinks(
+            data_path=sandbox.project_logs_dir(project_slug) / name,
+            include_cli=include_cli_output,
+        ),
+    )
 
 
-class DeploymentRecipe(Protocol):
-    """Supply fresh configured definitions and explicitly scoped dependencies."""
-
-    def __call__(
-        self,
-        sandbox: Sandbox,
-        project_slug: str,
-        /,
-        *,
-        orchestrator_endpoint: EndpointLike,
-    ) -> AgenticFactory:
-        """Configure this run without invoking agents or starting background work."""
-        ...
-
-
-class RunFactory(Protocol):
-    """Construct a runnable bundle for any host supplying events and a model route."""
-
-    def __call__(
-        self,
-        sandbox: Sandbox,
-        project_slug: str,
-        /,
-        *,
-        endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
-        event_sinks: Sequence[EventSink],
-    ) -> RoboSprawlBundle:
-        """Return uninvoked agents; the caller owns invocation and shutdown."""
-        ...
-
-
-@dataclass(frozen=True)
-class DeploymentFactory:
-    """Create a fresh configured deployment for every host construction request.
-
-    Recipes own dependency reuse: borrowed endpoints remain borrowed, while
-    stateful scripts and capabilities can be allocated anew on each recipe call.
-    No copying, implicit materialization, or disposal of supplied objects occurs.
-    """
-
-    recipe: DeploymentRecipe
-    event_sink_factory: Callable[[], Sequence[EventSink]] | None = None
-
-    def __call__(
-        self,
-        sandbox: Sandbox,
-        project_slug: str,
-        /,
-        *,
-        endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
-        event_sinks: Sequence[EventSink] = (),
-    ) -> RoboSprawlBundle:
-        """Evaluate the recipe once, then bind fresh runtime state and sinks."""
-        configured = self.recipe(
-            sandbox,
-            project_slug,
-            orchestrator_endpoint=DependencyRoute(endpoint_getter),
-        )
-        sinks = self.event_sink_factory() if self.event_sink_factory is not None else ()
-        return configured.build(event_sinks=(*sinks, *event_sinks))
-
-
-def inspect_dependencies(
-    factory: RunFactory,
-    *,
-    sandbox: Sandbox,
-    project_slug: str,
-    endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
-    registrations: Sequence[DependencyRegistration] | None,
-    additional_dependencies: Sequence[ExternalDependency] = (),
-) -> tuple[BoundDependency, ...]:
-    """Inspect an isolated build and bind its exact operational registrations."""
-    with tempfile.TemporaryDirectory(prefix="deployment-dependency-inspection-") as raw:
-        sandbox = replace(sandbox, root=Path(raw))
-        built = factory(
-            sandbox,
-            project_slug,
-            endpoint_getter=endpoint_getter,
-            event_sinks=(),
-        )
-        agents = (built.agent, *built.background_agents)
-        discovered = [
-            dependency
-            for agent in agents
-            for dependency in agent.external_dependencies()
-        ]
-        discovered.extend(additional_dependencies)
-        if registrations is None:
-            checks = {
-                ExternalDependencyKind.EXECUTABLE: check_executable,
-                ExternalDependencyKind.MODEL_ENDPOINT: check_openai_compatible_endpoint,
-            }
-            unique = dedupe_external_dependencies(discovered)
-            if any(item.kind not in checks for item in unique):
-                raise DependencyContractError(
-                    "custom dependency kind requires an explicit checker registration"
-                )
-            registrations = tuple(
-                DependencyRegistration(item.dependency_id, item.kind, checks[item.kind])
-                for item in unique
-            )
-        return bind_dependencies(discovered, registrations)
+__all__ = ["robosprawl"]

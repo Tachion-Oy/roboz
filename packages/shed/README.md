@@ -10,13 +10,13 @@ install any model SDK, Proton, document SDK, web service, or backend framework.
 ```python
 from pathlib import Path
 from roboz import stop
-from roboz.deployment import AgentDefinition, Capability
+from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
 from roboshed.sandbox import PermissionPolicy
 
 permissions = PermissionPolicy.local(Path("./sandbox"))
-agent = AgentDefinition(
+agent = DeployableAgent(
     name="file_worker",
     system_prompt="Complete the user's task, then call stop.",
     agent_endpoint=MockLLMEndpoint([
@@ -47,7 +47,7 @@ need no model. Each capability owns its settings and project inputs. Select perm
 `roboshed.sandbox.PermissionPolicy`, or configure one `Sandbox` and derive
 the standard tiered policy with `sandbox.permissions(project_slug)`. The sandbox
 also derives all project persistence paths. Compose task-oriented agents directly
-with `AgentDefinition`.
+with `DeployableAgent`.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
@@ -102,18 +102,23 @@ See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/con
 for low-level context fields and state ownership.
 
 
-Use `RoboSprawl` from `roboshed.deployments.robosprawl` to configure project
-capabilities and a memory endpoint. It derives the persistent orchestrator,
-project instructions, and Librarian maintenance. Its `librarian_capabilities`
-callable can override the default maintenance sequence using each run's project
-and recursive foreground names. For repeatable CLI or server
-construction, pass this recipe to `DeploymentFactory`; custom recipes can return
-`AgenticFactory` directly. Use core's `roboz.llm.ModelSelector` for lazy model
-selection. Recipes allocate fresh stateful inputs while allowing
-explicitly shared lazy clients. The factory returns uninvoked agents; consumers
-own interaction and shutdown. `roboz.dependencies` supplies exact dependency
-registration and binding; `roboshed.dependency_health` supplies probes and health
-monitoring without a web framework or provider SDK.
+Call `robosprawl(sandbox, project_slug, ...)` from
+`roboshed.deployments.robosprawl` to obtain a configured core `Deployment`.
+It derives the persistent orchestrator, project instructions, and Librarian
+maintenance. Presets return `DeployableAgent` definitions, whose `subagents`
+and `background_agents` slots contain further definitions of the same type.
+The Librarian is an ordinary background definition; its `librarian_capabilities`
+callback receives the project and recursive foreground names.
+
+Unpack `agent, background_agents = deployment.build()` and invoke `agent`
+directly. Hosts retain background agents for cancellation and shutdown. Repeat
+the composition call for fresh project inputs; caller-supplied lazy clients
+remain shared. `RoboSprawl`, `AgenticFactory`, `DeploymentFactory`, their host
+protocols, and `RoboSprawlBundle` have been removed without aliases.
+Use core's `roboz.llm.ModelSelector` for lazy model selection.
+`roboz.dependencies` supplies exact dependency registration and binding;
+`roboshed.dependency_health` supplies isolated `inspect_dependencies`, probes,
+and monitoring without a web framework or provider SDK.
 Permission policies treat configured folder names literally. Health scheduling
 retries observation failures; timed-out workers retain their concurrency slots
 until completion.
@@ -122,4 +127,5 @@ See [agent factories](../../docs/agent-factories.md) for the contracts and examp
 The `robosprawl` skill from `roboshed.skills` covers sandbox orientation and the HUD
 file-link/markdown contract. Select it through
 `Capability(auto_loaded_skills=(robosprawl,))` for compatible consumers. It uses project
-paths supplied through `RoboSprawl.project_context` instead of choosing a sandbox layout.
+paths supplied through `robosprawl(..., project_context=...)` instead of choosing
+a sandbox layout.

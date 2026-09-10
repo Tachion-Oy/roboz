@@ -7,22 +7,65 @@ import inspect
 import logging
 import os
 import ssl
+import tempfile
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
+from roboshed.sandbox import Sandbox
 from roboz.dependencies import (
     BoundDependency,
+    DependencyContractError,
+    DependencyRegistration,
     ExecutableDependency,
     ExternalDependency,
     ExternalDependencyKind,
+    bind_dependencies,
+    dedupe_external_dependencies,
 )
+from roboz.deployment import Deployment
 
 logger = logging.getLogger(__name__)
+
+
+def inspect_dependencies(
+    configure: Callable[[Sandbox], Deployment],
+    *,
+    sandbox: Sandbox,
+    registrations: Sequence[DependencyRegistration] | None,
+    additional_dependencies: Sequence[ExternalDependency] = (),
+) -> tuple[BoundDependency, ...]:
+    """Build against a temporary sandbox and bind exact health registrations.
+
+    The callback selects project inputs and endpoints. Discovery follows the
+    root's complete tool graph without materializing resources or running checks.
+    Temporary storage is removed on success and failure. Omitted registrations
+    select executable and model checks only; other kinds require explicit checks.
+    """
+    with tempfile.TemporaryDirectory(prefix="deployment-dependency-inspection-") as raw:
+        deployment = configure(replace(sandbox, root=Path(raw)))
+        agent, _ = deployment.build()
+        discovered = (*agent.external_dependencies(), *additional_dependencies)
+        if registrations is None:
+            checks = {
+                ExternalDependencyKind.EXECUTABLE: check_executable,
+                ExternalDependencyKind.MODEL_ENDPOINT: check_openai_compatible_endpoint,
+            }
+            unique = dedupe_external_dependencies(discovered)
+            if any(item.kind not in checks for item in unique):
+                raise DependencyContractError(
+                    "custom dependency kind requires an explicit checker registration"
+                )
+            registrations = tuple(
+                DependencyRegistration(item.dependency_id, item.kind, checks[item.kind])
+                for item in unique
+            )
+        return bind_dependencies(discovered, registrations)
 
 
 class DependencyReasonCode(StrEnum):
@@ -380,5 +423,6 @@ __all__ = [
     "check_executable",
     "check_network_service",
     "check_openai_compatible_endpoint",
+    "inspect_dependencies",
     "reason_code_for_exception",
 ]

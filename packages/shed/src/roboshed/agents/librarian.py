@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Final
 
 from roboshed.identifiers import LIBRARIAN_AGENT_NAME
-from roboz.deployment import AgentCapability, AgentDefinition
+from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.llm import EndpointLike
 
 LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
@@ -17,7 +17,7 @@ def librarian(
     capabilities: Sequence[AgentCapability],
     agent_endpoint: EndpointLike | None = None,
     name: str = LIBRARIAN_AGENT_NAME,
-) -> AgentDefinition:
+) -> DeployableAgent:
     """Configure a deterministic background agent with ordered capabilities.
 
     Supply automatic maintenance work and a stopping policy, such as
@@ -25,7 +25,7 @@ def librarian(
     Capabilities own their settings and may use agent_endpoint as a model default.
     The definition selects no project, persistence, or thread lifecycle.
     """
-    return AgentDefinition(
+    return DeployableAgent(
         name=name,
         description=LIBRARIAN_AGENT_DESCRIPTION,
         interaction_mode=None,

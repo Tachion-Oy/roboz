@@ -1,3 +1,3 @@
-from roboz.deployment import AgentDefinition
+from roboz.deployment import DeployableAgent
 
-AgentDefinition(name="invalid", agent_endpoint=None).build(extra_default_tools=())
+DeployableAgent(name="invalid", agent_endpoint=None).build(extra_default_tools=())

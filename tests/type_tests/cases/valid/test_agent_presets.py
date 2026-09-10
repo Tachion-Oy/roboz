@@ -9,7 +9,7 @@ from roboshed.capabilities import (
 )
 from roboshed.sandbox import Sandbox
 
-from roboz.deployment import AgentCapability, AgentDefinition
+from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.llm import EndpointLike
 
 
@@ -18,11 +18,11 @@ def configure(
 ) -> None:
     assert_type(
         orchestrator(agent_endpoint=endpoint, capabilities=(capability,)),
-        AgentDefinition,
+        DeployableAgent,
     )
     assert_type(
         librarian(capabilities=(capability,), agent_endpoint=endpoint),
-        AgentDefinition,
+        DeployableAgent,
     )
 
     assert_type(
@@ -38,5 +38,5 @@ def configure(
                 MaintenanceCadence(sandbox, "project", {"orchestrator"}),
             )
         ),
-        AgentDefinition,
+        DeployableAgent,
     )
