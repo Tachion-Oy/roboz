@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a3 - 2026-09-10
+
 ### Added
 
 - Export model inventories as editable JSON and import them into a project-local

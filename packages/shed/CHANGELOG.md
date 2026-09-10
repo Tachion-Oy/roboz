@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a3 - 2026-09-10
+
 - Breaking: replace the public Shed `Workspace` and `Project` primitives with a
   single `Sandbox`. Configure tier and persistence paths once, derive the policy
   with `sandbox.permissions(project_slug)`, and pass the sandbox plus slug to
