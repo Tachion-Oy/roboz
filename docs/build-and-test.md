@@ -237,7 +237,7 @@ agreement; it does not parse the changelog.
 
 ```bash
 # Use the actual version selected for release:
-uv run python scripts/release_package.py roboz-endpoints-v0.1.0a2 --check
+uv run python scripts/release_package.py roboz-endpoints-v0.1.0a3 --check
 uv lock --check
 ```
 
