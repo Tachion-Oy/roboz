@@ -13,7 +13,7 @@ from roboz import stop
 from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
-from roboshed.sandbox import PermissionPolicy
+from roboshed.sandbox import PermissionPolicy, Sandbox
 
 permissions = PermissionPolicy.local(Path("./sandbox"))
 agent = DeployableAgent(
@@ -34,20 +34,18 @@ result, messages = agent.invoke()
 `roboshed.capabilities` provides `FileCommands`, `FileEditing`, `Compactification`,
 `ConversationSnapshots`, `MemoryConsolidation`, `ArtifactRetention`, and
 `MaintenanceCadence`, alongside the `tools` and `skills` modules. Applications
-choose and configure these capabilities through the presets’ single `capabilities`
-extension argument. A capability owns its tools and any skills used for instructions. `roboshed.deployments.robosprawl`
-provides project composition. `roboshed.agents` supplies the reusable
-orchestrator/Librarian presets. Generic definitions and
-capability contracts live in `roboz.deployment`. Each capability
-builds its tools with explicit endpoint overrides or the agent's default.
-Runtime controls remain separate from endpoints. The Librarian accepts an ordered
-`capabilities` sequence. Snapshot and consolidation capabilities each expose an
-`endpoint`; `agent_endpoint` supplies their shared default. Retention and cadence
-need no model. Each capability owns its settings and project inputs. Select permission policies through
-`roboshed.sandbox.PermissionPolicy`, or configure one `Sandbox` and derive
-the standard tiered policy with `sandbox.permissions(project_slug)`. The sandbox
-also derives all project persistence paths. Compose task-oriented agents directly
-with `DeployableAgent`.
+choose capabilities through each agent definition's `capabilities` tuple.
+A capability owns its tools and skills. Generic `DeployableAgent` definitions
+live in `roboz.deployment`.
+Reusable `orchestrator` and `librarian` constructors live in `roboshed.agents`.
+The orchestrator owns stop and guarded file work, and the Librarian owns
+snapshots, consolidation, retention, and cadence. Root-only application
+capabilities go in `Deployment.additional_capabilities`, after the agent's
+built-in capability loop, without unpacking the role defaults.
+
+Each capability uses an explicit endpoint override or its agent's default.
+Runtime controls remain separate. Direct standalone builds accept explicit
+`PermissionPolicy` and sandbox inputs.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
@@ -102,19 +100,43 @@ See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/con
 for low-level context fields and state ownership.
 
 
-Call `robosprawl(sandbox, project_slug, ...)` from
-`roboshed.deployments.robosprawl` to obtain a configured core `Deployment`.
-It derives the persistent orchestrator, project instructions, and Librarian
-maintenance. Presets return `DeployableAgent` definitions, whose `subagents`
-and `background_agents` slots contain further definitions of the same type.
-The Librarian is an ordinary background definition; its `librarian_capabilities`
-callback receives the project and recursive foreground names.
+## Deployment instances
 
-Unpack `agent, background_agents = deployment.build()` and invoke `agent`
-directly. Hosts retain background agents for cancellation and shutdown. Repeat
-the composition call for fresh project inputs; caller-supplied lazy clients
-remain shared. `RoboSprawl`, `AgenticFactory`, `DeploymentFactory`, their host
-protocols, and `RoboSprawlBundle` have been removed without aliases.
+Declare a `Deployment(agent=..., sandbox=...)` from `roboshed.deployments`.
+The root definition owns all recursive `subagents` and `background_agents`;
+both slots contain the same definition type. Configure the attached objects in
+place before building:
+
+```python
+deployment.sandbox.configure_scope(folder)
+deployment.event_sinks.append(dispatch)
+agent, background_agents = deployment.build()
+```
+
+Applications can record reusable layout defaults without choosing a root:
+
+```python
+application_sandbox = Sandbox.define(shared="workspace")
+sandbox = application_sandbox(root=application_root)
+```
+
+The host supplies `folder` at runtime. For now it is a direct child of the
+sandbox's existing `projects_dir`, with unchanged tiered permission behavior.
+Default persistence paths follow that scope, and CLI sinks are disabled unless
+requested. Startup memory is agent configuration, not deployment configuration.
+Each build captures its scope and sink registrations, so later reconfiguration
+cannot redirect an existing agent.
+
+The Librarian constructor declares its standard maintenance sequence:
+snapshots, consolidation, retention, then cadence. Pass its sandbox and the
+recursive foreground names directly to the constructor before attaching it as
+a background agent. The orchestrator also takes the sandbox and resolves its
+permission policy at build time, after scope configuration.
+
+Invoke the returned agent directly and retain the background agents for control.
+Do not reconfigure the same deployment concurrently. Repeated builds create fresh
+runtimes and built-in persistence sinks, but supplied endpoint/sink objects remain
+caller-owned. The old factories, host protocols, and result bundles are removed.
 Use core's `roboz.llm.ModelSelector` for lazy model selection.
 `roboz.dependencies` supplies exact dependency registration and binding;
 `roboshed.dependency_health` supplies isolated `inspect_dependencies`, probes,
@@ -124,8 +146,8 @@ retries observation failures; timed-out workers retain their concurrency slots
 until completion.
 See [agent factories](../../docs/agent-factories.md) for the contracts and examples.
 
-The `robosprawl` skill from `roboshed.skills` covers sandbox orientation and the HUD
-file-link/markdown contract. Select it through
-`Capability(auto_loaded_skills=(robosprawl,))` for compatible consumers. It uses project
-paths supplied through `robosprawl(..., project_context=...)` instead of choosing
-a sandbox layout.
+The `robosprawl` skill from `roboshed.skills` covers sandbox orientation and the
+HUD file-link/markdown contract. The external RoboSprawl application may select
+it through `Capability(auto_loaded_skills=(robosprawl,))`. Concrete paths,
+endpoints, extra capabilities, child agents, and its final `Deployment` instance
+belong to that application, not Shed.

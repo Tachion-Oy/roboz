@@ -1,4 +1,4 @@
-"""Reusable agent presets built from Roboz primitives."""
+"""Reusable Shed agent constructors built from Roboz primitives."""
 
 from .librarian import librarian
 from .orchestrator import orchestrator

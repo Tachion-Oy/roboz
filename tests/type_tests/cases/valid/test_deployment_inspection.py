@@ -1,12 +1,12 @@
 from collections.abc import Callable
 from typing import assert_type
 
+from roboshed.agents import orchestrator as orchestrator_definition
 from roboshed.dependency_health import inspect_dependencies
-from roboshed.deployments.robosprawl import robosprawl
 from roboshed.sandbox import Sandbox
 from roboz import DependencyRoute, LazyExternalDependency
 from roboz.dependencies import BoundDependency
-from roboz.deployment import Deployment
+from roboshed.deployments import Deployment
 from roboz.llm import LLMEndpoint
 
 
@@ -17,13 +17,13 @@ def inspect(
     assert_type(route.materialize(), LLMEndpoint)
 
     def configure(sandbox: Sandbox) -> Deployment:
-        return robosprawl(
-            sandbox,
-            "project",
-            orchestrator_endpoint=route,
-            memory_endpoint=route,
-            capabilities=(),
+        deployment = Deployment(
+            sandbox=sandbox,
+            agent=orchestrator_definition(sandbox, agent_endpoint=route),
         )
+        deployment.sandbox.configure_scope("project")
+        deployment.event_sinks.append(lambda event: None)
+        return deployment
 
     assert_type(configure(sandbox), Deployment)
     assert_type(

@@ -1,6 +1,9 @@
 """Filesystem sandbox layout and derived permissions for agent compositions."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from functools import partial
 from glob import escape
 from pathlib import Path
 from typing import TypedDict
@@ -76,7 +79,7 @@ def _within(root: Path, name: str) -> Path:
     return path
 
 
-@dataclass(frozen=True)
+@dataclass
 class _SandboxLayout:
     """Private layout mechanism for a sandbox's named filesystem areas."""
 
@@ -122,27 +125,82 @@ class _SandboxLayout:
         return _within(self.projects_dir, slug)
 
 
-@dataclass(frozen=True)
+@dataclass
 class Sandbox(_SandboxLayout):
-    """One filesystem boundary and its slug-scoped paths and tool permissions.
+    """Configurable filesystem scope, persistence paths, and tool permissions.
 
     This is a tool-level guard, not an operating-system sandbox. Relative
     persistence paths remain inside the selected project's root, including
     after symlink resolution. External storage requires an explicit absolute
     path. Constructing the sandbox and deriving paths or permissions creates no
-    directories; hosts own filesystem preparation.
+    directories; hosts own filesystem preparation. Configure a scope before a
+    deployment build. Do not reconfigure the same sandbox concurrently.
     """
 
     logs: Path = Path("logs")
     snapshots: Path = Path("snapshots")
     memory: Path = Path("memory")
+    scope_folder: str | None = field(default=None, kw_only=True)
+
+    @classmethod
+    def define(
+        cls,
+        *,
+        readonly: str = "readonly",
+        shared: str = "shared",
+        projects: str = "projects",
+        logs: Path = Path("logs"),
+        snapshots: Path = Path("snapshots"),
+        memory: Path = Path("memory"),
+    ) -> partial[Sandbox]:
+        """Return a constructor carrying reusable application layout defaults.
+
+        The application supplies ``root`` when it creates each sandbox and may
+        override any recorded layout value. Every call returns a fresh,
+        unscoped sandbox.
+        """
+        return partial(
+            cls,
+            readonly=readonly,
+            shared=shared,
+            projects=projects,
+            logs=logs,
+            snapshots=snapshots,
+            memory=memory,
+        )
 
     def __post_init__(self) -> None:
         """Validate layout and project-relative persistence configuration."""
         super().__post_init__()
-        self._persistence_dirs("__sandbox_validation__")
+        self._persistence_dirs(
+            self.scope_folder
+            if self.scope_folder is not None
+            else "__sandbox_validation__"
+        )
 
-    def _persistence_dirs(self, slug: str) -> tuple[Path, Path, Path]:
+    def configure_scope(self, folder: str) -> None:
+        """Select a direct child of projects_dir without creating directories.
+
+        Permit writes in that folder, require confirmation for shared-area
+        writes, and retain read access throughout the sandbox. Other writes
+        remain denied. Relative persistence paths use the selected folder.
+        Invalid selections leave the previous configuration unchanged.
+        """
+        self._persistence_dirs(folder)
+        self.scope_folder = folder
+
+    def _folder(self, slug: str | None) -> str:
+        """Use an explicit folder or require a configured scope."""
+        folder = self.scope_folder if slug is None else slug
+        if folder is None:
+            raise ValueError("sandbox scope is not configured; call configure_scope()")
+        return folder
+
+    def project_dir(self, slug: str | None = None) -> Path:
+        """Resolve an explicit folder or the configured scope inside projects_dir."""
+        return super().project_dir(self._folder(slug))
+
+    def _persistence_dirs(self, slug: str | None = None) -> tuple[Path, Path, Path]:
         """Resolve and validate the persistence locations for one project slug."""
         root = self.project_dir(slug)
 
@@ -162,13 +220,14 @@ class Sandbox(_SandboxLayout):
             raise ValueError("persistence folders must not overlap")
         return paths
 
-    def permissions(self, slug: str) -> PermissionPolicy:
+    def permissions(self, slug: str | None = None) -> PermissionPolicy:
         """Read inside the sandbox, write one project, and confirm shared writes.
 
         Other writes and all paths outside the sandbox are denied. Deriving
         the tool policy creates no directories and starts no runtime work.
         Configured folder names are literal, including glob metacharacters.
         """
+        slug = self._folder(slug)
         self.project_dir(slug)
         writes = {Operation.CREATE, Operation.DELETE}
         project_pattern = escape(f"{self.projects}/{slug}")
@@ -189,15 +248,15 @@ class Sandbox(_SandboxLayout):
             takes_precedence=ActionVerdict.allow,
         )
 
-    def project_logs_dir(self, slug: str) -> Path:
+    def project_logs_dir(self, slug: str | None = None) -> Path:
         """Return the conversation-log root for one project."""
         return self._persistence_dirs(slug)[0]
 
-    def project_snapshots_dir(self, slug: str) -> Path:
+    def project_snapshots_dir(self, slug: str | None = None) -> Path:
         """Return the conversation snapshot root for one project."""
         return self._persistence_dirs(slug)[1]
 
-    def project_memory_dir(self, slug: str) -> Path:
+    def project_memory_dir(self, slug: str | None = None) -> Path:
         """Return the consolidated memory root for one project."""
         return self._persistence_dirs(slug)[2]
 

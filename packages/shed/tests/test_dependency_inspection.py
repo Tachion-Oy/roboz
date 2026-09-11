@@ -2,7 +2,8 @@ import pytest
 
 from roboshed.dependency_health import inspect_dependencies
 from roboshed.sandbox import Sandbox
-from roboz.deployment import DeployableAgent, Deployment
+from roboshed.deployments import Deployment
+from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint
 
 
@@ -65,7 +66,8 @@ def test_inspection_infers_registration_from_first_duplicate(tmp_path):
     )
 
     def configure(sandbox):
-        return Deployment(root=_definition("root"))
+        sandbox.configure_scope("project")
+        return Deployment(agent=_definition("root"), sandbox=sandbox)
 
     (bound,) = inspect_dependencies(
         configure,
@@ -103,7 +105,8 @@ def test_inspection_discovers_all_agent_modes_without_materializing(tmp_path):
             subagents=(_definition("foreground", resources[1]),),
             background_agents=(background,),
         )
-        return Deployment(root=root)
+        temporary.configure_scope("project")
+        return Deployment(agent=root, sandbox=temporary)
 
     bound = inspect_dependencies(configure, sandbox=sandbox, registrations=None)
     assert {item.dependency.dependency_id for item in bound} == {
@@ -114,5 +117,6 @@ def test_inspection_discovers_all_agent_modes_without_materializing(tmp_path):
     )
     with pytest.raises(DependencyContractError):
         inspect_dependencies(configure, sandbox=sandbox, registrations=())
+    assert sandbox.scope_folder is None
     assert all(not temporary.resolved_root.exists() for temporary in inspected)
     assert not sandbox.resolved_root.exists()

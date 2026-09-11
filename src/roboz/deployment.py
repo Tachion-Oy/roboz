@@ -1,7 +1,9 @@
 """Data-driven agent definitions and runtime-bound capabilities."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -55,8 +57,9 @@ class DeployableAgent:
     All tools and skills enter through capabilities. Already-bound inputs and
     endpoint dependencies are supplied objects; callers own their reuse. Scripted
     mock endpoints that consume responses must be recreated for each run.
-    Each capability selects its tool endpoints, using the agent endpoint as
-    the default. Endpoint objects remain independent of runtime controls.
+    Configure definitions before building; do not mutate them concurrently with
+    construction. Each capability selects its tool endpoints, using the agent
+    endpoint as the default. Endpoint objects remain independent of runtime controls.
     Sub-agents become named delegation tools. Background agents are started
     through default tools when their parent runs. Both slots contain the same
     recursive definition type.
@@ -169,31 +172,8 @@ class DeployableAgent:
         return agent, tuple(background_agents)
 
 
-@dataclass(frozen=True, kw_only=True)
-class Deployment:
-    """One configured agent graph with initial context and agent-specific sinks."""
-
-    root: DeployableAgent
-    initial_messages: tuple[Path | str, ...] = ()
-    event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None
-
-    def build(
-        self, *, event_sinks: Sequence[EventSink] = ()
-    ) -> tuple[Agent, tuple[Agent, ...]]:
-        """Return a fresh root and background agents without starting work.
-
-        Initial context precedes the root's configured messages. Caller sinks
-        reach only foreground branches. Background agents are returned in
-        traversal order (sub-agents first, then background branches); hosts own
-        invocation, cancellation, and shutdown through the returned agents.
-        Supplied dependencies remain caller-owned and are not materialized.
-        """
-        self.root.agent_names()
-        root = replace(
-            self.root,
-            initial_messages=(*self.initial_messages, *self.root.initial_messages),
-        )
-        return root._build(event_sinks, self.event_sink_factory)
-
-
-__all__ = ["AgentCapability", "DeployableAgent", "Capability", "Deployment"]
+__all__ = [
+    "AgentCapability",
+    "Capability",
+    "DeployableAgent",
+]

@@ -1,11 +1,41 @@
 from pathlib import Path
 
-from roboshed.agents import orchestrator
-
+from roboshed.agents import librarian, orchestrator
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    FileCommands,
+    FileEditing,
+    MaintenanceCadence,
+    MemoryConsolidation,
+)
+from roboshed.deployments import Deployment
+from roboshed.sandbox import Sandbox
 from roboz import Empty, Message, Str, tool
 from roboz.deployment import AgentCapability, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import PersistenceSink, RunLifecycleEvent
+
+
+def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
+    sandbox = Sandbox(tmp_path)
+    endpoint = MockLLMEndpoint([])
+    orchestrator_definition = orchestrator(sandbox, agent_endpoint=endpoint)
+    librarian_definition = librarian(
+        sandbox, {"orchestrator"}, agent_endpoint=endpoint
+    )
+
+    assert [type(capability) for capability in orchestrator_definition.capabilities] == [
+        Capability,
+        FileCommands,
+        FileEditing,
+    ]
+    assert [type(capability) for capability in librarian_definition.capabilities] == [
+        ConversationSnapshots,
+        MemoryConsolidation,
+        ArtifactRetention,
+        MaintenanceCadence,
+    ]
 
 
 def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
@@ -23,15 +53,23 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
             return Capability(tools=(custom,))
 
     events = []
-    agent = orchestrator(
+    sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("project")
+    definition = orchestrator(
+        sandbox,
         agent_endpoint=MockLLMEndpoint(
             [
                 {"action": "custom", "rationale": "test extension"},
                 {"action": "stop", "rationale": "done", "value": "ok"},
             ]
         ),
-        capabilities=[CustomCapability()],
-    ).build(event_sinks=(events.append, PersistenceSink.for_path(tmp_path / "logs")))
+    )
+    agent, _ = Deployment(
+        agent=definition,
+        sandbox=sandbox,
+        additional_capabilities=(CustomCapability(),),
+        event_sinks=[events.append, PersistenceSink.for_path(tmp_path / "logs")],
+    ).build()
     result, _ = agent.invoke()
     assert result.value == "ok"
     assert seen == [True]

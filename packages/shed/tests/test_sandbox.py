@@ -9,6 +9,45 @@ from roboshed.tools.utils import check_allow_deny_permission
 from roboz import Ctx
 
 
+def test_define_creates_fresh_unscoped_sandboxes_with_layout_defaults(tmp_path):
+    constructor = Sandbox.define(
+        shared="workspace",
+        logs=Path("conversation_logs"),
+        memory=Path("persistent_memory"),
+    )
+    first = constructor(root=tmp_path / "first")
+    second = constructor(root=tmp_path / "second", shared="team")
+
+    assert first.root == tmp_path / "first"
+    assert first.shared == "workspace"
+    assert first.logs == Path("conversation_logs")
+    assert first.memory == Path("persistent_memory")
+    assert second.root == tmp_path / "second"
+    assert second.shared == "team"
+    assert first is not second
+    assert first.scope_folder is second.scope_folder is None
+    assert not list(tmp_path.iterdir())
+
+
+def test_configure_scope_preserves_policy_and_validates_before_mutation(tmp_path):
+    sandbox = Sandbox(tmp_path, projects="jobs")
+    with pytest.raises(ValueError, match="configure_scope"):
+        sandbox.permissions()
+    sandbox.configure_scope("one")
+    assert sandbox.project_dir() == sandbox.project_dir("one")
+    assert sandbox.project_logs_dir() == sandbox.project_logs_dir("one")
+    assert sandbox.permissions() == sandbox.permissions("one")
+    captured = replace(sandbox)
+    for invalid in ("", "..", "../escape", "nested/folder", str(tmp_path)):
+        with pytest.raises(ValueError):
+            sandbox.configure_scope(invalid)
+        assert sandbox.scope_folder == "one"
+    sandbox.configure_scope("two")
+    assert captured.scope_folder == "one"
+    assert sandbox.permissions() == sandbox.permissions("two")
+    assert not list(tmp_path.iterdir())
+
+
 def test_sandbox_names_and_persistence_are_independently_configurable(tmp_path):
     sandbox = Sandbox(
         tmp_path / "root",

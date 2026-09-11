@@ -1,10 +1,17 @@
-"""Deterministic Librarian preset with caller-selected maintenance capabilities."""
+"""Deterministic Librarian constructor with its maintenance capabilities."""
 
-from collections.abc import Sequence
+from collections.abc import Collection
 from typing import Final
 
+from roboshed.capabilities import (
+    ArtifactRetention,
+    ConversationSnapshots,
+    MaintenanceCadence,
+    MemoryConsolidation,
+)
 from roboshed.identifiers import LIBRARIAN_AGENT_NAME
-from roboz.deployment import AgentCapability, DeployableAgent
+from roboshed.sandbox import Sandbox
+from roboz.deployment import DeployableAgent
 from roboz.llm import EndpointLike
 
 LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
@@ -13,26 +20,25 @@ LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
 
 
 def librarian(
+    sandbox: Sandbox,
+    agent_names: Collection[str],
     *,
-    capabilities: Sequence[AgentCapability],
-    agent_endpoint: EndpointLike | None = None,
-    name: str = LIBRARIAN_AGENT_NAME,
+    agent_endpoint: EndpointLike | None,
 ) -> DeployableAgent:
-    """Configure a deterministic background agent with ordered capabilities.
-
-    Supply automatic maintenance work and a stopping policy, such as
-    MaintenanceCadence. Each cycle runs the contributed default tools in order.
-    Capabilities own their settings and may use agent_endpoint as a model default.
-    The definition selects no project, persistence, or thread lifecycle.
-    """
+    """Configure maintenance for the sandbox and foreground agent names."""
     return DeployableAgent(
-        name=name,
+        name=LIBRARIAN_AGENT_NAME,
         description=LIBRARIAN_AGENT_DESCRIPTION,
         interaction_mode=None,
-        agent_endpoint=agent_endpoint,
         is_agentic=False,
         automatic_tool_prompt=False,
-        capabilities=tuple(capabilities),
+        agent_endpoint=agent_endpoint,
+        capabilities=(
+            ConversationSnapshots(sandbox=sandbox, agent_names=agent_names),
+            MemoryConsolidation(sandbox=sandbox, agent_names=agent_names),
+            ArtifactRetention(sandbox=sandbox),
+            MaintenanceCadence(sandbox=sandbox, agent_names=agent_names),
+        ),
     )
 
 

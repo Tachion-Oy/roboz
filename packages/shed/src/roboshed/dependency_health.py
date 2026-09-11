@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel
 from roboshed.sandbox import Sandbox
+from roboshed.deployments import Deployment
 from roboz.dependencies import (
     BoundDependency,
     DependencyContractError,
@@ -28,7 +29,6 @@ from roboz.dependencies import (
     bind_dependencies,
     dedupe_external_dependencies,
 )
-from roboz.deployment import Deployment
 
 logger = logging.getLogger(__name__)
 

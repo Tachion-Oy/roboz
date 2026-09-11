@@ -2,15 +2,14 @@
 
 import importlib
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
 import pytest
-from roboshed.agents.librarian import (
-    LIBRARIAN_AGENT_DESCRIPTION,
-    librarian,
-)
+from roboshed.agents import librarian as librarian_definition
+from roboshed.agents.librarian import LIBRARIAN_AGENT_DESCRIPTION
 from roboshed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
@@ -51,8 +50,12 @@ def _build(
 ):
     sandbox = _sandbox(tmp_path)
     names = {_WATCHED_AGENT}
-    return librarian(
-        agent_endpoint=endpoint or MockLLMEndpoint([]),
+    return replace(
+        librarian_definition(
+            sandbox,
+            names,
+            agent_endpoint=endpoint or MockLLMEndpoint([]),
+        ),
         capabilities=(
             ConversationSnapshots(
                 sandbox, "test", names, token_growth_threshold=token_growth_threshold
@@ -165,7 +168,10 @@ def test_maintenance_capability_defaults(tmp_path):
     "capability_type", [ConversationSnapshots, MemoryConsolidation]
 )
 def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_type):
-    definition = librarian(
+    definition = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=None
+        ),
         capabilities=(
             capability_type(_sandbox(tmp_path), "test", {_WATCHED_AGENT}),
         )
@@ -176,7 +182,8 @@ def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_
 
 def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
     sandbox = _sandbox(tmp_path)
-    agent = librarian(
+    agent = replace(
+        librarian_definition(sandbox, {_WATCHED_AGENT}, agent_endpoint=None),
         capabilities=(
             ArtifactRetention(sandbox, "test"),
             MaintenanceCadence(sandbox, "test", {_WATCHED_AGENT}),
@@ -197,8 +204,10 @@ def test_librarians_share_endpoint_but_have_independent_cancellation(
     tmp_path: Path,
 ) -> None:
     endpoint = MockLLMEndpoint([])
-    definition = librarian(
-        agent_endpoint=endpoint,
+    definition = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=endpoint
+        ),
         capabilities=(
             ConversationSnapshots(
                 _sandbox(tmp_path), "test", {_WATCHED_AGENT}
@@ -358,8 +367,10 @@ def test_librarian_overrides_each_tool_endpoint_independently(
 
     default = LLMEndpoint(client=object(), api_name="test", model_name="default")
     override = LLMEndpoint(client=object(), api_name="test", model_name="override")
-    agent = librarian(
-        agent_endpoint=default,
+    agent = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=default
+        ),
         capabilities=(
             ConversationSnapshots(
                 _sandbox(tmp_path),
