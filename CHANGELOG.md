@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `DeployableAgent.build_graph()` to return the root agent and all background
+  handles for host lifecycle control. `build()` still returns the root alone.
+
 - Breaking: replace `AgentDefinition` and `SubAgentSpec` with recursive
   `DeployableAgent` definitions. Put child definitions directly in `subagents`
   or `background_agents`; delegation tools use the child's name and description,

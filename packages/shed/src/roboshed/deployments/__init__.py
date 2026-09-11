@@ -54,7 +54,7 @@ class Deployment:
                 *self.additional_capabilities,
             ),
         )
-        return agent._build(caller_sinks, sinks)
+        return agent.build_graph(event_sinks=caller_sinks, event_sink_factory=sinks)
 
 
 __all__ = ["Deployment"]

@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+import pytest
+
 from roboz import Empty, Message, Skill, Str, stop, tool
 from roboz.deployment import AgentCapability, DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
@@ -72,9 +76,8 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     assert "AUTO_LOADED_MARKER" in text and "ON_DEMAND_MARKER" in text
 
 
-def test_duplicate_names_fail_before_building_capabilities_or_sinks():
-    import pytest
-
+@pytest.mark.parametrize("build_graph", [False, True])
+def test_duplicate_names_fail_before_building_capabilities_or_sinks(build_graph):
     def unexpected(_name):
         raise AssertionError("Must validate names before allocating sinks")
 
@@ -86,7 +89,34 @@ def test_duplicate_names_fail_before_building_capabilities_or_sinks():
         subagents=(child,),
     )
     with pytest.raises(ValueError, match="unique"):
-        root.build(event_sink_factory=unexpected)
+        if build_graph:
+            root.build_graph(event_sink_factory=unexpected)
+        else:
+            root.build(event_sink_factory=unexpected)
+
+
+def test_build_graph_returns_fresh_nested_background_handles():
+    root = DeployableAgent(
+        name="root",
+        agent_endpoint=None,
+        is_agentic=False,
+        capabilities=(Capability(default_tools=(stop,)),),
+    )
+    nested = replace(root, name="nested")
+    background = replace(root, name="background", background_agents=(nested,))
+    child = replace(root, name="child", background_agents=(background,))
+    root = replace(
+        root, subagents=(child,), background_agents=(replace(root, name="other"),)
+    )
+
+    agent, backgrounds = root.build_graph()
+    second, fresh_backgrounds = root.build_graph()
+
+    assert agent.name == "root"
+    assert [item.name for item in backgrounds] == ["background", "nested", "other"]
+    assert agent.pipe is not second.pipe
+    for first, fresh in zip(backgrounds, fresh_backgrounds, strict=True):
+        assert first.pipe is not fresh.pipe
 
 
 def test_each_capability_receives_its_owning_agents_default():

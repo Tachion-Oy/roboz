@@ -107,17 +107,27 @@ class DeployableAgent:
         Caller sinks follow synchronous children. The optional factory supplies fresh
         agent-specific sinks by name; these are never inherited by children.
         Without supplied sinks, construction selects no output or persistence.
-        Use Deployment.build() to retain background agents for host control.
+        Use build_graph() to retain background agents for host control.
+        """
+        return self.build_graph(
+            event_sinks=event_sinks, event_sink_factory=event_sink_factory
+        )[0]
+
+    def build_graph(
+        self,
+        *,
+        event_sinks: Sequence[EventSink] = (),
+        event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None,
+    ) -> tuple[Agent, tuple[Agent, ...]]:
+        """Build fresh agents and return the root and all background handles.
+
+        Validate names before constructing capabilities or sinks. Sink routing
+        follows build(): caller sinks reach foreground branches only, and the
+        factory supplies each agent's own sinks. Background handles include
+        descendants of both child slots. No agents are started by construction;
+        callers own their invocation and shutdown.
         """
         self.agent_names()
-        return self._build(event_sinks, event_sink_factory)[0]
-
-    def _build(
-        self,
-        event_sinks: Sequence[EventSink],
-        event_sink_factory: Callable[[str], Sequence[EventSink]] | None,
-    ) -> tuple[Agent, tuple[Agent, ...]]:
-        """Build a validated graph and retain every background invocation target."""
         pipe = EventPipe(
             event_sinks=(
                 *(event_sink_factory(self.name) if event_sink_factory else ()),
@@ -134,7 +144,9 @@ class DeployableAgent:
         default_tools = [tool for c in contributions for tool in c.default_tools]
         background_agents: list[Agent] = []
         for definition in self.subagents:
-            child, descendants = definition._build(event_sinks, event_sink_factory)
+            child, descendants = definition.build_graph(
+                event_sinks=event_sinks, event_sink_factory=event_sink_factory
+            )
             tools.append(
                 run_subagent(Ctx(agent=child)).copy(
                     name=child.name,
@@ -143,7 +155,9 @@ class DeployableAgent:
             )
             background_agents.extend(descendants)
         for definition in self.background_agents:
-            child, descendants = definition._build((), event_sink_factory)
+            child, descendants = definition.build_graph(
+                event_sink_factory=event_sink_factory
+            )
             default_tools.append(
                 run_background_agent(Ctx(agent=child)).copy(
                     name=f"start_background_agent_{child.name}",

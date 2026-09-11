@@ -21,6 +21,8 @@ def inspect(
     )
     assert_type(parent.subagents, tuple[DeployableAgent, ...])
     assert_type(parent.background_agents, tuple[DeployableAgent, ...])
+    assert_type(parent.build(), Agent)
+    assert_type(parent.build_graph(), tuple[Agent, tuple[Agent, ...]])
     assert_type(deployment.sandbox.configure_scope("job"), None)
     deployment.additional_capabilities = (capability,)
     deployment.event_sinks.append(lambda event: None)
