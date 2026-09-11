@@ -30,8 +30,7 @@
   its paths, endpoints, extra capabilities, agent graph, and `Deployment`
   instance in its application configuration.
 
-See `docs/agent-factories.md` for migration. Versions and release preparation are
-separate from this unreleased refactor.
+See `docs/agent-factories.md` for migration.
 
 ## 0.1.0a3 - 2026-09-10
 
