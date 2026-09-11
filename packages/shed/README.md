@@ -1,6 +1,6 @@
 # roboshed
 
-Reusable agent factories, capabilities, sandbox policies, tools, and skills built on Roboz. Version `0.1.0a1`
+Reusable agent factories, capabilities, sandbox policies, tools, and skills built on Roboz. Version `0.1.0a5`
 is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
 
 Includes guarded Unix file commands, Python patch editing, CLI/file/email
@@ -48,6 +48,19 @@ Runtime controls remain separate. Direct standalone builds accept explicit
 `PermissionPolicy` and sandbox inputs.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
+
+## RoboSprawl deployment recipe
+
+`roboshed.deployments.robosprawl.RoboSprawl` configures the concrete persistent
+orchestrator and Librarian recipe. Construct it with `memory_endpoint`,
+`additional_capabilities`, `subagents`, and `interaction_mode`. Call the object
+with an already-scoped sandbox, matching project slug, `endpoint_getter`, and
+optional `event_sinks` to receive a fresh unbuilt `Deployment`.
+
+The recipe loads project memory and supplies project locations through initial
+messages. Its root follows the selected model getter; the Librarian uses its
+separate memory endpoint. Construction starts no agents and creates no
+directories. The application owns scope selection and runtime lifecycle.
 
 ## Conversation compaction
 
@@ -149,5 +162,5 @@ See [agent factories](../../docs/agent-factories.md) for the contracts and examp
 The `robosprawl` skill from `roboshed.skills` covers sandbox orientation and the
 HUD file-link/markdown contract. The external RoboSprawl application may select
 it through `Capability(auto_loaded_skills=(robosprawl,))`. Concrete paths,
-endpoints, extra capabilities, child agents, and its final `Deployment` instance
-belong to that application, not Shed.
+endpoints, extra capabilities, and specialist definitions remain application
+choices. The `RoboSprawl` recipe assembles them into a fresh `Deployment`.

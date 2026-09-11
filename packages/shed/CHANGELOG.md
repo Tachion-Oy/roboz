@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.0a5 - 2026-09-12
+
+- Add `roboshed.deployments.robosprawl.RoboSprawl`, a callable configuration
+  object for a persistent orchestrator with Librarian-backed memory. Configure
+  the memory endpoint, additional capabilities, specialists, and interaction
+  mode; supply the scoped sandbox, project slug, model getter, and event sinks
+  for each run. It returns an unbuilt `Deployment` without starting agents or
+  creating directories.
+
 ## 0.1.0a4 - 2026-09-11
 
 - Reject symbolic-link project folders so an alias cannot inherit another

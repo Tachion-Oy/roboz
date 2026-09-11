@@ -1,9 +1,9 @@
 # Deployable agents and application deployments
 
 Roboz owns generic recursive agent definitions. Shed owns reusable agent roles,
-sandbox-aware capabilities, and deployment assembly. Applications own concrete
-paths, endpoints, agent graphs, extra capabilities, context, sinks, and the final
-deployment instance.
+sandbox-aware capabilities, deployment assembly, and the concrete RoboSprawl
+recipe. Applications select paths, endpoints, extra capabilities, specialists,
+and sinks, and own runtime lifecycle.
 
 | Module | Responsibility |
 | --- | --- |
@@ -12,10 +12,11 @@ deployment instance.
 | `roboshed.capabilities` | File, compaction, and maintenance capabilities |
 | `roboshed.sandbox` | Reusable sandbox layouts, runtime scope, and permission policy |
 | `roboshed.deployments` | `Deployment(agent, sandbox, event_sinks, include_cli_output)` |
+| `roboshed.deployments.robosprawl` | Callable `RoboSprawl` recipe for a persistent orchestrator and Librarian |
 | Application | Concrete configuration and runtime lifecycle |
 
-There is no RoboSprawl deployment preset in Shed. Importing Shed selects no
-application path, endpoint, agent graph, or deployment instance.
+Importing Shed selects no application path, endpoint, agent graph, or deployment
+instance. Applications explicitly construct a recipe or a generic `Deployment`.
 
 ## Agent definitions
 
@@ -131,63 +132,45 @@ Pass the returned instance to the root, relevant specialists, Librarian, and
 capabilities receive policies derived from this instance; maintenance
 capabilities use it for their paths.
 
-## Application-owned RoboSprawl configuration
+## RoboSprawl configuration
 
-The external RoboSprawl application should keep the following composition in
-its own configuration module. Names here illustrate the ownership boundary;
-the application supplies its actual `application_root`, endpoints, agents,
-instructions, and UI event sink.
+The concrete `RoboSprawl` recipe lives in Shed. Applications supply instance
+choices when constructing the configuration object and runtime inputs on each
+call. The endpoint getter returns the run's selected lazy model endpoint.
 
 ```python
-from dataclasses import replace
-from pathlib import Path
-
-from roboshed.agents import librarian, orchestrator
 from roboshed.capabilities import Compactification
-from roboshed.deployments import Deployment
+from roboshed.deployments.robosprawl import RoboSprawl
 from roboshed.sandbox import Sandbox
 from roboshed.skills import robosprawl as orientation
 from roboz.deployment import Capability
 from roboz.runtime import Output
 
-sandbox = Sandbox(
-    root=application_root,
-    shared="workspace",
-    logs=Path("conversation_logs"),
-    snapshots=Path("conversation_snapshots"),
-    memory=Path("persistent_memory"),
-)
-sandbox.configure_scope(folder)
-foreground = orchestrator(
-    sandbox,
-    agent_endpoint=orchestrator_endpoint,
-    interaction_mode=Output.API,
-    subagents=application_subagents,
-    initial_messages=(sandbox.project_memory_dir(), application_instructions),
-)
-agent_names = foreground.agent_names(include_background=False)
-agent = replace(
-    foreground,
-    background_agents=(
-        *application_background_agents,
-        librarian(sandbox, agent_names, agent_endpoint=memory_endpoint),
-    ),
-)
-deployment = Deployment(
-    agent=agent,
-    sandbox=sandbox,
+recipe = RoboSprawl(
+    memory_endpoint=memory_endpoint,
     additional_capabilities=(
         Capability(auto_loaded_skills=(orientation,)),
-        Compactification(endpoint=compaction_endpoint, threshold_percent=60.0),
+        Compactification(threshold_percent=60.0),
     ),
-    event_sinks=[ui_event_sink],
+    subagents=application_subagents,
+    interaction_mode=Output.API,
 )
-
+sandbox = Sandbox(root=application_root, shared="workspace").for_project(folder)
+deployment = recipe(
+    sandbox,
+    folder,
+    endpoint_getter=selected_endpoint_getter,
+    event_sinks=(ui_event_sink,),
+)
 agent, background_agents = deployment.build()
 ```
 
-Shed does not prescribe the application's project-context text or memory-loading
-choice.
+The recipe constructs the Librarian from the root and recursive foreground
+specialist names, then passes it to the orchestrator as a background agent.
+Memory and generated project locations are supplied through `initial_messages`;
+the shared orchestrator system prompt is unchanged. The same scoped sandbox
+supplies file permissions, memory paths, and deployment persistence. The root
+follows model switching through the getter; the memory endpoint stays separate.
 
 `Deployment.build()` is parameterless. It copies the configured sandbox,
 captures its scope and sink registrations, appends
@@ -206,8 +189,9 @@ invocation, interruption, cancellation, thread shutdown, and dependency health.
   module.
 - Replace `AgentDefinition` and `SubAgentSpec` with recursive
   `DeployableAgent` definitions.
-- Replace RoboSprawl factories and recipes with an application-owned
-  `Deployment(agent=..., sandbox=...)` instance.
+- Configure the concrete `RoboSprawl` callable from
+  `roboshed.deployments.robosprawl`, or construct a generic
+  `Deployment(agent=..., sandbox=...)` for a different agent graph.
 - Replace shared or hardcoded sandbox instances with a directly constructed,
   application-owned `Sandbox` for each deployment.
 - Pass the sandbox to both role constructors and pass recursive foreground names
@@ -220,5 +204,6 @@ invocation, interruption, cancellation, thread shutdown, and dependency health.
 - Import dependency inspection from `roboshed.dependency_health`; its callback
   receives a temporary sandbox and returns a configured `Deployment`.
 
-This is an unreleased breaking API change. It does not add compatibility
-wrappers for the removed RoboSprawl deployment presets or factory layers.
+The generic deployment API was introduced in Roboshed `0.1.0a4`; the concrete
+`RoboSprawl` callable is available from `0.1.0a5`. Older factory layers and
+removed preset signatures are not restored.
