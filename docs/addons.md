@@ -112,7 +112,7 @@ After publication:
 
 ```bash
 pip install roboz
-pip install 'roboz[shed]' 'roboz-endpoints[openai]'
+pip install roboshed 'roboz-endpoints[openai]'
 pip install 'roboz[proton-bridge-beta]'
 pip install 'roboz-proton-bridge==0.1.0b1'
 ```

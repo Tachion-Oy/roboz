@@ -43,7 +43,11 @@ def test_each_companion_has_only_its_own_required_dependencies():
         assert {
             requirement.split(">=")[0] for requirement in project["dependencies"]
         } == dependencies
-        core_minimum = "0.1.1" if directory == "proton-bridge" else "0.1.2.dev2"
+        core_minimum = {
+            "shed": "0.1.2.dev3",
+            "endpoints": "0.1.2.dev2",
+            "proton-bridge": "0.1.1",
+        }[directory]
         assert f"roboz>={core_minimum},<0.2.0" in project["dependencies"]
         if directory == "endpoints":
             assert project["optional-dependencies"] == {"openai": ["openai>=2.8.1,<3"]}

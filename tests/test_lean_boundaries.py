@@ -66,6 +66,5 @@ def test_base_dependency_set_is_primitive_only() -> None:
     assert names == {"pydantic", "python-dotenv", "rich"}
     extras = metadata["project"]["optional-dependencies"]
     assert extras == {
-        "shed": ["roboshed>=0.1.0a2,<0.2.0"],
         "proton-bridge-beta": ["roboz-proton-bridge>=0.1.0b1,<0.2.0"],
     }

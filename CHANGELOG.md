@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.2.dev3 - 2026-09-11
+
+- Breaking: remove the redundant `roboz[shed]` installation extra. Install
+  `roboshed` directly; it installs its compatible core Roboz dependency.
+
 - Add `DeployableAgent.build_graph()` to return the root agent and all background
   handles for host lifecycle control. `build()` still returns the root alone.
 

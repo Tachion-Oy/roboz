@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "roboshed"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { editable = "packages/shed" }
 dependencies = [
     { name = "pydantic" },
@@ -916,7 +916,7 @@ requires-dist = [
 
 [[package]]
 name = "roboz"
-version = "0.1.2.dev2"
+version = "0.1.2.dev3"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
@@ -927,9 +927,6 @@ dependencies = [
 [package.optional-dependencies]
 proton-bridge-beta = [
     { name = "roboz-proton-bridge" },
-]
-shed = [
-    { name = "roboshed" },
 ]
 
 [package.dev-dependencies]
@@ -952,10 +949,9 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.4" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "rich", specifier = ">=14.2.0" },
-    { name = "roboshed", marker = "extra == 'shed'", editable = "packages/shed" },
     { name = "roboz-proton-bridge", marker = "extra == 'proton-bridge-beta'", editable = "packages/proton-bridge" },
 ]
-provides-extras = ["shed", "proton-bridge-beta"]
+provides-extras = ["proton-bridge-beta"]
 
 [package.metadata.requires-dev]
 dev = [

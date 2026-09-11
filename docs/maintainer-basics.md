@@ -17,11 +17,11 @@ of installation). Python's import names are a separate thing:
 | `roboz-endpoints` | `roboz_endpoints` | Model catalogues and optional SDK adapters |
 | `roboz-proton-bridge` | `roboz_proton_bridge` | Optional email adapter |
 
-After publication, `pip install 'roboz[shed]' 'roboz-endpoints[openai]'` requests extra
-dependencies. An **extra is a dependency shortcut**, not a separately versioned
-plugin. Separate distributions let Proton remain beta without making every
-package beta. Installation does not activate an adapter or install the external
-Proton Bridge application. See [our installation guide](addons.md) and
+After publication, `pip install roboshed 'roboz-endpoints[openai]'` installs the
+shared agent building blocks and the optional OpenAI SDK adapter. An **extra is
+a dependency shortcut**, not a separately versioned plugin. Separate distributions
+let Proton remain beta without making every package beta. Installation does not
+activate an adapter or install the external Proton Bridge application. See [our installation guide](addons.md) and
 [PyPA's package terminology](https://packaging.python.org/en/latest/discussions/distribution-package-vs-import-package/).
 
 The future Hub belongs in another repository: backend, UI, configuration and
