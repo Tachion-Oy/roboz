@@ -124,10 +124,12 @@ sandbox = configured_sandbox.for_project(folder)
 ```
 
 `for_project()` validates the requested project and persistence layout without
-changing the source instance or creating directories. Pass the returned instance
-to the root, relevant specialists, Librarian, and `Deployment`; keep its scope
-unchanged throughout that graph's lifetime. File capabilities receive policies
-derived from this instance; maintenance capabilities use it for their paths.
+changing the source instance or creating directories. Project folders cannot be
+symbolic links, including links to another project inside the sandbox.
+Pass the returned instance to the root, relevant specialists, Librarian, and
+`Deployment`; keep its scope unchanged throughout that graph's lifetime. File
+capabilities receive policies derived from this instance; maintenance
+capabilities use it for their paths.
 
 ## Application-owned RoboSprawl configuration
 

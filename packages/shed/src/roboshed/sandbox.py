@@ -129,10 +129,13 @@ class Sandbox:
         return _within(self.resolved_root, self.projects)
 
     def _resolve_project(self, folder: str) -> Path:
-        """Resolve one direct child of the projects directory."""
+        """Resolve one direct child, rejecting symbolic-link project aliases."""
         if len(Path(folder).parts) != 1:
             raise ValueError("scope must be a single folder name")
-        return _within(self.projects_dir, folder)
+        projects = self.projects_dir
+        if (projects / folder).is_symlink():
+            raise ValueError("project folder must not be a symbolic link")
+        return _within(projects, folder)
 
     def configure_scope(self, folder: str) -> None:
         """Select a direct child of projects_dir without creating directories.

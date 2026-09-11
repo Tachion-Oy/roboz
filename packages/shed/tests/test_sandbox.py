@@ -90,6 +90,35 @@ def test_for_project_validates_without_changing_source(tmp_path, slug, memory):
     assert not sandbox.root.exists()
 
 
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_for_project_rejects_symbolic_link_aliases(tmp_path, target_exists):
+    sandbox = Sandbox(tmp_path, projects="jobs", scope="original")
+    sandbox.projects_dir.mkdir()
+    target = sandbox.projects_dir / "other"
+    if target_exists:
+        target.mkdir()
+    (sandbox.projects_dir / "alias").symlink_to("other", target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        sandbox.for_project("alias")
+    with pytest.raises(ValueError, match="symbolic link"):
+        sandbox.configure_scope("alias")
+    assert sandbox.scope == "original"
+    assert target.exists() == target_exists
+
+
+def test_project_alias_added_after_configuration_cannot_redirect_paths(tmp_path):
+    sandbox = Sandbox(tmp_path).for_project("alias")
+    target = sandbox.projects_dir / "other"
+    target.mkdir(parents=True)
+    (sandbox.projects_dir / "alias").symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        sandbox.permissions()
+    with pytest.raises(ValueError, match="symbolic link"):
+        sandbox.project_logs_dir()
+
+
 def test_configure_scope_preserves_policy_and_validates_before_mutation(tmp_path):
     sandbox = Sandbox(tmp_path, projects="jobs")
     with pytest.raises(ValueError, match="configure_scope"):

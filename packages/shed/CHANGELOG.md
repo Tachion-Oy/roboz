@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reject symbolic-link project folders so an alias cannot inherit another
+  project's paths and write permissions.
 - Add `Sandbox.for_project(project_slug)` to create a validated, separately
   scoped sandbox without changing the configured instance or creating directories.
 
