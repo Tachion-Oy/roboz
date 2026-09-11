@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `Sandbox.for_project(project_slug)` to create a validated, separately
+  scoped sandbox without changing the configured instance or creating directories.
+
 - Breaking: replace RoboSprawl's configuration/factory layers with a configured
   `Deployment(agent=..., sandbox=...)` from `roboshed.deployments`. Set scope
   through `deployment.sandbox.configure_scope(folder)`, configure the exposed

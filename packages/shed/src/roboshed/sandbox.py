@@ -1,6 +1,6 @@
 """Filesystem sandbox layout and derived permissions for agent compositions."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from glob import escape
 from pathlib import Path
 from typing import TypedDict
@@ -145,6 +145,14 @@ class Sandbox:
         project = self._resolve_project(folder)
         self._persistence_paths(project)
         self.scope = folder
+
+    def for_project(self, project_slug: str) -> "Sandbox":
+        """Return a validated project-scoped copy without changing this instance.
+
+        Create no directories. Pass the copy to agent construction and retain
+        its scope for the lifetime of that agent graph.
+        """
+        return replace(self, scope=project_slug)
 
     def project_dir(self) -> Path:
         """Return the configured project directory."""

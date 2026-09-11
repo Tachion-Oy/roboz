@@ -25,6 +25,71 @@ def test_constructs_unscoped_sandbox_with_layout_configuration(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize("original_scope", [None, "original"])
+def test_for_project_preserves_layout_and_keeps_scopes_independent(
+    tmp_path, original_scope
+):
+    sandbox = Sandbox(
+        tmp_path / "root",
+        readonly="references",
+        shared="team",
+        projects="jobs",
+        logs=Path("conversations"),
+        snapshots=Path("summaries"),
+        memory=Path("knowledge"),
+        scope=original_scope,
+    )
+    first = sandbox.for_project("one")
+    second = sandbox.for_project("two")
+
+    assert first is not sandbox and second is not sandbox and first is not second
+    assert sandbox.scope == original_scope
+    for scoped, slug in ((first, "one"), (second, "two")):
+        project = tmp_path / "root/jobs" / slug
+        assert scoped.readonly_dir == tmp_path / "root/references"
+        assert scoped.shared_dir == tmp_path / "root/team"
+        assert scoped.project_dir() == project
+        assert scoped.project_logs_dir() == project / "conversations"
+        assert scoped.project_snapshots_dir() == project / "summaries"
+        assert scoped.project_memory_dir() == project / "knowledge"
+    second.configure_scope("three")
+    assert first.project_dir() == tmp_path / "root/jobs/one"
+    assert sandbox.scope == original_scope
+    assert not sandbox.root.exists()
+
+
+@pytest.mark.parametrize("slug", ["one", "two"])
+def test_for_project_permissions_allow_only_the_selected_project(tmp_path, slug):
+    sandbox = Sandbox(tmp_path / "root", projects="jobs")
+    policy = sandbox.for_project(slug).permissions()
+    for project in ("one", "two"):
+        verdict = check_allow_deny_permission(
+            location=sandbox.projects_dir / project / "file.txt",
+            op_type=Operation.CREATE,
+            takes_precedence=policy.takes_precedence,
+            allow_rules=policy.allow,
+            deny_rules=policy.deny,
+            default_verdict=policy.default_verdict,
+            base_path=policy.base,
+        )
+        expected = ActionVerdict.allow if project == slug else ActionVerdict.deny
+        assert verdict == expected
+    assert sandbox.scope is None
+    assert not sandbox.root.exists()
+
+
+@pytest.mark.parametrize(
+    "slug,memory",
+    [("", "memory"), ("../escape", "memory"), ("one", "../escape"), ("one", "logs")],
+)
+def test_for_project_validates_without_changing_source(tmp_path, slug, memory):
+    sandbox = Sandbox(tmp_path / "root", memory=Path(memory))
+    with pytest.raises(ValueError):
+        sandbox.for_project(slug)
+    assert sandbox.scope is None
+    assert not sandbox.root.exists()
+
+
 def test_configure_scope_preserves_policy_and_validates_before_mutation(tmp_path):
     sandbox = Sandbox(tmp_path, projects="jobs")
     with pytest.raises(ValueError, match="configure_scope"):
