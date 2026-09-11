@@ -113,11 +113,11 @@ deployment.event_sinks.append(dispatch)
 agent, background_agents = deployment.build()
 ```
 
-Applications can record reusable layout defaults without choosing a root:
+Construct each application sandbox directly:
 
 ```python
-application_sandbox = Sandbox.define(shared="workspace")
-sandbox = application_sandbox(root=application_root)
+sandbox = Sandbox(root=application_root, shared="workspace")
+sandbox.configure_scope(folder)
 ```
 
 The host supplies `folder` at runtime. For now it is a direct child of the
@@ -130,8 +130,8 @@ cannot redirect an existing agent.
 The Librarian constructor declares its standard maintenance sequence:
 snapshots, consolidation, retention, then cadence. Pass its sandbox and the
 recursive foreground names directly to the constructor before attaching it as
-a background agent. The orchestrator also takes the sandbox and resolves its
-permission policy at build time, after scope configuration.
+a background agent. The orchestrator also takes the configured sandbox and
+captures its permission policy when constructed.
 
 Invoke the returned agent directly and retain the background agents for control.
 Do not reconfigure the same deployment concurrently. Repeated builds create fresh

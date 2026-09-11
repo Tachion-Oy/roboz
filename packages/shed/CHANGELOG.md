@@ -17,10 +17,8 @@
   and `RoboSprawlBundle`. Dependency inspection lives in
   `roboshed.dependency_health`, using an isolated temporary-sandbox callback.
 - Breaking: replace public Shed `Workspace` and `Project` values with
-  `Sandbox`. Use `Sandbox.define(...)` for reusable layout defaults and create a
-  fresh sandbox with the application's actual root. Existing explicit-folder
-  path/permission calls remain supported; omitted-folder calls use the configured
-  scope. Scope selection does not create directories.
+  `Sandbox`. Construct it with the application's actual root, configure its one
+  scope, and then construct agents. Scope selection does not create directories.
 - Remove the concrete `roboshed.deployments.robosprawl` preset. RoboSprawl owns
   its paths, endpoints, extra capabilities, agent graph, and `Deployment`
   instance in its application configuration.

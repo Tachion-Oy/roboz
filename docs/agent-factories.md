@@ -79,43 +79,38 @@ The application supplies root-only additions through
 RoboSprawl therefore needs no `ORCHESTRATOR_CAPABILITIES` constant and does not
 manually copy either role's built-in capabilities.
 
-Both roles require the application sandbox. The orchestrator keeps the bound
-`sandbox.permissions` method until build time, so the application may configure
-scope after constructing the definition. The Librarian also requires the names
-of the configured foreground graph; compute them before attaching it as a
-background agent. Its snapshot and consolidation models default to its
-`agent_endpoint`.
+Both roles require an already-configured application sandbox. The Librarian also
+requires the names of the configured foreground graph; compute them before
+attaching it as a background agent. Its snapshot and consolidation models
+default to its `agent_endpoint`.
 
 ## Sandbox definitions and runtime scope
 
-`Sandbox.define(...)` records reusable folder-layout defaults without selecting
-an application root or constructing a shared sandbox:
+Construct the sandbox directly and select its scope before constructing agents:
 
 ```python
-from dataclasses import replace
 from pathlib import Path
 from roboshed.sandbox import Sandbox
 
-application_sandbox = Sandbox.define(
+sandbox = Sandbox(
+    root=application_root,
     shared="workspace",
     logs=Path("conversation_logs"),
     snapshots=Path("conversation_snapshots"),
     memory=Path("persistent_memory"),
 )
-
-sandbox = application_sandbox(root=application_root)
 sandbox.configure_scope(folder)
 ```
 
-Each constructor call creates a fresh, initially unscoped `Sandbox`. The host
-supplies `root` from its real configuration and selects a direct child of
-`projects_dir` with `configure_scope(folder)` before building. Relative
+The host supplies `root` from its real configuration and selects a direct child
+of `projects_dir` with `configure_scope(folder)` before constructing agents.
+Relative
 persistence paths follow that scope. The derived policy allows reads throughout
 the sandbox, writes in the selected project, asks before shared-area writes, and
 denies other writes. Construction and scope selection create no directories.
 
-Explicit-folder path and permission calls remain available. Standalone file
-agents can pass `PermissionPolicy` directly to `FileCommands` and `FileEditing`.
+Standalone file agents can pass `PermissionPolicy` directly to `FileCommands`
+and `FileEditing`.
 
 ## Application-owned RoboSprawl configuration
 
@@ -135,20 +130,20 @@ from roboshed.skills import robosprawl as orientation
 from roboz.deployment import Capability
 from roboz.runtime import Output
 
-robosprawl_sandbox = Sandbox.define(
+sandbox = Sandbox(
+    root=application_root,
     shared="workspace",
     logs=Path("conversation_logs"),
     snapshots=Path("conversation_snapshots"),
     memory=Path("persistent_memory"),
 )
-
-sandbox = robosprawl_sandbox(root=application_root)
+sandbox.configure_scope(folder)
 foreground = orchestrator(
     sandbox,
     agent_endpoint=orchestrator_endpoint,
     interaction_mode=Output.API,
     subagents=application_subagents,
-    initial_messages=(sandbox.project_memory_dir(folder), application_instructions),
+    initial_messages=(sandbox.project_memory_dir(), application_instructions),
 )
 agent_names = foreground.agent_names(include_background=False)
 agent = replace(
@@ -168,14 +163,11 @@ deployment = Deployment(
     event_sinks=[ui_event_sink],
 )
 
-deployment.sandbox.configure_scope(folder)
 agent, background_agents = deployment.build()
 ```
 
-If initial messages need the configured scope, either select the scope before
-resolving those paths, as shown by the explicit-folder call above, or add them
-after the application has selected its folder. Shed does not prescribe the
-application's project-context text or memory-loading choice.
+Shed does not prescribe the application's project-context text or memory-loading
+choice.
 
 `Deployment.build()` is parameterless. It copies the configured sandbox,
 captures its scope and sink registrations, appends
@@ -196,11 +188,11 @@ invocation, interruption, cancellation, thread shutdown, and dependency health.
   `DeployableAgent` definitions.
 - Replace RoboSprawl factories and recipes with an application-owned
   `Deployment(agent=..., sandbox=...)` instance.
-- Replace shared or hardcoded sandbox instances with an application-level
-  `Sandbox.define(...)` constructor and a fresh sandbox for each deployment.
+- Replace shared or hardcoded sandbox instances with a directly constructed,
+  application-owned `Sandbox` for each deployment.
 - Pass the sandbox to both role constructors and pass recursive foreground names
   to `librarian`; compute those names before attaching it as a background agent.
-- Call `sandbox.configure_scope(folder)` before parameterless `deployment.build()`.
+- Call `sandbox.configure_scope(folder)` before constructing agents.
 - Add root-only application capabilities through `Deployment`; do not unpack
   the orchestrator's defaults.
 - Keep maintenance feature settings on their owning capability and endpoint
