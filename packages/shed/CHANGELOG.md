@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a4 - 2026-09-11
+
 - Reject symbolic-link project folders so an alias cannot inherit another
   project's paths and write permissions.
 - Add `Sandbox.for_project(project_slug)` to create a validated, separately
