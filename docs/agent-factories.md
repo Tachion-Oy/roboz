@@ -115,6 +115,22 @@ denies other writes. Construction and scope selection create no directories.
 Standalone file agents can pass `PermissionPolicy` directly to `FileCommands`
 and `FileEditing`.
 
+For independent runs, retain the configured layout and create a separate scoped
+instance before constructing each graph:
+
+```python
+configured_sandbox = Sandbox(root=application_root, shared="workspace")
+sandbox = configured_sandbox.for_project(folder)
+```
+
+`for_project()` validates the requested project and persistence layout without
+changing the source instance or creating directories. Project folders cannot be
+symbolic links, including links to another project inside the sandbox.
+Pass the returned instance to the root, relevant specialists, Librarian, and
+`Deployment`; keep its scope unchanged throughout that graph's lifetime. File
+capabilities receive policies derived from this instance; maintenance
+capabilities use it for their paths.
+
 ## Application-owned RoboSprawl configuration
 
 The external RoboSprawl application should keep the following composition in

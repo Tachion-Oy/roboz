@@ -1,6 +1,6 @@
 """Filesystem sandbox layout and derived permissions for agent compositions."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from glob import escape
 from pathlib import Path
 from typing import TypedDict
@@ -129,10 +129,13 @@ class Sandbox:
         return _within(self.resolved_root, self.projects)
 
     def _resolve_project(self, folder: str) -> Path:
-        """Resolve one direct child of the projects directory."""
+        """Resolve one direct child, rejecting symbolic-link project aliases."""
         if len(Path(folder).parts) != 1:
             raise ValueError("scope must be a single folder name")
-        return _within(self.projects_dir, folder)
+        projects = self.projects_dir
+        if (projects / folder).is_symlink():
+            raise ValueError("project folder must not be a symbolic link")
+        return _within(projects, folder)
 
     def configure_scope(self, folder: str) -> None:
         """Select a direct child of projects_dir without creating directories.
@@ -145,6 +148,14 @@ class Sandbox:
         project = self._resolve_project(folder)
         self._persistence_paths(project)
         self.scope = folder
+
+    def for_project(self, project_slug: str) -> "Sandbox":
+        """Return a validated project-scoped copy without changing this instance.
+
+        Create no directories. Pass the copy to agent construction and retain
+        its scope for the lifetime of that agent graph.
+        """
+        return replace(self, scope=project_slug)
 
     def project_dir(self) -> Path:
         """Return the configured project directory."""
