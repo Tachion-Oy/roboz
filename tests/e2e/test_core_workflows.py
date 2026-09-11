@@ -55,7 +55,7 @@ def test_subagent_completion(tmp_path: Path) -> None:
 
 def test_generic_definitions_build_without_application_packages(tmp_path: Path) -> None:
     from roboz import Empty, Message, tool
-    from roboz.deployment import AgentDefinition, Capability, SubAgentSpec
+    from roboz.deployment import DeployableAgent, Capability
 
     root_ticks = []
 
@@ -64,7 +64,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
         root_ticks.append("tick")
         return Empty()
 
-    child = AgentDefinition(
+    child = DeployableAgent(
         name="worker",
         agent_endpoint=MockLLMEndpoint(
             [{"action": "stop", "rationale": "done", "value": "worker result"}]
@@ -72,16 +72,16 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
         capabilities=(Capability(tools=(stop,)),),
         system_prompt="Finish the delegated work.",
     )
-    root = AgentDefinition(
+    root = DeployableAgent(
         name="coordinator",
         agent_endpoint=MockLLMEndpoint(
             [
-                {"action": "delegate", "rationale": "ask worker"},
+                {"action": "worker", "rationale": "ask worker"},
                 {"action": "stop", "rationale": "done", "value": "all done"},
             ]
         ),
         capabilities=(Capability(tools=(stop,)),),
-        subagents=(SubAgentSpec(child, "delegate", "Run the worker."),),
+        subagents=(child,),
         system_prompt="Delegate, then finish.",
         initial_messages=("Explicit caller-provided context.",),
     )

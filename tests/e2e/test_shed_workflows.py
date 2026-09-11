@@ -2,9 +2,11 @@
 
 import json
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from roboshed.agents import librarian as librarian_definition
+from roboshed.agents import orchestrator as orchestrator_definition
 from roboshed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
@@ -16,7 +18,7 @@ from roboshed.capabilities import (
 from roboshed.sandbox import PermissionPolicy, Sandbox
 
 from roboz import Agent, stop
-from roboz.deployment import AgentDefinition, Capability
+from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, Output, PersistenceSink
 
@@ -39,7 +41,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         }
 
     permissions = PermissionPolicy.local(sandbox)
-    agent = AgentDefinition(
+    agent = DeployableAgent(
         name="file_worker",
         system_prompt="Complete the file task and stop.",
         capabilities=(
@@ -113,9 +115,10 @@ def _conversation_snapshot_memory_retention(
 ) -> None:
     sandbox = Sandbox(tmp_path)
     project_slug = "test"
-    logs = sandbox.project_logs_dir(project_slug)
-    snapshots = sandbox.project_snapshots_dir(project_slug)
-    memory_root = sandbox.project_memory_dir(project_slug)
+    sandbox.configure_scope(project_slug)
+    logs = sandbox.project_logs_dir()
+    snapshots = sandbox.project_snapshots_dir()
+    memory_root = sandbox.project_memory_dir()
     author = Agent(
         name="author",
         interaction_mode=None,
@@ -141,31 +144,34 @@ def _conversation_snapshot_memory_retention(
         {"value": "The project uses a blue robot emblem."},
         {"value": "Retain the blue robot emblem decision."},
     ]
-    librarian = librarian_definition(
-        agent_endpoint=None if separate_endpoints else MockLLMEndpoint(responses),
+    librarian = replace(
+        librarian_definition(
+            sandbox,
+            {"author"},
+            agent_endpoint=(
+                None if separate_endpoints else MockLLMEndpoint(responses)
+            ),
+        ),
         capabilities=(
             ConversationSnapshots(
                 sandbox,
-                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
                 token_growth_threshold=1,
             ),
             MemoryConsolidation(
                 sandbox,
-                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
                 min_pending_snapshots=1,
             ),
             ArtifactRetention(
                 sandbox,
-                project_slug,
                 max_snapshot_files=0,
                 max_log_files=0,
                 max_memory_files=1,
             ),
-            MaintenanceCadence(sandbox, project_slug, {"author"}, seconds=0),
+            MaintenanceCadence(sandbox, {"author"}, seconds=0),
         ),
     ).build(
         event_sink_factory=lambda name: (PersistenceSink.for_path(logs / name),)
@@ -185,10 +191,9 @@ def _conversation_snapshot_memory_retention(
 def test_persistent_orchestrator_delegates_and_accepts_another_request(
     tmp_path: Path,
 ) -> None:
-    from roboshed.agents import orchestrator
-    from roboshed.deployments.robosprawl import AgenticFactory
+    from roboshed.deployments import Deployment
 
-    from roboz.deployment import AgentDefinition, Capability, SubAgentSpec
+    from roboz.deployment import DeployableAgent, Capability
     from roboz.runtime import Output, bind_api_user_io, reset_api_user_io
 
     class Replies:
@@ -203,7 +208,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         def notify(self, message):
             raise AssertionError("This scenario expects questions with replies")
 
-    child = AgentDefinition(
+    child = DeployableAgent(
         name="specialist",
         system_prompt="Complete the delegated task.",
         agent_endpoint=MockLLMEndpoint(
@@ -212,7 +217,11 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         capabilities=(Capability(tools=(stop,)),),
         interaction_mode=Output.API,
     )
-    definition = orchestrator(
+    sandbox = Sandbox(tmp_path)
+    project_slug = "collaboration"
+    sandbox.configure_scope(project_slug)
+    definition = orchestrator_definition(
+        sandbox,
         agent_endpoint=MockLLMEndpoint(
             [
                 {
@@ -220,7 +229,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
                     "rationale": "first task complete",
                     "value": "First task done. What next?",
                 },
-                {"action": "delegate", "rationale": "handle next task"},
+                {"action": "specialist", "rationale": "handle next task"},
                 {
                     "action": "prompt_user",
                     "rationale": "remain available",
@@ -233,91 +242,74 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
                 },
             ]
         ),
-        subagents=(SubAgentSpec(child, "delegate", "Run the specialist."),),
+        subagents=(child,),
         interaction_mode=Output.API,
     )
-    sandbox = Sandbox(tmp_path)
-    project_slug = "collaboration"
     events = []
-    bundle = AgenticFactory(
-        sandbox=sandbox, project_slug=project_slug, orchestrator=definition
-    ).build(
-        event_sinks=(events.append,)
-    )
+    agent, background_agents = Deployment(
+        agent=definition, sandbox=sandbox, event_sinks=[events.append],
+    ).build()
     replies = Replies()
     token = bind_api_user_io(replies)
     try:
-        result, messages = bundle.agent.invoke()
+        result, messages = agent.invoke()
     finally:
         reset_api_user_io(token)
     assert result.value == "session ended"
     assert len(replies.prompts) == 2
     assert any("specialist result" in m.content for m in messages)
-    logs = sandbox.project_logs_dir(project_slug)
+    logs = sandbox.project_logs_dir()
     assert list((logs / "orchestrator").rglob("*.json"))
     assert list((logs / "specialist").rglob("*.json"))
     assert any(getattr(event, "agent_name", None) == "specialist" for event in events)
-    assert bundle.background_agents == ()
+    assert background_agents == ()
 
 
 def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> None:
-    from roboshed.agents import orchestrator
-    from roboshed.deployments.robosprawl import AgenticFactory, DeploymentFactory
-    from roboz import ExternalDependencyKind, LazyExternalDependency
+    from roboz import DependencyRoute, ExternalDependencyKind, LazyExternalDependency
+    from roboshed.deployments import Deployment
     from roboz.llm import LLMEndpoint
 
     sandbox = Sandbox(tmp_path)
-    project_slug = "standalone"
-    endpoints = []
-    routes = []
     observed = []
-    sink_calls = []
     borrowed = LazyExternalDependency(
         "model:test:borrowed", ExternalDependencyKind.MODEL_ENDPOINT, {},
-        lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed", max_context_tokens=4096),
+        lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed"),
     )
+    route = DependencyRoute(lambda: borrowed)
+    sandbox.configure_scope("standalone")
 
-    def recipe(sandbox, project_slug, *, orchestrator_endpoint):
-        routes.append(orchestrator_endpoint)
-        endpoint = MockLLMEndpoint([
-            {"action": "stop", "rationale": "user requested stop", "value": "complete"},
-        ])
-        endpoints.append(endpoint)
-        return AgenticFactory(
+    def configure():
+        return Deployment(
+            agent=orchestrator_definition(
+                sandbox,
+                agent_endpoint=MockLLMEndpoint([
+                    {"action": "stop", "rationale": "user requested stop", "value": "complete"},
+                ]),
+                subagents=(
+                    DeployableAgent(
+                        name="unused",
+                        agent_endpoint=route,
+                        system_prompt="Unused specialist.",
+                    ),
+                ),
+            ),
             sandbox=sandbox,
-            project_slug=project_slug,
-            orchestrator=orchestrator(agent_endpoint=endpoint, interaction_mode=Output.CLI),
+            event_sinks=[observed.append],
         )
 
-    def sinks():
-        events = []
-        sink_calls.append(events)
-        return (events.append,)
-
-    deployment = DeploymentFactory(recipe, event_sink_factory=sinks)
-    first = deployment(
-        sandbox,
-        project_slug,
-        endpoint_getter=lambda: borrowed,
-        event_sinks=(observed.append,),
-    )
-    second = deployment(
-        sandbox,
-        project_slug,
-        endpoint_getter=lambda: borrowed,
-        event_sinks=(observed.append,),
-    )
-    assert not sandbox.project_dir(project_slug).exists()
-    assert first.agent is not second.agent
-    assert first.agent.pipe is not second.agent.pipe
-    assert endpoints[0] is not endpoints[1]
-    assert routes[0] is not routes[1]
-    assert routes[0].external_dependencies() == routes[1].external_dependencies() == (borrowed,)
+    first = configure().build()[0]
+    second = configure().build()[0]
+    assert not sandbox.project_dir().exists()
+    assert first is not second
+    assert first.pipe is not second.pipe
+    assert first.agent_endpoint is not second.agent_endpoint
+    assert first.external_dependencies() == second.external_dependencies()
+    assert borrowed in first.external_dependencies()
     assert "materialized" not in borrowed.__dict__
-    assert routes[0].materialize() is routes[1].materialize()
-    assert first.agent.invoke()[0].value == second.agent.invoke()[0].value == "complete"
-    assert sink_calls[0] and sink_calls[1] and observed
-    assert list(sandbox.project_logs_dir(project_slug).rglob("*.json"))
+    assert first.invoke()[0].value == second.invoke()[0].value == "complete"
+    assert observed
+    assert list(sandbox.project_logs_dir().rglob("*.json"))
 
 
 if __name__ == "__main__":

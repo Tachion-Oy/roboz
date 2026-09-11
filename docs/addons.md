@@ -70,13 +70,13 @@ for email configuration. Applications own model selection and startup.
 ```python
 from pathlib import Path
 from roboz import stop
-from roboz.deployment import AgentDefinition, Capability
+from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing
 from roboshed.sandbox import PermissionPolicy
 
 permissions = PermissionPolicy.local(Path("./sandbox"))
-agent = AgentDefinition(
+agent = DeployableAgent(
     name="file_worker",
     system_prompt="Complete the user's task, then call stop.",
     agent_endpoint=MockLLMEndpoint([
@@ -91,7 +91,7 @@ agent = AgentDefinition(
 result, messages = agent.invoke()
 ```
 
-Compose guarded file capabilities through `AgentDefinition`, or use the
+Compose guarded file capabilities through `DeployableAgent`, or use the
 orchestrator and Librarian presets. Each capability owns its tools and skills
 and receives the owning agent's event pipe once per build.
 

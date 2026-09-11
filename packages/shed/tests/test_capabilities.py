@@ -5,7 +5,7 @@ from roboshed.capabilities import Compactification
 from roboshed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
 from roboz import All
-from roboz.deployment import AgentDefinition
+from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint
 
 
@@ -15,7 +15,7 @@ def test_compaction_capability_preserves_tool_default_and_explicit_policy(thresh
     if threshold is not None:
         capability = replace(capability, threshold_percent=threshold)
     endpoint = MockLLMEndpoint([], max_context_tokens=1000)
-    agent = AgentDefinition(
+    agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
         agent_endpoint=endpoint,
@@ -31,7 +31,7 @@ def test_compaction_capability_preserves_tool_default_and_explicit_policy(thresh
 def test_compaction_override_uses_its_model_context_budget():
     default = MockLLMEndpoint([], max_context_tokens=1000)
     override = MockLLMEndpoint([], max_context_tokens=2000)
-    agent = AgentDefinition(
+    agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
         agent_endpoint=default,
@@ -43,7 +43,7 @@ def test_compaction_override_uses_its_model_context_budget():
 
 def test_compaction_without_any_endpoint_fails_before_starting_work():
     with pytest.raises(ValueError, match="compaction requires an endpoint"):
-        AgentDefinition(
+        DeployableAgent(
             system_prompt="Compact the conversation.",
             name="test",
             agent_endpoint=None,
@@ -84,7 +84,7 @@ def test_compaction_preserves_live_lazy_endpoint_selection():
             return selected.materialize()
 
     default = LLMEndpoint(client=object(), api_name="test", model_name="default")
-    agent = AgentDefinition(
+    agent = DeployableAgent(
         name="test",
         system_prompt="Compact the conversation.",
         agent_endpoint=default,

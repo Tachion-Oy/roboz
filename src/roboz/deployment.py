@@ -1,11 +1,13 @@
 """Data-driven agent definitions and runtime-bound capabilities."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from roboz.agent import Agent, run_subagent
+from roboz.agent import Agent, run_background_agent, run_subagent
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe, EventSink, Output
 from roboz.skill import Skill
@@ -48,24 +50,19 @@ class Capability(AgentCapability):
         return self
 
 
-@dataclass(frozen=True)
-class SubAgentSpec:
-    """A specialist definition and its parent-facing tool identity."""
-
-    definition: "AgentDefinition"
-    tool_name: str
-    tool_description: str
-
-
 @dataclass(frozen=True, kw_only=True)
-class AgentDefinition:
-    """Configured inputs for independently constructing an agent runtime.
+class DeployableAgent:
+    """One agent's configuration, including its sub-agents and background agents.
 
     All tools and skills enter through capabilities. Already-bound inputs and
     endpoint dependencies are supplied objects; callers own their reuse. Scripted
     mock endpoints that consume responses must be recreated for each run.
-    Each capability selects its tool endpoints, using the agent endpoint as
-    the default. Endpoint objects remain independent of runtime controls.
+    Configure definitions before building; do not mutate them concurrently with
+    construction. Each capability selects its tool endpoints, using the agent
+    endpoint as the default. Endpoint objects remain independent of runtime controls.
+    Sub-agents become named delegation tools. Background agents are started
+    through default tools when their parent runs. Both slots contain the same
+    recursive definition type.
     """
 
     name: str
@@ -76,14 +73,24 @@ class AgentDefinition:
     is_agentic: bool = True
     automatic_tool_prompt: bool = True
     capabilities: tuple[AgentCapability, ...] = ()
-    subagents: tuple[SubAgentSpec, ...] = ()
+    subagents: tuple["DeployableAgent", ...] = ()
+    background_agents: tuple["DeployableAgent", ...] = ()
     initial_messages: tuple[Path | str, ...] = ()
 
-    def agent_names(self) -> frozenset[str]:
-        """Return recursive agent identities, rejecting ambiguous names."""
+    def agent_names(self, *, include_background: bool = True) -> frozenset[str]:
+        """Validate all names and return identities in the selected branches.
+
+        Excluding background agents also excludes their descendants, for
+        foreground-only consumers such as conversation maintenance.
+        """
+        if not include_background:
+            self.agent_names()
         names = {self.name}
-        for spec in self.subagents:
-            children = spec.definition.agent_names()
+        definitions = self.subagents
+        if include_background:
+            definitions += self.background_agents
+        for definition in definitions:
+            children = definition.agent_names(include_background=include_background)
             if names & children:
                 raise ValueError("agent names must be unique")
             names.update(children)
@@ -97,9 +104,28 @@ class AgentDefinition:
     ) -> Agent:
         """Create fresh pipes, resolve capabilities, and construct the agent once.
 
-        Caller sinks follow specialists. The optional factory supplies fresh
+        Caller sinks follow synchronous children. The optional factory supplies fresh
         agent-specific sinks by name; these are never inherited by children.
         Without supplied sinks, construction selects no output or persistence.
+        Use build_graph() to retain background agents for host control.
+        """
+        return self.build_graph(
+            event_sinks=event_sinks, event_sink_factory=event_sink_factory
+        )[0]
+
+    def build_graph(
+        self,
+        *,
+        event_sinks: Sequence[EventSink] = (),
+        event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None,
+    ) -> tuple[Agent, tuple[Agent, ...]]:
+        """Build fresh agents and return the root and all background handles.
+
+        Validate names before constructing capabilities or sinks. Sink routing
+        follows build(): caller sinks reach foreground branches only, and the
+        factory supplies each agent's own sinks. Background handles include
+        descendants of both child slots. No agents are started by construction;
+        callers own their invocation and shutdown.
         """
         self.agent_names()
         pipe = EventPipe(
@@ -115,16 +141,32 @@ class AgentDefinition:
             )
 
         tools = [tool for contribution in contributions for tool in contribution.tools]
-        for spec in self.subagents:
-            child = spec.definition.build(
+        default_tools = [tool for c in contributions for tool in c.default_tools]
+        background_agents: list[Agent] = []
+        for definition in self.subagents:
+            child, descendants = definition.build_graph(
                 event_sinks=event_sinks, event_sink_factory=event_sink_factory
             )
-            delegation = run_subagent(Ctx(agent=child)).copy(
-                name=spec.tool_name, description=spec.tool_description
+            tools.append(
+                run_subagent(Ctx(agent=child)).copy(
+                    name=child.name,
+                    description=child.description,
+                )
             )
-            tools.append(delegation)
+            background_agents.extend(descendants)
+        for definition in self.background_agents:
+            child, descendants = definition.build_graph(
+                event_sink_factory=event_sink_factory
+            )
+            default_tools.append(
+                run_background_agent(Ctx(agent=child)).copy(
+                    name=f"start_background_agent_{child.name}",
+                )
+            )
+            background_agents.append(child)
+            background_agents.extend(descendants)
 
-        return Agent(
+        agent = Agent(
             name=self.name,
             description=self.description,
             agent_endpoint=self.agent_endpoint,
@@ -134,18 +176,18 @@ class AgentDefinition:
             automatic_tool_prompt=self.automatic_tool_prompt,
             system_prompt=self.system_prompt,
             tools=tools,
-            default_tools=[tool for c in contributions for tool in c.default_tools],
+            default_tools=default_tools,
             skills=[skill for c in contributions for skill in c.skills],
             auto_loaded_skills=[
                 skill for c in contributions for skill in c.auto_loaded_skills
             ],
             initial_messages=self.initial_messages,
         )
+        return agent, tuple(background_agents)
 
 
 __all__ = [
     "AgentCapability",
-    "AgentDefinition",
     "Capability",
-    "SubAgentSpec",
+    "DeployableAgent",
 ]

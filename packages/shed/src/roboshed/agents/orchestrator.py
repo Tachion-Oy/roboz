@@ -1,9 +1,11 @@
-"""Opinionated persistent collaboration, independent of providers and hosts."""
+"""Persistent orchestrator constructor with its filesystem capabilities."""
 
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz.deployment import AgentCapability, AgentDefinition, Capability, SubAgentSpec
+from roboshed.capabilities import FileCommands, FileEditing
+from roboshed.sandbox import Sandbox
+from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import EndpointLike
 from roboz.runtime import Output
 from roboz.tools import stop
@@ -19,31 +21,30 @@ have supplied. Do not claim capabilities that are not available."""
 
 
 def orchestrator(
+    sandbox: Sandbox,
     *,
     agent_endpoint: EndpointLike,
-    name: str = "orchestrator",
-    subagents: Sequence[SubAgentSpec] = (),
-    capabilities: Sequence[AgentCapability] = (),
-    instructions: str = "",
-    initial_messages: Sequence[Path | str] = (),
+    subagents: Sequence[DeployableAgent] = (),
+    background_agents: Sequence[DeployableAgent] = (),
     interaction_mode: Output | None = Output.CLI,
-) -> AgentDefinition:
-    """Configure a persistent orchestrator with caller-selected capabilities.
-
-    Capabilities are the only extension input. The preset always supplies the
-    role prompt and stop tool; the runtime supplies user interaction. It selects
-    no provider, tool integration, filesystem permission, or memory location.
-    Interaction defaults to CLI; hosts select their channel explicitly.
-    Additional instructions describe the deployment without changing core prompts.
-    """
-    return AgentDefinition(
-        name=name,
-        agent_endpoint=agent_endpoint,
+    initial_messages: Sequence[Path | str] = (),
+) -> DeployableAgent:
+    """Configure the orchestrator for an already-configured sandbox."""
+    return DeployableAgent(
+        name="orchestrator",
         description="Coordinates ongoing user goals and specialist agents.",
-        system_prompt=ORCHESTRATOR_PROMPT
-        + ("\n\n" + instructions if instructions else ""),
-        capabilities=(Capability(tools=(stop,)), *capabilities),
+        system_prompt=ORCHESTRATOR_PROMPT,
+        agent_endpoint=agent_endpoint,
+        capabilities=(
+            Capability(tools=(stop,)),
+            FileCommands(sandbox.permissions()),
+            FileEditing(sandbox.permissions()),
+        ),
         subagents=tuple(subagents),
-        initial_messages=tuple(initial_messages),
+        background_agents=tuple(background_agents),
         interaction_mode=interaction_mode,
+        initial_messages=tuple(initial_messages),
     )
+
+
+__all__ = ["ORCHESTRATOR_PROMPT", "orchestrator"]

@@ -2,15 +2,14 @@
 
 import importlib
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
 import pytest
-from roboshed.agents.librarian import (
-    LIBRARIAN_AGENT_DESCRIPTION,
-    librarian,
-)
+from roboshed.agents import librarian as librarian_definition
+from roboshed.agents.librarian import LIBRARIAN_AGENT_DESCRIPTION
 from roboshed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
@@ -39,7 +38,9 @@ _WATCHED_AGENT: Final[str] = "orchestrator"
 
 
 def _sandbox(tmp_path: Path) -> Sandbox:
-    return Sandbox(tmp_path)
+    sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("test")
+    return sandbox
 
 
 def _build(
@@ -51,25 +52,28 @@ def _build(
 ):
     sandbox = _sandbox(tmp_path)
     names = {_WATCHED_AGENT}
-    return librarian(
-        agent_endpoint=endpoint or MockLLMEndpoint([]),
+    return replace(
+        librarian_definition(
+            sandbox,
+            names,
+            agent_endpoint=endpoint or MockLLMEndpoint([]),
+        ),
         capabilities=(
             ConversationSnapshots(
-                sandbox, "test", names, token_growth_threshold=token_growth_threshold
+                sandbox, names, token_growth_threshold=token_growth_threshold
             ),
             MemoryConsolidation(
                 sandbox,
-                "test",
                 names,
                 min_pending_snapshots=3,
                 max_pending_age_seconds=3_600,
             ),
-            ArtifactRetention(sandbox, "test"),
-            MaintenanceCadence(sandbox, "test", names, seconds=sleep_seconds),
+            ArtifactRetention(sandbox),
+            MaintenanceCadence(sandbox, names, seconds=sleep_seconds),
         ),
     ).build(
         event_sink_factory=lambda name: default_event_sinks(
-            data_path=sandbox.project_logs_dir("test") / name, include_cli=False
+            data_path=sandbox.project_logs_dir() / name, include_cli=False
         )
     )
 
@@ -93,7 +97,7 @@ def _write_source_run(
             )
         ],
     )
-    agent_dir = sandbox.project_logs_dir("test") / _WATCHED_AGENT
+    agent_dir = sandbox.project_logs_dir() / _WATCHED_AGENT
     path = agent_dir / "source-run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(run.model_dump_json(), encoding="utf-8")
@@ -145,9 +149,9 @@ def test_summary_capabilities_have_audited_defaults_and_validation(
 
 def test_maintenance_capability_defaults(tmp_path):
     sandbox = _sandbox(tmp_path)
-    snapshots = ConversationSnapshots(sandbox, "test", {_WATCHED_AGENT})
-    consolidation = MemoryConsolidation(sandbox, "test", {_WATCHED_AGENT})
-    retention = ArtifactRetention(sandbox, "test")
+    snapshots = ConversationSnapshots(sandbox, {_WATCHED_AGENT})
+    consolidation = MemoryConsolidation(sandbox, {_WATCHED_AGENT})
+    retention = ArtifactRetention(sandbox)
     assert snapshots.token_growth_threshold == 20_000
     assert snapshots.max_chars == 8_000
     assert consolidation.max_chars == 12_000
@@ -158,16 +162,19 @@ def test_maintenance_capability_defaults(tmp_path):
         retention.max_snapshot_files,
         retention.max_memory_files,
     ) == (500, 100, 10)
-    assert MaintenanceCadence(sandbox, "test", {_WATCHED_AGENT}).seconds == 120
+    assert MaintenanceCadence(sandbox, {_WATCHED_AGENT}).seconds == 120
 
 
 @pytest.mark.parametrize(
     "capability_type", [ConversationSnapshots, MemoryConsolidation]
 )
 def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_type):
-    definition = librarian(
+    definition = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=None
+        ),
         capabilities=(
-            capability_type(_sandbox(tmp_path), "test", {_WATCHED_AGENT}),
+            capability_type(_sandbox(tmp_path), {_WATCHED_AGENT}),
         )
     )
     with pytest.raises(ValueError, match="require.*an endpoint"):
@@ -176,10 +183,11 @@ def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_
 
 def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
     sandbox = _sandbox(tmp_path)
-    agent = librarian(
+    agent = replace(
+        librarian_definition(sandbox, {_WATCHED_AGENT}, agent_endpoint=None),
         capabilities=(
-            ArtifactRetention(sandbox, "test"),
-            MaintenanceCadence(sandbox, "test", {_WATCHED_AGENT}),
+            ArtifactRetention(sandbox),
+            MaintenanceCadence(sandbox, {_WATCHED_AGENT}),
         )
     ).build()
     assert [tool.name for tool in agent.default_tools] == [
@@ -197,13 +205,15 @@ def test_librarians_share_endpoint_but_have_independent_cancellation(
     tmp_path: Path,
 ) -> None:
     endpoint = MockLLMEndpoint([])
-    definition = librarian(
-        agent_endpoint=endpoint,
+    definition = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=endpoint
+        ),
         capabilities=(
             ConversationSnapshots(
-                _sandbox(tmp_path), "test", {_WATCHED_AGENT}
+                _sandbox(tmp_path), {_WATCHED_AGENT}
             ),
-            MaintenanceCadence(_sandbox(tmp_path), "test", {_WATCHED_AGENT}),
+            MaintenanceCadence(_sandbox(tmp_path), {_WATCHED_AGENT}),
         ),
     )
     first, second = definition.build(), definition.build()
@@ -221,7 +231,7 @@ def test_snapshot_retention_prunes_empty_conversation_folders(
     tmp_path: Path,
 ) -> None:
     sandbox = _sandbox(tmp_path)
-    snapshots = sandbox.project_snapshots_dir("test")
+    snapshots = sandbox.project_snapshots_dir()
     artifact = snapshots / "retained" / "one.md"
     empty = snapshots / "empty-conversation"
     artifact.parent.mkdir(parents=True)
@@ -293,7 +303,7 @@ def test_librarian_invoke_persists_no_message_cycle_outputs(tmp_path: Path) -> N
     agent.invoke()
 
     run_files = list(
-        (sandbox.project_logs_dir("test") / "librarian").rglob("*.json")
+        (sandbox.project_logs_dir() / "librarian").rglob("*.json")
     )
     assert len(run_files) == 1
     run = json.loads(run_files[0].read_text(encoding="utf-8"))
@@ -325,7 +335,7 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
 
     assert isinstance(raised.value.__cause__, LLMAuthError)
     run_files = list(
-        (sandbox.project_logs_dir("test") / "librarian").rglob("*.json")
+        (sandbox.project_logs_dir() / "librarian").rglob("*.json")
     )
     assert len(run_files) == 1
     run_text = run_files[0].read_text(encoding="utf-8")
@@ -358,18 +368,18 @@ def test_librarian_overrides_each_tool_endpoint_independently(
 
     default = LLMEndpoint(client=object(), api_name="test", model_name="default")
     override = LLMEndpoint(client=object(), api_name="test", model_name="override")
-    agent = librarian(
-        agent_endpoint=default,
+    agent = replace(
+        librarian_definition(
+            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=default
+        ),
         capabilities=(
             ConversationSnapshots(
                 _sandbox(tmp_path),
-                "test",
                 {_WATCHED_AGENT},
                 endpoint=override if override_snapshot else None,
             ),
             MemoryConsolidation(
                 _sandbox(tmp_path),
-                "test",
                 {_WATCHED_AGENT},
                 endpoint=None if override_snapshot else override,
             ),

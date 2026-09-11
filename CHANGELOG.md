@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add `DeployableAgent.build_graph()` to return the root agent and all background
+  handles for host lifecycle control. `build()` still returns the root alone.
+
+- Breaking: replace `AgentDefinition` and `SubAgentSpec` with recursive
+  `DeployableAgent` definitions. Put child definitions directly in `subagents`
+  or `background_agents`; delegation tools use the child's name and description,
+  and background agents start through default tools. Construct generic
+  definitions directly with `DeployableAgent(...)`.
+  Sandbox-aware `Deployment` lives in `roboshed.deployments`, not core.
+  See `docs/agent-factories.md` for migration.
+
 ## 0.1.2.dev2 - 2026-09-09
 
 - Breaking: remove the `roboz[openai]` extra. Install
@@ -20,7 +31,7 @@
   references retain identity and deferred resolution. See
   `docs/agent-factories.md` for builder migration.
 
-- Breaking: move the Librarian and its memory/summarization tools out of core into `roboshed.agents` and `roboshed.tools`. Use `librarian(capabilities=..., agent_endpoint=...)` instead of `LibrarianConstructor` and its path record; see `docs/agent-factories.md`. Core retains control, interaction, and generic construction primitives.
+- Breaking: move the Librarian and its memory/summarization tools out of core into `roboshed.agents` and `roboshed.tools`. Use `librarian(sandbox, agent_names, agent_endpoint=...)` instead of `LibrarianConstructor` and its path record; see `docs/agent-factories.md`. Core retains control, interaction, and generic construction primitives.
 
 - Add generic `AgentDefinition`, `AgentCapability`, `Capability`, and `SubAgentSpec` in `roboz.deployment`. Configure all tools and skills through capabilities, with fresh agent pipes and explicit sink configuration; definitions select no project, memory, or persistence conventions. See `docs/agent-factories.md`.
 

@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Breaking: replace RoboSprawl's configuration/factory layers with a configured
+  `Deployment(agent=..., sandbox=...)` from `roboshed.deployments`. Set scope
+  through `deployment.sandbox.configure_scope(folder)`, configure the exposed
+  event sinks, and unpack `agent, background_agents = deployment.build()`.
+  Build creates fresh runtimes without starting them.
+- Restore the `orchestrator` and `librarian` constructors in `roboshed.agents`.
+  Pass the sandbox to both and recursive foreground names to the Librarian. The
+  orchestrator owns stop and scoped file work, while the Librarian owns its
+  ordered maintenance pipeline and uses its agent endpoint as the maintenance
+  model default. `Deployment.additional_capabilities` appends root-only
+  application features without reconstructing those defaults.
+- Remove `AgenticFactory`, `DeploymentFactory`, `DeploymentRecipe`, `RunFactory`,
+  and `RoboSprawlBundle`. Dependency inspection lives in
+  `roboshed.dependency_health`, using an isolated temporary-sandbox callback.
+- Breaking: replace public Shed `Workspace` and `Project` values with
+  `Sandbox`. Construct it with the application's actual root, configure its one
+  scope, and then construct agents. Scope selection does not create directories.
+- Remove the concrete `roboshed.deployments.robosprawl` preset. RoboSprawl owns
+  its paths, endpoints, extra capabilities, agent graph, and `Deployment`
+  instance in its application configuration.
+
+See `docs/agent-factories.md` for migration. Versions and release preparation are
+separate from this unreleased refactor.
+
 ## 0.1.0a3 - 2026-09-10
 
 - Breaking: replace the public Shed `Workspace` and `Project` primitives with a
@@ -55,8 +79,9 @@
 
 - Breaking: capabilities pass configured endpoints directly to their tools,
   falling back to the agent's model when unset. Librarian snapshotting and
-  consolidation can use separate models. Use `librarian(agent_endpoint=...)`
-  for a shared default, with `endpoint` overrides on `ConversationSnapshots`
+  consolidation can use separate models. Use
+  `librarian(sandbox, agent_names, agent_endpoint=...)` for a shared default,
+  with `endpoint` overrides on `ConversationSnapshots`
   and `MemoryConsolidation`. Its special `endpoint_factory` argument
   is removed; endpoints and runtime cancellation remain independent inputs.
   See `docs/agent-factories.md`.

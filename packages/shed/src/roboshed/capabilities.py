@@ -109,7 +109,6 @@ class ConversationSnapshots(AgentCapability):
     """
 
     sandbox: Sandbox
-    project_slug: str
     agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     token_growth_threshold: int = 20_000
@@ -141,13 +140,9 @@ class ConversationSnapshots(AgentCapability):
                 snapshot_conversations(
                     Ctx(
                         endpoint=endpoint,
-                        conversation_root=self.sandbox.project_logs_dir(
-                            self.project_slug
-                        ),
-                        snapshot_root=self.sandbox.project_snapshots_dir(
-                            self.project_slug
-                        ),
-                        memory_root=self.sandbox.project_memory_dir(self.project_slug),
+                        conversation_root=self.sandbox.project_logs_dir(),
+                        snapshot_root=self.sandbox.project_snapshots_dir(),
+                        memory_root=self.sandbox.project_memory_dir(),
                         agent_names=set(self.agent_names),
                         token_growth_threshold=self.token_growth_threshold,
                         max_chars=self.max_chars,
@@ -169,7 +164,6 @@ class MemoryConsolidation(AgentCapability):
     """
 
     sandbox: Sandbox
-    project_slug: str
     agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     min_pending_snapshots: int = 3
@@ -202,13 +196,9 @@ class MemoryConsolidation(AgentCapability):
                 consolidate_memory(
                     Ctx(
                         endpoint=endpoint,
-                        snapshot_root=self.sandbox.project_snapshots_dir(
-                            self.project_slug
-                        ),
-                        memory_root=self.sandbox.project_memory_dir(self.project_slug),
-                        conversation_root=self.sandbox.project_logs_dir(
-                            self.project_slug
-                        ),
+                        snapshot_root=self.sandbox.project_snapshots_dir(),
+                        memory_root=self.sandbox.project_memory_dir(),
+                        conversation_root=self.sandbox.project_logs_dir(),
                         agent_names=set(self.agent_names),
                         min_pending_snapshots=self.min_pending_snapshots,
                         max_pending_age_seconds=self.max_pending_age_seconds,
@@ -227,7 +217,6 @@ class ArtifactRetention(AgentCapability):
     """Automatic retention limits for project logs, snapshots, and memory."""
 
     sandbox: Sandbox
-    project_slug: str
     max_log_files: int = 500
     max_snapshot_files: int = 100
     max_memory_files: int = 10
@@ -240,14 +229,14 @@ class ArtifactRetention(AgentCapability):
             default_tools=(
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_logs_dir(self.project_slug)],
+                        folders=[self.sandbox.project_logs_dir()],
                         pattern="*.json",
                         max_files=self.max_log_files,
                     )
                 ).copy(name=PURGE_LOGS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_snapshots_dir(self.project_slug)],
+                        folders=[self.sandbox.project_snapshots_dir()],
                         pattern="*.md",
                         max_files=self.max_snapshot_files,
                         prune_empty_directories=True,
@@ -255,7 +244,7 @@ class ArtifactRetention(AgentCapability):
                 ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_memory_dir(self.project_slug)],
+                        folders=[self.sandbox.project_memory_dir()],
                         pattern="*.md",
                         max_files=self.max_memory_files,
                     )
@@ -273,7 +262,6 @@ class MaintenanceCadence(AgentCapability):
     """
 
     sandbox: Sandbox
-    project_slug: str
     agent_names: Collection[str]
     seconds: float = 120.0
 
@@ -287,9 +275,7 @@ class MaintenanceCadence(AgentCapability):
                     Ctx(
                         seconds=self.seconds,
                         is_cancelled=lambda: pipe.cancelled,
-                        conversation_root=self.sandbox.project_logs_dir(
-                            self.project_slug
-                        ),
+                        conversation_root=self.sandbox.project_logs_dir(),
                         agent_names=set(self.agent_names),
                     )
                 ).copy(name=SLEEP_BETWEEN_RUNS_TOOL_NAME),
