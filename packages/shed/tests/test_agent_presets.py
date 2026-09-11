@@ -19,6 +19,7 @@ from roboz.runtime import PersistenceSink, RunLifecycleEvent
 
 def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
     sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("project")
     endpoint = MockLLMEndpoint([])
     orchestrator_definition = orchestrator(sandbox, agent_endpoint=endpoint)
     librarian_definition = librarian(

@@ -29,7 +29,7 @@ def orchestrator(
     interaction_mode: Output | None = Output.CLI,
     initial_messages: Sequence[Path | str] = (),
 ) -> DeployableAgent:
-    """Configure the orchestrator against a sandbox's current build scope."""
+    """Configure the orchestrator for an already-configured sandbox."""
     return DeployableAgent(
         name="orchestrator",
         description="Coordinates ongoing user goals and specialist agents.",
@@ -37,8 +37,8 @@ def orchestrator(
         agent_endpoint=agent_endpoint,
         capabilities=(
             Capability(tools=(stop,)),
-            FileCommands(sandbox.permissions),
-            FileEditing(sandbox.permissions),
+            FileCommands(sandbox.permissions()),
+            FileEditing(sandbox.permissions()),
         ),
         subagents=tuple(subagents),
         background_agents=tuple(background_agents),

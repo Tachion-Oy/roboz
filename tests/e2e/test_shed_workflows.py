@@ -115,9 +115,10 @@ def _conversation_snapshot_memory_retention(
 ) -> None:
     sandbox = Sandbox(tmp_path)
     project_slug = "test"
-    logs = sandbox.project_logs_dir(project_slug)
-    snapshots = sandbox.project_snapshots_dir(project_slug)
-    memory_root = sandbox.project_memory_dir(project_slug)
+    sandbox.configure_scope(project_slug)
+    logs = sandbox.project_logs_dir()
+    snapshots = sandbox.project_snapshots_dir()
+    memory_root = sandbox.project_memory_dir()
     author = Agent(
         name="author",
         interaction_mode=None,
@@ -154,26 +155,23 @@ def _conversation_snapshot_memory_retention(
         capabilities=(
             ConversationSnapshots(
                 sandbox,
-                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
                 token_growth_threshold=1,
             ),
             MemoryConsolidation(
                 sandbox,
-                project_slug,
                 {"author"},
                 endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
                 min_pending_snapshots=1,
             ),
             ArtifactRetention(
                 sandbox,
-                project_slug,
                 max_snapshot_files=0,
                 max_log_files=0,
                 max_memory_files=1,
             ),
-            MaintenanceCadence(sandbox, project_slug, {"author"}, seconds=0),
+            MaintenanceCadence(sandbox, {"author"}, seconds=0),
         ),
     ).build(
         event_sink_factory=lambda name: (PersistenceSink.for_path(logs / name),)
@@ -220,6 +218,8 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         interaction_mode=Output.API,
     )
     sandbox = Sandbox(tmp_path)
+    project_slug = "collaboration"
+    sandbox.configure_scope(project_slug)
     definition = orchestrator_definition(
         sandbox,
         agent_endpoint=MockLLMEndpoint(
@@ -245,9 +245,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         subagents=(child,),
         interaction_mode=Output.API,
     )
-    project_slug = "collaboration"
     events = []
-    sandbox.configure_scope(project_slug)
     agent, background_agents = Deployment(
         agent=definition, sandbox=sandbox, event_sinks=[events.append],
     ).build()
@@ -260,7 +258,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     assert result.value == "session ended"
     assert len(replies.prompts) == 2
     assert any("specialist result" in m.content for m in messages)
-    logs = sandbox.project_logs_dir(project_slug)
+    logs = sandbox.project_logs_dir()
     assert list((logs / "orchestrator").rglob("*.json"))
     assert list((logs / "specialist").rglob("*.json"))
     assert any(getattr(event, "agent_name", None) == "specialist" for event in events)
@@ -302,7 +300,7 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
 
     first = configure().build()[0]
     second = configure().build()[0]
-    assert not sandbox.project_dir("standalone").exists()
+    assert not sandbox.project_dir().exists()
     assert first is not second
     assert first.pipe is not second.pipe
     assert first.agent_endpoint is not second.agent_endpoint
@@ -311,7 +309,7 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
     assert "materialized" not in borrowed.__dict__
     assert first.invoke()[0].value == second.invoke()[0].value == "complete"
     assert observed
-    assert list(sandbox.project_logs_dir("standalone").rglob("*.json"))
+    assert list(sandbox.project_logs_dir().rglob("*.json"))
 
 
 if __name__ == "__main__":

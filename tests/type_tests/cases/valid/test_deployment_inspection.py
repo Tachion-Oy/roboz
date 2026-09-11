@@ -17,11 +17,11 @@ def inspect(
     assert_type(route.materialize(), LLMEndpoint)
 
     def configure(sandbox: Sandbox) -> Deployment:
+        sandbox.configure_scope("project")
         deployment = Deployment(
             sandbox=sandbox,
             agent=orchestrator_definition(sandbox, agent_endpoint=route),
         )
-        deployment.sandbox.configure_scope("project")
         deployment.event_sinks.append(lambda event: None)
         return deployment
 

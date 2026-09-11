@@ -32,5 +32,4 @@ def inspect(
 
 
 def construct_sandbox(root: Path) -> None:
-    constructor = Sandbox.define(shared="workspace")
-    assert_type(constructor(root=root), Sandbox)
+    assert_type(Sandbox(root=root, shared="workspace"), Sandbox)

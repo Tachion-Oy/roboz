@@ -32,7 +32,8 @@ def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
     def failing(sandbox):
         project_slug = "project"
         inspected.append((sandbox, project_slug))
-        sandbox.project_dir(project_slug).mkdir(parents=True)
+        sandbox.configure_scope(project_slug)
+        sandbox.project_dir().mkdir(parents=True)
         raise RuntimeError("recipe failed")
 
     with pytest.raises(RuntimeError, match="recipe failed"):
@@ -42,7 +43,7 @@ def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
             registrations=(),
         )
     inspected_sandbox, inspected_slug = inspected[0]
-    assert replace(inspected_sandbox, root=sandbox.root) == sandbox
+    assert replace(inspected_sandbox, root=sandbox.root, scope=None) == sandbox
     assert inspected_slug == "project"
     assert not inspected_sandbox.resolved_root.exists()
     assert not sandbox.resolved_root.exists()
@@ -117,6 +118,6 @@ def test_inspection_discovers_all_agent_modes_without_materializing(tmp_path):
     )
     with pytest.raises(DependencyContractError):
         inspect_dependencies(configure, sandbox=sandbox, registrations=())
-    assert sandbox.scope_folder is None
+    assert sandbox.scope is None
     assert all(not temporary.resolved_root.exists() for temporary in inspected)
     assert not sandbox.resolved_root.exists()

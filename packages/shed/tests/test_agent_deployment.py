@@ -24,6 +24,7 @@ def _specialist(name, subagents=()):
 
 def test_librarian_defaults_snapshot_recursive_foreground_conversations(tmp_path):
     sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("project")
     child = _specialist("child", (_specialist("grandchild"),))
     background = _specialist("background", (_specialist("background_child"),))
     foreground = orchestrator_definition(
@@ -48,7 +49,6 @@ def test_librarian_defaults_snapshot_recursive_foreground_conversations(tmp_path
             ),
         ),
     )
-    deployment.sandbox.configure_scope("project")
     root, (maintenance, _) = deployment.build()
     sandbox = deployment.sandbox
     assert deployment.agent.agent_names(include_background=False) == names
@@ -78,6 +78,7 @@ def test_librarian_defaults_snapshot_recursive_foreground_conversations(tmp_path
 def test_reconfiguration_does_not_redirect_built_agents(tmp_path):
     events, later_events = [], []
     sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("one")
     deployment = Deployment(
         sandbox=sandbox,
         agent=orchestrator_definition(
@@ -86,17 +87,24 @@ def test_reconfiguration_does_not_redirect_built_agents(tmp_path):
         ),
     )
     deployment.event_sinks.append(events.append)
-    sandbox.configure_scope("one")
     first, _ = deployment.build()
+    one_project = sandbox.project_dir()
+    one_logs = sandbox.project_logs_dir()
     sandbox.configure_scope("two")
+    deployment.agent = orchestrator_definition(
+        sandbox,
+        agent_endpoint=MockLLMEndpoint([]),
+    )
     deployment.event_sinks[:] = [later_events.append]
     second, _ = deployment.build()
+    two_project = sandbox.project_dir()
+    two_logs = sandbox.project_logs_dir()
     assert first.pipe is not second.pipe
-    assert first.pipe.data_path == sandbox.project_logs_dir("one") / "orchestrator"
-    assert second.pipe.data_path == sandbox.project_logs_dir("two") / "orchestrator"
+    assert first.pipe.data_path == one_logs / "orchestrator"
+    assert second.pipe.data_path == two_logs / "orchestrator"
     assert not sandbox.projects_dir.exists()
-    for folder in ("one", "two"):
-        target = sandbox.project_dir(folder) / "note.txt"
+    for project in (one_project, two_project):
+        target = project / "note.txt"
         target.parent.mkdir(parents=True)
         target.write_text("before")
     first.copy(agent_endpoint=MockLLMEndpoint([
@@ -110,34 +118,23 @@ def test_reconfiguration_does_not_redirect_built_agents(tmp_path):
         },
         {"action": "stop", "rationale": "done", "value": "finished"},
     ])).invoke()
-    assert (sandbox.project_dir("one") / "note.txt").read_text() == "after"
-    assert (sandbox.project_dir("two") / "note.txt").read_text() == "before"
+    assert (one_project / "note.txt").read_text() == "after"
+    assert (two_project / "note.txt").read_text() == "before"
     assert events and not later_events
-    assert list(sandbox.project_logs_dir("one").rglob("*.json"))
-    assert not sandbox.project_logs_dir("two").exists()
+    assert list(one_logs.rglob("*.json"))
+    assert not two_logs.exists()
 
 
-def test_instance_requires_scope_before_building_capabilities(tmp_path):
+def test_orchestrator_requires_a_configured_scope(tmp_path):
     sandbox = Sandbox(tmp_path)
-    class Unexpected:
-        def build(self, pipe, *, default_endpoint):
-            pytest.fail("must validate scope first")
-
-    deployment = Deployment(
-        sandbox=sandbox,
-        agent=orchestrator_definition(sandbox, agent_endpoint=MockLLMEndpoint([])),
-        additional_capabilities=(Unexpected(),),
-    )
     with pytest.raises(ValueError, match="configure_scope"):
-        deployment.build()
-    other = replace(deployment, event_sinks=[])
-    deployment.event_sinks.append(lambda event: None)
-    assert not other.event_sinks
+        orchestrator_definition(sandbox, agent_endpoint=MockLLMEndpoint([]))
     assert not list(tmp_path.iterdir())
 
 
 def test_instance_preserves_maintenance_order_and_cli_output(tmp_path):
     sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("project")
     foreground = orchestrator_definition(
         sandbox,
         agent_endpoint=MockLLMEndpoint([]),
@@ -157,7 +154,6 @@ def test_instance_preserves_maintenance_order_and_cli_output(tmp_path):
         ),
         include_cli_output=True,
     )
-    deployment.sandbox.configure_scope("project")
     root, (maintenance,) = deployment.build()
     assert not root.initial_messages
     assert len(root.pipe.event_sinks) == len(maintenance.pipe.event_sinks) == 2

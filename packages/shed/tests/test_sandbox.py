@@ -9,23 +9,19 @@ from roboshed.tools.utils import check_allow_deny_permission
 from roboz import Ctx
 
 
-def test_define_creates_fresh_unscoped_sandboxes_with_layout_defaults(tmp_path):
-    constructor = Sandbox.define(
+def test_constructs_unscoped_sandbox_with_layout_configuration(tmp_path):
+    sandbox = Sandbox(
+        tmp_path,
         shared="workspace",
         logs=Path("conversation_logs"),
         memory=Path("persistent_memory"),
     )
-    first = constructor(root=tmp_path / "first")
-    second = constructor(root=tmp_path / "second", shared="team")
 
-    assert first.root == tmp_path / "first"
-    assert first.shared == "workspace"
-    assert first.logs == Path("conversation_logs")
-    assert first.memory == Path("persistent_memory")
-    assert second.root == tmp_path / "second"
-    assert second.shared == "team"
-    assert first is not second
-    assert first.scope_folder is second.scope_folder is None
+    assert sandbox.root == tmp_path
+    assert sandbox.shared == "workspace"
+    assert sandbox.logs == Path("conversation_logs")
+    assert sandbox.memory == Path("persistent_memory")
+    assert sandbox.scope is None
     assert not list(tmp_path.iterdir())
 
 
@@ -34,17 +30,15 @@ def test_configure_scope_preserves_policy_and_validates_before_mutation(tmp_path
     with pytest.raises(ValueError, match="configure_scope"):
         sandbox.permissions()
     sandbox.configure_scope("one")
-    assert sandbox.project_dir() == sandbox.project_dir("one")
-    assert sandbox.project_logs_dir() == sandbox.project_logs_dir("one")
-    assert sandbox.permissions() == sandbox.permissions("one")
+    assert sandbox.project_dir() == tmp_path / "jobs/one"
     captured = replace(sandbox)
     for invalid in ("", "..", "../escape", "nested/folder", str(tmp_path)):
         with pytest.raises(ValueError):
             sandbox.configure_scope(invalid)
-        assert sandbox.scope_folder == "one"
+        assert sandbox.scope == "one"
     sandbox.configure_scope("two")
-    assert captured.scope_folder == "one"
-    assert sandbox.permissions() == sandbox.permissions("two")
+    assert captured.scope == "one"
+    assert sandbox.scope == "two"
     assert not list(tmp_path.iterdir())
 
 
@@ -58,17 +52,18 @@ def test_sandbox_names_and_persistence_are_independently_configurable(tmp_path):
         snapshots=Path("summaries"),
         memory=Path("knowledge"),
     )
-    project_root = sandbox.project_dir("research")
+    sandbox.configure_scope("research")
+    project_root = sandbox.project_dir()
     assert project_root == tmp_path / "root/jobs/research"
-    assert sandbox.project_logs_dir("research") == tmp_path / "separate-logs"
-    assert sandbox.project_snapshots_dir("research") == project_root / "summaries"
-    assert sandbox.artifact_dir("research", "reports/draft") == (
+    assert sandbox.project_logs_dir() == tmp_path / "separate-logs"
+    assert sandbox.project_snapshots_dir() == project_root / "summaries"
+    assert sandbox.artifact_dir("reports/draft") == (
         project_root / "reports/draft"
     )
     assert sandbox.shared_dir == tmp_path / "root/team"
     assert not sandbox.root.exists()
     with pytest.raises(ValueError, match="inside"):
-        sandbox.artifact_dir("research", "../escape")
+        sandbox.artifact_dir("../escape")
     with pytest.raises(ValueError, match="overlap"):
         replace(sandbox, memory=Path("summaries/nested"))
     with pytest.raises(ValueError, match="overlap"):
@@ -87,8 +82,9 @@ def test_sandbox_accepts_nested_relative_persistence_without_creating_dirs(
     tmp_path: Path, field: str, accessor: str
 ):
     sandbox = Sandbox(tmp_path / "sandbox", **{field: Path("storage/nested")})
+    sandbox.configure_scope("research")
     method = getattr(sandbox, accessor)
-    assert method("research") == sandbox.project_dir("research") / "storage/nested"
+    assert method() == sandbox.project_dir() / "storage/nested"
     assert not sandbox.root.exists()
 
 
@@ -97,8 +93,9 @@ def test_sandbox_accepts_nested_relative_persistence_without_creating_dirs(
 def test_sandbox_rejects_relative_persistence_outside_project(
     tmp_path: Path, field: str, path: str
 ):
+    sandbox = Sandbox(tmp_path / "sandbox", **{field: Path(path)})
     with pytest.raises(ValueError, match="inside"):
-        Sandbox(tmp_path / "sandbox", **{field: Path(path)})
+        sandbox.configure_scope("research")
     assert not tmp_path.joinpath("sandbox").exists()
 
 
@@ -114,13 +111,14 @@ def test_sandbox_rejects_escaping_persistence_symlink(
     tmp_path: Path, field: str, accessor: str
 ):
     sandbox = Sandbox(tmp_path / "sandbox", **{field: Path("linked/nested")})
-    project_root = sandbox.project_dir("research")
+    sandbox.configure_scope("research")
+    project_root = sandbox.project_dir()
     project_root.mkdir(parents=True)
     outside = tmp_path / "outside"
     outside.mkdir()
     (project_root / "linked").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="inside"):
-        getattr(sandbox, accessor)("research")
+        getattr(sandbox, accessor)()
     assert not (outside / "nested").exists()
 
 
@@ -137,7 +135,8 @@ def test_sandbox_accepts_absolute_external_persistence(
 ):
     outside = tmp_path / "outside"
     sandbox = Sandbox(tmp_path / "sandbox", **{field: outside / "nested/../storage"})
-    assert getattr(sandbox, accessor)("research") == outside / "storage"
+    sandbox.configure_scope("research")
+    assert getattr(sandbox, accessor)() == outside / "storage"
     assert not sandbox.root.exists()
     assert not outside.exists()
 
@@ -156,13 +155,14 @@ def test_sandbox_rejects_overlapping_persistence(
     tmp_path: Path, field: str, accessor: str, absolute: bool, nested: bool
 ):
     sandbox = Sandbox(tmp_path / "sandbox")
+    sandbox.configure_scope("research")
     other = "memory" if field == "logs" else "logs"
     path = Path(other) / "nested" if nested else Path(other)
     if absolute:
-        path = sandbox.project_dir("research") / path
+        path = sandbox.project_dir() / path
     with pytest.raises(ValueError, match="overlap"):
         changed = replace(sandbox, **{field: path})
-        getattr(changed, accessor)("research")
+        getattr(changed, accessor)()
     assert not sandbox.root.exists()
 
 
@@ -177,8 +177,10 @@ def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped)
     outside.write_text("private")
     (root / "link.txt").symlink_to(outside)
     sandbox = Sandbox(root)
+    if project_scoped:
+        sandbox.configure_scope("research")
     policy = (
-        sandbox.permissions("research")
+        sandbox.permissions()
         if project_scoped
         else PermissionPolicy.local(root)
     )
@@ -194,7 +196,7 @@ def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped)
         assert resolve_allow_verdict(path, Operation.READ, ctx)[0] == ActionVerdict.deny
     assert (
         resolve_allow_verdict(
-            (sandbox.project_dir("research") if project_scoped else root) / "new.txt",
+            (sandbox.project_dir() if project_scoped else root) / "new.txt",
             Operation.CREATE,
             ctx,
         )[0]
@@ -220,7 +222,8 @@ def test_configured_sandbox_permission_boundaries(tmp_path, area, operation, all
     sandbox = Sandbox(
         tmp_path / "root", readonly="references", shared="team", projects="work"
     )
-    policy = sandbox.permissions("my-project")
+    sandbox.configure_scope("my-project")
+    policy = sandbox.permissions()
     verdict = check_allow_deny_permission(
         location=policy.base / area / "file.txt",
         op_type=operation,
@@ -242,7 +245,8 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
     from roboz.runtime import EventPipe
 
     sandbox = Sandbox(tmp_path / "root")
-    policy = sandbox.permissions("my-project")
+    sandbox.configure_scope("my-project")
+    policy = sandbox.permissions()
     prompts = []
 
     def interact(message, *, with_reply):
@@ -276,11 +280,12 @@ def test_project_permission_paths_treat_globs_as_literal_names(
     from roboshed.tools.utils import check_rule
 
     sandbox = Sandbox(tmp_path, projects=projects, shared=shared)
-    policy = sandbox.permissions(slug)
+    sandbox.configure_scope(slug)
+    policy = sandbox.permissions()
     for operation in (Operation.CREATE, Operation.DELETE):
         for location in (
-            sandbox.project_dir(slug),
-            sandbox.project_dir(slug) / "file.txt",
+            sandbox.project_dir(),
+            sandbox.project_dir() / "file.txt",
         ):
             assert check_rule(location, operation, list(policy.allow), policy.base)
             assert not check_rule(location, operation, list(policy.ask), policy.base)

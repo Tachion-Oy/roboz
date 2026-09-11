@@ -56,7 +56,9 @@ def test_child_slot_selects_invocation_behavior(background, tmp_path):
     responses = [] if background else [{"action": "worker", "rationale": "delegate"}]
     responses.append({"action": "stop", "rationale": "done", "value": "root finished"})
     definition = replace(definition, agent_endpoint=MockLLMEndpoint(responses))
-    root, backgrounds = Deployment(agent=definition, sandbox=Sandbox(tmp_path, scope_folder="scope")).build()
+    sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("scope")
+    root, backgrounds = Deployment(agent=definition, sandbox=sandbox).build()
     invocation = (root.default_tools if background else root.tools)[-1]
     assert invocation.name == (
         "start_background_agent_worker" if background else "worker"
@@ -118,9 +120,11 @@ def test_deployment_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp
         initial_messages=("existing",),
     )
     caller_events = []
+    sandbox = Sandbox(tmp_path)
+    sandbox.configure_scope("scope")
     deployment = Deployment(
         agent=definition,
-        sandbox=Sandbox(tmp_path, scope_folder="scope"),
+        sandbox=sandbox,
         event_sinks=[caller_events.append],
     )
     root, backgrounds = deployment.build()
@@ -153,9 +157,11 @@ def test_deployment_rejects_cross_branch_names_before_build(collision, tmp_path)
         background_agents=(background, _definition(collision)),
     )
     with pytest.raises(ValueError, match="unique"):
+        sandbox = Sandbox(tmp_path)
+        sandbox.configure_scope("scope")
         Deployment(
             agent=definition,
-            sandbox=Sandbox(tmp_path, scope_folder="scope"),
+            sandbox=sandbox,
         ).build()
     assert not list(tmp_path.iterdir())
     with pytest.raises(ValueError, match="unique"):
