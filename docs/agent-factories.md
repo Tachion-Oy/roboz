@@ -40,6 +40,9 @@ The generic dataclass constructor remains available for one-off definitions.
 Both child slots contain `DeployableAgent` values: `subagents` become selectable
 delegation tools and `background_agents` become automatic start tools. Builds
 validate names recursively and return fresh runtime agents without invoking them.
+Use `definition.build_graph()` to receive `(agent, background_agents)` when the
+host needs background handles for lifecycle control; `build()` returns only the
+root agent. Neither method selects sandbox paths or persistence sinks.
 
 ## Shed agent roles
 
@@ -120,6 +123,7 @@ the application supplies its actual `application_root`, endpoints, agents,
 instructions, and UI event sink.
 
 ```python
+from dataclasses import replace
 from pathlib import Path
 
 from roboshed.agents import librarian, orchestrator
