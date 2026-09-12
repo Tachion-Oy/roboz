@@ -1,38 +1,111 @@
 # Roboz
 
+**Chain tools. Skip model calls.**
+
+Roboz lets a model select an active tool, then routes its typed output through
+ordinary Python. Conditional branches, follow-up work, and termination do not
+have to go back through the agent loop.
+
+![The usual agent loop sends every lunch-planning step back through the agent. A Roboz chain returns to the agent when Bob wants no lunch, passes any cuisine into one parameterized restaurant search, and retries the plan directly when no seats are available.](docs/assets/tool-chaining.svg)
+
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-
-Typed control flow and context management for reliable agentic workflows. Roboz
-lets the model decide what needs judgment, then hands the result to ordinary,
-typed Python for the steps that should not be probabilistic.
 
 > [!WARNING]
 > Roboz is pre-release software requiring Python 3.13 or newer. APIs may change
 > before 1.0.
 
-## Why Roboz
+## Tool chaining is the point
 
-**Chain tools instead of prompting through every step.** The model chooses an
-active tool; successful output can flow directly into typed, passive tools with
-no additional model decision. Conditions can route by output value or type,
-external policy, or current state. Branches can converge on a shared successor.
-Only active tools enter the model's tool surface, keeping orchestration details
-out of the prompt while Python and Pydantic enforce the handoffs.
+The model sees and selects **active tools**. A tool with `chained_to` is
+**passive**: its schema and instructions stay outside the model's active tool
+surface, and Roboz can run it directly from its parent's output.
 
-**Treat context as a lifecycle, not an ever-growing transcript.** Every message
-can carry its own truncation policy. Keep an operational result intact while it
-is recent, reduce it to a stub later, and remove it from model context when it is
-stale. `NO_MESSAGE` hides internal chatter immediately. These policies change
-only the view sent to the model; runtime events and persisted messages retain the
-full record.
+At each handoff, an ordinary Python predicate can select one successor. Paths
+can branch by output type or value, consult application policy, and converge on
+a shared tool. Pydantic validates the runtime handoff, while the type checker
+catches incompatible links before the agent runs.
 
-## Install
+```python
+import roboz as rz
 
-The PyPI commands below require a published release. For an unpublished checkout,
-[build and test the local wheels](docs/build-and-test.md). Maintainers publish
-[reviewed package tags directly to PyPI](docs/build-and-test.md#preparing-and-publishing-a-release).
+
+class LunchPreference(rz.Empty):
+    cuisine: str | None
+
+
+class Restaurant(rz.Empty):
+    name: str
+    seats_available: bool
+
+
+class Booking(rz.Empty):
+    confirmation: str
+
+
+@rz.tool
+def plan_lunch_with_bob(
+    input: rz.Empty, messages: list[rz.Message]
+) -> LunchPreference:
+    ...
+
+
+@rz.tool
+def retry_plan_lunch_with_bob(
+    input: Restaurant, messages: list[rz.Message]
+) -> LunchPreference:
+    ...
+
+
+@rz.tool(
+    chained_to=[plan_lunch_with_bob, retry_plan_lunch_with_bob],
+    chain_condition=lambda output: (
+        isinstance(output, LunchPreference)
+        and output.cuisine is not None
+    ),
+)
+def find_restaurant(
+    input: LunchPreference, messages: list[rz.Message]
+) -> Restaurant:
+    ...
+
+
+retry_plan_lunch_with_bob.chain(
+    chained_to=find_restaurant,
+    chain_condition=lambda output: (
+        isinstance(output, Restaurant) and not output.seats_available
+    ),
+)
+
+
+@rz.tool(
+    chained_to=find_restaurant,
+    chain_condition=lambda output: (
+        isinstance(output, Restaurant) and output.seats_available
+    ),
+)
+def book_a_table(input: Restaurant, messages: list[rz.Message]) -> Booking:
+    ...
+```
+
+That changes three practical things:
+
+- **Fewer model calls.** When code already knows the next step, no model has to
+  choose it again.
+- **Less context bloat.** Passive tool descriptions and schemas never enter the
+  active tool surface.
+- **Explicit control flow.** Conditions are normal, deterministic Python that
+  can be read, tested, and type-checked.
+
+If Bob wants no lunch, no cuisine branch matches and the agent resumes.
+Otherwise, his preference becomes the typed argument to one restaurant search.
+Available seats flow directly to booking; no seats flow through the passive
+retry planner and back into the same search, still without another model
+decision. Returning `Stop` would end the run instead; several matching
+conditions raise rather than create an ambiguous path.
+
+## Try it
 
 ```bash
 uv add roboz
@@ -44,124 +117,99 @@ Or with pip:
 python -m pip install roboz
 ```
 
-Optional tools and adapters are separate distributions in this repository:
-`roboshed`, `roboz-endpoints`, and `roboz-proton-bridge`. Start with the
-[installation and add-on guide](docs/addons.md) to build their wheels and compose
-agents from capabilities. These companion releases must be
-published before their named PyPI installs and convenience extras are usable.
+The complete [quick start](examples/quickstart.py) uses a deterministic mock
+endpoint. Bob first chooses sushi; when no seats are available, the typed chain
+retries the planner, routes his second choice to pizza, and books—all from one
+model-selected entry into the chain and without credentials:
 
-## Quick start
-
-```python
-from builtins import input as read_input
-
-import roboz as rz
-
-
-@rz.tool
-def ask_number(input: rz.Empty, messages: list[rz.Message]) -> rz.Int:
-    """Ask the user for an integer, repeating until the response is valid."""
-    while True:
-        try:
-            reply = read_input("Enter an integer: ")
-        except EOFError:  # Keep the example runnable in non-interactive checks.
-            reply = "7"
-        try:
-            return rz.Int(value=int(reply))
-        except ValueError:
-            print("Please enter a whole number.")
-
-
-@rz.tool(
-    chained_to=ask_number,
-    chain_condition=lambda output: output.value % 2 == 0,
-)
-def report_even(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
-    """Report that the supplied integer is even."""
-    print(f"{input.value} is even.")
-    return rz.Stop(value="even")
-
-
-@rz.tool(
-    chained_to=ask_number,
-    chain_condition=lambda output: output.value % 2 != 0,
-)
-def report_odd(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
-    """Report that the supplied integer is odd."""
-    print(f"{input.value} is odd.")
-    return rz.Stop(value="odd")
-
-
-agent = rz.Agent(
-    name="demo",
-    is_agentic=False,
-    agent_endpoint=None,
-    default_tools=[ask_number],
-    tools=[report_even, report_odd],
-)
-
-agent.invoke()
+```bash
+uv run python examples/quickstart.py
 ```
 
-`ask_number` starts with `Empty`, handles input validation locally, and returns a
-typed `Int`. Roboz then evaluates both conditions and runs exactly one passive
-successor. The routing is ordinary, testable Python; no model needs to interpret
-the reply or choose the next step.
+For an unpublished checkout, first run `uv sync --locked --dev`. PyPI commands
+require a published release; see the [build and test guide](docs/build-and-test.md)
+for local wheels.
 
-The same program is available in [`examples/quickstart.py`](examples/quickstart.py).
-See [`examples/tool_chaining.py`](examples/tool_chaining.py) for conditional
-routing and convergence, and
-[`examples/message_truncation.py`](examples/message_truncation.py) for a sliding
-message-visibility window.
+## Control what reaches the model
 
-## Primitives
+Context is a projection, not an ever-growing transcript. Every `Message` can
+carry a lifecycle policy: keep an output intact while it is recent, reduce it
+to a stub later, and remove it from model context when it is stale.
+`NO_MESSAGE` keeps operational chatter out of model context immediately. These
+policies affect only what the model sees; runtime events and persisted messages
+retain the full record.
+
+The prompt is not assembled behind an opaque stack of framework layers. The
+complete generated system prompt is available before invocation:
+
+```python
+print(agent.full_system_prompt)
+```
+
+## One execution abstraction
+
+Roboz uses tools for work and for orchestration instead of adding a separate
+hook mechanism for each new concern.
+
+| Concern | Roboz abstraction |
+| --- | --- |
+| A model-selectable action | Active `@tool` |
+| A deterministic follow-up | Passive chained tool |
+| Runtime configuration or dependencies | `@factory` bound with `Ctx` |
+| Startup, preflight, and default flow | `default_tools` |
+| Synchronous delegation | A subagent exposed as a named tool |
+| Background work | An idempotent background-start tool in the default flow |
+
+Tools remain independently testable callables with typed inputs and outputs.
+An agent's dependency view is derived from this same tool graph rather than a
+second registry.
+
+## Put models where they belong
+
+Each agent owns its endpoint. A model-backed factory can bind another endpoint
+through `Ctx`, so a planner, specialist, summarizer, or transcription tool does
+not have to share a model merely because it belongs to the same workflow. Lazy
+endpoint references keep model selection inspectable without constructing
+clients early.
+
+Provider SDKs remain outside core. The `roboz` package supplies the agent,
+tooling, model, runtime, persistence, dependency, and deployment primitives;
+install integrations only where they are needed.
+
+## Core primitives
 
 | Primitive | Role |
 | --- | --- |
-| `rz.Agent` | Owns the tool surface, prompt assembly, invoke loop, and runtime events. |
-| `@rz.tool` | Creates an action from typed input, messages, and output models. |
-| `rz.Ctx` | Binds keyword configuration and dependency objects without a custom class. |
-| `@rz.factory` | Creates a tool whose runtime context declares external dependencies. |
+| `rz.Agent` | Owns the active tool surface, prompt, invoke loop, and runtime events. |
+| `@rz.tool` | Defines an action with typed input and output models. |
+| `@rz.factory` and `rz.Ctx` | Bind configuration and external dependencies to a tool. |
 | `rz.Skill` | Packages reusable instructions and optional tools. |
-| `rz.Message` | Carries content plus its model-context truncation lifecycle. |
-| `roboz.runtime.EventPipe` | Emits lifecycle, message, and runtime events to explicit sinks. |
+| `rz.Message` | Carries content and its model-context lifecycle. |
+| `roboz.deployment.DeployableAgent` | Composes capabilities, subagents, and background agents. |
 
-The package contains agent and LLM primitives, models, runtime and persistence
-infrastructure, dependencies, skills, tooling, and foundational control/interaction tools.
-`roboz.dependencies` also validates exact dependency registrations and binds
-checker callbacks without running them. Shed supplies health probes and scheduling
-through `roboshed.dependency_health`.
-`roboz.llm.ModelSelector` selects among lazy model endpoints without constructing
-clients and can supply the current endpoint to a `DependencyRoute`.
-Provider catalogs and SDK integrations, guarded file and CLI tools, and application
-integrations belong in companion packages and are not dependencies of Roboz.
-Install `roboz-endpoints[openai]` for the initial OpenRouter, Cerebras, and Groq
-catalogues; it installs core automatically. See the
-[endpoint guide](packages/endpoints/README.md) for model selection and SDK adapters.
+## Optional ecosystem
 
-`roboz.deployment` supplies recursive `DeployableAgent` definitions and
-capability contracts. Put definitions directly in `subagents` or
-`background_agents`, append extensions with the explicit add methods, and unpack
-`agent, background_agents = definition.build()`. Capabilities declare required
-owner attributes and bind with `build(agent, pipe)`. `roboshed` supplies reusable
-orchestrator and Librarian constructors, concrete capabilities, memory tools,
-and sandbox structure. Import the constructors from `roboshed.agents`; the fixed
-lazy RoboSprawl recipe is `roboshed.deployments.robosprawl.robosprawl`. Configure
-each runtime with a project-scoped sandbox and explicit event sinks.
+Start with core and add only the integrations the application needs.
+
+| Distribution | Adds |
+| --- | --- |
+| `roboshed` | Guarded file and CLI tools, memory, compaction, reusable agents, and deployment recipes. |
+| `roboz-endpoints` | Lazy model catalogues and SDK adapters for OpenAI-compatible providers. |
+| `roboz-proton-bridge` | Proton Bridge email tools. |
+
+See the [add-on guide](docs/addons.md) for installation and composition, and the
+[endpoint guide](packages/endpoints/README.md) for model selection and provider
+adapters.
 
 ## Documentation
 
-| Guide | Contents |
+| Guide | Start here for |
 | --- | --- |
-| [`docs/reference.md`](docs/reference.md) | Concise API and runtime reference |
-| [`docs/agent-authoring.md`](docs/agent-authoring.md) | Agent composition and prompt policy |
-| [`docs/tool-authoring.md`](docs/tool-authoring.md) | Tools, factories, dependencies, and chaining |
-| [`docs/docstrings.md`](docs/docstrings.md) | Python and agent-facing tool docstring conventions |
-| [`docs/testing-practices.md`](docs/testing-practices.md) | Test design and review expectations |
-| [`docs/build-and-test.md`](docs/build-and-test.md) | Local setup and CI-equivalent validation |
-| [`docs/port-parity.md`](docs/port-parity.md) | Audited source-commit parity and deliberate exclusions |
-| [`docs/addons.md`](docs/addons.md) | Optional packages, composition, and releases |
-| [`docs/maintainer-basics.md`](docs/maintainer-basics.md) | Practical changelog, versioning, release, and open-source basics |
+| [Tool authoring](docs/tool-authoring.md) | Chaining, factories, conditions, and typed handoffs |
+| [Agent authoring](docs/agent-authoring.md) | Agent composition and prompt policy |
+| [Reference](docs/reference.md) | Runtime and API semantics |
+| [Message truncation example](examples/message_truncation.py) | Sliding model-context visibility |
+| [Testing practices](docs/testing-practices.md) | Deterministic workflow and contract tests |
 
 ## Development
 
@@ -171,17 +219,12 @@ uv run pytest
 uv run ruff check
 uv run pyright
 bash scripts/run_type_tests.sh
-uv build
 ```
 
-Build companions with `uv build --all-packages --out-dir dist/first-slice`.
-
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[build and test guide](docs/build-and-test.md) for the complete release gate.
 Roboz is typed and ships a PEP 561 `py.typed` marker.
 
 ## License
 
 Roboz is licensed under the [Apache License 2.0](LICENSE). Copyright © 2026 Tachion Oy.
-
-Context-aware tools use `ctx: rz.Ctx` and bind with `rz.Ctx(prefix="hello")`.
-See [tool authoring](docs/tool-authoring.md) and the
-[context API migration](docs/context-migration.md).
