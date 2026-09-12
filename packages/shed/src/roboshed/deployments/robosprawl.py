@@ -1,84 +1,78 @@
-"""RoboSprawl's persistent orchestrator and Librarian deployment recipe."""
+"""RoboSprawl's persistent orchestrator and Librarian agent recipe."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import replace
 
 from roboshed.agents import librarian, orchestrator
-from roboshed.deployments import Deployment
 from roboshed.sandbox import Sandbox
+from roboz.agent import Agent
 from roboz.dependencies import DependencyRoute, LazyExternalDependency
 from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.llm import EndpointLike, LLMEndpoint
-from roboz.runtime import EventSink, Output
+from roboz.runtime import EventSink, Output, default_event_sinks
 
 
-@dataclass(frozen=True, kw_only=True)
-class RoboSprawl:
-    """Configured choices for a persistent orchestrator with memory maintenance.
+def robosprawl(
+    sandbox: Sandbox,
+    /,
+    *,
+    endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
+    memory_endpoint: EndpointLike,
+    additional_capabilities: Sequence[AgentCapability],
+    specialists: Sequence[DeployableAgent],
+    interaction_mode: Output | None,
+    event_sinks: Sequence[EventSink] = (),
+) -> tuple[Agent, tuple[Agent, ...]]:
+    """Build a fresh fixed orchestrator and Librarian for a scoped project.
 
-    Each call creates a fresh deployment from the supplied scoped sandbox.
-    Capabilities, specialist definitions, and endpoints remain caller-owned.
-    Construction does not create directories, materialize endpoints, or run agents.
+    Additional capabilities follow the orchestrator's protected defaults, and
+    specialists become its synchronous children. The Librarian definition and
+    capability pipeline are owned entirely by this recipe. Construction creates
+    fresh runtime agents and bindings but does not start them.
     """
+    sandbox = replace(sandbox)
+    project_slug = sandbox.scope
+    if project_slug is None:
+        raise ValueError("sandbox scope is not configured; call configure_scope()")
+    sandbox.project_dir()
 
-    memory_endpoint: EndpointLike
-    additional_capabilities: Sequence[AgentCapability]
-    subagents: Sequence[DeployableAgent]
-    interaction_mode: Output | None
-
-    def __post_init__(self) -> None:
-        """Capture the configured capability and specialist sequences."""
-        object.__setattr__(
-            self, "additional_capabilities", tuple(self.additional_capabilities)
+    root = orchestrator(
+        sandbox,
+        agent_endpoint=DependencyRoute(endpoint_getter),
+        subagents=tuple(specialists),
+        interaction_mode=interaction_mode,
+    )
+    root.add_capabilities(*additional_capabilities)
+    watched_agent_names = root.agent_names(include_background=False)
+    root.add_background_agents(
+        librarian(
+            sandbox,
+            watched_agent_names,
+            agent_endpoint=memory_endpoint,
         )
-        object.__setattr__(self, "subagents", tuple(self.subagents))
+    )
+    context = (
+        "## Project context\n"
+        f"File tool base: {sandbox.resolved_root}\n"
+        f"Project: {project_slug}\n"
+        f"Writable project directory: {sandbox.project_dir()}\n"
+        f"Read-only directory: {sandbox.readonly_dir}\n"
+        f"Shared directory: {sandbox.shared_dir}\n"
+        f"Conversation logs: {sandbox.project_logs_dir()}\n"
+        f"Snapshots: {sandbox.project_snapshots_dir()}\n"
+        f"Memory: {sandbox.project_memory_dir()}"
+    )
+    root.set_initial_messages((sandbox.project_memory_dir(), context))
+    caller_sinks = tuple(event_sinks)
 
-    def __call__(
-        self,
-        sandbox: Sandbox,
-        project_slug: str,
-        /,
-        *,
-        endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
-        event_sinks: Sequence[EventSink] = (),
-    ) -> Deployment:
-        """Construct the scoped graph; the caller owns build and execution.
-
-        The sandbox must already be scoped to the supplied project. Use that
-        same instance for file permissions, memory maintenance, and persistence.
-        The root follows the endpoint getter when the selected model changes;
-        the Librarian uses the separately configured memory endpoint.
-        """
-        if sandbox.scope != project_slug:
-            raise ValueError("deployment project must match the sandbox scope")
-        names = {"orchestrator"}
-        for specialist in self.subagents:
-            names.update(specialist.agent_names(include_background=False))
-        lib = librarian(sandbox, names, agent_endpoint=self.memory_endpoint)
-        context = (
-            "## Project context\n"
-            f"File tool base: {sandbox.resolved_root}\n"
-            f"Project: {project_slug}\n"
-            f"Writable project directory: {sandbox.project_dir()}\n"
-            f"Read-only directory: {sandbox.readonly_dir}\n"
-            f"Shared directory: {sandbox.shared_dir}\n"
-            f"Conversation logs: {sandbox.project_logs_dir()}\n"
-            f"Snapshots: {sandbox.project_snapshots_dir()}\n"
-            f"Memory: {sandbox.project_memory_dir()}"
-        )
-        return Deployment(
-            agent=orchestrator(
-                sandbox,
-                agent_endpoint=DependencyRoute(endpoint_getter),
-                subagents=self.subagents,
-                background_agents=(lib,),
-                interaction_mode=self.interaction_mode,
-                initial_messages=(sandbox.project_memory_dir(), context),
-            ),
-            sandbox=sandbox,
-            additional_capabilities=tuple(self.additional_capabilities),
-            event_sinks=list(event_sinks),
+    def sinks(name: str) -> tuple[EventSink, ...]:
+        """Create agent-specific persistence sinks for this runtime build."""
+        return default_event_sinks(
+            data_path=sandbox.project_logs_dir() / name,
+            include_cli=False,
         )
 
+    return root.build(event_sinks=caller_sinks, event_sink_factory=sinks)
 
-__all__ = ["RoboSprawl"]
+
+__all__ = ["robosprawl"]

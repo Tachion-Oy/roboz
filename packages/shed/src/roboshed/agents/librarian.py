@@ -21,25 +21,30 @@ LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
 
 def librarian(
     sandbox: Sandbox,
-    agent_names: Collection[str],
+    watched_agent_names: Collection[str],
     *,
     agent_endpoint: EndpointLike | None,
 ) -> DeployableAgent:
     """Configure maintenance for the sandbox and foreground agent names."""
-    return DeployableAgent(
+    agent = DeployableAgent(
         name=LIBRARIAN_AGENT_NAME,
         description=LIBRARIAN_AGENT_DESCRIPTION,
-        interaction_mode=None,
         is_agentic=False,
         automatic_tool_prompt=False,
-        agent_endpoint=agent_endpoint,
-        capabilities=(
-            ConversationSnapshots(sandbox=sandbox, agent_names=agent_names),
-            MemoryConsolidation(sandbox=sandbox, agent_names=agent_names),
-            ArtifactRetention(sandbox=sandbox),
-            MaintenanceCadence(sandbox=sandbox, agent_names=agent_names),
+        default_capabilities=(
+            ConversationSnapshots(),
+            MemoryConsolidation(),
+            ArtifactRetention(),
+            MaintenanceCadence(),
         ),
     )
+    agent.set_agent_endpoint(agent_endpoint)
+    agent.set_interaction_mode(None)
+    agent.set_attributes(
+        sandbox=sandbox,
+        watched_agent_names=frozenset(watched_agent_names),
+    )
+    return agent
 
 
 __all__ = ["LIBRARIAN_AGENT_DESCRIPTION", "librarian"]

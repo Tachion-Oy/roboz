@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel
 from roboshed.sandbox import Sandbox
-from roboshed.deployments import Deployment
+from roboz.agent import Agent
 from roboz.dependencies import (
     BoundDependency,
     DependencyContractError,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def inspect_dependencies(
-    configure: Callable[[Sandbox], Deployment],
+    build_agent: Callable[[Sandbox], tuple[Agent, tuple[Agent, ...]]],
     *,
     sandbox: Sandbox,
     registrations: Sequence[DependencyRegistration] | None,
@@ -48,8 +48,7 @@ def inspect_dependencies(
     select executable and model checks only; other kinds require explicit checks.
     """
     with tempfile.TemporaryDirectory(prefix="deployment-dependency-inspection-") as raw:
-        deployment = configure(replace(sandbox, root=Path(raw)))
-        agent, _ = deployment.build()
+        agent, _ = build_agent(replace(sandbox, root=Path(raw)))
         discovered = (*agent.external_dependencies(), *additional_dependencies)
         if registrations is None:
             checks = {
