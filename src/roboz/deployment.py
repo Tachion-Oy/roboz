@@ -1,8 +1,8 @@
-"""Data-driven agent definitions and runtime-bound capabilities."""
+"""Configurable agent definitions and runtime-bound capabilities."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -14,28 +14,29 @@ from roboz.skill import Skill
 from roboz.tooling import Tool
 from roboz.tooling.context import Ctx
 
+type RequiredAttributeType = type[object] | tuple[type[object], ...]
+type RequiredAttributes = Mapping[str, RequiredAttributeType]
+
 
 class AgentCapability(Protocol):
-    """A configured feature that binds its own tools to an agent runtime.
+    """A configured feature that binds its tools to one agent runtime."""
 
-    Store tool-specific endpoints on the capability. The build input supplies
-    the owning agent's endpoint as a default, independently of its event pipe.
-    """
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Declare configuration values required from the owning agent."""
+        ...
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> "Capability":
-        """Bind configured tools, using the supplied default for unset endpoints."""
+    def build(self, agent: "DeployableAgent", pipe: EventPipe) -> "Capability":
+        """Bind configured tools using the owning agent and its fresh pipe."""
         ...
 
 
 @dataclass(frozen=True)
 class Capability(AgentCapability):
-    """Configured tools and skills that provide an agent feature.
+    """Already-bound tools and skills that provide an agent feature.
 
     Tools shared between a chain and default execution retain their identity.
-    Use this directly for already-bound inputs, or return one from a capability
-    builder for runtime-bound inputs. Supplied objects remain caller-owned.
+    Supplied objects remain caller-owned and require no owner configuration.
     """
 
     tools: tuple[Tool | Sequence[Tool], ...] = ()
@@ -43,39 +44,175 @@ class Capability(AgentCapability):
     skills: tuple[Skill, ...] = ()
     auto_loaded_skills: tuple[Skill, ...] = ()
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> "Capability":
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Declare that already-bound objects need no owner configuration."""
+        return {}
+
+    def build(self, agent: "DeployableAgent", pipe: EventPipe) -> "Capability":
         """Return these already-bound inputs without copying or starting work."""
         return self
 
 
-@dataclass(frozen=True, kw_only=True)
 class DeployableAgent:
-    """One agent's configuration, including its sub-agents and background agents.
+    """Mutable configuration for one agent and its attached child graph.
 
-    All tools and skills enter through capabilities. Already-bound inputs and
-    endpoint dependencies are supplied objects; callers own their reuse. Scripted
-    mock endpoints that consume responses must be recreated for each run.
-    Configure definitions before building; do not mutate them concurrently with
-    construction. Each capability selects its tool endpoints, using the agent
-    endpoint as the default. Endpoint objects remain independent of runtime controls.
-    Sub-agents become named delegation tools. Background agents are started
-    through default tools when their parent runs. Both slots contain the same
-    recursive definition type.
+    Constructor capabilities are fixed defaults. Later capabilities and child
+    definitions can only be appended. Runtime-specific values can be supplied
+    after declaration with set_attributes(); they belong only to this node.
+    Each build validates the complete graph and creates fresh runtime agents,
+    pipes, and capability bindings without retaining execution state here.
     """
 
-    name: str
-    agent_endpoint: EndpointLike | None
-    description: str = ""
-    system_prompt: str = ""
-    interaction_mode: Output | None = Output.CLI
-    is_agentic: bool = True
-    automatic_tool_prompt: bool = True
-    capabilities: tuple[AgentCapability, ...] = ()
-    subagents: tuple["DeployableAgent", ...] = ()
-    background_agents: tuple["DeployableAgent", ...] = ()
-    initial_messages: tuple[Path | str, ...] = ()
+    def __init__(
+        self,
+        *,
+        name: str,
+        description: str = "",
+        system_prompt: str = "",
+        is_agentic: bool = True,
+        automatic_tool_prompt: bool = True,
+        default_capabilities: Sequence[AgentCapability] = (),
+        subagents: Sequence["DeployableAgent"] = (),
+        background_agents: Sequence["DeployableAgent"] = (),
+    ) -> None:
+        """Configure identity, behavior, fixed capabilities, and initial children."""
+        self._name = name
+        self._description = description
+        self._system_prompt = system_prompt
+        self._is_agentic = is_agentic
+        self._automatic_tool_prompt = automatic_tool_prompt
+        self._default_capabilities = tuple(default_capabilities)
+        self._additional_capabilities: list[AgentCapability] = []
+        self._subagents: list[DeployableAgent] = []
+        self._background_agents: list[DeployableAgent] = []
+        self._agent_endpoint: EndpointLike | None = None
+        self._interaction_mode: Output | None = Output.CLI
+        self._initial_messages: tuple[Path | str, ...] = ()
+        self._attributes: dict[str, object] = {}
+        self.add_subagents(*subagents)
+        self.add_background_agents(*background_agents)
+
+    @property
+    def name(self) -> str:
+        """Return this agent's runtime name."""
+        return self._name
+
+    @property
+    def description(self) -> str:
+        """Return this agent's delegation description."""
+        return self._description
+
+    @property
+    def system_prompt(self) -> str:
+        """Return this agent's system prompt."""
+        return self._system_prompt
+
+    @property
+    def is_agentic(self) -> bool:
+        """Return whether the runtime agent performs model-driven turns."""
+        return self._is_agentic
+
+    @property
+    def automatic_tool_prompt(self) -> bool:
+        """Return whether tool instructions are added automatically."""
+        return self._automatic_tool_prompt
+
+    @property
+    def default_capabilities(self) -> tuple[AgentCapability, ...]:
+        """Return the fixed capabilities supplied at construction."""
+        return self._default_capabilities
+
+    @property
+    def additional_capabilities(self) -> tuple[AgentCapability, ...]:
+        """Return capabilities appended after the fixed defaults."""
+        return tuple(self._additional_capabilities)
+
+    @property
+    def capabilities(self) -> tuple[AgentCapability, ...]:
+        """Return fixed and additional capabilities in build order."""
+        return (*self._default_capabilities, *self._additional_capabilities)
+
+    @property
+    def subagents(self) -> tuple["DeployableAgent", ...]:
+        """Return attached synchronous child definitions."""
+        return tuple(self._subagents)
+
+    @property
+    def background_agents(self) -> tuple["DeployableAgent", ...]:
+        """Return attached background child definitions."""
+        return tuple(self._background_agents)
+
+    @property
+    def agent_endpoint(self) -> EndpointLike | None:
+        """Return the endpoint configured for this node."""
+        return self._agent_endpoint
+
+    @property
+    def interaction_mode(self) -> Output | None:
+        """Return this node's selected interaction mode."""
+        return self._interaction_mode
+
+    @property
+    def initial_messages(self) -> tuple[Path | str, ...]:
+        """Return configured initial message sources."""
+        return self._initial_messages
+
+    def __getattr__(self, name: str) -> object:
+        """Expose explicitly supplied capability attributes for owner reads."""
+        try:
+            attributes: dict[str, object] = object.__getattribute__(self, "_attributes")
+            return attributes[name]
+        except (AttributeError, KeyError):
+            raise AttributeError(name) from None
+
+    def set_agent_endpoint(self, endpoint: EndpointLike | None) -> None:
+        """Set or defer this node's model endpoint."""
+        self._agent_endpoint = endpoint
+
+    def set_interaction_mode(self, interaction_mode: Output | None) -> None:
+        """Select this node's runtime interaction mode."""
+        self._interaction_mode = interaction_mode
+
+    def set_initial_messages(self, messages: Sequence[Path | str]) -> None:
+        """Replace this node's initial message sources before a build."""
+        self._initial_messages = tuple(messages)
+
+    def set_attributes(self, **values: object) -> None:
+        """Set capability-specific values without altering agent structure.
+
+        Existing capability attributes may be updated for a later build. Public
+        structural attributes, methods, and all private names are protected.
+        """
+        for name in values:
+            if name.startswith("_") or any(
+                name in cls.__dict__ for cls in type(self).__mro__
+            ):
+                raise ValueError(
+                    f"capability attribute cannot overwrite agent structure: {name!r}"
+                )
+        self._attributes.update(values)
+
+    def add_capabilities(self, *capabilities: AgentCapability) -> None:
+        """Append capabilities after this node's fixed defaults."""
+        self._additional_capabilities.extend(capabilities)
+
+    def add_subagents(self, *subagents: "DeployableAgent") -> None:
+        """Append synchronous child definitions."""
+        self._subagents.extend(self._checked_agents(subagents))
+
+    def add_background_agents(self, *agents: "DeployableAgent") -> None:
+        """Append background child definitions."""
+        self._background_agents.extend(self._checked_agents(agents))
+
+    @staticmethod
+    def _checked_agents(
+        agents: Sequence["DeployableAgent"],
+    ) -> tuple["DeployableAgent", ...]:
+        checked = tuple(agents)
+        if any(not isinstance(agent, DeployableAgent) for agent in checked):
+            raise TypeError("child definitions must be DeployableAgent instances")
+        return checked
 
     def agent_names(self, *, include_background: bool = True) -> frozenset[str]:
         """Validate all names and return identities in the selected branches.
@@ -85,66 +222,86 @@ class DeployableAgent:
         """
         if not include_background:
             self.agent_names()
+        return frozenset(self._collect_names(include_background, frozenset()))
+
+    def _collect_names(
+        self, include_background: bool, ancestors: frozenset[int]
+    ) -> set[str]:
+        identity = id(self)
+        if identity in ancestors:
+            raise ValueError("agent graph must not contain cycles")
+        ancestors = ancestors | {identity}
         names = {self.name}
         definitions = self.subagents
         if include_background:
             definitions += self.background_agents
         for definition in definitions:
-            children = definition.agent_names(include_background=include_background)
+            children = definition._collect_names(include_background, ancestors)
             if names & children:
                 raise ValueError("agent names must be unique")
             names.update(children)
-        return frozenset(names)
+        return names
+
+    def validate(self) -> None:
+        """Validate names and every capability requirement in the full graph."""
+        self.agent_names()
+        errors = list(self._configuration_errors())
+        if not errors:
+            return
+        details = "\n".join(f"- {error}" for error in errors)
+        raise ValueError(f"invalid agent configuration:\n{details}")
+
+    def _configuration_errors(self) -> Iterator[str]:
+        """Yield capability requirement failures in stable graph order."""
+        for agent in self._walk():
+            yield from _capability_errors(agent)
+
+    def _walk(self) -> tuple["DeployableAgent", ...]:
+        definitions: list[DeployableAgent] = [self]
+        walked: list[DeployableAgent] = []
+        while definitions:
+            agent = definitions.pop(0)
+            walked.append(agent)
+            definitions.extend((*agent.subagents, *agent.background_agents))
+        return tuple(walked)
 
     def build(
         self,
         *,
         event_sinks: Sequence[EventSink] = (),
         event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None,
-    ) -> Agent:
-        """Create fresh pipes, resolve capabilities, and construct the agent once.
+    ) -> tuple[Agent, tuple[Agent, ...]]:
+        """Validate and build a fresh root with every background handle.
 
-        Caller sinks follow synchronous children. The optional factory supplies fresh
-        agent-specific sinks by name; these are never inherited by children.
-        Without supplied sinks, construction selects no output or persistence.
-        Use build_graph() to retain background agents for host control.
+        Caller sinks reach foreground branches only. The optional factory gives
+        each named agent its own fresh sinks. Construction starts no agents.
         """
-        return self.build_graph(
+        self.validate()
+        return self._build(
             event_sinks=event_sinks, event_sink_factory=event_sink_factory
-        )[0]
+        )
 
-    def build_graph(
+    def _build(
         self,
         *,
         event_sinks: Sequence[EventSink] = (),
         event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None,
     ) -> tuple[Agent, tuple[Agent, ...]]:
-        """Build fresh agents and return the root and all background handles.
-
-        Validate names before constructing capabilities or sinks. Sink routing
-        follows build(): caller sinks reach foreground branches only, and the
-        factory supplies each agent's own sinks. Background handles include
-        descendants of both child slots. No agents are started by construction;
-        callers own their invocation and shutdown.
-        """
-        self.agent_names()
         pipe = EventPipe(
             event_sinks=(
                 *(event_sink_factory(self.name) if event_sink_factory else ()),
                 *event_sinks,
             )
         )
-        contributions = []
-        for capability in self.capabilities:
-            contributions.append(
-                capability.build(pipe, default_endpoint=self.agent_endpoint)
-            )
+        contributions = [
+            capability.build(self, pipe) for capability in self.capabilities
+        ]
 
         tools = [tool for contribution in contributions for tool in contribution.tools]
         default_tools = [tool for c in contributions for tool in c.default_tools]
         background_agents: list[Agent] = []
         for definition in self.subagents:
-            child, descendants = definition.build_graph(
+            child, descendants = definition._build(
                 event_sinks=event_sinks, event_sink_factory=event_sink_factory
             )
             tools.append(
@@ -155,7 +312,7 @@ class DeployableAgent:
             )
             background_agents.extend(descendants)
         for definition in self.background_agents:
-            child, descendants = definition.build_graph(
+            child, descendants = definition._build(
                 event_sink_factory=event_sink_factory
             )
             default_tools.append(
@@ -186,8 +343,49 @@ class DeployableAgent:
         return agent, tuple(background_agents)
 
 
+_MISSING = object()
+
+
+def _type_name(expected: RequiredAttributeType) -> str:
+    types = expected if isinstance(expected, tuple) else (expected,)
+    return " or ".join(item.__name__ for item in types)
+
+
+def _capability_errors(agent: DeployableAgent) -> Iterator[str]:
+    """Yield unmet attribute requirements for one configuration node."""
+    for capability in agent.capabilities:
+        for name, expected in capability.required_attributes.items():
+            error = _required_attribute_error(agent, capability, name, expected)
+            if error is not None:
+                yield error
+
+
+def _required_attribute_error(
+    agent: DeployableAgent,
+    capability: AgentCapability,
+    name: str,
+    expected: RequiredAttributeType,
+) -> str | None:
+    """Describe one unmet requirement, or return None when it is satisfied."""
+    value = getattr(agent, name, _MISSING)
+    if value is not _MISSING and value is not None and isinstance(value, expected):
+        return None
+
+    owner = f"agent {agent.name!r}, capability {type(capability).__name__}"
+    requirement = f"attribute {name!r} must be {_type_name(expected)}"
+    if value is _MISSING:
+        actual = "it is missing"
+    elif value is None:
+        actual = "it is None"
+    else:
+        actual = f"got {type(value).__name__}"
+    return f"{owner}: {requirement}; {actual}"
+
+
 __all__ = [
     "AgentCapability",
     "Capability",
     "DeployableAgent",
+    "RequiredAttributeType",
+    "RequiredAttributes",
 ]

@@ -2,19 +2,19 @@ import pytest
 
 from roboshed.dependency_health import inspect_dependencies
 from roboshed.sandbox import Sandbox
-from roboshed.deployments import Deployment
 from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint
 
 
 def _definition(name, endpoint=None, subagents=(), background_agents=()):
-    return DeployableAgent(
+    definition = DeployableAgent(
         name=name,
-        agent_endpoint=endpoint or MockLLMEndpoint([]),
         system_prompt="Complete the task.",
         subagents=subagents,
         background_agents=background_agents,
     )
+    definition.set_agent_endpoint(endpoint or MockLLMEndpoint([]))
+    return definition
 
 
 def test_inspection_preserves_project_folders_and_cleans_failed_build(tmp_path):
@@ -68,7 +68,7 @@ def test_inspection_infers_registration_from_first_duplicate(tmp_path):
 
     def configure(sandbox):
         sandbox.configure_scope("project")
-        return Deployment(agent=_definition("root"), sandbox=sandbox)
+        return _definition("root").build()
 
     (bound,) = inspect_dependencies(
         configure,
@@ -107,7 +107,7 @@ def test_inspection_discovers_all_agent_modes_without_materializing(tmp_path):
             background_agents=(background,),
         )
         temporary.configure_scope("project")
-        return Deployment(agent=root, sandbox=temporary)
+        return root.build()
 
     bound = inspect_dependencies(configure, sandbox=sandbox, registrations=None)
     assert {item.dependency.dependency_id for item in bound} == {

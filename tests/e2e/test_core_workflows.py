@@ -1,7 +1,6 @@
 """Credential-free E2E contracts, also executed from installed wheels."""
 
 import tempfile
-from dataclasses import replace
 from pathlib import Path
 
 from roboz import Agent, Ctx, stop
@@ -66,26 +65,31 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
 
     child = DeployableAgent(
         name="worker",
-        agent_endpoint=MockLLMEndpoint(
-            [{"action": "stop", "rationale": "done", "value": "worker result"}]
-        ),
-        capabilities=(Capability(tools=(stop,)),),
+        default_capabilities=(Capability(tools=(stop,)),),
         system_prompt="Finish the delegated work.",
+    )
+    child.set_agent_endpoint(
+        MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "worker result"}]
+        )
     )
     root = DeployableAgent(
         name="coordinator",
-        agent_endpoint=MockLLMEndpoint(
+        default_capabilities=(Capability(tools=(stop,)),),
+        subagents=(child,),
+        system_prompt="Delegate, then finish.",
+    )
+    root.set_agent_endpoint(
+        MockLLMEndpoint(
             [
                 {"action": "worker", "rationale": "ask worker"},
                 {"action": "stop", "rationale": "done", "value": "all done"},
             ]
-        ),
-        capabilities=(Capability(tools=(stop,)),),
-        subagents=(child,),
-        system_prompt="Delegate, then finish.",
-        initial_messages=("Explicit caller-provided context.",),
+        )
     )
-    bare = root.build()
+    root.set_initial_messages(("Explicit caller-provided context.",))
+    bare, bare_backgrounds = root.build()
+    assert bare_backgrounds == ()
     assert bare.pipe.event_sinks == ()
     assert bare.pipe.data_path is None
     assert tuple(bare.initial_messages) == root.initial_messages
@@ -103,14 +107,13 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
             PersistenceSink.for_path(tmp_path / f"{name}-history"),
         )
 
-    configured = replace(
-        root, capabilities=(*root.capabilities, Capability(default_tools=(root_tick,)))
-    )
-    agent = configured.build(
+    root.add_capabilities(Capability(default_tools=(root_tick,)))
+    agent, backgrounds = root.build(
         event_sinks=(shared_events.append,),
         event_sink_factory=sinks,
     )
-    another = root.build(event_sink_factory=sinks)
+    another, another_backgrounds = root.build(event_sink_factory=sinks)
+    assert backgrounds == another_backgrounds == ()
     assert agent.pipe is not another.pipe
     assert all(len(batches) == 2 for batches in sink_batches.values())
     assert list(tmp_path.iterdir()) == []

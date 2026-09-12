@@ -1,10 +1,13 @@
-from roboz.deployment import AgentCapability
-from roboz.llm import EndpointLike
+from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.runtime import EventPipe
 
 
 class Invalid(AgentCapability):
-    def build(self, pipe: EventPipe, *, default_endpoint: EndpointLike | None) -> str:
+    @property
+    def required_attributes(self):
+        return {}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> str:
         return "not capability contributions"
 
 

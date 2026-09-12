@@ -3,6 +3,7 @@
 import math
 from collections.abc import Collection
 from dataclasses import dataclass
+from typing import cast
 
 from roboshed.identifiers import (
     CONSOLIDATE_MEMORY_TOOL_NAME,
@@ -28,27 +29,43 @@ from roboshed.tools.purge_files import purge_files
 from roboshed.tools.sleep_between_runs import sleep_between_runs
 from roboshed.tools.snapshot_conversations import snapshot_conversations
 from roboshed.sandbox import PermissionPolicy, Sandbox
-from roboz.deployment import AgentCapability, Capability
-from roboz.llm import EndpointLike
+from roboz.dependencies import ExternalDependencyReference
+from roboz.deployment import (
+    AgentCapability,
+    Capability,
+    DeployableAgent,
+    RequiredAttributeType,
+    RequiredAttributes,
+)
+from roboz.llm import EndpointLike, LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import EventPipe
 from roboz.tooling.context import Ctx
+
+
+_ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, ExternalDependencyReference)
+_AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
+    "agent_endpoint": _ENDPOINT_TYPES,
+}
 
 
 @dataclass(frozen=True)
 class FileCommands(AgentCapability):
     """Guarded read commands, optionally accompanied by their orientation skill."""
 
-    permissions: PermissionPolicy
     auto_load_skill: bool = True
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require a file permission policy from the owning agent."""
+        return {"permissions": PermissionPolicy}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Build a read-tool chain using this agent's pipe and selected policy."""
+        permissions = cast(PermissionPolicy, agent.permissions)
         return Capability(
             tools=(
                 get_run_file_command(
-                    **self.permissions.tool_options(pipe),
+                    **permissions.tool_options(pipe),
                     command_specs=FILE_COMMANDS_READ,
                 ),
             ),
@@ -60,15 +77,18 @@ class FileCommands(AgentCapability):
 class FileEditing(AgentCapability):
     """Literal patch editing with caller-selected file permissions."""
 
-    permissions: PermissionPolicy
     auto_load_skill: bool = True
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require a file permission policy from the owning agent."""
+        return {"permissions": PermissionPolicy}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Build patch editing and optional orientation against the owning pipe."""
+        permissions = cast(PermissionPolicy, agent.permissions)
         return Capability(
-            tools=(get_apply_patch(**self.permissions.tool_options(pipe)),),
+            tools=(get_apply_patch(**permissions.tool_options(pipe)),),
             auto_loaded_skills=(file_editing,) if self.auto_load_skill else (),
         )
 
@@ -81,13 +101,18 @@ class Compactification(AgentCapability):
     threshold_percent: float = DEFAULT_THRESHOLD_PERCENT
     timeout_s: float | None = None
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the owner's endpoint only when no override is configured."""
+        return _AGENT_ENDPOINT_REQUIRED if self.endpoint is None else {}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Use the configured endpoint, falling back to the agent's endpoint."""
-        endpoint = self.endpoint if self.endpoint is not None else default_endpoint
-        if endpoint is None:
-            raise ValueError("compaction requires an endpoint")
+        endpoint = (
+            self.endpoint
+            if self.endpoint is not None
+            else cast(EndpointLike, agent.agent_endpoint)
+        )
         return Capability(
             default_tools=(
                 get_compactify_messages_when_needed_tool(
@@ -108,8 +133,6 @@ class ConversationSnapshots(AgentCapability):
     summary tolerance is a finite, non-negative percentage above max_chars.
     """
 
-    sandbox: Sandbox
-    agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     token_growth_threshold: int = 20_000
     max_chars: int = 8_000
@@ -128,22 +151,35 @@ class ConversationSnapshots(AgentCapability):
                 "max_chars_tolerance_percent must be finite and non-negative"
             )
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Declare project, watched-name, and optional endpoint inputs."""
+        required: dict[str, RequiredAttributeType] = {
+            "sandbox": Sandbox,
+            "watched_agent_names": Collection,
+        }
+        if self.endpoint is None:
+            required.update(_AGENT_ENDPOINT_REQUIRED)
+        return required
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Bind snapshotting to its chosen model and the owning agent's pipe."""
-        endpoint = self.endpoint if self.endpoint is not None else default_endpoint
-        if endpoint is None:
-            raise ValueError("conversation snapshots require an endpoint")
+        sandbox = cast(Sandbox, agent.sandbox)
+        watched_agent_names = cast(Collection[str], agent.watched_agent_names)
+        endpoint = (
+            self.endpoint
+            if self.endpoint is not None
+            else cast(EndpointLike, agent.agent_endpoint)
+        )
         return Capability(
             default_tools=(
                 snapshot_conversations(
                     Ctx(
                         endpoint=endpoint,
-                        conversation_root=self.sandbox.project_logs_dir(),
-                        snapshot_root=self.sandbox.project_snapshots_dir(),
-                        memory_root=self.sandbox.project_memory_dir(),
-                        agent_names=set(self.agent_names),
+                        conversation_root=sandbox.project_logs_dir(),
+                        snapshot_root=sandbox.project_snapshots_dir(),
+                        memory_root=sandbox.project_memory_dir(),
+                        agent_names=set(watched_agent_names),
                         token_growth_threshold=self.token_growth_threshold,
                         max_chars=self.max_chars,
                         max_chars_tolerance_percent=self.max_chars_tolerance_percent,
@@ -163,8 +199,6 @@ class MemoryConsolidation(AgentCapability):
     seconds; summary tolerance is a finite, non-negative percentage above max_chars.
     """
 
-    sandbox: Sandbox
-    agent_names: Collection[str]
     endpoint: EndpointLike | None = None
     min_pending_snapshots: int = 3
     max_pending_age_seconds: float = 86_400.0
@@ -184,22 +218,35 @@ class MemoryConsolidation(AgentCapability):
                 "max_chars_tolerance_percent must be finite and non-negative"
             )
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Declare project, watched-name, and optional endpoint inputs."""
+        required: dict[str, RequiredAttributeType] = {
+            "sandbox": Sandbox,
+            "watched_agent_names": Collection,
+        }
+        if self.endpoint is None:
+            required.update(_AGENT_ENDPOINT_REQUIRED)
+        return required
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Bind consolidation to its chosen model and the owning agent's pipe."""
-        endpoint = self.endpoint if self.endpoint is not None else default_endpoint
-        if endpoint is None:
-            raise ValueError("memory consolidation requires an endpoint")
+        sandbox = cast(Sandbox, agent.sandbox)
+        watched_agent_names = cast(Collection[str], agent.watched_agent_names)
+        endpoint = (
+            self.endpoint
+            if self.endpoint is not None
+            else cast(EndpointLike, agent.agent_endpoint)
+        )
         return Capability(
             default_tools=(
                 consolidate_memory(
                     Ctx(
                         endpoint=endpoint,
-                        snapshot_root=self.sandbox.project_snapshots_dir(),
-                        memory_root=self.sandbox.project_memory_dir(),
-                        conversation_root=self.sandbox.project_logs_dir(),
-                        agent_names=set(self.agent_names),
+                        snapshot_root=sandbox.project_snapshots_dir(),
+                        memory_root=sandbox.project_memory_dir(),
+                        conversation_root=sandbox.project_logs_dir(),
+                        agent_names=set(watched_agent_names),
                         min_pending_snapshots=self.min_pending_snapshots,
                         max_pending_age_seconds=self.max_pending_age_seconds,
                         max_chars=self.max_chars,
@@ -216,27 +263,30 @@ class MemoryConsolidation(AgentCapability):
 class ArtifactRetention(AgentCapability):
     """Automatic retention limits for project logs, snapshots, and memory."""
 
-    sandbox: Sandbox
     max_log_files: int = 500
     max_snapshot_files: int = 100
     max_memory_files: int = 10
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the owning agent's project sandbox."""
+        return {"sandbox": Sandbox}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Bind retention to the selected project without requiring a model."""
+        sandbox = cast(Sandbox, agent.sandbox)
         return Capability(
             default_tools=(
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_logs_dir()],
+                        folders=[sandbox.project_logs_dir()],
                         pattern="*.json",
                         max_files=self.max_log_files,
                     )
                 ).copy(name=PURGE_LOGS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_snapshots_dir()],
+                        folders=[sandbox.project_snapshots_dir()],
                         pattern="*.md",
                         max_files=self.max_snapshot_files,
                         prune_empty_directories=True,
@@ -244,7 +294,7 @@ class ArtifactRetention(AgentCapability):
                 ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME),
                 purge_files(
                     Ctx(
-                        folders=[self.sandbox.project_memory_dir()],
+                        folders=[sandbox.project_memory_dir()],
                         pattern="*.md",
                         max_files=self.max_memory_files,
                     )
@@ -261,22 +311,28 @@ class MaintenanceCadence(AgentCapability):
     Waiting observes the owning agent's cancellation independently of any model.
     """
 
-    sandbox: Sandbox
-    agent_names: Collection[str]
     seconds: float = 120.0
 
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the project and conversations observed between cycles."""
+        return {
+            "sandbox": Sandbox,
+            "watched_agent_names": Collection,
+        }
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Bind cadence and idle stopping to this agent's cancellation state."""
+        sandbox = cast(Sandbox, agent.sandbox)
+        watched_agent_names = cast(Collection[str], agent.watched_agent_names)
         return Capability(
             default_tools=(
                 sleep_between_runs(
                     Ctx(
                         seconds=self.seconds,
                         is_cancelled=lambda: pipe.cancelled,
-                        conversation_root=self.sandbox.project_logs_dir(),
-                        agent_names=set(self.agent_names),
+                        conversation_root=sandbox.project_logs_dir(),
+                        agent_names=set(watched_agent_names),
                     )
                 ).copy(name=SLEEP_BETWEEN_RUNS_TOOL_NAME),
             )

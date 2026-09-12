@@ -30,21 +30,23 @@ def orchestrator(
     initial_messages: Sequence[Path | str] = (),
 ) -> DeployableAgent:
     """Configure the orchestrator for an already-configured sandbox."""
-    return DeployableAgent(
+    agent = DeployableAgent(
         name="orchestrator",
         description="Coordinates ongoing user goals and specialist agents.",
         system_prompt=ORCHESTRATOR_PROMPT,
-        agent_endpoint=agent_endpoint,
-        capabilities=(
+        default_capabilities=(
             Capability(tools=(stop,)),
-            FileCommands(sandbox.permissions()),
-            FileEditing(sandbox.permissions()),
+            FileCommands(),
+            FileEditing(),
         ),
         subagents=tuple(subagents),
         background_agents=tuple(background_agents),
-        interaction_mode=interaction_mode,
-        initial_messages=tuple(initial_messages),
     )
+    agent.set_agent_endpoint(agent_endpoint)
+    agent.set_interaction_mode(interaction_mode)
+    agent.set_initial_messages(initial_messages)
+    agent.set_attributes(permissions=sandbox.permissions())
+    return agent
 
 
 __all__ = ["ORCHESTRATOR_PROMPT", "orchestrator"]

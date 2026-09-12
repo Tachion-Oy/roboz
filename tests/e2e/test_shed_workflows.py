@@ -2,10 +2,8 @@
 
 import json
 import tempfile
-from dataclasses import replace
 from pathlib import Path
 
-from roboshed.agents import librarian as librarian_definition
 from roboshed.agents import orchestrator as orchestrator_definition
 from roboshed.capabilities import (
     ArtifactRetention,
@@ -21,6 +19,20 @@ from roboz import Agent, stop
 from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, Output, PersistenceSink
+
+
+def _build_with_persistence(
+    definition: DeployableAgent,
+    sandbox: Sandbox,
+    *,
+    event_sinks=(),
+):
+    return definition.build(
+        event_sinks=event_sinks,
+        event_sink_factory=lambda name: (
+            PersistenceSink.for_path(sandbox.project_logs_dir() / name),
+        ),
+    )
 
 
 def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
@@ -41,16 +53,19 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         }
 
     permissions = PermissionPolicy.local(sandbox)
-    agent = DeployableAgent(
+    definition = DeployableAgent(
         name="file_worker",
         system_prompt="Complete the file task and stop.",
-        capabilities=(
+        default_capabilities=(
             Capability(tools=(stop,)),
-            FileCommands(permissions),
-            FileEditing(permissions),
+            FileCommands(),
+            FileEditing(),
         ),
-        interaction_mode=Output.API,
-        agent_endpoint=MockLLMEndpoint(
+    )
+    definition.set_attributes(permissions=permissions)
+    definition.set_interaction_mode(Output.API)
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
             [
                 read("note.txt"),
                 {
@@ -72,8 +87,11 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
                 },
                 {"action": "stop", "rationale": "finished", "value": "done"},
             ]
-        ),
-    ).build(event_sinks=(PersistenceSink.for_path(tmp_path / "logs"),))
+        )
+    )
+    agent, _ = definition.build(
+        event_sinks=(PersistenceSink.for_path(tmp_path / "logs"),)
+    )
     result, messages = agent.invoke()
     assert result.value == "done"
     assert note.read_text() == "after-marker"
@@ -125,9 +143,7 @@ def _conversation_snapshot_memory_retention(
         tools=[stop],
         system_prompt="Remember the project decision.",
         initial_messages=["The project uses a blue robot emblem."],
-        event_pipe=EventPipe(
-            event_sinks=[PersistenceSink.for_path(logs / "author")]
-        ),
+        event_pipe=EventPipe(event_sinks=[PersistenceSink.for_path(logs / "author")]),
         agent_endpoint=MockLLMEndpoint(
             [
                 {
@@ -144,36 +160,33 @@ def _conversation_snapshot_memory_retention(
         {"value": "The project uses a blue robot emblem."},
         {"value": "Retain the blue robot emblem decision."},
     ]
-    librarian = replace(
-        librarian_definition(
-            sandbox,
-            {"author"},
-            agent_endpoint=(
-                None if separate_endpoints else MockLLMEndpoint(responses)
-            ),
-        ),
-        capabilities=(
+    librarian = DeployableAgent(
+        name="librarian",
+        is_agentic=False,
+        automatic_tool_prompt=False,
+        default_capabilities=(
             ConversationSnapshots(
-                sandbox,
-                {"author"},
                 endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
                 token_growth_threshold=1,
             ),
             MemoryConsolidation(
-                sandbox,
-                {"author"},
                 endpoint=MockLLMEndpoint(responses[1:]) if separate_endpoints else None,
                 min_pending_snapshots=1,
             ),
             ArtifactRetention(
-                sandbox,
                 max_snapshot_files=0,
                 max_log_files=0,
                 max_memory_files=1,
             ),
-            MaintenanceCadence(sandbox, {"author"}, seconds=0),
+            MaintenanceCadence(seconds=0),
         ),
-    ).build(
+    )
+    librarian.set_interaction_mode(None)
+    librarian.set_agent_endpoint(
+        None if separate_endpoints else MockLLMEndpoint(responses)
+    )
+    librarian.set_attributes(sandbox=sandbox, watched_agent_names={"author"})
+    librarian, _ = librarian.build(
         event_sink_factory=lambda name: (PersistenceSink.for_path(logs / name),)
     )
     result, _ = librarian.invoke()
@@ -191,8 +204,6 @@ def _conversation_snapshot_memory_retention(
 def test_persistent_orchestrator_delegates_and_accepts_another_request(
     tmp_path: Path,
 ) -> None:
-    from roboshed.deployments import Deployment
-
     from roboz.deployment import DeployableAgent, Capability
     from roboz.runtime import Output, bind_api_user_io, reset_api_user_io
 
@@ -211,12 +222,14 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     child = DeployableAgent(
         name="specialist",
         system_prompt="Complete the delegated task.",
-        agent_endpoint=MockLLMEndpoint(
-            [{"action": "stop", "rationale": "done", "value": "specialist result"}]
-        ),
-        capabilities=(Capability(tools=(stop,)),),
-        interaction_mode=Output.API,
+        default_capabilities=(Capability(tools=(stop,)),),
     )
+    child.set_agent_endpoint(
+        MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "specialist result"}]
+        )
+    )
+    child.set_interaction_mode(Output.API)
     sandbox = Sandbox(tmp_path)
     project_slug = "collaboration"
     sandbox.configure_scope(project_slug)
@@ -246,9 +259,9 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
         interaction_mode=Output.API,
     )
     events = []
-    agent, background_agents = Deployment(
-        agent=definition, sandbox=sandbox, event_sinks=[events.append],
-    ).build()
+    agent, background_agents = _build_with_persistence(
+        definition, sandbox, event_sinks=(events.append,)
+    )
     replies = Replies()
     token = bind_api_user_io(replies)
     try:
@@ -267,39 +280,44 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
 
 def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> None:
     from roboz import DependencyRoute, ExternalDependencyKind, LazyExternalDependency
-    from roboshed.deployments import Deployment
     from roboz.llm import LLMEndpoint
 
     sandbox = Sandbox(tmp_path)
     observed = []
     borrowed = LazyExternalDependency(
-        "model:test:borrowed", ExternalDependencyKind.MODEL_ENDPOINT, {},
+        "model:test:borrowed",
+        ExternalDependencyKind.MODEL_ENDPOINT,
+        {},
         lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed"),
     )
     route = DependencyRoute(lambda: borrowed)
     sandbox.configure_scope("standalone")
 
     def configure():
-        return Deployment(
-            agent=orchestrator_definition(
-                sandbox,
-                agent_endpoint=MockLLMEndpoint([
-                    {"action": "stop", "rationale": "user requested stop", "value": "complete"},
-                ]),
-                subagents=(
-                    DeployableAgent(
-                        name="unused",
-                        agent_endpoint=route,
-                        system_prompt="Unused specialist.",
-                    ),
-                ),
+        specialist = DeployableAgent(
+            name="unused",
+            system_prompt="Unused specialist.",
+        )
+        specialist.set_agent_endpoint(route)
+        definition = orchestrator_definition(
+            sandbox,
+            agent_endpoint=MockLLMEndpoint(
+                [
+                    {
+                        "action": "stop",
+                        "rationale": "user requested stop",
+                        "value": "complete",
+                    },
+                ]
             ),
-            sandbox=sandbox,
-            event_sinks=[observed.append],
+            subagents=(specialist,),
+        )
+        return _build_with_persistence(
+            definition, sandbox, event_sinks=(observed.append,)
         )
 
-    first = configure().build()[0]
-    second = configure().build()[0]
+    first = configure()[0]
+    second = configure()[0]
     assert not sandbox.project_dir().exists()
     assert first is not second
     assert first.pipe is not second.pipe

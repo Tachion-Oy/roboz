@@ -4,9 +4,8 @@ from typing import assert_type
 from roboshed.agents import orchestrator as orchestrator_definition
 from roboshed.dependency_health import inspect_dependencies
 from roboshed.sandbox import Sandbox
-from roboz import DependencyRoute, LazyExternalDependency
+from roboz import Agent, DependencyRoute, LazyExternalDependency
 from roboz.dependencies import BoundDependency
-from roboshed.deployments import Deployment
 from roboz.llm import LLMEndpoint
 
 
@@ -16,16 +15,14 @@ def inspect(
     route = DependencyRoute(getter)
     assert_type(route.materialize(), LLMEndpoint)
 
-    def configure(sandbox: Sandbox) -> Deployment:
+    def configure(sandbox: Sandbox) -> tuple[Agent, tuple[Agent, ...]]:
         sandbox.configure_scope("project")
-        deployment = Deployment(
-            sandbox=sandbox,
-            agent=orchestrator_definition(sandbox, agent_endpoint=route),
+        definition = orchestrator_definition(sandbox, agent_endpoint=route)
+        return definition.build(
+            event_sinks=(lambda event: None,),
         )
-        deployment.event_sinks.append(lambda event: None)
-        return deployment
 
-    assert_type(configure(sandbox), Deployment)
+    assert_type(configure(sandbox), tuple[Agent, tuple[Agent, ...]])
     assert_type(
         inspect_dependencies(configure, sandbox=sandbox, registrations=None),
         tuple[BoundDependency, ...],

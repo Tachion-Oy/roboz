@@ -9,7 +9,6 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.deployments import Deployment
 from roboshed.sandbox import Sandbox
 from roboz import Empty, Message, Str, tool
 from roboz.deployment import AgentCapability, Capability
@@ -22,11 +21,11 @@ def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
     sandbox.configure_scope("project")
     endpoint = MockLLMEndpoint([])
     orchestrator_definition = orchestrator(sandbox, agent_endpoint=endpoint)
-    librarian_definition = librarian(
-        sandbox, {"orchestrator"}, agent_endpoint=endpoint
-    )
+    librarian_definition = librarian(sandbox, {"orchestrator"}, agent_endpoint=endpoint)
 
-    assert [type(capability) for capability in orchestrator_definition.capabilities] == [
+    assert [
+        type(capability) for capability in orchestrator_definition.capabilities
+    ] == [
         Capability,
         FileCommands,
         FileEditing,
@@ -49,7 +48,11 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
         return Str(value="custom result")
 
     class CustomCapability(AgentCapability):
-        def build(self, pipe, *, default_endpoint):
+        @property
+        def required_attributes(self):
+            return {}
+
+        def build(self, agent, pipe):
             pipes.append(pipe)
             return Capability(tools=(custom,))
 
@@ -65,12 +68,13 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
             ]
         ),
     )
-    agent, _ = Deployment(
-        agent=definition,
-        sandbox=sandbox,
-        additional_capabilities=(CustomCapability(),),
-        event_sinks=[events.append, PersistenceSink.for_path(tmp_path / "logs")],
-    ).build()
+    definition.add_capabilities(CustomCapability())
+    agent, _ = definition.build(
+        event_sinks=(
+            events.append,
+            PersistenceSink.for_path(tmp_path / "logs"),
+        )
+    )
     result, _ = agent.invoke()
     assert result.value == "ok"
     assert seen == [True]

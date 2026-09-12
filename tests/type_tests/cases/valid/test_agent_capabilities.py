@@ -11,17 +11,21 @@ from roboz.runtime import EventPipe
 
 
 class Extension:
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
-        assert_type(default_endpoint, EndpointLike | None)
+    @property
+    def required_attributes(self):
+        return {"agent_endpoint": MockLLMEndpoint}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
+        assert_type(agent, DeployableAgent)
         return Capability()
 
 
 class EndpointFree(AgentCapability):
-    def build(
-        self, pipe: EventPipe, *, default_endpoint: EndpointLike | None
-    ) -> Capability:
+    @property
+    def required_attributes(self):
+        return {}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         return Capability()
 
 
@@ -33,8 +37,8 @@ endpoint_free: AgentCapability = EndpointFree()
 endpoint: EndpointLike = MockLLMEndpoint([])
 definition = DeployableAgent(
     name="custom",
-    agent_endpoint=endpoint,
     system_prompt="Use the configured capabilities.",
-    capabilities=(static_capability, capability, endpoint_free),
+    default_capabilities=(static_capability, capability, endpoint_free),
 )
-assert_type(definition.build(), Agent)
+definition.set_agent_endpoint(endpoint)
+assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])
