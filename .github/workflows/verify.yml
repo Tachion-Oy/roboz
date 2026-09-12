@@ -35,7 +35,7 @@ jobs:
           --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json
           --junitxml=reports/pytest.xml
       - run: uv run python examples/quickstart.py
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: python-${{ matrix.python }}
@@ -82,7 +82,7 @@ jobs:
       - run: uv run twine check "$CANDIDATE_DIR"/*
       - run: uv run check-wheel-contents "$CANDIDATE_DIR"
       - run: uv run pytest tests/distributions --no-cov --dist "$CANDIDATE_DIR"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && env.CANDIDATE_DIR != ''
         with:
           name: candidate-distributions
