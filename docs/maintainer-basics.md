@@ -83,6 +83,14 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Choosing versions
 
+All packages are currently in early development. Publish development snapshots
+using `<base>.devN`; do not use alpha, beta, release-candidate, or final versions
+until that maturity is explicitly agreed. Existing published versions keep their
+historical names. Move each package to development numbering when it is next
+published, choosing a base that sorts above its published versions: for example,
+Shed moves from `0.1.0a4` to `0.1.1.dev1`, because `0.1.0.dev1` would sort below
+`0.1.0a4`. Increment the development number for subsequent snapshots of that base.
+
 Suggested policy: before 1.0, keep patch updates compatible and reserve minor
 updates for breaking changes. After 1.0, use major/minor/patch for breaking
 changes/features/fixes. This is a promise you adopt; pip cannot check it.

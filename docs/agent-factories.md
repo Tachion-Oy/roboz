@@ -205,5 +205,5 @@ invocation, interruption, cancellation, thread shutdown, and dependency health.
   receives a temporary sandbox and returns a configured `Deployment`.
 
 The generic deployment API was introduced in Roboshed `0.1.0a4`; the concrete
-`RoboSprawl` callable is available from `0.1.0a5`. Older factory layers and
+`RoboSprawl` callable is available from `0.1.1.dev1`. Older factory layers and
 removed preset signatures are not restored.

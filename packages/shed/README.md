@@ -1,7 +1,7 @@
 # roboshed
 
-Reusable agent factories, capabilities, sandbox policies, tools, and skills built on Roboz. Version `0.1.0a5`
-is alpha; APIs may change before 1.0. Dependencies are Roboz and Pydantic only.
+Reusable agent factories, capabilities, sandbox policies, tools, and skills built on Roboz. Version `0.1.1.dev1`
+is a development snapshot; APIs are unstable. Dependencies are Roboz and Pydantic only.
 
 Includes guarded Unix file commands, Python patch editing, CLI/file/email
 instructions, and provider-neutral email contracts and tools. It does not

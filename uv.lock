@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "roboshed"
-version = "0.1.0a5"
+version = "0.1.1.dev1"
 source = { editable = "packages/shed" }
 dependencies = [
     { name = "pydantic" },

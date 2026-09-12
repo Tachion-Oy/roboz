@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.0a5 - 2026-09-12
+## 0.1.1.dev1 - 2026-09-12
 
 - Add `roboshed.deployments.robosprawl.RoboSprawl`, a callable configuration
   object for a persistent orchestrator with Librarian-backed memory. Configure
