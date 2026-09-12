@@ -141,14 +141,13 @@ catalogues; it installs core automatically. See the
 
 `roboz.deployment` supplies recursive `DeployableAgent` definitions and
 capability contracts. Put definitions directly in `subagents` or
-`background_agents`. Capabilities accept tool-specific endpoints and use the
-owning agent's endpoint as their default. `roboshed` supplies reusable
+`background_agents`, append extensions with the explicit add methods, and unpack
+`agent, background_agents = definition.build()`. Capabilities declare required
+owner attributes and bind with `build(agent, pipe)`. `roboshed` supplies reusable
 orchestrator and Librarian constructors, concrete capabilities, memory tools,
-and sandbox structure. Import the constructors from `roboshed.agents`; concrete
-RoboSprawl configuration belongs to the external application. Sandbox-aware
-assembly lives in `roboshed.deployments.Deployment`: configure
-`deployment.sandbox.configure_scope(folder)` and `deployment.event_sinks`, then
-unpack `agent, background_agents = deployment.build()`.
+and sandbox structure. Import the constructors from `roboshed.agents`; the fixed
+lazy RoboSprawl recipe is `roboshed.deployments.robosprawl.robosprawl`. Configure
+each runtime with a project-scoped sandbox and explicit event sinks.
 
 ## Documentation
 

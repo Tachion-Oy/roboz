@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Breaking: move permission, sandbox, watched-agent, and default model inputs
+  from Shed capability objects to their owning `DeployableAgent` configuration.
+  Capability-specific thresholds, limits, timeouts, and endpoint overrides stay
+  on the capability objects.
+- Breaking: remove `Deployment` and replace the `RoboSprawl` configuration
+  dataclass with the lazy `robosprawl()` function. It owns the fixed orchestrator
+  defaults and Librarian pipeline and directly returns the fresh root/background
+  agent tuple for a scoped sandbox.
+
 ## 0.1.1.dev1 - 2026-09-12
 
 - Add `roboshed.deployments.robosprawl.RoboSprawl`, a callable configuration

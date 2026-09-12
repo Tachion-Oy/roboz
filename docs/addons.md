@@ -79,21 +79,23 @@ permissions = PermissionPolicy.local(Path("./sandbox"))
 agent = DeployableAgent(
     name="file_worker",
     system_prompt="Complete the user's task, then call stop.",
-    agent_endpoint=MockLLMEndpoint([
-        {"action": "stop", "rationale": "done", "value": "Ready."}
-    ]),
-    capabilities=(
+    default_capabilities=(
         Capability(tools=(stop,)),
-        FileCommands(permissions),
-        FileEditing(permissions),
+        FileCommands(),
+        FileEditing(),
     ),
-).build()
+)
+agent.set_agent_endpoint(MockLLMEndpoint([
+    {"action": "stop", "rationale": "done", "value": "Ready."}
+]))
+agent.set_attributes(permissions=permissions)
+agent, background_agents = agent.build()
 result, messages = agent.invoke()
 ```
 
 Compose guarded file capabilities through `DeployableAgent`, or use the
 orchestrator and Librarian presets. Each capability owns its tools and skills
-and receives the owning agent's event pipe once per build.
+and receives the owning configuration and event pipe once per build.
 
 See [agent factories](agent-factories.md) for persistent orchestration, common
 sandbox structure, permission injection, and API migration.

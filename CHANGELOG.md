@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Breaking: make `DeployableAgent` an explicitly configured class. Constructor
+  capabilities are protected defaults; append capabilities and child agents with
+  the add methods, configure endpoints and runtime values separately, and unpack
+  `(agent, background_agents)` from `build()`. `build_graph()` is removed.
+- Breaking: capability builders now declare concrete `required_attributes` and
+  receive `build(agent, pipe)`. Builds validate the complete graph before
+  constructing sinks, pipes, or tools and aggregate missing, `None`, and
+  incorrectly typed owner attributes.
+
 ## 0.1.2.dev3 - 2026-09-11
 
 - Breaking: remove the redundant `roboz[shed]` installation extra. Install
