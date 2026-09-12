@@ -146,8 +146,10 @@ capability contracts. Put definitions directly in `subagents` or
 owner attributes and bind with `build(agent, pipe)`. `roboshed` supplies reusable
 orchestrator and Librarian constructors, concrete capabilities, memory tools,
 and sandbox structure. Import the constructors from `roboshed.agents`; the fixed
-lazy RoboSprawl recipe is `roboshed.deployments.robosprawl.robosprawl`. Configure
-each runtime with a project-scoped sandbox and explicit event sinks.
+lazy RoboSprawl recipe is `roboshed.deployments.robosprawl.RoboSprawl`. Construct
+it without inputs, configure it through setters, then call argument-free
+`build()` with all required inputs supplied. The recipe owns project context
+and persistence; the caller owns invocation.
 
 ## Documentation
 

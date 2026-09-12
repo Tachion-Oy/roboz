@@ -149,37 +149,56 @@ writes.
 
 ## Fixed RoboSprawl recipe
 
-`roboshed.deployments.robosprawl.robosprawl()` is the lazy fixed recipe. It
-accepts a scoped sandbox, selected endpoint getter, separate memory endpoint,
-permitted root additions, specialists, interaction mode, and caller sinks:
+`roboshed.deployments.robosprawl.RoboSprawl` is a standalone configuration class,
+not a `DeployableAgent` subclass. It can be created before runtime inputs are
+known. Supply them through setters before calling argument-free `build()`:
 
 ```python
 from roboshed.capabilities import Compactification
-from roboshed.deployments.robosprawl import robosprawl
+from roboshed.deployments.robosprawl import RoboSprawl
 from roboshed.skills import robosprawl as orientation
 from roboz.deployment import Capability
 from roboz.runtime import Output
 
-agent, background_agents = robosprawl(
-    sandbox,
-    endpoint_getter=selected_endpoint_getter,
-    memory_endpoint=memory_endpoint,
-    additional_capabilities=(
+recipe = RoboSprawl()
+recipe.set_sandbox(sandbox)  # Already scoped with sandbox.for_project(name).
+recipe.set_endpoint_getter(selected_endpoint_getter)
+recipe.set_memory_endpoint(memory_endpoint)
+recipe.set_additional_capabilities(
+    (
         Capability(auto_loaded_skills=(orientation,)),
         Compactification(threshold_percent=60.0),
     ),
-    specialists=application_specialists,
-    interaction_mode=Output.API,
-    event_sinks=(ui_event_sink,),
 )
+recipe.set_specialists(application_specialists)
+recipe.set_interaction_mode(Output.API)
+recipe.set_event_sinks((ui_event_sink,))
+agent, background_agents = recipe.build()
 ```
 
-Each call creates a fresh configuration graph and then builds fresh runtimes.
+The sandbox, endpoint getter, and memory endpoint are required at build time;
+the other inputs default to empty sequences and `interaction_mode=None`. A `None`
+mode inherits core's current output setting, falling back to CLI when none is
+bound. Missing inputs raise `ValueError` before composition. Configuration and
+building neither invoke
+agents nor materialize provider clients nor create project directories.
+
+Each build creates a fresh configuration graph and then fresh runtimes.
 The recipe owns the orchestrator defaults and the Librarian; callers cannot
 replace either or alter the Librarian pipeline. Additional capabilities append
 after the orchestrator defaults. Watched names are calculated only after all
 specialists are attached. The root follows model switching through the endpoint
 getter, while the Librarian retains its separate memory endpoint.
+
+Create a new recipe for each new run, not for replies or stream reconnects.
+Setters snapshot the sandbox and sequence containers; endpoints and supplied
+capability/child objects remain caller-owned. Do not concurrently reconfigure
+one shared recipe. Reconfiguring a recipe does not redirect an already-built
+runtime's sandbox or sinks.
+
+Migration: replace the old callable dataclass or function call with the setters
+above. `robosprawl` remains an importable alias for `RoboSprawl`, but does not
+preserve the old argument-taking signature. No `Deployment` wrapper is needed.
 
 Project memory and locations remain initial messages. Each agent receives its
 own persistence sink below the scoped conversation-log directory, while caller
