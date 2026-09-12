@@ -54,17 +54,24 @@ See the [factory and migration guide](../../docs/agent-factories.md).
 
 ## RoboSprawl deployment recipe
 
-`roboshed.deployments.robosprawl.robosprawl` is the concrete lazy persistent
-orchestrator and Librarian recipe. Call it with an already-scoped sandbox,
-`endpoint_getter`, `memory_endpoint`, `additional_capabilities`, `specialists`,
-`interaction_mode`, and optional `event_sinks`. It returns a fresh root and
-background-agent tuple.
+`roboshed.deployments.robosprawl.RoboSprawl` is the concrete lazy persistent
+orchestrator and Librarian recipe. Construct `RoboSprawl()` without inputs;
+supply the required scoped sandbox, endpoint getter, and memory endpoint with
+`set_sandbox()`, `set_endpoint_getter()`, and `set_memory_endpoint()`.
+`set_additional_capabilities()`, `set_specialists()`, `set_interaction_mode()`,
+and `set_event_sinks()` supply optional inputs (empty sequences and
+`interaction_mode=None` by default). A `None` mode inherits core's current output
+setting, falling back to CLI when none is bound. Argument-free `build()` returns
+a fresh root/background-agent tuple
+or reports missing required inputs. `robosprawl` is an alias for this class.
 
 The recipe loads project memory and supplies project locations through initial
 messages. Its root follows the selected model getter; the Librarian uses its
-separate memory endpoint. Construction starts no agents and creates no
-directories before the build requires its persistence sinks. The application
-owns scope selection and runtime lifecycle.
+separate memory endpoint. Configuration and building start no agents or provider
+clients and create no project directories. Use a fresh recipe per new run;
+setters snapshot the sandbox and sequence containers, while supplied endpoints
+and capability/child objects remain caller-owned. The application owns scope
+selection and runtime lifecycle. See the [migration example](../../docs/agent-factories.md#fixed-robosprawl-recipe).
 
 ## Conversation compaction
 

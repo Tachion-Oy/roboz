@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev4 - 2026-09-12
+
 - Breaking: make `DeployableAgent` an explicitly configured class. Constructor
   capabilities are protected defaults; append capabilities and child agents with
   the add methods, configure endpoints and runtime values separately, and unpack
