@@ -161,8 +161,9 @@ class DeployableAgent:
     def __getattr__(self, name: str) -> object:
         """Expose explicitly supplied capability attributes for owner reads."""
         try:
-            return self._attributes[name]
-        except KeyError:
+            attributes: dict[str, object] = object.__getattribute__(self, "_attributes")
+            return attributes[name]
+        except (AttributeError, KeyError):
             raise AttributeError(name) from None
 
     def set_agent_endpoint(self, endpoint: EndpointLike | None) -> None:

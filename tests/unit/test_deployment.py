@@ -1,3 +1,5 @@
+import pickle
+from copy import copy, deepcopy
 from collections.abc import Mapping
 
 import pytest
@@ -33,9 +35,7 @@ def _definition(
         name=name,
         is_agentic=False,
         default_capabilities=(
-            capabilities
-            if capabilities
-            else (Capability(default_tools=(stop,)),)
+            capabilities if capabilities else (Capability(default_tools=(stop,)),)
         ),
         subagents=subagents,
         background_agents=background_agents,
@@ -191,6 +191,21 @@ def test_incomplete_configuration_can_be_completed_later():
 
     definition.set_attributes(setting="configured")
     definition.validate()
+
+
+def test_configuration_can_be_copied_and_unpickled():
+    definition = DeployableAgent(name="copyable", is_agentic=False)
+    definition.set_attributes(setting="configured")
+
+    restored_definitions = (
+        copy(definition),
+        deepcopy(definition),
+        pickle.loads(pickle.dumps(definition)),
+    )
+
+    for restored in restored_definitions:
+        assert restored is not definition
+        assert restored.setting == "configured"
 
 
 def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
