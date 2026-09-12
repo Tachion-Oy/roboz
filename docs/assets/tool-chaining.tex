@@ -102,7 +102,7 @@
   \node[anchor=west,font=\sffamily\bfseries\LARGE,text=ink]
     at (-1.45,1.55) {The usual agent loop};
   \node[anchor=west,font=\sffamily\large,text=muted]
-    at (-1.45,1.05) {Every result goes back for another decision.};
+    at (-1.45,1.05) {Every tool output goes back to the agent.};
 
   \node[agent] (loop-agent-1) at (0.5,0) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
@@ -110,38 +110,27 @@
   };
   \node[tool] (loop-tool-1) at (7,0) {
     {\scriptsize\bfseries\color{blue}TOOL}\\[-0.2mm]
-    {\large\bfseries Plan lunch with Bob}
+    {\large\bfseries Ask Bob}
   };
-  \node[agent] (loop-agent-2) at (0.5,-2.5) {
+  \node[agent] (loop-agent-2) at (0.5,-3.3) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
     {\large\bfseries Search}
   };
-  \node[tool] (loop-tool-2) at (7,-2.5) {
+  \node[tool] (loop-tool-2) at (7,-3.3) {
     {\scriptsize\bfseries\color{blue}TOOL}\\[-0.2mm]
-    {\large\bfseries Find a restaurant}
+    {\large\bfseries Find place}
   };
-  \node[agent] (loop-agent-3) at (0.5,-5) {
-    {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
-    {\large\bfseries Availability}
-  };
-  \node[tool] (loop-tool-3) at (7,-5) {
-    {\scriptsize\bfseries\color{blue}TOOL}\\[-0.2mm]
-    {\large\bfseries Check seats}
-  };
-  \node[agent] (loop-agent-4) at (0.5,-7.5) {
+  \node[agent] (loop-agent-3) at (0.5,-6.6) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
     {\large\bfseries Booking}
   };
-  \node[tool] (loop-tool-4) at (7,-7.5) {
+  \node[tool] (loop-tool-3) at (7,-6.6) {
     {\scriptsize\bfseries\color{blue}TOOL}\\[-0.2mm]
-    {\large\bfseries Book a table}
+    {\large\bfseries Book table}
   };
   \node[agent] (loop-resume) at (0.5,-10) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
-    {\large\bfseries resume}
-  };
-  \node[loop note] at (6.8,-10) {
-    repeat until a restaurant fits
+    {\large\bfseries \{ repeat until done \}}
   };
 
   \draw[flow] (loop-agent-1) -- (loop-tool-1);
@@ -149,14 +138,12 @@
   \draw[flow] (loop-agent-2) -- (loop-tool-2);
   \draw[flow] (loop-tool-2.south) -- ++(0,-0.38) -| (loop-agent-3.north);
   \draw[flow] (loop-agent-3) -- (loop-tool-3);
-  \draw[flow] (loop-tool-3.south) -- ++(0,-0.38) -| (loop-agent-4.north);
-  \draw[flow] (loop-agent-4) -- (loop-tool-4);
-  \draw[flow] (loop-tool-4.south) -- ++(0,-0.38) -| (loop-resume.north);
+  \draw[flow] (loop-tool-3.south) -- ++(0,-0.38) -| (loop-resume.north);
 
   \node[anchor=west,font=\sffamily\bfseries\LARGE,text=ink]
-    at (11.05,1.55) {A Roboz tool chain};
+    at (11.05,1.55) {A RoboZ tool chain};
   \node[anchor=west,font=\sffamily\large,text=muted]
-    at (11.05,1.05) {Known branches stay in typed Python.};
+    at (11.05,1.05) {Deterministic after triggering};
 
   \node[agent] (chain-agent) at (13,0) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
@@ -164,7 +151,7 @@
   };
   \node[tool] (chain-plan) at (19.2,0) {
     {\scriptsize\bfseries\color{blue}ACTIVE TOOL}\\[-0.2mm]
-    {\large\bfseries Plan lunch with Bob}
+    {\large\bfseries Ask Bob}
   };
   \node[decision] (chain-food) at (19.2,-2.5) {
     {\small\bfseries\color{amber}WHAT DOES}\\[-0.3mm]
@@ -184,12 +171,8 @@
   };
   \node[passive] (chain-book) at (19.2,-10.3) {
     {\scriptsize\bfseries\color{green}CHAINED TOOL}\\[-0.2mm]
-    {\large\bfseries Book a table}
+    {\large\bfseries Book table}
   };
-  \node[note] at (16.1,-11.6) {
-    known branches and retries skip the model
-  };
-
   \draw[flow] (chain-agent) -- (chain-plan);
   \draw[flow] (chain-plan.south) -- (chain-food.north);
   \draw[flow] (chain-food.west) --

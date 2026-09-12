@@ -1,31 +1,43 @@
-# Roboz
+# RoboZ
 
-**Chain tools. Skip model calls.**
+**Chain tools. Skip calls.**
 
-Roboz lets a model select an active tool, then routes its typed output through
-ordinary Python. Conditional branches, follow-up work, and termination do not
-have to go back through the agent loop.
-
-![The usual agent loop sends every lunch-planning step back through the agent. A Roboz chain returns to the agent when Bob wants no lunch, passes any cuisine into one parameterized restaurant search, and retries the plan directly when no seats are available.](docs/assets/tool-chaining.svg)
+RoboZ is a framework for building llm powered agents. The core ingredient is that every tool can may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 > [!WARNING]
-> Roboz is pre-release software requiring Python 3.13 or newer. APIs may change
+> RoboZ is pre-release software requiring Python 3.13 or newer. APIs may change
 > before 1.0.
 
-## Tool chaining is the point
+## Basic idea
 
-The model sees and selects **active tools**. A tool with `chained_to` is
-**passive**: its schema and instructions stay outside the model's active tool
-surface, and Roboz can run it directly from its parent's output.
+![The usual agent loop sends every lunch-planning step back through the agent. A Roboz chain returns to the agent when Bob wants no lunch, passes any cuisine into one parameterized restaurant search, and retries the plan directly when no seats are available.](docs/assets/tool-chaining.svg)
 
-At each handoff, an ordinary Python predicate can select one successor. Paths
-can branch by output type or value, consult application policy, and converge on
-a shared tool. Pydantic validates the runtime handoff, while the type checker
-catches incompatible links before the agent runs.
+### Problems in agents: Context bloat and excessive back-and-forth
+Suppose the task we want to achieve is ask our buddy Bob out to lunch and then book a table. For the sake of argument assume that our agent has access to the following MCP servers (Note: this is an example, RoboZ has native Tool primitives):
+
+- Ask Bob what they want
+- Find a restaurant
+- Book a table.
+
+In the usual approach an agent is presented each MCP server separately in the their system prompt and it must call them one-by-one to complete the task. When the agent is completing the task, at every turn it must choose the correct tool, formulate its output accordingly and absorb the reply into its context, which already must contain the specific instructions on how to use each tool. In addition, at each turn one has to wait for the llm to reply, each reply costs tokens and each reply risks a mistake from the llm.
+
+### Deterministic chains
+The philosophy in RoboZ is that the workflow is deterministic an only choosing when to initiate is the agent's job. In RoboZ the agent would trigger the "ask Bob what they want" tool and all subsequent steps come by chaining: each tool is chained to other tools upstream and their output is passed down to the chained tool. Each link/edge may introduce a True/False condition, in this case for example if Bob interested in having lunch (with us). If he is not, RoboZ allows for the chain to break and returns back to the default tool, which for an agentic process is usually "ask the llm what to do next". The default mode is that chained tools are not presented to the agent, they are thus *passive* or in other words their role is strictly in forming deterministic workflows and they cannot be invoked. 
+
+### Message truncation
+Lengthy tasks with many tool calls also add many tokens in the context that may not be relevant to the end result. In RoboZ all tools may choose to truncate their message i.e. not show it to the agent in its complete form or only show it in its entirety a few times and then remove it from the agents context entirely, for example.
+
+
+
+
+
+## Code example
+TBD
+
 
 ```python
 import roboz as rz
@@ -89,21 +101,9 @@ def book_a_table(input: Restaurant, messages: list[rz.Message]) -> Booking:
     ...
 ```
 
-That changes three practical things:
+## factory closure, endpoint instance and seeing the entire prompt
+TBD
 
-- **Fewer model calls.** When code already knows the next step, no model has to
-  choose it again.
-- **Less context bloat.** Passive tool descriptions and schemas never enter the
-  active tool surface.
-- **Explicit control flow.** Conditions are normal, deterministic Python that
-  can be read, tested, and type-checked.
-
-If Bob wants no lunch, no cuisine branch matches and the agent resumes.
-Otherwise, his preference becomes the typed argument to one restaurant search.
-Available seats flow directly to booking; no seats flow through the passive
-retry planner and back into the same search, still without another model
-decision. Returning `Stop` would end the run instead; several matching
-conditions raise rather than create an ambiguous path.
 
 ## Try it
 
