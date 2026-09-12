@@ -2,13 +2,11 @@
 
 import importlib
 import json
-from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
 import pytest
-from roboshed.agents import librarian as librarian_definition
 from roboshed.agents.librarian import LIBRARIAN_AGENT_DESCRIPTION
 from roboshed.capabilities import (
     ArtifactRetention,
@@ -20,6 +18,7 @@ from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.sandbox import Sandbox
 
 from roboz.exceptions import ExternalCallCancelledError, LLMAuthError
+from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint, MockProviderError
 from roboz.models import Empty, Message, Role, Stop, Str
 from roboz.runtime import default_event_sinks
@@ -52,30 +51,42 @@ def _build(
 ):
     sandbox = _sandbox(tmp_path)
     names = {_WATCHED_AGENT}
-    return replace(
-        librarian_definition(
-            sandbox,
-            names,
-            agent_endpoint=endpoint or MockLLMEndpoint([]),
-        ),
+    definition = _librarian(
+        sandbox,
+        names,
+        endpoint=endpoint or MockLLMEndpoint([]),
         capabilities=(
-            ConversationSnapshots(
-                sandbox, names, token_growth_threshold=token_growth_threshold
-            ),
+            ConversationSnapshots(token_growth_threshold=token_growth_threshold),
             MemoryConsolidation(
-                sandbox,
-                names,
                 min_pending_snapshots=3,
                 max_pending_age_seconds=3_600,
             ),
-            ArtifactRetention(sandbox),
-            MaintenanceCadence(sandbox, names, seconds=sleep_seconds),
+            ArtifactRetention(),
+            MaintenanceCadence(seconds=sleep_seconds),
         ),
-    ).build(
+    )
+    return definition.build(
         event_sink_factory=lambda name: default_event_sinks(
             data_path=sandbox.project_logs_dir() / name, include_cli=False
         )
+    )[0]
+
+
+def _librarian(sandbox, names, *, endpoint, capabilities):
+    definition = DeployableAgent(
+        name="librarian",
+        description=LIBRARIAN_AGENT_DESCRIPTION,
+        is_agentic=False,
+        automatic_tool_prompt=False,
+        default_capabilities=capabilities,
     )
+    definition.set_agent_endpoint(endpoint)
+    definition.set_interaction_mode(None)
+    definition.set_attributes(
+        sandbox=sandbox,
+        watched_agent_names=names,
+    )
+    return definition
 
 
 def _write_source_run(
@@ -127,31 +138,24 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
 @pytest.mark.parametrize(
     "capability_type", [ConversationSnapshots, MemoryConsolidation]
 )
-def test_summary_capabilities_have_audited_defaults_and_validation(
-    tmp_path, capability_type
-):
-    sandbox = _sandbox(tmp_path)
-    capability = capability_type(sandbox, "test", {_WATCHED_AGENT})
+def test_summary_capabilities_have_audited_defaults_and_validation(capability_type):
+    capability = capability_type()
     assert capability.max_chars_tolerance_percent == 15.0
     assert capability.timeout_s == 300.0
 
     with pytest.raises(ValueError, match="timeout_s"):
-        capability_type(sandbox, "test", {_WATCHED_AGENT}, timeout_s=0)
+        capability_type(timeout_s=0)
     for invalid in (-1.0, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="max_chars_tolerance_percent"):
             capability_type(
-                sandbox,
-                "test",
-                {_WATCHED_AGENT},
                 max_chars_tolerance_percent=invalid,
             )
 
 
-def test_maintenance_capability_defaults(tmp_path):
-    sandbox = _sandbox(tmp_path)
-    snapshots = ConversationSnapshots(sandbox, {_WATCHED_AGENT})
-    consolidation = MemoryConsolidation(sandbox, {_WATCHED_AGENT})
-    retention = ArtifactRetention(sandbox)
+def test_maintenance_capability_defaults():
+    snapshots = ConversationSnapshots()
+    consolidation = MemoryConsolidation()
+    retention = ArtifactRetention()
     assert snapshots.token_growth_threshold == 20_000
     assert snapshots.max_chars == 8_000
     assert consolidation.max_chars == 12_000
@@ -162,34 +166,33 @@ def test_maintenance_capability_defaults(tmp_path):
         retention.max_snapshot_files,
         retention.max_memory_files,
     ) == (500, 100, 10)
-    assert MaintenanceCadence(sandbox, {_WATCHED_AGENT}).seconds == 120
+    assert MaintenanceCadence().seconds == 120
 
 
 @pytest.mark.parametrize(
     "capability_type", [ConversationSnapshots, MemoryConsolidation]
 )
 def test_each_summary_capability_requires_a_model_on_build(tmp_path, capability_type):
-    definition = replace(
-        librarian_definition(
-            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=None
-        ),
-        capabilities=(
-            capability_type(_sandbox(tmp_path), {_WATCHED_AGENT}),
-        )
+    sandbox = _sandbox(tmp_path)
+    definition = _librarian(
+        sandbox,
+        {_WATCHED_AGENT},
+        endpoint=None,
+        capabilities=(capability_type(),),
     )
-    with pytest.raises(ValueError, match="require.*an endpoint"):
+    with pytest.raises(ValueError, match="agent_endpoint.*None"):
         definition.build()
 
 
 def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
     sandbox = _sandbox(tmp_path)
-    agent = replace(
-        librarian_definition(sandbox, {_WATCHED_AGENT}, agent_endpoint=None),
-        capabilities=(
-            ArtifactRetention(sandbox),
-            MaintenanceCadence(sandbox, {_WATCHED_AGENT}),
-        )
-    ).build()
+    definition = _librarian(
+        sandbox,
+        {_WATCHED_AGENT},
+        endpoint=None,
+        capabilities=(ArtifactRetention(), MaintenanceCadence()),
+    )
+    agent, _ = definition.build()
     assert [tool.name for tool in agent.default_tools] == [
         "purge_logs",
         "purge_snapshots",
@@ -205,18 +208,15 @@ def test_librarians_share_endpoint_but_have_independent_cancellation(
     tmp_path: Path,
 ) -> None:
     endpoint = MockLLMEndpoint([])
-    definition = replace(
-        librarian_definition(
-            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=endpoint
-        ),
-        capabilities=(
-            ConversationSnapshots(
-                _sandbox(tmp_path), {_WATCHED_AGENT}
-            ),
-            MaintenanceCadence(_sandbox(tmp_path), {_WATCHED_AGENT}),
-        ),
+    sandbox = _sandbox(tmp_path)
+    definition = _librarian(
+        sandbox,
+        {_WATCHED_AGENT},
+        endpoint=endpoint,
+        capabilities=(ConversationSnapshots(), MaintenanceCadence()),
     )
-    first, second = definition.build(), definition.build()
+    first = definition.build()[0]
+    second = definition.build()[0]
     first.pipe.cancel()
 
     assert first.agent_endpoint is second.agent_endpoint is endpoint
@@ -302,9 +302,7 @@ def test_librarian_invoke_persists_no_message_cycle_outputs(tmp_path: Path) -> N
 
     agent.invoke()
 
-    run_files = list(
-        (sandbox.project_logs_dir() / "librarian").rglob("*.json")
-    )
+    run_files = list((sandbox.project_logs_dir() / "librarian").rglob("*.json"))
     assert len(run_files) == 1
     run = json.loads(run_files[0].read_text(encoding="utf-8"))
     assert run["agent_name"] == "librarian"
@@ -334,9 +332,7 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
         agent.invoke()
 
     assert isinstance(raised.value.__cause__, LLMAuthError)
-    run_files = list(
-        (sandbox.project_logs_dir() / "librarian").rglob("*.json")
-    )
+    run_files = list((sandbox.project_logs_dir() / "librarian").rglob("*.json"))
     assert len(run_files) == 1
     run_text = run_files[0].read_text(encoding="utf-8")
     run = json.loads(run_text)
@@ -368,23 +364,21 @@ def test_librarian_overrides_each_tool_endpoint_independently(
 
     default = LLMEndpoint(client=object(), api_name="test", model_name="default")
     override = LLMEndpoint(client=object(), api_name="test", model_name="override")
-    agent = replace(
-        librarian_definition(
-            _sandbox(tmp_path), {_WATCHED_AGENT}, agent_endpoint=default
-        ),
+    sandbox = _sandbox(tmp_path)
+    definition = _librarian(
+        sandbox,
+        {_WATCHED_AGENT},
+        endpoint=default,
         capabilities=(
             ConversationSnapshots(
-                _sandbox(tmp_path),
-                {_WATCHED_AGENT},
                 endpoint=override if override_snapshot else None,
             ),
             MemoryConsolidation(
-                _sandbox(tmp_path),
-                {_WATCHED_AGENT},
                 endpoint=None if override_snapshot else override,
             ),
         ),
-    ).build()
+    )
+    agent = definition.build()[0]
 
     snapshot, consolidation = agent.default_tools[:2]
     expected = (override, default) if override_snapshot else (default, override)

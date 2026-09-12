@@ -1,22 +1,62 @@
-from dataclasses import replace
+from collections.abc import Mapping
 
 import pytest
 
 from roboz import Empty, Message, Skill, Str, stop, tool
-from roboz.deployment import AgentCapability, DeployableAgent, Capability
+from roboz.deployment import (
+    AgentCapability,
+    Capability,
+    DeployableAgent,
+    RequiredAttributes,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import Output
+
+
+class _ConfiguredCapability(AgentCapability):
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        return {"setting": str}
+
+    def build(self, agent, pipe):
+        return Capability(tools=(stop,))
+
+
+def _definition(
+    name: str,
+    *,
+    capabilities=(),
+    subagents=(),
+    background_agents=(),
+) -> DeployableAgent:
+    definition = DeployableAgent(
+        name=name,
+        is_agentic=False,
+        default_capabilities=(
+            capabilities
+            if capabilities
+            else (Capability(default_tools=(stop,)),)
+        ),
+        subagents=subagents,
+        background_agents=background_agents,
+    )
+    definition.set_interaction_mode(None)
+    return definition
 
 
 def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     calls = []
     built_pipes = []
-    received_endpoints = []
+    received_agents = []
 
     class Capabilities(AgentCapability):
-        def build(self, pipe, *, default_endpoint):
+        @property
+        def required_attributes(self) -> Mapping:
+            return {}
+
+        def build(self, agent, pipe):
             built_pipes.append(pipe)
-            received_endpoints.append(default_endpoint)
+            received_agents.append(agent)
 
             @tool
             def begin(input: Empty, messages: list[Message]) -> Str:
@@ -49,23 +89,27 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
 
     definition = DeployableAgent(
         name="test",
-        agent_endpoint=MockLLMEndpoint(
+        system_prompt="Exercise the capabilities.",
+        default_capabilities=(Capability(tools=(stop,)), Capabilities()),
+    )
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
             [
                 {"action": "research", "rationale": "load instructions"},
                 {"action": "stop", "rationale": "done", "value": "ok"},
+                {"action": "research", "rationale": "load instructions"},
+                {"action": "stop", "rationale": "done", "value": "ok"},
             ]
-        ),
-        system_prompt="Exercise the capabilities.",
-        capabilities=(
-            Capability(tools=(stop,)),
-            Capabilities(),
-        ),
-        interaction_mode=Output.API,
+        )
     )
-    agent = definition.build()
-    second = definition.build()
+    definition.set_interaction_mode(Output.API)
+
+    agent, backgrounds = definition.build()
+    second, second_backgrounds = definition.build()
+
+    assert backgrounds == second_backgrounds == ()
     assert built_pipes == [agent.pipe, second.pipe]
-    assert all(endpoint is definition.agent_endpoint for endpoint in received_endpoints)
+    assert received_agents == [definition, definition]
     assert agent.pipe is not second.pipe
     assert agent.default_tools[0] is not second.default_tools[0]
     assert agent.default_tools[0] in agent.tools
@@ -76,41 +120,28 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     assert "AUTO_LOADED_MARKER" in text and "ON_DEMAND_MARKER" in text
 
 
-@pytest.mark.parametrize("build_graph", [False, True])
-def test_duplicate_names_fail_before_building_capabilities_or_sinks(build_graph):
+def test_duplicate_names_fail_before_building_capabilities_or_sinks():
     def unexpected(_name):
         raise AssertionError("Must validate names before allocating sinks")
 
-    child = DeployableAgent(name="duplicate", agent_endpoint=None, is_agentic=False)
-    root = DeployableAgent(
-        name="duplicate",
-        agent_endpoint=None,
-        is_agentic=False,
-        subagents=(child,),
-    )
+    root = _definition("duplicate", subagents=(_definition("duplicate"),))
     with pytest.raises(ValueError, match="unique"):
-        if build_graph:
-            root.build_graph(event_sink_factory=unexpected)
-        else:
-            root.build(event_sink_factory=unexpected)
+        root.build(event_sink_factory=unexpected)
 
 
-def test_build_graph_returns_fresh_nested_background_handles():
-    root = DeployableAgent(
-        name="root",
-        agent_endpoint=None,
-        is_agentic=False,
+def test_build_returns_fresh_nested_background_handles():
+    nested = _definition("nested")
+    background = _definition("background", background_agents=(nested,))
+    child = _definition("child", background_agents=(background,))
+    root = _definition(
+        "root",
         capabilities=(Capability(default_tools=(stop,)),),
-    )
-    nested = replace(root, name="nested")
-    background = replace(root, name="background", background_agents=(nested,))
-    child = replace(root, name="child", background_agents=(background,))
-    root = replace(
-        root, subagents=(child,), background_agents=(replace(root, name="other"),)
+        subagents=(child,),
+        background_agents=(_definition("other"),),
     )
 
-    agent, backgrounds = root.build_graph()
-    second, fresh_backgrounds = root.build_graph()
+    agent, backgrounds = root.build()
+    second, fresh_backgrounds = root.build()
 
     assert agent.name == "root"
     assert [item.name for item in backgrounds] == ["background", "nested", "other"]
@@ -119,29 +150,115 @@ def test_build_graph_returns_fresh_nested_background_handles():
         assert first.pipe is not fresh.pipe
 
 
-def test_each_capability_receives_its_owning_agents_default():
+def test_each_capability_receives_its_owning_agent():
     received = []
 
     class Feature:
-        def build(self, pipe, *, default_endpoint):
-            received.append((pipe, default_endpoint))
+        @property
+        def required_attributes(self):
+            return {}
+
+        def build(self, agent, pipe):
+            received.append((agent, pipe))
             return Capability(tools=(stop,))
 
-    parent_endpoint, child_endpoint = MockLLMEndpoint([]), MockLLMEndpoint([])
     child = DeployableAgent(
         name="child",
         system_prompt="Complete the task.",
-        agent_endpoint=child_endpoint,
-        capabilities=(Feature(),),
+        default_capabilities=(Feature(),),
     )
+    child.set_agent_endpoint(MockLLMEndpoint([]))
     parent = DeployableAgent(
         name="parent",
         system_prompt="Delegate the task.",
-        agent_endpoint=parent_endpoint,
-        capabilities=(Feature(),),
+        default_capabilities=(Feature(),),
         subagents=(child,),
-    ).build()
+    )
+    parent.set_agent_endpoint(MockLLMEndpoint([]))
 
-    assert received[0] == (parent.pipe, parent_endpoint)
-    assert received[1][0] is not parent.pipe
-    assert received[1][1] is child_endpoint
+    runtime, _ = parent.build()
+
+    assert received[0] == (parent, runtime.pipe)
+    assert received[1][0] is child
+    assert received[1][1] is not runtime.pipe
+
+
+def test_incomplete_configuration_can_be_completed_later():
+    definition = _definition("configurable", capabilities=(_ConfiguredCapability(),))
+
+    with pytest.raises(ValueError, match="setting.*missing"):
+        definition.validate()
+
+    definition.set_attributes(setting="configured")
+    definition.validate()
+
+
+def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
+    missing = _definition("missing", capabilities=(_ConfiguredCapability(),))
+    none = _definition("none", capabilities=(_ConfiguredCapability(),))
+    none.set_attributes(setting=None)
+    wrong = _definition("wrong", capabilities=(_ConfiguredCapability(),))
+    wrong.set_attributes(setting=42)
+    root = _definition("root", subagents=(missing, none), background_agents=(wrong,))
+
+    with pytest.raises(ValueError) as raised:
+        root.validate()
+
+    message = str(raised.value)
+    assert "agent 'missing', capability _ConfiguredCapability" in message
+    assert "setting' must be str; it is missing" in message
+    assert "agent 'none', capability _ConfiguredCapability" in message
+    assert "setting' must be str; it is None" in message
+    assert "agent 'wrong', capability _ConfiguredCapability" in message
+    assert "setting' must be str; got int" in message
+
+
+def test_default_capabilities_and_child_views_cannot_be_replaced_or_cleared():
+    built_in = Capability()
+    extension = Capability(tools=(stop,))
+    child = _definition("child")
+    background = _definition("background")
+    definition = _definition("root", capabilities=(built_in,))
+
+    definition.add_capabilities(extension)
+    definition.add_subagents(child)
+    definition.add_background_agents(background)
+
+    assert definition.default_capabilities == (built_in,)
+    assert definition.additional_capabilities == (extension,)
+    assert definition.capabilities == (built_in, extension)
+    assert definition.subagents == (child,)
+    assert definition.background_agents == (background,)
+    for attribute in (
+        "default_capabilities",
+        "additional_capabilities",
+        "capabilities",
+        "subagents",
+        "background_agents",
+    ):
+        with pytest.raises(AttributeError):
+            setattr(definition, attribute, ())
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["name", "agent_endpoint", "capabilities", "build", "_attributes"],
+)
+def test_capability_attributes_cannot_overwrite_agent_structure(name):
+    definition = _definition("protected")
+    with pytest.raises(ValueError, match="cannot overwrite"):
+        definition.set_attributes(**{name: object()})
+
+
+def test_valid_falsey_capability_attributes_are_accepted():
+    class FalseyCapability:
+        @property
+        def required_attributes(self):
+            return {"items": list, "enabled": bool, "count": int}
+
+        def build(self, agent, pipe):
+            return Capability()
+
+    definition = _definition("falsey", capabilities=(FalseyCapability(),))
+    definition.set_attributes(items=[], enabled=False, count=0)
+    definition.validate()

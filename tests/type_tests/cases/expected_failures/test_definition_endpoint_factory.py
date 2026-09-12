@@ -7,4 +7,5 @@ def endpoint_factory(pipe: EventPipe) -> MockLLMEndpoint:
     return MockLLMEndpoint([])
 
 
-definition = DeployableAgent(name="invalid", agent_endpoint=endpoint_factory)
+definition = DeployableAgent(name="invalid")
+definition.set_agent_endpoint(endpoint_factory)

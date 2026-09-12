@@ -18,9 +18,10 @@ def test_compaction_capability_preserves_tool_default_and_explicit_policy(thresh
     agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
-        agent_endpoint=endpoint,
-        capabilities=(capability,),
-    ).build()
+        default_capabilities=(capability,),
+    )
+    agent.set_agent_endpoint(endpoint)
+    agent, _ = agent.build()
     (tool,) = agent.default_tools
     result = tool(input=All(), messages=[])
     expected = DEFAULT_THRESHOLD_PERCENT if threshold is None else threshold
@@ -34,22 +35,23 @@ def test_compaction_override_uses_its_model_context_budget():
     agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
-        agent_endpoint=default,
-        capabilities=(Compactification(endpoint=override),),
-    ).build()
+        default_capabilities=(Compactification(endpoint=override),),
+    )
+    agent.set_agent_endpoint(default)
+    agent, _ = agent.build()
     (tool,) = agent.default_tools
     assert tool(input=All(), messages=[]).to_compaction == "1.6k"
 
 
 def test_compaction_without_any_endpoint_fails_before_starting_work():
-    with pytest.raises(ValueError, match="compaction requires an endpoint"):
-        DeployableAgent(
-            system_prompt="Compact the conversation.",
-            name="test",
-            agent_endpoint=None,
-            is_agentic=False,
-            capabilities=(Compactification(),),
-        ).build()
+    definition = DeployableAgent(
+        system_prompt="Compact the conversation.",
+        name="test",
+        is_agentic=False,
+        default_capabilities=(Compactification(),),
+    )
+    with pytest.raises(ValueError, match="agent_endpoint.*None"):
+        definition.build()
 
 
 def test_compaction_preserves_live_lazy_endpoint_selection():
@@ -87,9 +89,10 @@ def test_compaction_preserves_live_lazy_endpoint_selection():
     agent = DeployableAgent(
         name="test",
         system_prompt="Compact the conversation.",
-        agent_endpoint=default,
-        capabilities=(Compactification(endpoint=Reference()),),
-    ).build()
+        default_capabilities=(Compactification(endpoint=Reference()),),
+    )
+    agent.set_agent_endpoint(default)
+    agent, _ = agent.build()
     (tool,) = agent.default_tools
     assert agent.external_dependencies() == (default, selected)
     assert constructed == []
