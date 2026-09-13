@@ -49,10 +49,18 @@ role definitions.
 Each capability declares the typed attributes it reads from its owning
 `DeployableAgent`. Runtime controls remain separate. Use `set_attributes()` to
 supply standalone permission policies and sandbox inputs before building.
+Capability builders construct the central typed tool contexts; each build gets
+fresh runtime state while retaining the selected endpoint objects. Build-based
+resource inspection uses those tools without initializing model clients.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
 ## RoboSprawl deployment recipe
+
+The recipe still requires migration to the concrete endpoint contract in this
+branch; importing it currently fails on the removed lazy-reference API. The
+standalone `orchestrator` and `librarian` constructors and their capabilities are
+migrated. The description below records the recipe behavior to preserve.
 
 `roboshed.deployments.robosprawl.robosprawl` is the concrete lazy persistent
 orchestrator and Librarian recipe. Call it with an already-scoped sandbox,
@@ -85,8 +93,9 @@ Include this tool in an agent's `default_tools` and pass that agent's owning
 `system_prompt` and `skill_message` override the full continuation instructions.
 The tool preserves the contiguous bootstrap prefix and folds the remaining
 history, including previous summaries, into a new continuation message. Its
-status also carries the summary for event persistence. Each constructed tool
-owns its compaction count; constructing one per agent keeps counters independent.
+status also carries the summary for event persistence. Each capability build
+creates a fresh compaction context; tools copied or rebound to that context share
+its count, while separate builds keep counters independent.
 
 Successful status reports describe the compacted history's current usage and
 headroom. Summaries are budgeted below the configured threshold and endpoint

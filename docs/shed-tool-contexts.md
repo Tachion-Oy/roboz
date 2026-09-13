@@ -125,13 +125,16 @@ and the email `_prepare_ctx` hooks are removed.
 
 ## Checkpoint boundary
 
-This checkpoint changes tool contexts only. Existing deployment methods,
-capability builders, and recipes are untouched. Migrating the capability call sites
-to these context classes remains a subsequent step; this document does not change
-when an application configures, builds, or invokes its deployment.
+Shed capability builders now construct these central context classes. Public
+capability arguments, owner configuration, model overrides, tool order, and defaults
+are preserved. Each build creates fresh contexts and runtime state; tools retain
+the supplied endpoints. Building and inspecting those tools does not initialize
+clients. The existing deployment methods and application configuration/build/invoke
+sequence are unchanged.
 
-Capability bindings, recipes/live model selection, and obsolete consumer
-examples/tests remain to migrate. Proton remains deferred.
+The RoboSprawl recipe/live model selection and obsolete consumer examples/tests
+remain to migrate. Tests using removed lazy-reference APIs still fail at import;
+they remain in place for that migration. Proton remains deferred.
 Deployment dependency discovery uses the existing build path and requires
 configuration sufficient for construction; agents do not need to be running.
 The complete library and release gates are not ready at this checkpoint.

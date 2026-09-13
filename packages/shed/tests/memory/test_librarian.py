@@ -4,6 +4,7 @@ import importlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Final
 
 import pytest
@@ -14,6 +15,7 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
+from roboshed.tools.contexts import SleepBetweenRunsContext
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.sandbox import Sandbox
 
@@ -351,7 +353,7 @@ def test_builtin_default_configuration_is_preserved() -> None:
 
     import roboz as rz
 
-    result = sleep_between_runs(rz.Ctx(seconds=0))(rz.All(), [])
+    result = sleep_between_runs(SleepBetweenRunsContext(seconds=0))(rz.All(), [])
     assert isinstance(result, rz.Str)
     assert result.value == "sleep_between_runs: slept=0.0s"
 
@@ -362,8 +364,17 @@ def test_librarian_overrides_each_tool_endpoint_independently(
 ):
     from roboz.llm import LLMEndpoint
 
-    default = LLMEndpoint(client=object(), api_name="test", model_name="default")
-    override = LLMEndpoint(client=object(), api_name="test", model_name="override")
+    def forbidden(*args, **kwargs):
+        pytest.fail("Building and inspecting must not initialize or call the client")
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=forbidden)),
+        models=SimpleNamespace(list=forbidden),
+        close=forbidden,
+        materialize=forbidden,
+    )
+    default = LLMEndpoint(client=client, api_name="test", model_name="default")
+    override = LLMEndpoint(client=client, api_name="test", model_name="override")
     sandbox = _sandbox(tmp_path)
     definition = _librarian(
         sandbox,
@@ -382,6 +393,10 @@ def test_librarian_overrides_each_tool_endpoint_independently(
 
     snapshot, consolidation = agent.default_tools[:2]
     expected = (override, default) if override_snapshot else (default, override)
-    assert snapshot.external_dependencies == (expected[0],)
-    assert consolidation.external_dependencies == (expected[1],)
+    assert snapshot.external_dependencies() == (expected[0],)
+    assert snapshot.external_dependencies()[0] is expected[0]
+    assert consolidation.external_dependencies() == (expected[1],)
+    assert consolidation.external_dependencies()[0] is expected[1]
     assert agent.external_dependencies() == expected
+    assert definition.external_dependencies() == expected
+    assert not sandbox.project_dir().exists()

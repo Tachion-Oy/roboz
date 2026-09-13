@@ -238,5 +238,7 @@ model before an invocation chooses one. The monitor deduplicates the combined
 resources and checks them only when observation runs; see the
 [Shed health guide](../packages/shed/README.md#dependency-health).
 
-Shed's file, maintenance, and email tool contexts are migrated. Capability call
-sites and the RoboSprawl recipe migration remain in progress.
+Shed's file, maintenance, and email tool contexts and capability bindings are
+migrated. Capabilities construct central typed contexts while preserving their
+arguments, owner configuration, endpoint overrides, defaults, and tool order.
+The RoboSprawl recipe and live model selection migration remain in progress.

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Migrate capability bindings to the central typed contexts. Existing capability
+  arguments, owner configuration, endpoint overrides, defaults, and maintenance
+  order are preserved. Each build creates fresh tool state and reports actual
+  resources without initializing model clients. The RoboSprawl recipe and live
+  model selection remain pending in this staged breaking refactor.
+
 - Breaking: email factories now use the central `EmailContext`; attachment
   resolvers bind a `Path` directly. `get_work_with_email` keeps its arguments and
   requires a complete `EmailService`, which now inherits `ExternalDependency`

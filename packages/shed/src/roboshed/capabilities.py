@@ -25,11 +25,16 @@ from roboshed.tools.compactification import (
     DEFAULT_THRESHOLD_PERCENT,
 )
 from roboshed.tools.consolidate_memory import consolidate_memory
+from roboshed.tools.contexts import (
+    ConsolidateMemoryContext,
+    PurgeFilesContext,
+    SleepBetweenRunsContext,
+    SnapshotConversationsContext,
+)
 from roboshed.tools.purge_files import purge_files
 from roboshed.tools.sleep_between_runs import sleep_between_runs
 from roboshed.tools.snapshot_conversations import snapshot_conversations
 from roboshed.sandbox import PermissionPolicy, Sandbox
-from roboz.dependencies import ExternalDependencyReference
 from roboz.deployment import (
     AgentCapability,
     Capability,
@@ -39,10 +44,9 @@ from roboz.deployment import (
 )
 from roboz.llm import EndpointLike, LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import EventPipe
-from roboz.tooling.context import Ctx
 
 
-_ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, ExternalDependencyReference)
+_ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint)
 _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
     "agent_endpoint": _ENDPOINT_TYPES,
 }
@@ -174,7 +178,7 @@ class ConversationSnapshots(AgentCapability):
         return Capability(
             default_tools=(
                 snapshot_conversations(
-                    Ctx(
+                    SnapshotConversationsContext(
                         endpoint=endpoint,
                         conversation_root=sandbox.project_logs_dir(),
                         snapshot_root=sandbox.project_snapshots_dir(),
@@ -241,7 +245,7 @@ class MemoryConsolidation(AgentCapability):
         return Capability(
             default_tools=(
                 consolidate_memory(
-                    Ctx(
+                    ConsolidateMemoryContext(
                         endpoint=endpoint,
                         snapshot_root=sandbox.project_snapshots_dir(),
                         memory_root=sandbox.project_memory_dir(),
@@ -278,14 +282,14 @@ class ArtifactRetention(AgentCapability):
         return Capability(
             default_tools=(
                 purge_files(
-                    Ctx(
+                    PurgeFilesContext(
                         folders=[sandbox.project_logs_dir()],
                         pattern="*.json",
                         max_files=self.max_log_files,
                     )
                 ).copy(name=PURGE_LOGS_TOOL_NAME),
                 purge_files(
-                    Ctx(
+                    PurgeFilesContext(
                         folders=[sandbox.project_snapshots_dir()],
                         pattern="*.md",
                         max_files=self.max_snapshot_files,
@@ -293,7 +297,7 @@ class ArtifactRetention(AgentCapability):
                     )
                 ).copy(name=PURGE_SNAPSHOTS_TOOL_NAME),
                 purge_files(
-                    Ctx(
+                    PurgeFilesContext(
                         folders=[sandbox.project_memory_dir()],
                         pattern="*.md",
                         max_files=self.max_memory_files,
@@ -328,7 +332,7 @@ class MaintenanceCadence(AgentCapability):
         return Capability(
             default_tools=(
                 sleep_between_runs(
-                    Ctx(
+                    SleepBetweenRunsContext(
                         seconds=self.seconds,
                         is_cancelled=lambda: pipe.cancelled,
                         conversation_root=sandbox.project_logs_dir(),

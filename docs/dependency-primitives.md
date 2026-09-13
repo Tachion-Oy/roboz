@@ -520,7 +520,9 @@ Shed's executable, OpenAI, and network probe functions. Service-specific checks
 belong to resource implementations; Shed converts the boolean or exception to a
 health observation. See the [Shed health guide](../packages/shed/README.md#dependency-health).
 Shed file, maintenance, and email tools follow the [concrete-context guide](shed-tool-contexts.md).
-Composition builders, live routing, and their legacy tests remain for later checkpoints.
+Shed capabilities now build tools with those contexts, preserving the existing
+deployment construction sequence. The RoboSprawl recipe, live routing, and their
+legacy tests remain for later checkpoints.
 
 ## Focused checks
 
