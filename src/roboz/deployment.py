@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from roboz.agent import Agent, run_background_agent, run_subagent
+from roboz.agent import Agent, BackgroundAgentContext, run_background_agent, run_subagent
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe, EventSink, Output
 from roboz.skill import Skill
 from roboz.tooling import Tool
-from roboz.tooling.context import Ctx
 
 type RequiredAttributeType = type[object] | tuple[type[object], ...]
 type RequiredAttributes = Mapping[str, RequiredAttributeType]
@@ -305,7 +304,7 @@ class DeployableAgent:
                 event_sinks=event_sinks, event_sink_factory=event_sink_factory
             )
             tools.append(
-                run_subagent(Ctx(agent=child)).copy(
+                run_subagent(child).copy(
                     name=child.name,
                     description=child.description,
                 )
@@ -316,7 +315,7 @@ class DeployableAgent:
                 event_sink_factory=event_sink_factory
             )
             default_tools.append(
-                run_background_agent(Ctx(agent=child)).copy(
+                run_background_agent(BackgroundAgentContext(agent=child)).copy(
                     name=f"start_background_agent_{child.name}",
                 )
             )

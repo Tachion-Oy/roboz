@@ -24,7 +24,7 @@ from roboz.agent._notifications import (
 )
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.agent._tool_observer import ToolInvocationObserver
-from roboz.agent.prompt_agent_tool import prompt_agent
+from roboz.agent.prompt_agent_tool import PromptAgentContext, prompt_agent
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -46,12 +46,10 @@ from roboz.runtime.io import (
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
-from roboz.tooling.context import Ctx
+from roboz.tooling.context import HasExternalDependencies
 from roboz.tooling.core import Factory, Tool
 from roboz.dependencies import (
     ExternalDependency,
-    ExternalDependencyReference,
-    ExternalDependencySource,
     dedupe_external_dependencies,
 )
 from roboz.tools.interaction import NO_REPLY, prompt_user
@@ -78,7 +76,7 @@ class AgentInputs(TypedDict, total=False):
     event_pipe: EventPipe | None
 
 
-class Agent(ExternalDependencySource):
+class Agent(HasExternalDependencies):
     """Agent primitive.
 
     The agent uses the supplied :class:`~roboz.runtime.pipe.EventPipe`, or creates
@@ -137,15 +135,15 @@ class Agent(ExternalDependencySource):
             )
         self.default_tools = [] if default_tools is None else list(default_tools)
         self.prompt_user_tool = (
-            prompt_user(Ctx(timeout_reply=NO_REPLY))
+            prompt_user(NO_REPLY)
             if custom_prompt_user_tool is None
             else custom_prompt_user_tool
         )
         if agent_endpoint is not None and not isinstance(
-            agent_endpoint, (ExternalDependency, ExternalDependencyReference, MockLLMEndpoint)
+            agent_endpoint, (LLMEndpoint, MockLLMEndpoint)
         ):
             raise TypeError(
-                "agent_endpoint must be an endpoint dependency or MockLLMEndpoint"
+                "agent_endpoint must be an LLMEndpoint or MockLLMEndpoint"
             )
         if self.is_agentic and agent_endpoint is None:
             raise ValueError("agentic instances require agent_endpoint")
@@ -241,11 +239,10 @@ class Agent(ExternalDependencySource):
             endpoint = self.agent_endpoint
             if endpoint is None:
                 raise RuntimeError("agentic instance has no endpoint")
-            endpoint_binding = endpoint
             self.master_tool = prompt_agent(
-                Ctx(
+                PromptAgentContext(
                     active_tools=tuple(self.active_tools.values()),
-                    endpoint=endpoint_binding,
+                    endpoint=endpoint,
                     pipe=self.pipe,
                 )
             )
@@ -295,7 +292,7 @@ class Agent(ExternalDependencySource):
                 tools.extend(skill.tools)
 
         return dedupe_external_dependencies(
-            [resource for tool in tools for resource in tool.external_dependencies]
+            [resource for tool in tools for resource in tool.external_dependencies()]
         )
 
     @staticmethod

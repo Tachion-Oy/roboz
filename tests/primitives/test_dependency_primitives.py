@@ -10,7 +10,7 @@ import pytest
 from pydantic import BaseModel, Field, SerializeAsAny, ValidationError
 
 import roboz
-from roboz import Context, Empty, Invoke, Message, Str, factory, tool
+from roboz import HasExternalDependencies, Empty, Invoke, Message, Str, factory, tool
 from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependency,
@@ -219,7 +219,7 @@ def test_unreported_fields_are_not_traversed():
             return ()
 
     @factory
-    def use_configuration(input: Str, messages: list[Message], ctx: Context) -> Str:
+    def use_configuration(input: Str, messages: list[Message], ctx: HasExternalDependencies) -> Str:
         return input
 
     assert use_configuration(Configuration(SearchIndex("unused"))).external_dependencies() == ()
@@ -448,3 +448,13 @@ def test_plain_context_contents_are_not_automatically_resource_dependencies():
     bound = count_resources([ExecutableDependency("python")])
     assert bound.external_dependencies() == ()
     assert bound(Str(value="count"), []).value == "1"
+
+
+def test_explicit_inspection_protocol_requires_an_implementation():
+    from roboz import HasExternalDependencies
+
+    class MissingInspection(HasExternalDependencies):
+        pass
+
+    with pytest.raises(TypeError, match="external_dependencies"):
+        MissingInspection()

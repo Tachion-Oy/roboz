@@ -7,8 +7,11 @@ from typing import cast
 
 import pytest
 
-from roboz import Ctx
-from roboz.agent.background_agent import BackgroundAgentState, run_background_agent
+from roboz.agent.background_agent import (
+    BackgroundAgentContext,
+    BackgroundAgentState,
+    run_background_agent,
+)
 from roboz.agent.core import Agent
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty, Message, Stop
@@ -50,7 +53,7 @@ def test_run_background_agent_starts_once_while_thread_alive() -> None:
         release.wait(timeout=2)
 
     agent = _TestAgent("blocking", block)
-    ctx = Ctx(agent=agent, state=BackgroundAgentState())
+    ctx = BackgroundAgentContext(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     try:
@@ -73,7 +76,7 @@ def test_run_background_agent_starts_once_while_thread_alive() -> None:
 
 def test_run_background_agent_respawns_dead_thread() -> None:
     agent = _TestAgent("returning", lambda: None)
-    ctx = Ctx(agent=agent, state=BackgroundAgentState())
+    ctx = BackgroundAgentContext(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     first = tool(input=Empty(), messages=[])
@@ -99,7 +102,7 @@ def test_run_background_agent_isolates_exceptions_without_logging_their_text(
         raise RuntimeError("provider-secret-value")
 
     agent = _TestAgent("failing", fail)
-    ctx = Ctx(agent=agent, state=BackgroundAgentState())
+    ctx = BackgroundAgentContext(agent=agent, state=BackgroundAgentState())
     tool = run_background_agent(ctx)
 
     with caplog.at_level(logging.ERROR, logger="roboz.agent.background_agent"):
@@ -127,7 +130,9 @@ def test_run_background_agent_times_out_without_started_lifecycle(
             return None
 
     monkeypatch.setattr("roboz.agent.background_agent.BACKGROUND_START_TIMEOUT_S", 0.01)
-    ctx = Ctx(agent=cast(Agent, SilentAgent()), state=BackgroundAgentState())
+    ctx = BackgroundAgentContext(
+        agent=cast(Agent, SilentAgent()), state=BackgroundAgentState()
+    )
 
     with pytest.raises(RuntimeError, match="did not persist its lifecycle event"):
         run_background_agent(ctx)(input=Empty(), messages=[])
@@ -135,3 +140,34 @@ def test_run_background_agent_times_out_without_started_lifecycle(
     assert ctx.state.thread is not None
     ctx.state.thread.join(timeout=1)
     assert not ctx.state.thread.is_alive()
+
+
+def test_context_constructors_own_fresh_state_and_can_explicitly_share_it():
+    agent = _TestAgent("state_owner", lambda: None)
+    first = BackgroundAgentContext(agent=agent)
+    second = BackgroundAgentContext(agent=agent)
+    shared = BackgroundAgentContext(agent=agent, state=first.state)
+    bound = run_background_agent(first)
+    rebound = run_background_agent(first)
+    copied = bound.copy()
+
+    assert first.state is not second.state
+    assert shared.state is first.state
+    assert first.state.thread is None
+    assert first.state.checks == second.state.checks == 0
+    assert agent.calls == 0
+    assert (
+        bound.external_dependencies()
+        == rebound.external_dependencies()
+        == copied.external_dependencies()
+        == ()
+    )
+
+    bound(input=Empty(), messages=[])
+    assert first.state.thread is not None
+    first.state.thread.join(timeout=2)
+    copied(input=Empty(), messages=[])
+    assert first.state.thread is not None
+    first.state.thread.join(timeout=2)
+    assert shared.state.checks == 2
+    assert second.state.checks == 0

@@ -2,7 +2,16 @@
 
 from typing import assert_type
 
-from roboz import Context, Factory, Int, Message, Str, Tool, factory, tool
+from roboz import (
+    HasExternalDependencies,
+    Factory,
+    Int,
+    Message,
+    Str,
+    Tool,
+    factory,
+    tool,
+)
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 from tests.type_tests.fixtures.primitive_contexts import ProgramContext
 
@@ -32,14 +41,16 @@ assert_type(describe_program(program), Tool[Str, Str])
 assert_type(describe_program(program).copy(), Tool[Str, Str])
 assert_type(describe_configured_program(configuration), Tool[Str, Str])
 assert_type(program.external_dependencies(), tuple[ExternalDependency, ...])
-assert_type(describe_program(program).external_dependencies(), tuple[ExternalDependency, ...])
+assert_type(
+    describe_program(program).external_dependencies(), tuple[ExternalDependency, ...]
+)
 
 
-def inspect_context(ctx: Context) -> tuple[ExternalDependency, ...]:
+def inspect_context(ctx: HasExternalDependencies) -> tuple[ExternalDependency, ...]:
     return ctx.external_dependencies()
 
 
-# Both implement the protocol without inheriting Context.
+# Both implement the protocol without inheriting HasExternalDependencies.
 assert_type(inspect_context(program), tuple[ExternalDependency, ...])
 assert_type(inspect_context(configuration), tuple[ExternalDependency, ...])
 
@@ -86,7 +97,9 @@ def choose_configured_value(
     return input
 
 
-@factory(chained_to=choose_value, chain_condition=lambda output: isinstance(output, Str))
+@factory(
+    chained_to=choose_value, chain_condition=lambda output: isinstance(output, Str)
+)
 def after_union_tool(
     input: Str, messages: list[Message], ctx: ExecutableDependency
 ) -> Str:
@@ -129,6 +142,7 @@ assert_type(
 
 
 # Direct decorator calls exercise the callable-taking overloads too.
+
 
 def describe_value(input: Str, messages: list[Message], ctx: ProgramContext) -> Str:
     return Str(value=ctx.prefix + input.value)

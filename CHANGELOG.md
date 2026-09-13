@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Make resource-inspection declarations explicit: aggregate contexts and agents
+  implement the `HasExternalDependencies` protocol, renamed from `Context` with
+  no compatibility alias. Authors can inherit it to require
+  `external_dependencies()`; missing implementations fail type checking and
+  instantiation. Plain contexts remain unrestricted, and direct resources inherit
+  inspection from `ExternalDependency`.
+
+- Breaking: migrate core interaction and agent factories to concrete contexts.
+  Bind interaction factories to strings, `run_subagent` to the child `Agent`,
+  and background/prompt factories to `BackgroundAgentContext`/`PromptAgentContext`
+  from `roboz.agent`. Background constructors own fresh state; rebinding and copies
+  share supplied state. Agent inspection uses live tool methods, and deployment
+  builders use the same bindings. Restore top-level agent, skill, and built-in
+  tool exports; removed dependency and `Ctx` APIs stay removed. See
+  [the primitive migration](docs/dependency-primitives.md).
+
 - Breaking: core endpoints require synchronous OpenAI-compatible clients instead
   of an untyped client. Client methods and request controls are checked statically;
   the real `openai.OpenAI` client satisfies the protocols without a wrapper or an

@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-from roboz import Ctx
 from roboz.agent.core import Agent
 from roboz.agent.subagent import SUBAGENT_NO_OUTCOME_PLACEHOLDER, run_subagent
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -26,7 +25,7 @@ def test_run_subagent_returns_child_stop_value() -> None:
             ]
         ),
     )
-    tool = run_subagent(Ctx(agent=child))
+    tool = run_subagent(child)
     out = tool(input=Empty(), messages=[])
     assert out.value == "plan is in ./plans/foo"
 
@@ -39,7 +38,7 @@ def test_run_subagent_uses_placeholder_when_stop_has_no_value() -> None:
         system_prompt="sub",
         agent_endpoint=MockLLMEndpoint([]),
     )
-    tool = run_subagent(Ctx(agent=child))
+    tool = run_subagent(child)
     with patch.object(child, "invoke", return_value=(Stop(value=None), [])):
         out = tool(input=Empty(), messages=[])
     assert out.value == SUBAGENT_NO_OUTCOME_PLACEHOLDER
@@ -53,7 +52,7 @@ def test_run_subagent_passes_input_to_child_agent() -> None:
         system_prompt="sub",
         agent_endpoint=MockLLMEndpoint([]),
     )
-    tool = run_subagent(Ctx(agent=child))
+    tool = run_subagent(child)
     payload = Str(value="input for the child")
 
     with patch.object(child, "invoke", return_value=(Stop(value="done"), [])) as invoke:

@@ -8,8 +8,9 @@ Resource implementers supply the inspection contract through inheritance.
 
 The primitive checkpoint establishes that binding contract. Its endpoint
 follow-up makes the core `LLMEndpoint` and `TranscriptionEndpoint` directly
-bindable too. Agents, built-in tools, Shed, provider construction, catalogs, and
-lazy clients remain for subsequent checkpoints. No grep integration is introduced
+bindable too. Core agents, built-in tools, and deployment bindings now use the
+same contracts. Shed, provider construction, catalogs, and lazy clients remain
+for subsequent checkpoints; Proton is also deferred. No grep integration is introduced
 here. The complete library is not release-ready at this boundary; the primitive
 imports and examples below work independently.
 
@@ -20,7 +21,10 @@ an ordinary class instance, a list, or another value. It need not inherit a
 framework class or implement a dependency method. The exact supplied object is
 injected; a resource-free context is never replaced with an empty container.
 
-`Context` describes the optional structural inspection interface:
+`HasExternalDependencies` describes the optional structural inspection interface.
+Its name identifies an object's inspection capability, independently of whether
+that object is used as a factory's `ctx`. It replaces the earlier protocol name
+`Context`; there is no compatibility alias:
 
 ```python
 from roboz.dependencies import ExternalDependency
@@ -30,10 +34,16 @@ def external_dependencies(self) -> tuple[ExternalDependency, ...]:
     ...
 ```
 
-Factory authors annotate their particular concrete type. Ordinary contexts do
-not inherit or instantiate the protocol. If a context has no inspection method,
-its tool reports `()`. Contexts that explicitly report resources can provide the
-method above. For example, this configuration needs no inspection boilerplate:
+Factory authors annotate their particular concrete type. Plain contexts need
+no protocol or inspection method, and their tools report `()`.
+
+When a context is intended to expose dependencies, explicitly inherit `HasExternalDependencies`
+and implement the method above. The declaration documents that intention to
+readers and editors; forgetting the method is a type error and prevents
+instantiation. Its return type is also checked. Structural implementations that
+do not inherit the protocol remain supported, but they do not opt into this
+missing-method check. Roboz cannot infer an author's intention from arbitrary
+fields without the implicit traversal this contract deliberately avoids. For example, this configuration needs no inspection boilerplate:
 
 ```python
 from dataclasses import dataclass
@@ -90,11 +100,12 @@ A context requiring several values is an ordinary typed object too:
 ```python
 from dataclasses import dataclass
 
+from roboz import HasExternalDependencies
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 
 
 @dataclass(frozen=True, kw_only=True)
-class ProgramContext:
+class ProgramContext(HasExternalDependencies):
     executable: ExecutableDependency
     prefix: str = ""
 
@@ -102,7 +113,9 @@ class ProgramContext:
         return (self.executable,)
 ```
 
-Its factory uses `ctx: ProgramContext`. Defaults belong in that constructor.
+Its factory uses `ctx: ProgramContext`, retaining checked fields and autocomplete.
+The `HasExternalDependencies` base is the optional inspection protocol, not a dynamic container or
+an `ExternalDependency` resource. Defaults belong in that constructor.
 Roboz does not populate fields, copy the context, or traverse its attributes.
 Reusing the same context intentionally shares state; constructing a new context
 creates whatever fresh state its constructor defines. Use a dataclass
@@ -246,7 +259,7 @@ added at this step.
 unchanged, rejecting other resources and the wrong endpoint family. They no
 longer materialize references. `EndpointLike` contains only `LLMEndpoint` and
 `MockLLMEndpoint`; `TranscriptionEndpointLike` contains the corresponding
-transcription pair. The scripted mock classes satisfy `Context` by reporting
+transcription pair. The scripted mock classes satisfy `HasExternalDependencies` by reporting
 `()`. A factory accepting both real and scripted chat endpoints can annotate
 `ctx: EndpointLike`; a factory annotated `ctx: LLMEndpoint` requires that concrete
 class, which can be tested using a scripted client.
@@ -327,8 +340,63 @@ retains the existing fresh-tool-ID behavior. Tools bound from one factory retain
 that factory's ID, including when the factory is bound to different contexts.
 Input projection and copying, nested payload types, output-model validation,
 chain predicates and parent references, and docstring normalization are unchanged.
-These checks cover factory construction and direct tool invocation; agent-level
-chain execution requires the later agent migration.
+Focused checks also cover core agent invocation, delegation, background lifecycle,
+and deployment construction using these bindings.
+
+## Core factory migration
+
+Built-in factories now use these concrete context types:
+
+| Factory | Context supplied when binding |
+| --- | --- |
+| `prompt_user` | Timeout fallback string, e.g. `prompt_user("No reply")` |
+| `message_user`, `prompt_user_at_start` | Configured message string |
+| `run_subagent` | The child `Agent` itself |
+| `prompt_agent` | `PromptAgentContext(endpoint=..., active_tools=(...), pipe=...)` |
+| `run_background_agent` | `BackgroundAgentContext(agent=...)` |
+
+Import both context classes from `roboz.agent`. They and `Agent` explicitly
+implement the `HasExternalDependencies` inspection protocol. `PromptAgentContext` reports its
+endpoint; the agent separately inspects its action-tool graph. The background
+context delegates inspection to its child agent. `Agent.external_dependencies()`
+queries each tool's method and deduplicates current resources, including optional
+unloaded skills. Agents are ordinary contexts, with no external-resource base.
+
+Each new `BackgroundAgentContext` creates fresh `BackgroundAgentState` through
+its constructor. Bindings and `Tool.copy()` share the supplied context and state.
+An explicit `state=` can share state between contexts. Background startup,
+heartbeat behavior, and lifecycle checks are unchanged. `DeployableAgent.build()`
+uses these same context constructors and direct child bindings.
+
+This complete example uses a scripted model and starts no background thread:
+
+```python
+from roboz import Agent, Empty, run_background_agent, run_subagent, stop
+from roboz.agent import BackgroundAgentContext
+from roboz.llm import MockLLMEndpoint
+
+child = Agent(
+    name="child",
+    system_prompt="Stop with the requested result.",
+    tools=[stop],
+    interaction_mode=None,
+    agent_endpoint=MockLLMEndpoint([
+        {"action": "stop", "rationale": "done", "value": "child result"}
+    ]),
+)
+delegate = run_subagent(child)
+assert delegate(Empty(), []).value == "child result"
+assert delegate.external_dependencies() == ()
+
+context = BackgroundAgentContext(agent=child)
+background = run_background_agent(context)
+assert background.copy().external_dependencies() == ()
+assert context.state.thread is None
+```
+
+The former top-level `Agent`, `Skill`, interaction, control, and delegation exports
+are restored now that their core implementations have migrated. Removed `Ctx`
+and dependency base/reference APIs remain absent.
 
 ## Removed APIs and migration boundary
 
@@ -349,29 +417,16 @@ aliases or import fallbacks.
 - Replace both `Tool.dependencies` and property access to
   `Tool.external_dependencies` with the method `tool.external_dependencies()`.
   Tools retain one context reference instead of direct-resource/source tuples.
-- Top-level `roboz` exports now contain the existing data model exports,
-  `Context`, `Factory`, `Tool`, `factory`, and `tool`. Import resource extension
-  primitives from `roboz.dependencies`. Eager imports and re-exports of `Agent`,
-  background/subagent helpers, `Skill`, `PromptUser`, interaction tools, and
-  stopping tools are removed so normal primitive imports stay independent.
+- Import resource extension primitives from `roboz.dependencies`. Top-level
+  `roboz` exposes data and factory/tool primitives plus the migrated core agent,
+  skill, interaction, control, and delegation exports.
 
-Agent, built-in tool, and companion implementations are untouched. They still
-refer to removed APIs, and importing their implementation modules is not a
-supported migration workaround. Existing README, quick start, consumer guides,
-and companion documentation still refer to those unmigrated consumers. This document describes the checkpoint's
-supported contract; later checkpoints must migrate those consumers, their tests,
-and usage documentation, and pass the complete release gate before release.
-
-At this checkpoint, isolated consumer import checks stop at these removed names:
-
-| Consumer import | First missing import |
-| --- | --- |
-| `roboz.agent`, `roboz.tools`, `roboshed.dependency_health` | `Ctx` from `roboz.tooling.context` |
-| `roboshed.deployments`, `roboz_proton_bridge` | `Ctx` from `roboz` |
-| `roboz_endpoints` | `ExternalDependencyKind` from `roboz` |
-
-The bare `roboshed` package imports, but that does not validate its deferred
-implementations. These first failures can conceal additional removed-API uses.
+Shed and endpoint companion implementations remain unmigrated. Their old `Ctx`,
+reference, and checker-registration imports still fail. Proton is deferred.
+The existing README, quick start, and consumer guides may still refer to those
+APIs; this document describes the checkpoint's supported contract. Legacy test
+cases for removed APIs also require migration. Release requires those migrations
+and the complete release gate.
 
 ## Focused checks
 
@@ -381,7 +436,8 @@ agent/runtime unit fixtures. The new typing cases are
 `tests/type_tests/cases/valid/test_endpoint_primitives.py`,
 `tests/type_tests/cases/valid/test_plain_contexts.py`,
 `tests/type_tests/cases/valid/test_external_checks.py`,
-`tests/type_tests/cases/valid/test_openai_compatible_clients.py`, and
+`tests/type_tests/cases/valid/test_openai_compatible_clients.py`,
+`tests/type_tests/cases/valid/test_core_primitive_contexts.py`, and
 `tests/type_tests/cases/expected_failures/test_primitive_*.py`. Negative cases
 identify the intended typing error in a comment; a missing import is not evidence
 that a context typing contract passed.
@@ -395,9 +451,21 @@ uv run pyright --project pyrightconfig.type-tests.json \
   tests/type_tests/cases/valid/test_endpoint_primitives.py \
   tests/type_tests/cases/valid/test_plain_contexts.py \
   tests/type_tests/cases/valid/test_external_checks.py \
-  tests/type_tests/cases/valid/test_openai_compatible_clients.py
+  tests/type_tests/cases/valid/test_openai_compatible_clients.py \
+  tests/type_tests/cases/valid/test_core_primitive_contexts.py
 ```
 
 Check each negative case with the same Pyright project and review its diagnostic
 against the stated expectation. The unchanged repository-wide gates also include
 unmigrated consumers and must not be weakened for this checkpoint.
+
+Core migration regression checks additionally use these existing unit-test modules:
+
+```bash
+uv run pytest --no-cov \
+  tests/unit/agent/test_core_tools.py \
+  tests/unit/agent/test_subagent.py \
+  tests/unit/agent/test_background.py \
+  tests/unit/agent/test_agent_dependencies.py \
+  tests/unit/test_deployment.py
+```

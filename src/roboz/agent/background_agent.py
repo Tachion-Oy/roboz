@@ -3,15 +3,16 @@
 import logging
 import threading
 import time
-from dataclasses import dataclass
-from functools import partial
+from dataclasses import dataclass, field
 from threading import Event
 from typing import Final, Literal
 
 from roboz.models import Empty, Message
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime.events import PipeEvent, RunLifecycleEvent
-from roboz.tooling.context import Ctx, _prepare_context
+from roboz.agent.core import Agent
+from roboz.dependencies import ExternalDependency
+from roboz.tooling.context import HasExternalDependencies
 from roboz.tooling.decorators import factory
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,23 @@ _RUN_STARTED_KIND: Final[Literal["started"]] = "started"
 
 @dataclass
 class BackgroundAgentState:
+    """Mutable lifecycle state shared by bindings of one background context."""
+
     thread: threading.Thread | None = None
     checks: int = 0
     started_monotonic: float | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class BackgroundAgentContext(HasExternalDependencies):
+    """Agent and caller-owned background state, fresh for each new context."""
+
+    agent: Agent
+    state: BackgroundAgentState = field(default_factory=BackgroundAgentState)
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report the child agent's current tool dependencies without starting it."""
+        return self.agent.external_dependencies()
 
 
 class BackgroundAgentStatus(Empty):
@@ -52,7 +67,7 @@ def _fmt_uptime(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-def _invoke_agent(ctx: Ctx) -> None:
+def _invoke_agent(ctx: BackgroundAgentContext) -> None:
     agent = ctx.agent
     logger.debug(
         "Background agent invoke starting (name=%s, thread=%s)",
@@ -72,7 +87,7 @@ def _invoke_agent(ctx: Ctx) -> None:
 
 
 def _status(
-    ctx: Ctx,
+    ctx: BackgroundAgentContext,
     *,
     status: BackgroundAgentPhase,
     checks: int,
@@ -89,7 +104,7 @@ def _status(
 
 @factory
 def run_background_agent(
-    input: Empty, messages: list[Message], ctx: Ctx
+    input: Empty, messages: list[Message], ctx: BackgroundAgentContext
 ) -> BackgroundAgentStatus:
     """Start a background agent in a daemon thread and return a heartbeat."""
     ctx.state.checks += 1
@@ -144,14 +159,9 @@ def run_background_agent(
 
 
 __all__ = [
+    "BackgroundAgentContext",
+    "BackgroundAgentState",
     "BackgroundAgentPhase",
     "BackgroundAgentStatus",
     "run_background_agent",
 ]
-
-
-run_background_agent._prepare_ctx = partial(
-    _prepare_context,
-    required=("agent",),
-    default_factories={"state": BackgroundAgentState},
-)

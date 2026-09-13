@@ -4,7 +4,7 @@ from typing import assert_type
 
 from openai import OpenAI
 
-from roboz import Context, Factory, Message, Str, Tool, factory
+from roboz import HasExternalDependencies, Factory, Message, Str, Tool, factory
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
@@ -64,7 +64,7 @@ assert_type(describe_transcription(transcription), Tool[Str, Str])
 assert_type(describe_script(MockLLMEndpoint([])), Tool[Str, Str])
 
 
-def inspect_context(ctx: Context) -> tuple[ExternalDependency, ...]:
+def inspect_context(ctx: HasExternalDependencies) -> tuple[ExternalDependency, ...]:
     return ctx.external_dependencies()
 
 
