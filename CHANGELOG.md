@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Breaking checkpoint: bind factories directly to concrete typed resources or
+  contexts with `external_dependencies()`, preserving the supplied object and
+  inspecting it live. Replace `Ctx` and tool dependency properties with concrete
+  contexts and `tool.external_dependencies()`. Dependency extension primitives
+  stay in `roboz.dependencies`; the top-level API now exposes only data and
+  tool/factory/context primitives. Remove legacy dependency bases, lazy/reference
+  helpers, and checker registration. Consumers remain unmigrated; this checkpoint
+  is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
+  for the contract, removed APIs, and migration boundary.
+
 - Breaking: make `DeployableAgent` an explicitly configured class. Constructor
   capabilities are protected defaults; append capabilities and child agents with
   the add methods, configure endpoints and runtime values separately, and unpack

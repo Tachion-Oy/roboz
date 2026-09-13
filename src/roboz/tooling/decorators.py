@@ -20,7 +20,7 @@ from roboz.tooling._typing import (
     ParentExactSeqUnion,
     ParentUnion,
 )
-from roboz.tooling.context import Ctx
+from roboz.tooling.context import Context
 from roboz.tooling.core import Factory, Tool
 
 
@@ -132,7 +132,7 @@ def tool[  # type: ignore[reportInconsistentOverload]
 def factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Ctx,
+    TCtx: Context,
 ](
     func: FactoryToolFuncProtocol[TInput, TOutput, TCtx],
     chained_to: None = None,
@@ -144,7 +144,7 @@ def factory[
 def factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Ctx,
+    TCtx: Context,
 ](
     func: FactoryToolFuncProtocol[TInput, TOutput, TCtx],
     chained_to: ParentExact[TInput] | ParentExactSeq[TInput],
@@ -156,7 +156,7 @@ def factory[
 def factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Ctx,
+    TCtx: Context,
     TOther: Empty | Stop,
 ](
     func: FactoryToolFuncProtocol[TInput, TOutput, TCtx],
@@ -193,7 +193,7 @@ def factory[TInput: Empty, TOther: Empty | Stop](
 def factory[  # type: ignore[reportInconsistentOverload]
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Ctx,
+    TCtx: Context,
     TOther: Empty | Stop,
 ](
     func: FactoryToolFuncProtocol[TInput, TOutput, TCtx] | None = None,
@@ -209,7 +209,7 @@ def factory[  # type: ignore[reportInconsistentOverload]
 ) -> Factory[TInput, TOutput, TCtx] | ChainedFactoryDecoratorUnion[TInput, TOther]:
     """Decorate a context-aware callable as a reusable tool factory."""
 
-    def decorator[TOut: Empty | Invoke | Stop, TCtxOut: Ctx](
+    def decorator[TOut: Empty | Invoke | Stop, TCtxOut: Context](
         func: (
             FactoryToolFuncProtocol[TInput, TOut, TCtxOut]
             | FactoryToolFuncProtocol[TOther, TOut, TCtxOut]  # type: ignore[type-var]
