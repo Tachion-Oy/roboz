@@ -223,9 +223,11 @@ class NonCallableInspection:
     external_dependencies = ()
 
 
-@pytest.mark.parametrize("ctx", [None, object(), {}, NonCallableInspection()])
-def test_invalid_context_interface_fails_at_binding(ctx):
-    with pytest.raises(TypeError, match="callable external_dependencies"):
+@pytest.mark.parametrize("inspection", [None, (), 123])
+def test_present_but_non_callable_inspection_fails_at_binding(inspection):
+    ctx = NonCallableInspection()
+    ctx.external_dependencies = inspection
+    with pytest.raises(TypeError, match="external_dependencies must be callable"):
         describe_program(ctx)
 
 
@@ -388,3 +390,55 @@ def test_parenthesized_factory_binds_an_ordinary_typed_context():
         ProgramContext(executable=ExecutableDependency("python"), prefix="> ")
     )
     assert bound(Str(value="hello"), []).value == "> hello"
+
+
+@dataclass(frozen=True)
+class PlainContext:
+    prefix: str = ""
+
+
+def test_plain_context_is_injected_unchanged_and_reports_no_resources():
+    captured = []
+
+    @factory
+    def prefix_value(input: Str, messages: list[Message], ctx: PlainContext) -> Str:
+        captured.append(ctx)
+        return Str(value=ctx.prefix + input.value)
+
+    ctx = PlainContext(prefix="> ")
+    bound = prefix_value(ctx)
+    copied = bound.copy()
+    assert bound.external_dependencies() == copied.external_dependencies() == ()
+    assert bound(Str(value="one"), []).value == "> one"
+    assert copied(Str(value="two"), []).value == "> two"
+    assert captured[0] is ctx
+    assert captured[1] is ctx
+
+
+def test_list_context_retains_identity_and_mutation_through_binding_and_copying():
+    @factory()
+    def remember(input: Str, messages: list[Message], ctx: list[str]) -> Str:
+        ctx.append(input.value)
+        return Str(value=", ".join(ctx))
+
+    history: list[str] = []
+    bound = remember(history)
+    copied = bound.copy()
+    independent = remember([])
+    assert bound.external_dependencies() == copied.external_dependencies() == ()
+    assert bound(Str(value="one"), []).value == "one"
+    assert copied(Str(value="two"), []).value == "one, two"
+    assert history == ["one", "two"]
+    assert independent(Str(value="other"), []).value == "other"
+
+
+def test_plain_context_contents_are_not_automatically_resource_dependencies():
+    @factory
+    def count_resources(
+        input: Str, messages: list[Message], ctx: list[ExternalDependency]
+    ) -> Str:
+        return Str(value=str(len(ctx)))
+
+    bound = count_resources([ExecutableDependency("python")])
+    assert bound.external_dependencies() == ()
+    assert bound(Str(value="count"), []).value == "1"

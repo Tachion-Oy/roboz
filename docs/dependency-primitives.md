@@ -1,20 +1,26 @@
 # Typed contexts and resource inspection
 
 A factory annotates `ctx` with the concrete object it uses. A tool author working
-with a model endpoint should eventually write `ctx: LLMEndpoint`; an integration
-providing a `Grep` resource should let its tools write `ctx: Grep`. Binding passes
+with a model endpoint writes `ctx: LLMEndpoint`; an integration providing a
+`Grep` resource should let its tools write `ctx: Grep`. Binding passes
 that object directly to the factory's callable and preserves its concrete type.
 Resource implementers supply the inspection contract through inheritance.
 
-This checkpoint establishes that binding contract. It does **not** migrate or
-introduce endpoint or grep implementations. Agents, built-in tools, Shed,
-endpoint definitions and catalogs, model selection, and lazy clients remain
-for subsequent checkpoints. The complete library is not release-ready at this
-boundary; the primitive imports and examples below work independently.
+The primitive checkpoint establishes that binding contract. Its endpoint
+follow-up makes the core `LLMEndpoint` and `TranscriptionEndpoint` directly
+bindable too. Agents, built-in tools, Shed, provider construction, catalogs, and
+lazy clients remain for subsequent checkpoints. No grep integration is introduced
+here. The complete library is not release-ready at this boundary; the primitive
+imports and examples below work independently.
 
 ## The object being injected
 
-`Context` is a structural typing protocol with one method:
+A context can be any value with the type declared by the factory: a resource,
+an ordinary class instance, a list, or another value. It need not inherit a
+framework class or implement a dependency method. The exact supplied object is
+injected; a resource-free context is never replaced with an empty container.
+
+`Context` describes the optional structural inspection interface:
 
 ```python
 from roboz.dependencies import ExternalDependency
@@ -24,24 +30,20 @@ def external_dependencies(self) -> tuple[ExternalDependency, ...]:
     ...
 ```
 
-Factory authors annotate their particular concrete class, rather than widening
-it to `Context`. Ordinary contexts do not inherit or instantiate the protocol.
-They explicitly report their resources. A configuration-only context returns
-`()`. For example:
+Factory authors annotate their particular concrete type. Ordinary contexts do
+not inherit or instantiate the protocol. If a context has no inspection method,
+its tool reports `()`. Contexts that explicitly report resources can provide the
+method above. For example, this configuration needs no inspection boilerplate:
 
 ```python
 from dataclasses import dataclass
 
 from roboz import Message, Str, factory
-from roboz.dependencies import ExternalDependency
 
 
 @dataclass(frozen=True, kw_only=True)
 class PrefixContext:
     prefix: str = ""
-
-    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
-        return ()
 
 
 @factory
@@ -58,6 +60,30 @@ assert bound.external_dependencies() == ()
 The inferred type is `Factory[Str, Str, PrefixContext]`. Constructor arguments
 and field access remain statically checked, including through parenthesized and
 chained factory decorators.
+
+A list is also a valid typed context. Its element type is checked when binding:
+
+```python
+from roboz import Message, Str, factory
+
+
+@factory()
+def remember_value(input: Str, messages: list[Message], ctx: list[str]) -> Str:
+    """Record the supplied value and return the recorded values."""
+    ctx.append(input.value)
+    return Str(value=", ".join(ctx))
+
+
+history: list[str] = []
+bound = remember_value(history)
+assert bound(Str(value="hello"), []).value == "hello"
+assert history == ["hello"]
+assert bound.external_dependencies() == ()
+```
+
+The inferred type is `Factory[Str, Str, list[str]]`. Binding a `list[int]` is a
+type error. Lists containing resources are not traversed automatically; use a
+context with explicit inspection to declare those resources.
 
 A context requiring several values is an ordinary typed object too:
 
@@ -88,6 +114,13 @@ creates whatever fresh state its constructor defines. Use a dataclass
 `ExternalDependencyKind` enum, the existing `ExecutableDependency` implementation,
 and `dedupe_external_dependencies`. These remain in their dedicated module and
 are not re-exported from the top-level authoring API.
+
+An external dependency represents a resource whose availability depends on the
+surrounding environment and can change independently of our code. Contexts in
+general have no such requirement. Inspection reports resources and safe metadata;
+it does not establish availability. A common availability-check method remains a
+separate follow-up; the executable implementation already has explicit
+`resolve()` and `require()` operations.
 
 A concrete resource inherits `ExternalDependency` and implements:
 
@@ -137,23 +170,86 @@ assert bound.external_dependencies()[0] is program
 assert bound.copy().external_dependencies()[0] is program
 ```
 
-Its inferred type is `Factory[Str, Str, ExecutableDependency]`. A later endpoint
-checkpoint will apply the same contract to factories annotated `ctx: LLMEndpoint`.
+Its inferred type is `Factory[Str, Str, ExecutableDependency]`.
+
+## Concrete endpoint contexts
+
+Core chat and transcription endpoints inherit `ExternalDependency` directly.
+Their existing model identities, safe metadata, configuration fields, and
+validation remain unchanged. Both report `MODEL_ENDPOINT` and inherit inspection
+that returns themselves.
+
+This complete example needs neither a provider SDK nor credentials because its
+tool only describes the configured model:
+
+```python
+from roboz import Message, Str, factory
+from roboz.llm import LLMEndpoint
+
+
+@factory()
+def describe_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
+    """Describe the supplied text using the configured model name."""
+    return Str(value=f"{ctx.model_name}: {input.value}")
+
+
+endpoint = LLMEndpoint(client=object(), api_name="example", model_name="example-model")
+bound = describe_model(endpoint)
+assert bound(Str(value="hello"), []).value == "example-model: hello"
+assert bound.external_dependencies()[0] is endpoint
+assert bound.copy().external_dependencies()[0] is endpoint
+```
+
+The inferred factory type is `Factory[Str, Str, LLMEndpoint]` for both `@factory`
+and `@factory()`. Within the callable, Pylance sees the declared endpoint fields
+and their types. The existing provider-neutral `client` field remains `Any`;
+this checkpoint does not add typing for individual provider SDKs.
+
+For a model call, supply an already configured client to `LLMEndpoint` and pass
+`ctx` directly to `call_llm_api(ctx, messages)`. The existing `get_completion`
+helper can validate the completion against an output model. Neither helper
+requires an agent. Likewise, a transcription factory can annotate
+`ctx: TranscriptionEndpoint` and call `call_transcription_api(ctx, ...)`.
+Constructing clients is the caller's responsibility; no lazy construction is
+added at this step.
+
+`resolve_endpoint` and the transcription validator return the supplied endpoint
+unchanged, rejecting other resources and the wrong endpoint family. They no
+longer materialize references. `EndpointLike` contains only `LLMEndpoint` and
+`MockLLMEndpoint`; `TranscriptionEndpointLike` contains the corresponding
+transcription pair. The scripted mock classes satisfy `Context` by reporting
+`()`. A factory accepting both real and scripted chat endpoints can annotate
+`ctx: EndpointLike`; a factory annotated `ctx: LLMEndpoint` requires that concrete
+class, which can be tested using a scripted client.
+
+`with_request_options` and `with_openrouter_policy` accept concrete chat
+endpoints. Each returns an endpoint copy with detached, validated request options
+while retaining its client and dependency identity. Existing protections against
+overriding framework-owned request fields remain in place.
+
+The selector defined alongside the endpoint types now holds concrete
+`LLMEndpoint` objects instead of deleted lazy wrappers. Its selection and locking
+behavior is unchanged; catalog integration and live routing remain deferred.
 
 ## Binding and live inspection
 
-Binding checks that `external_dependencies` is callable, captures the exact
-context in the executable closure, and retains that reference for inspection.
+Binding accepts any concrete context type. If `external_dependencies` is
+present, it must be callable. Binding captures the exact context in the executable
+closure and retains that reference for optional inspection.
 The generated callable annotations and tool input schema exclude `ctx`.
 Binding does not invoke inspection or perform external work. The concrete type
-is enforced statically; the runtime check validates only the inspection interface.
+is enforced statically; runtime binding only checks the optional inspection
+method when present.
 
 `tool.external_dependencies()` is the sole tool inspection API:
 
-- A plain tool returns `()`.
-- A bound tool queries its retained context on each inspection. Deliberately
+- A plain tool, or one bound to a context without inspection, returns `()`.
+- When provided, a bound tool queries its context's inspection method on each
+  inspection. Deliberately
   exposed changes in a mutable context appear in later results.
-- The result must be a tuple of `ExternalDependency` instances. Wrong containers
+- An inspection method's result must be a tuple of `ExternalDependency`
+  instances. This return contract is independent of the context's own type;
+  a list is a valid context. Wrong return containers
   and non-resource entries raise `TypeError`; inspection exceptions propagate.
 - Duplicate IDs collapse to their first resource, preserving encounter order
   and object identity. `dedupe_external_dependencies` accepts an iterable and
@@ -192,10 +288,10 @@ aliases or import fallbacks.
   background/subagent helpers, `Skill`, `PromptUser`, interaction tools, and
   stopping tools are removed so normal primitive imports stay independent.
 
-Consumer implementations are untouched. They still refer to removed APIs, and
-importing their implementation modules is not a supported migration workaround.
-Existing README, quick start, consumer guides, and companion documentation still
-refer to those unmigrated consumers. This document describes the checkpoint's
+Agent, built-in tool, and companion implementations are untouched. They still
+refer to removed APIs, and importing their implementation modules is not a
+supported migration workaround. Existing README, quick start, consumer guides,
+and companion documentation still refer to those unmigrated consumers. This document describes the checkpoint's
 supported contract; later checkpoints must migrate those consumers, their tests,
 and usage documentation, and pass the complete release gate before release.
 
@@ -203,7 +299,9 @@ and usage documentation, and pass the complete release gate before release.
 
 Independent runtime tests live in `tests/primitives/`, outside the existing
 agent/runtime unit fixtures. The new typing cases are
-`tests/type_tests/cases/valid/test_dependency_primitives.py` and
+`tests/type_tests/cases/valid/test_dependency_primitives.py`,
+`tests/type_tests/cases/valid/test_endpoint_primitives.py`,
+`tests/type_tests/cases/valid/test_plain_contexts.py`, and
 `tests/type_tests/cases/expected_failures/test_primitive_*.py`. Negative cases
 identify the intended typing error in a comment; a missing import is not evidence
 that a context typing contract passed.
@@ -213,7 +311,9 @@ Runtime and positive typing checks can be run independently:
 ```bash
 uv run pytest tests/primitives tests/test_docstrings.py --no-cov
 uv run pyright --project pyrightconfig.type-tests.json \
-  tests/type_tests/cases/valid/test_dependency_primitives.py
+  tests/type_tests/cases/valid/test_dependency_primitives.py \
+  tests/type_tests/cases/valid/test_endpoint_primitives.py \
+  tests/type_tests/cases/valid/test_plain_contexts.py
 ```
 
 Check each negative case with the same Pyright project and review its diagnostic

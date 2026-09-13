@@ -8,11 +8,7 @@ from typing import Any, Final, Literal, cast
 from pydantic import BaseModel, Field, field_validator
 
 from roboz.models import Message, Role
-from roboz.dependencies import (
-    ExternalDependencyReference,
-    LazyExternalDependency,
-    ModelEndpointDependency,
-)
+from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 
 type JSONValue = (
     None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
@@ -83,7 +79,7 @@ def role_to_user_mapper(
     return renamed_messages
 
 
-class LLMEndpoint(BaseModel, ModelEndpointDependency):
+class LLMEndpoint(BaseModel, ExternalDependency):
     """Specification for an LLM endpoint, containing all necessary details for a validated API call."""
 
     model_config = {"arbitrary_types_allowed": True}
@@ -148,6 +144,11 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
         """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
 
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        """Return the model-endpoint resource category."""
+        return ExternalDependencyKind.MODEL_ENDPOINT
+
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe model endpoint metadata for inspection."""
         return {
@@ -158,13 +159,13 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
 
 
 class ModelSelector:
-    """Select models by stable identity without materializing their clients."""
+    """Select configured model endpoints by stable identity."""
 
     def __init__(
         self,
-        models: Mapping[str, LazyExternalDependency[LLMEndpoint]],
+        models: Mapping[str, LLMEndpoint],
         *,
-        default: LazyExternalDependency[LLMEndpoint],
+        default: LLMEndpoint,
     ) -> None:
         """Copy the catalog and validate identities and the initial selection."""
         self.models = dict(models)
@@ -185,13 +186,13 @@ class ModelSelector:
             return self._selected_model_id
 
     @property
-    def selected_endpoint(self) -> LazyExternalDependency[LLMEndpoint]:
-        """Return the selected lazy endpoint without resolving it."""
+    def selected_endpoint(self) -> LLMEndpoint:
+        """Return the selected endpoint without copying it or calling its client."""
         with self._lock:
             return self._models_by_id[self._selected_model_id]
 
-    def endpoint(self, model_id: str) -> LazyExternalDependency[LLMEndpoint]:
-        """Look up an endpoint without changing the selection."""
+    def endpoint(self, model_id: str) -> LLMEndpoint:
+        """Look up a configured endpoint without changing the selection."""
         try:
             return self._models_by_id[model_id]
         except KeyError:
@@ -226,6 +227,10 @@ class MockLLMEndpoint:
         self.rate_limit_error: type[Exception] = Exception
         self.context_length_error: type[Exception] = Exception
 
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report no external resources for this scripted context."""
+        return ()
+
 
 class MockProviderError(Exception):
     """Scripted provider error for mock endpoints used in tests."""
@@ -236,10 +241,10 @@ class MockProviderError(Exception):
         self.status_code = status_code
 
 
-EndpointLike = LLMEndpoint | MockLLMEndpoint | ExternalDependencyReference[LLMEndpoint]
+EndpointLike = LLMEndpoint | MockLLMEndpoint
 
 
-class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
+class TranscriptionEndpoint(BaseModel, ExternalDependency):
     """Specification for an audio transcription endpoint."""
 
     model_config = {"arbitrary_types_allowed": True}
@@ -263,6 +268,11 @@ class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
     def dependency_id(self) -> str:
         """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
+
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        """Return the model-endpoint resource category."""
+        return ExternalDependencyKind.MODEL_ENDPOINT
 
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe transcription endpoint metadata for inspection."""
@@ -288,9 +298,9 @@ class MockTranscriptionEndpoint:
         self.api_name = api_name
         self.model_name = model_name
 
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report no external resources for this scripted context."""
+        return ()
 
-TranscriptionEndpointLike = (
-    TranscriptionEndpoint
-    | MockTranscriptionEndpoint
-    | ExternalDependencyReference[TranscriptionEndpoint]
-)
+
+TranscriptionEndpointLike = TranscriptionEndpoint | MockTranscriptionEndpoint

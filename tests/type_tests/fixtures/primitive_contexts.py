@@ -12,3 +12,8 @@ class ProgramContext:
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         return (self.executable,)
+
+
+@dataclass(frozen=True, kw_only=True)
+class PrefixContext:
+    prefix: str = ""

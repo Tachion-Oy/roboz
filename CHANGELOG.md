@@ -2,14 +2,26 @@
 
 ## Unreleased
 
+- Accept any concretely typed factory context, including plain objects and lists.
+  Contexts without resource inspection are passed through unchanged and their
+  tools report no dependencies. Wrong context types remain static binding errors.
+
+- Bind core chat and transcription endpoints directly as typed factory contexts,
+  retaining their identity and client for execution and inspection. Endpoint
+  request helpers and the selector now use concrete endpoints; lazy construction
+  and companion migrations remain deferred. Scripted endpoints report no external
+  resources. See [typed contexts and resource inspection](docs/dependency-primitives.md).
+- Fix `@factory()` input inference so parenthesized factories retain the same
+  concrete input, output, and context types as bare `@factory` declarations.
+
 - Breaking checkpoint: bind factories directly to concrete typed resources or
-  contexts with `external_dependencies()`, preserving the supplied object and
+  contexts with optional `external_dependencies()`, preserving the supplied object and
   inspecting it live. Replace `Ctx` and tool dependency properties with concrete
   contexts and `tool.external_dependencies()`. Dependency extension primitives
   stay in `roboz.dependencies`; the top-level API now exposes only data and
   tool/factory/context primitives. Remove legacy dependency bases, lazy/reference
-  helpers, and checker registration. Consumers remain unmigrated; this checkpoint
-  is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
+  helpers, and checker registration. Agent, built-in tool, and companion consumers
+  remain unmigrated; this checkpoint is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
   for the contract, removed APIs, and migration boundary.
 
 - Breaking: make `DeployableAgent` an explicitly configured class. Constructor

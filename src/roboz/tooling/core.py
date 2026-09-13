@@ -11,13 +11,14 @@ from roboz._naming import validate_public_name
 from roboz.models import Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
 from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
-from roboz.tooling.context import Context
 from roboz.dependencies import (
     ExternalDependency,
     dedupe_external_dependencies,
 )
 
 logger = getLogger(__name__)
+
+_NO_CONTEXT_INSPECTION = object()
 
 
 class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
@@ -39,7 +40,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         chain_condition: (Callable[[TInput], bool] | Callable[[TInput | TOther], bool]),
         description: str = "",
         _id: str | None = None,
-        _context: Context | None = None,
+        _context: object | None = None,
     ):
         """Initialize a tool from its callable, description, and chain edges."""
         self.caller: ToolFuncProtocol[TInput, Any] = caller
@@ -106,14 +107,21 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Inspect the retained context's current resources, deduplicated by ID.
 
-        Plain tools report no resources. Context inspection errors propagate.
+        Plain tools and contexts without an inspection method report no
+        resources. Context inspection errors propagate.
 
         Raises:
-            TypeError: If inspection returns a non-tuple or non-resource entries.
+            TypeError: If inspection is non-callable or returns a non-tuple or
+                non-resource entries.
         """
-        if self._context is None:
+        inspect = getattr(
+            self._context, "external_dependencies", _NO_CONTEXT_INSPECTION
+        )
+        if inspect is _NO_CONTEXT_INSPECTION:
             return ()
-        resources = self._context.external_dependencies()
+        if not callable(inspect):
+            raise TypeError("context external_dependencies must be callable")
+        resources = inspect()
         if not isinstance(resources, tuple):
             raise TypeError("context external_dependencies() must return a tuple")
         return dedupe_external_dependencies(resources)
@@ -217,7 +225,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
 class Factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Context,
+    TCtx,
 ]:
     """Context-bound constructor for typed tools and their dependencies."""
 
@@ -262,14 +270,16 @@ class Factory[
     def __call__(self, ctx: TCtx) -> Tool[TInput, TOutput]:
         """Bind the supplied object without copying or inspecting its resources.
 
-        The concrete context type is checked statically. At runtime, only the
-        callable inspection interface is required; annotations are not validated.
+        Any concrete context type is supported and checked statically. Resource
+        inspection is optional; when provided, its method must be callable.
+        Runtime binding does not validate the context's annotation.
 
         Raises:
-            TypeError: If the context has no callable ``external_dependencies``.
+            TypeError: If ``external_dependencies`` is present but non-callable.
         """
-        if not callable(getattr(ctx, "external_dependencies", None)):
-            raise TypeError("factory context must have callable external_dependencies")
+        inspect = getattr(ctx, "external_dependencies", _NO_CONTEXT_INSPECTION)
+        if inspect is not _NO_CONTEXT_INSPECTION and not callable(inspect):
+            raise TypeError("context external_dependencies must be callable")
 
         def _func_ctx(input: TInput, messages: list[Message]) -> TOutput:
             return self._func(input=input, messages=messages, ctx=ctx)

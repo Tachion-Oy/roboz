@@ -19,7 +19,7 @@ class ExternalDependencyKind(StrEnum):
 
 
 class ExternalDependency(ABC):
-    """Base for concrete resources supplied directly to typed factories.
+    """A resource whose availability depends on the surrounding environment.
 
     Integration authors implement identity, category, and safe metadata on their
     resource. Factory authors annotate the concrete resource type as ``ctx``.

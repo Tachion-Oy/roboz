@@ -1,14 +1,10 @@
 """Typed per-use OpenRouter routing and reasoning policy."""
 
 from collections.abc import Sequence
-from typing import Final, Literal, overload
+from typing import Final, Literal
 
 from roboz.llm.binding import with_request_options
 from roboz.llm.endpoints import JSONValue, LLMEndpoint, RequestOptions
-from roboz.dependencies import (
-    ExternalDependencyReference,
-    LazyExternalDependency,
-)
 
 type OpenRouterReasoningEffort = Literal["low", "high", "max"]
 type OpenRouterSort = Literal["throughput"]
@@ -53,39 +49,12 @@ def openrouter_request_options(
     return extra_body
 
 
-@overload
 def with_openrouter_policy(
     endpoint: LLMEndpoint,
     *,
     reasoning_effort: OpenRouterReasoningEffort | None = None,
     ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> LLMEndpoint: ...
-
-
-@overload
-def with_openrouter_policy(
-    endpoint: LazyExternalDependency[LLMEndpoint],
-    *,
-    reasoning_effort: OpenRouterReasoningEffort | None = None,
-    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> LazyExternalDependency[LLMEndpoint]: ...
-
-
-@overload
-def with_openrouter_policy(
-    endpoint: ExternalDependencyReference[LLMEndpoint],
-    *,
-    reasoning_effort: OpenRouterReasoningEffort | None = None,
-    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> ExternalDependencyReference[LLMEndpoint]: ...
-
-
-def with_openrouter_policy(
-    endpoint: LLMEndpoint | ExternalDependencyReference[LLMEndpoint],
-    *,
-    reasoning_effort: OpenRouterReasoningEffort | None = None,
-    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> LLMEndpoint | ExternalDependencyReference[LLMEndpoint]:
+) -> LLMEndpoint:
     """Copy an endpoint with OpenRouter policy while retaining its identity."""
     return with_request_options(
         endpoint,

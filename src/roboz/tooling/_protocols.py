@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from roboz.models import Empty, Invoke, Message, Stop
-from roboz.tooling.context import Context
 
 if TYPE_CHECKING:
     from roboz.tooling.core import Factory, Tool
@@ -23,7 +22,7 @@ class ToolFuncProtocol[
 class FactoryToolFuncProtocol[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Context,
+    TCtx,
 ](Protocol):
     __name__: str
 
@@ -45,14 +44,22 @@ class ChainedToolDecoratorUnion[TInput: Empty, TOther: Empty | Stop](Protocol):
     ) -> Tool[TInput, TOutput] | Tool[TOther, TOutput]: ...  # type: ignore[type-var]
 
 
+class FactoryDecorator(Protocol):
+    """Infer input, output, and context from a factory callable without parents."""
+
+    def __call__[TInput: Empty, TOutput: Empty | Invoke | Stop, TCtx](
+        self, func: FactoryToolFuncProtocol[TInput, TOutput, TCtx]
+    ) -> Factory[TInput, TOutput, TCtx]: ...
+
+
 class ChainedFactoryDecorator[TInput: Empty](Protocol):
-    def __call__[TOutput: Empty | Invoke | Stop, TCtx: Context](
+    def __call__[TOutput: Empty | Invoke | Stop, TCtx](
         self, func: FactoryToolFuncProtocol[TInput, TOutput, TCtx]
     ) -> Factory[TInput, TOutput, TCtx]: ...
 
 
 class ChainedFactoryDecoratorUnion[TInput: Empty, TOther: Empty | Stop](Protocol):
-    def __call__[TOutput: Empty | Invoke | Stop, TCtx: Context](
+    def __call__[TOutput: Empty | Invoke | Stop, TCtx](
         self,
         func: (
             FactoryToolFuncProtocol[TInput, TOutput, TCtx]
