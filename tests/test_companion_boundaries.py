@@ -45,7 +45,7 @@ def test_each_companion_has_only_its_own_required_dependencies():
         } == dependencies
         core_minimum = {
             "shed": "0.1.2.dev5",
-            "endpoints": "0.1.2.dev2",
+            "endpoints": "0.1.2.dev5",
             "proton-bridge": "0.1.1",
         }[directory]
         assert f"roboz>={core_minimum},<0.2.0" in project["dependencies"]

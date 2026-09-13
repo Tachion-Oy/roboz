@@ -970,7 +970,7 @@ dev = [
 
 [[package]]
 name = "roboz-endpoints"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { editable = "packages/endpoints" }
 dependencies = [
     { name = "roboz" },

@@ -1,6 +1,6 @@
 [project]
 name = "roboz-endpoints"
-version = "0.1.0a3"
+version = "0.1.0a4"
 description = "Model catalogues and optional endpoint adapters for Roboz"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -9,7 +9,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 import-names = ["roboz_endpoints"]
 classifiers = ["Development Status :: 3 - Alpha", "Typing :: Typed"]
-dependencies = ["roboz>=0.1.2.dev2,<0.2.0"]
+dependencies = ["roboz>=0.1.2.dev5,<0.2.0"]
 
 [project.scripts]
 roboz-endpoints = "roboz_endpoints.cli:main"

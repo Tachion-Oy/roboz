@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a4 - 2026-09-13
+
 - Breaking: adapters and catalogs return concrete `LLMEndpoint` and
   `TranscriptionEndpoint` objects. Initialization stays lazy by default: tool
   invocation initializes the client, or call `endpoint.materialize()` explicitly
