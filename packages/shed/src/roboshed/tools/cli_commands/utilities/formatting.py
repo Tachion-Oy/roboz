@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from roboshed.models import ActionVerdict, PermissionRule
-from roboz import Ctx
+from roboshed.tools.contexts import FileCommandResolverContext, GuardContext
 
 from .cmd_spec import CmdSpec
 
@@ -18,7 +18,7 @@ def _framed_cli_output(command_line: str, body: str) -> str:
     return f"--- begin: {command_line} ---\n{body}\n--- end: {command_line} ---"
 
 
-def _format_constraints_for_deny(ctx: Ctx) -> str:
+def _format_constraints_for_deny(ctx: GuardContext) -> str:
     """Format allowed paths and permissions for a guard denial message."""
     base = (ctx.base or Path(".")).resolve()
     return format_cli_constraints(
@@ -239,7 +239,7 @@ def format_cli_full_help(
     )
 
 
-def cli_help_message(specs: Sequence[CmdSpec], ctx: Ctx) -> str:
+def cli_help_message(specs: Sequence[CmdSpec], ctx: FileCommandResolverContext) -> str:
     """Full help: commands section plus constraints for this tool chain."""
     return format_cli_full_help(
         specs,

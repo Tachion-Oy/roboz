@@ -1,12 +1,11 @@
 """Threshold-based artifact retention with optional empty-folder pruning."""
 
 import errno
-from functools import partial
 from pathlib import Path
 from typing import Final
 
 from roboz.models import NO_MESSAGE, All, Message, Str
-from roboz.tooling.context import Ctx, _prepare_context
+from roboshed.tools.contexts import PurgeFilesContext
 from roboz.tooling.decorators import factory
 
 _BENIGN_RMDIR_ERRNOS: Final[frozenset[int]] = frozenset(
@@ -80,7 +79,7 @@ def purge_files_by_threshold(
 
 
 @factory
-def purge_files(input: All, messages: list[Message], ctx: Ctx) -> Str:
+def purge_files(input: All, messages: list[Message], ctx: PurgeFilesContext) -> Str:
     """Remove configured files that exceed the retention threshold."""
     del input, messages
     return purge_files_by_threshold(
@@ -91,11 +90,9 @@ def purge_files(input: All, messages: list[Message], ctx: Ctx) -> Str:
     )
 
 
-__all__ = ["collect_matching_files", "purge_files", "purge_files_by_threshold"]
-
-
-purge_files._prepare_ctx = partial(
-    _prepare_context,
-    required=("pattern", "max_files", "folders"),
-    defaults={"prune_empty_directories": False},
-)
+__all__ = [
+    "PurgeFilesContext",
+    "collect_matching_files",
+    "purge_files",
+    "purge_files_by_threshold",
+]

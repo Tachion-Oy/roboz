@@ -11,10 +11,17 @@ from roboshed.identifiers import (
 from roboshed.models import ActionVerdict, PermissionRule, RunFileCommands
 from roboshed.tools.cli_commands.utilities.cmd_spec import CmdSpec
 from roboshed.tools.guard import build_guarded_tool_chain
-from roboshed.tools.runner import ExecutableCommandCatalog, execute_file_command
+from roboshed.tools.runner import (
+    ExecutableCommandCatalog,
+    execute_file_command,
+)
 from roboshed.tools.truncation import default_cli_truncation
 from roboshed.tools.utils import resolve_tool_base
-from roboz import Ctx
+from roboshed.tools.contexts import (
+    FileCommandExecutionContext,
+    FileCommandResolverContext,
+    GuardContext,
+)
 from roboz.models.truncation import TruncationSpec
 from roboz.runtime.pipe import EventPipe
 from roboz.tooling import Tool
@@ -39,7 +46,7 @@ def _normalize_context(
     default_verdict: ActionVerdict,
     command_specs: Sequence[CmdSpec] | None,
     pipe: EventPipe | None,
-) -> tuple[Ctx, Ctx]:
+) -> tuple[FileCommandResolverContext, GuardContext]:
     allow = list(allow_rules if allow_rules else [])
     deny = list(deny_rules if deny_rules else [])
     ask = list(ask_rules if ask_rules else [])
@@ -51,7 +58,7 @@ def _normalize_context(
     )
     resolved_base = resolve_tool_base(base)
 
-    cli_ctx = Ctx(
+    cli_ctx = FileCommandResolverContext(
         specs=specs,
         base=resolved_base,
         allow_rules=allow,
@@ -60,7 +67,7 @@ def _normalize_context(
         takes_precedence=precedence,
         default_verdict=default_verdict,
     )
-    guard_ctx = Ctx(
+    guard_ctx = GuardContext(
         base=resolved_base,
         takes_precedence=precedence,
         default_verdict=default_verdict,
@@ -138,7 +145,7 @@ def get_run_file_command(
         entry=run_file_command_tool,
         guard_ctx=guard_ctx,
         execute=execute_file_command(
-            Ctx(
+            FileCommandExecutionContext(
                 truncation=execute_cli_truncation,
                 commands=ExecutableCommandCatalog.from_names(
                     (spec.name for spec in cli_ctx.specs)

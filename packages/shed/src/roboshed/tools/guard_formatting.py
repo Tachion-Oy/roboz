@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from roboshed.models import ActionVerdict, PermissionRule
-from roboz import Ctx
+from roboshed.tools.contexts import GuardContext
 
 
 def _resolved_rule_pattern(rule: PermissionRule) -> str:
@@ -21,7 +21,7 @@ def _rule_bullets(rules: list[PermissionRule]) -> list[str]:
     ] or ["- (none)"]
 
 
-def format_guard_constraints(ctx: Ctx) -> str:
+def format_guard_constraints(ctx: GuardContext) -> str:
     """Format path and operation constraints for a guard denial."""
     base = (ctx.base or Path(".")).resolve()
     precedence = "allow" if ctx.takes_precedence == ActionVerdict.allow else "deny"

@@ -1,6 +1,5 @@
 """Shared permission guard for resolved tool operations."""
 
-from functools import partial
 from pathlib import Path
 
 from roboshed.models import (
@@ -19,11 +18,10 @@ from roboshed.models import (
 from roboshed.tools.guard_formatting import format_guard_constraints
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import check_allow_deny_permission, check_ask_permission
-from roboz import Ctx
+from roboshed.tools.contexts import GuardContext
 from roboz.models import Message
 from roboz.models.truncation import Severity, Truncation
 from roboz.tooling import Tool
-from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
 
 GUARD_ERR_DENIED = "operation={operation!r} DENIED for location={location!r}"
@@ -32,7 +30,7 @@ CHAIN_BREAKING_OUTPUTS: tuple[type, ...] = (ParseError, Help)
 
 
 def resolve_allow_verdict(
-    location: Path, operation: Operation, ctx: Ctx
+    location: Path, operation: Operation, ctx: GuardContext
 ) -> tuple[ActionVerdict, GuardDenyReason | None]:
     """Check allow/deny and ask rules for a single guarded location."""
     base_path = ctx.base.resolve() if ctx.base else None
@@ -82,7 +80,7 @@ def guard_items(
     *,
     items_to_guard: list[GuardFileSingle[TPayload]],
     original_input: TInput,
-    ctx: Ctx,
+    ctx: GuardContext,
 ) -> GuardFilesResult[TInput, TPayload]:
     """Validate guarded items and return deny or allowed guard results."""
     items: list[GuardFileSingleResult[TPayload]] = []
@@ -127,7 +125,7 @@ def guard_items(
 
 @factory
 def operation_guard(
-    input: ResolvedFileCommand, messages: list[Message], ctx: Ctx
+    input: ResolvedFileCommand, messages: list[Message], ctx: GuardContext
 ) -> GuardFilesResult:
     """Check whether the requested filesystem operations are permitted."""
     return guard_items(
@@ -138,7 +136,7 @@ def operation_guard(
 def build_guarded_tool_chain(
     *,
     entry: Tool,
-    guard_ctx: Ctx,
+    guard_ctx: GuardContext,
     execute: Tool,
 ) -> list[Tool]:
     """Wire the shared resolve -> guard -> execute recipe.
@@ -161,10 +159,3 @@ def build_guarded_tool_chain(
         ),
     )
     return [entry, guard, execute]
-
-
-operation_guard._prepare_ctx = partial(
-    _prepare_context,
-    required=("base", "takes_precedence", "deny", "allow", "ask", "default_verdict"),
-    defaults={"command_specs": (), "pipe": None},
-)

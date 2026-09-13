@@ -3,7 +3,6 @@
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -26,15 +25,14 @@ from roboshed.tools.cli_commands.utilities.constants import (
     SUCCESS_NO_OUTPUT,
 )
 from roboshed.tools.cli_commands.utilities.formatting import _framed_cli_output
-from roboz import Ctx
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation, TruncationSpec
 from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependency,
-    ExternalDependencySource,
 )
-from roboz.tooling.context import _prepare_context
+from roboz.tooling.context import HasExternalDependencies
+from roboshed.tools.contexts import FileCommandExecutionContext
 from roboz.tooling.decorators import factory
 
 
@@ -151,7 +149,7 @@ def _oversized_output_result(
 
 
 @dataclass(frozen=True)
-class ExecutableCommandCatalog(ExternalDependencySource):
+class ExecutableCommandCatalog(HasExternalDependencies):
     """Immutable command implementations and their inspectable dependencies."""
 
     bindings: Mapping[str, ExecutableDependency]
@@ -195,7 +193,7 @@ class ExecutableCommandCatalog(ExternalDependencySource):
 def execute_file_command(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: FileCommandExecutionContext,
 ) -> Str | RunFileCommands:
     """Run a permitted file command and return bounded output."""
     truncation = ctx.truncation
@@ -251,8 +249,3 @@ def execute_file_command(
             case _:
                 msg = str(e)
         return _accumulate_error(new_input, command_line, msg, truncation)
-
-
-execute_file_command._prepare_ctx = partial(
-    _prepare_context, required=("truncation", "commands")
-)

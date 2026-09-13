@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Breaking: bind built-in file and maintenance factories to concrete typed contexts
+  instead of `Ctx`; direct patch stages accept a `Path` or `TruncationSpec`.
+  Existing `get_*` helper arguments remain supported. Command and summary contexts
+  report their actual resources through `tool.external_dependencies()`. Compaction
+  counters belong to the context: rebinding/copying shares them; constructing a new
+  context creates fresh state. See the [tool-context migration](../../docs/shed-tool-contexts.md).
+
 - Breaking: remove callback-based `inspect_dependencies`; inspect the configured
   `DeployableAgent.external_dependencies()` instead; it constructs unstarted
   agents using normal capability builders, without temporary sandbox isolation.

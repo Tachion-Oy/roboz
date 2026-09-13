@@ -1,5 +1,7 @@
 """Threshold-triggered conversation compaction with shared conversation summarization."""
 
+from roboshed.tools.contexts import CompactionContext, CompactionState
+
 from .compactify_messages import (
     COMPACTED_CONTEXT_KIND,
     DEFAULT_THRESHOLD_PERCENT,
@@ -18,6 +20,8 @@ from .summarize import (
 )
 
 __all__ = [
+    "CompactionContext",
+    "CompactionState",
     "COMPACTED_CONTEXT_KIND",
     "COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE",
     "COMPACTIFY_SYSTEM_PROMPT",

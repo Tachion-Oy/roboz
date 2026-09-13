@@ -233,5 +233,15 @@ implement the synchronous method on the resource instead.
 Replace `check_executable`, `check_openai_compatible_endpoint`, and
 `check_network_service` with `check_dependency` when a sanitized health result
 is needed, or use `resource.check()` for the primitive boolean/exception contract.
-The old helper names have no compatibility aliases. Shed tool contexts and
-composition migrations are still in progress in this checkpoint.
+The old helper names have no compatibility aliases. Email contracts and contexts,
+capability bindings, and deployment recipe migrations remain in progress.
+
+## Concrete tool contexts
+
+File-command, guard, editing, and maintenance factories now use concrete context
+classes exported from `roboshed.tools`. Existing `get_run_file_command`,
+`get_apply_patch`, and `get_compactify_messages_when_needed_tool` keyword arguments
+are retained. Direct factory users should follow the
+[context migration guide](../../docs/shed-tool-contexts.md), including the context
+ownership rules for compaction counters. Command and summary resources are
+reported through `tool.external_dependencies()` without running external work.

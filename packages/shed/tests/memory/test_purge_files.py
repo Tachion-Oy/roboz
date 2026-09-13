@@ -3,10 +3,10 @@
 import os
 from pathlib import Path
 
+from roboshed.tools import PurgeFilesContext
 from roboshed.identifiers import PURGE_FILES_TOOL_NAME
 from roboshed.tools import purge_files, purge_files_by_threshold
 
-from roboz import Ctx
 from roboz.models import Empty
 
 _MARKDOWN_PATTERN = "*.md"
@@ -20,7 +20,7 @@ def _tool(
     prune_empty_directories: bool = False,
 ):
     return purge_files(
-        Ctx(
+        PurgeFilesContext(
             folders=folders,
             pattern=_MARKDOWN_PATTERN,
             max_files=max_files,

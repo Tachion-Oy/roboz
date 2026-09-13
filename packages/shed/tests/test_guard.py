@@ -10,10 +10,10 @@ layered only on top of an ``allow`` verdict. A deny is absolute - there is no
 from pathlib import Path
 from unittest.mock import patch
 
+from roboshed.tools import GuardContext
 from roboshed.models import ActionVerdict, GuardDenyReason, Operation, PermissionRule
 from roboshed.tools.guard import resolve_allow_verdict
 
-from roboz import Ctx
 from roboz.runtime.pipe import EventPipe
 
 CREATE = Operation.CREATE
@@ -27,8 +27,8 @@ def _ctx(
     allow: list[PermissionRule],
     deny: list[PermissionRule],
     ask: list[PermissionRule],
-) -> Ctx:
-    return Ctx(
+) -> GuardContext:
+    return GuardContext(
         base=base,
         takes_precedence=takes_precedence,
         allow=allow,

@@ -3,14 +3,12 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Final
 
 from roboshed.identifiers import CONSOLIDATE_MEMORY_TOOL_NAME
 from roboshed.tools._snapshot_metadata import parse_snapshot_document
 from roboshed.tools.compactification import (
-    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
     summarize_conversation_segment,
 )
 from roboshed.tools.consolidate_memory_prompts import (
@@ -31,7 +29,7 @@ from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.models import NO_MESSAGE, All, Message, Str
 from roboz.runtime import log_with_data
 from roboz.runtime.persistence import active_marker_paths
-from roboz.tooling.context import Ctx, _prepare_context
+from roboshed.tools.contexts import ConsolidateMemoryContext
 from roboz.tooling.decorators import factory
 
 logger = logging.getLogger(__name__)
@@ -181,7 +179,9 @@ def _not_consolidated_result(pending_count: int, *, superseded: bool = False) ->
 
 
 @factory
-def consolidate_memory(input: All, messages: list[Message], ctx: Ctx) -> Str:
+def consolidate_memory(
+    input: All, messages: list[Message], ctx: ConsolidateMemoryContext
+) -> Str:
     """Fold eligible snapshots into a new append-only persistent memory file."""
     del input, messages
     if ctx.pipe is not None:
@@ -276,6 +276,7 @@ def consolidate_memory(input: All, messages: list[Message], ctx: Ctx) -> Str:
 
 
 __all__ = [
+    "ConsolidateMemoryContext",
     "PERSISTENT_MEMORY_TITLE",
     "PROVENANCE_MARKER",
     "SnapshotDescriptor",
@@ -284,23 +285,3 @@ __all__ = [
     "strip_leading_memory_title",
     "strip_provenance",
 ]
-
-
-consolidate_memory._prepare_ctx = partial(
-    _prepare_context,
-    required=(
-        "endpoint",
-        "snapshot_root",
-        "memory_root",
-        "conversation_root",
-        "agent_names",
-        "min_pending_snapshots",
-        "max_pending_age_seconds",
-        "max_chars",
-    ),
-    defaults={
-        "max_chars_tolerance_percent": DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
-        "timeout_s": None,
-        "pipe": None,
-    },
-)

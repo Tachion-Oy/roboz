@@ -1,6 +1,5 @@
 """Single-file apply_patch connector: guarded path checks then Python string replace."""
 
-from functools import partial
 from pathlib import Path
 
 from roboshed.identifiers import APPLY_PATCH_TOOL_NAME, FILE_EDITING_SKILL_NAME
@@ -20,12 +19,11 @@ from roboshed.tools.guard import build_guarded_tool_chain
 from roboshed.tools.truncation import default_cli_truncation
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import resolve_single_file_path, resolve_tool_base
-from roboz import Ctx
+from roboshed.tools.contexts import GuardContext
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation, TruncationSpec
 from roboz.runtime.pipe import EventPipe
 from roboz.tooling import Tool
-from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
 
 APPLY_PATCH_NAME: str = APPLY_PATCH_TOOL_NAME
@@ -33,10 +31,10 @@ APPLY_PATCH_NAME: str = APPLY_PATCH_TOOL_NAME
 
 @factory
 def apply_patch(
-    input: ApplyPatch, messages: list[Message], ctx: Ctx
+    input: ApplyPatch, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an exact single-file string replacement for permission checking."""
-    base = ctx.base.resolve()
+    base = ctx.resolve()
     try:
         location = resolve_single_file_path(input.path, base=base)
         if location.exists() and not location.is_file():
@@ -104,10 +102,10 @@ def _perform_replace(
 def execute_apply_patch_replace(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: TruncationSpec,
 ) -> Str:
     """Apply a permitted exact string replacement to one file."""
-    truncation = ctx.truncation
+    truncation = ctx
     if input.status != GuardStatus.ALLOWED:
         msg = input.message or f"apply_patch: unexpected guard status {input.status}"
         body = _framed_cli_output("apply_patch string-replace", msg)
@@ -164,9 +162,7 @@ def get_apply_patch(
     precedence = takes_precedence if takes_precedence else ActionVerdict.deny
     base = resolve_tool_base(base)
 
-    connector_ctx = Ctx(base=base)
-
-    guard_ctx = Ctx(
+    guard_ctx = GuardContext(
         base=base,
         takes_precedence=precedence,
         allow=allow,
@@ -190,17 +186,9 @@ def get_apply_patch(
         "if the file is missing, it is created."
     )
 
-    entry = apply_patch(connector_ctx).copy(
-        name=APPLY_PATCH_NAME, description=description
-    )
+    entry = apply_patch(base).copy(name=APPLY_PATCH_NAME, description=description)
     return build_guarded_tool_chain(
         entry=entry,
         guard_ctx=guard_ctx,
-        execute=execute_apply_patch_replace(Ctx(truncation=execute_cli_truncation)),
+        execute=execute_apply_patch_replace(execute_cli_truncation),
     )
-
-
-apply_patch._prepare_ctx = partial(_prepare_context, required=("base",))
-execute_apply_patch_replace._prepare_ctx = partial(
-    _prepare_context, required=("truncation",)
-)
