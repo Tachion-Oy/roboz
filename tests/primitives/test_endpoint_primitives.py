@@ -28,12 +28,16 @@ class ScriptedClient:
     """Record calls at the SDK boundary and return deterministic responses."""
 
     def __init__(self):
+        self.models = SimpleNamespace(list=self.list_models)
         self.chat_requests = []
         self.audio_requests = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.complete))
         self.audio = SimpleNamespace(
             transcriptions=SimpleNamespace(create=self.transcribe)
         )
+
+    def list_models(self, *, timeout):
+        raise AssertionError("model discovery was not requested")
 
     def complete(self, **request):
         self.chat_requests.append(request)
@@ -134,7 +138,9 @@ def test_endpoint_resource_contract_retains_identity_and_safe_metadata(
     endpoint_class,
     endpoint_type,
 ):
-    endpoint = endpoint_class(client=object(), api_name="test", model_name="model")
+    endpoint = endpoint_class(
+        client=ScriptedClient(), api_name="test", model_name="model"
+    )
     assert endpoint.dependency_id == "model:test:model"
     assert endpoint.kind is ExternalDependencyKind.MODEL_ENDPOINT
     assert endpoint.redacted_metadata() == {
@@ -150,17 +156,22 @@ def test_endpoint_resource_contract_retains_identity_and_safe_metadata(
 
 
 def test_endpoint_schema_defaults_and_validation_remain_unchanged():
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="model")
     assert endpoint.temperature == 0.7
     assert endpoint.max_context_tokens == 128_000
     assert endpoint.output_format == "text"
     assert endpoint.stream is True
     assert endpoint.extra_body is None
     with pytest.raises(ValidationError):
-        LLMEndpoint(client=object(), api_name="test", model_name="model", temperature=3)
+        LLMEndpoint(
+            client=ScriptedClient(), api_name="test", model_name="model", temperature=3
+        )
     with pytest.raises(ValidationError):
         LLMEndpoint(
-            client=object(), api_name="test", model_name="model", max_context_tokens=0
+            client=ScriptedClient(),
+            api_name="test",
+            model_name="model",
+            max_context_tokens=0,
         )
 
 
@@ -201,14 +212,14 @@ def test_request_policy_copies_options_while_retaining_client_and_resource_ident
     ],
 )
 def test_request_policy_still_rejects_framework_owned_fields(key):
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="model")
     with pytest.raises(ValueError, match="framework-owned"):
         with_request_options(endpoint, extra_body={key: True})
 
 
 @pytest.mark.parametrize("value", [set(), float("nan")])
 def test_request_policy_still_rejects_non_json_options(value):
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="model")
     with pytest.raises(ValueError, match="JSON-compatible"):
         with_request_options(endpoint, extra_body={"provider": value})
 
@@ -231,9 +242,9 @@ def test_endpoint_operations_reject_non_endpoints_without_materialization(invali
 
 
 def test_chat_and_transcription_validation_keep_the_endpoint_families_separate():
-    chat = LLMEndpoint(client=object(), api_name="test", model_name="chat")
+    chat = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="chat")
     speech = TranscriptionEndpoint(
-        client=object(), api_name="test", model_name="speech"
+        client=ScriptedClient(), api_name="test", model_name="speech"
     )
     with pytest.raises(TypeError, match="LLMEndpoint"):
         resolve_endpoint(speech)
@@ -260,8 +271,8 @@ def test_scripted_endpoints_satisfy_context_without_reporting_external_resources
 
 
 def test_selector_returns_the_supplied_concrete_endpoints():
-    first = LLMEndpoint(client=object(), api_name="test", model_name="first")
-    second = LLMEndpoint(client=object(), api_name="test", model_name="second")
+    first = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="first")
+    second = LLMEndpoint(client=ScriptedClient(), api_name="test", model_name="second")
     selector = ModelSelector({"First": first, "Second": second}, default=first)
     assert selector.selected_endpoint is first
     selector.select(second.dependency_id)

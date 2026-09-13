@@ -1,4 +1,4 @@
-"""Provider-neutral structured language-model operations."""
+"""Structured model operations using synchronous OpenAI-compatible clients."""
 
 from roboz.llm._truncation import (
     estimate_conversation_tokens,

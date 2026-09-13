@@ -1,5 +1,7 @@
 """Chat factories reject transcription endpoints despite their common resource base."""
 
+from openai import OpenAI
+
 from roboz import Message, Str, factory
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 
@@ -11,5 +13,7 @@ def describe_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str
 
 # Expected: reportArgumentType; this factory requires LLMEndpoint.
 describe_model(
-    TranscriptionEndpoint(client=object(), api_name="test", model_name="speech")
+    TranscriptionEndpoint(
+        client=OpenAI(api_key="type-test-only"), api_name="test", model_name="speech"
+    )
 )

@@ -21,8 +21,9 @@ class ExternalDependencyKind(StrEnum):
 class ExternalDependency(ABC):
     """A resource whose availability depends on the surrounding environment.
 
-    Integration authors implement identity, category, and safe metadata on their
-    resource. Factory authors annotate the concrete resource type as ``ctx``.
+    Integration authors implement identity, category, safe metadata, and an
+    explicit availability check on their resource. Factory authors annotate the
+    concrete resource type as ``ctx``.
     """
 
     @property
@@ -38,6 +39,15 @@ class ExternalDependency(ABC):
     @abstractmethod
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe, secret-free metadata for inspection."""
+
+    @abstractmethod
+    def check(self) -> bool:
+        """Check current availability, performing external work when needed.
+
+        Return ``False`` when the resource is absent. Errors that prevent the
+        check from determining availability propagate to the caller. Do not
+        cache the result; inspection and factory binding never invoke this method.
+        """
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Report this resource without performing external work."""
@@ -72,6 +82,10 @@ class ExecutableDependency(ExternalDependency):
             "executable": self.executable,
             "display_name": self.display_name or self.executable,
         }
+
+    def check(self) -> bool:
+        """Check whether the executable resolves on PATH without starting it."""
+        return self.resolve() is not None
 
     def resolve(self) -> Path | None:
         """Resolve the executable without starting a process."""

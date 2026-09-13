@@ -20,6 +20,9 @@ from roboz.dependencies import (
 
 
 class IdentityOnly(ExternalDependency):
+    def check(self) -> bool:
+        return True
+
     @property
     def dependency_id(self) -> str:
         return "test:incomplete"
@@ -39,6 +42,9 @@ class MissingKind(IdentityOnly):
 @dataclass
 class SearchIndex(ExternalDependency):
     name: str
+
+    def check(self) -> bool:
+        return True
 
     @property
     def dependency_id(self) -> str:

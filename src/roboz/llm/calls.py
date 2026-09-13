@@ -1,5 +1,5 @@
 # ruff: noqa: F403, F405
-"""Cancellable streaming and non-streaming model API calls."""
+"""Cancellable synchronous OpenAI-compatible chat and transcription calls."""
 
 import logging
 import time
@@ -22,6 +22,7 @@ from roboz.runtime._external import (
     run_cancellable_external_call,
 )
 from roboz.runtime.pipe import EventPipe
+from roboz.llm.openai_compatible import OpenAIResponseFormat
 from roboz.llm._retry import RetryState, run_with_retry
 from roboz.models._schema import messages_scrubber
 from roboz.llm.binding import (
@@ -325,8 +326,16 @@ class ChaCompletionRequest(TypedDict):
     model: str
     messages: list[dict]
     temperature: float
-    response_format: ResponseFormat
+    response_format: OpenAIResponseFormat
     extra_body: NotRequired[RequestOptions]
+
+
+class _TranscriptionRequest(TypedDict):
+    file: tuple[str, bytes, str]
+    model: str
+    temperature: float
+    language: NotRequired[str]
+    prompt: NotRequired[str]
 
 
 def _run_llm_attempt(
@@ -473,16 +482,16 @@ def _chat_completion_request(
     messages: list[Message],
     messages_scrubber: Callable[[list[Message]], list[dict]],
 ) -> ChaCompletionRequest:
-    response_type = (
-        _JSON_OBJECT_RESPONSE_TYPE
+    response_format: OpenAIResponseFormat = (
+        {"type": "json_object"}
         if endpoint.output_format == _JSON_OUTPUT_FORMAT
-        else _TEXT_RESPONSE_TYPE
+        else {"type": "text"}
     )
     request = ChaCompletionRequest(
         model=endpoint.model_name,
         messages=messages_scrubber(endpoint.message_mapper(messages)),
         temperature=endpoint.temperature,
-        response_format=ResponseFormat(type=response_type),
+        response_format=response_format,
     )
     if endpoint.extra_body:
         request[_EXTRA_BODY_FIELD] = endpoint.extra_body
@@ -493,9 +502,9 @@ def _call_non_streaming_llm_api(
     endpoint: LLMEndpoint,
     request: ChaCompletionRequest,
 ) -> _ChatCompletionResult:
-    response = endpoint.client.chat.completions.create(**request)  # type:ignore
+    response = endpoint.client.chat.completions.create(**request)
     usage = getattr(response, _USAGE_FIELD, None)
-    content = response.choices[0].message.content  # type:ignore
+    content = response.choices[0].message.content
     return _ChatCompletionResult(
         content=content if isinstance(content, str) else "",
         telemetry=_telemetry_from_usage(endpoint=endpoint, usage=usage),
@@ -517,15 +526,12 @@ def _call_streaming_llm_api(
     control_signals: tuple[ControlSignal, ...],
     call_abandoned: Event | None = None,
 ) -> _ChatCompletionResult:
-    stream_request = request | {
-        _STREAM_KEY: True,
-        _STREAM_OPTIONS_FIELD: {_INCLUDE_USAGE_FIELD: True},
-    }
     try:
-        stream = endpoint.client.chat.completions.create(**stream_request)  # type:ignore
+        stream = endpoint.client.chat.completions.create(
+            **request, stream=True, stream_options={"include_usage": True}
+        )
     except TypeError:
-        stream_request.pop(_STREAM_OPTIONS_FIELD, None)
-        stream = endpoint.client.chat.completions.create(**stream_request)  # type:ignore
+        stream = endpoint.client.chat.completions.create(**request, stream=True)
 
     chunks: list[str] = []
     usage: object | None = None
@@ -679,7 +685,7 @@ def call_transcription_api(
         )
         return text
 
-    request: dict[str, object] = {
+    request: _TranscriptionRequest = {
         _FILE_FIELD: (filename, audio, content_type),
         _MODEL_FIELD: endpoint.model_name,
         _TEMPERATURE_FIELD: (
@@ -711,7 +717,7 @@ def call_transcription_api(
                     _AUDIO_BYTES_KEY: len(audio),
                 },
             )
-            return getattr(response, _TEXT_FIELD).strip()
+            return response.text.strip()
         except Exception as exc:
             if not isinstance(
                 exc,

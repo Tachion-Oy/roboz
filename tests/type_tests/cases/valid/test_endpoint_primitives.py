@@ -2,6 +2,8 @@
 
 from typing import assert_type
 
+from openai import OpenAI
+
 from roboz import Context, Factory, Message, Str, Tool, factory
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
@@ -43,9 +45,11 @@ def describe_script(input: Str, messages: list[Message], ctx: EndpointLike) -> S
     return Str(value=ctx.model_name)
 
 
-endpoint = LLMEndpoint(client=object(), api_name="test", model_name="chat")
+endpoint = LLMEndpoint(
+    client=OpenAI(api_key="type-test-only"), api_name="test", model_name="chat"
+)
 transcription = TranscriptionEndpoint(
-    client=object(), api_name="test", model_name="speech"
+    client=OpenAI(api_key="type-test-only"), api_name="test", model_name="speech"
 )
 assert_type(describe_model, Factory[Str, Str, LLMEndpoint])
 assert_type(describe_next_model, Factory[Str, Str, LLMEndpoint])

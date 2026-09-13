@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Breaking: core endpoints require synchronous OpenAI-compatible clients instead
+  of an untyped client. Client methods and request controls are checked statically;
+  the real `openai.OpenAI` client satisfies the protocols without a wrapper or an
+  SDK dependency in core. Replace placeholder or incompatible clients with a
+  conforming chat/transcription client. See [the client contract](docs/dependency-primitives.md).
+
+- Breaking: external resource implementations must provide `check() -> bool` for
+  explicit availability checks. Executables check PATH; core endpoints use model
+  discovery without generating output. Results are uncached, absent resources
+  return `False`, and check errors propagate. Binding, copying, and inspection
+  never invoke checks. Plain contexts need no check method. See
+  [resource inspection and availability](docs/dependency-primitives.md).
+
 - Accept any concretely typed factory context, including plain objects and lists.
   Contexts without resource inspection are passed through unchanged and their
   tools report no dependencies. Wrong context types remain static binding errors.

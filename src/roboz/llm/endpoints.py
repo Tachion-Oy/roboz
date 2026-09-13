@@ -3,12 +3,17 @@
 import json
 from collections.abc import Callable, Mapping
 from threading import Lock
-from typing import Any, Final, Literal, cast
+from typing import Annotated, Any, Final, Literal, cast
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, WithJsonSchema, field_validator
 
 from roboz.models import Message, Role
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
+from roboz.llm.openai_compatible import (
+    OpenAICompatibleChatClient,
+    OpenAICompatibleModelsClient,
+    OpenAICompatibleTranscriptionClient,
+)
 
 type JSONValue = (
     None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
@@ -41,6 +46,34 @@ def copy_request_options(extra_body: Mapping[str, object]) -> RequestOptions:
         )
     except (TypeError, ValueError) as exc:
         raise ValueError("extra_body must be JSON-compatible") from exc
+
+
+def _check_openai_compatible_model(
+    client: OpenAICompatibleModelsClient, model_name: str
+) -> bool:
+    """Query an OpenAI-compatible client's model listing without generating output.
+
+    Match the configured model or its canonical name before a route suffix.
+    Preserve the existing model-discovery probe's ten-second request timeout.
+    Provider errors propagate; malformed model listings raise ``TypeError``.
+    """
+    response = client.models.list(timeout=10.0)
+    data = (
+        response.get("data")
+        if isinstance(response, dict)
+        else getattr(response, "data", None)
+    )
+    if not isinstance(data, (list, tuple)):
+        raise TypeError("model discovery response must contain a data list")
+    model_ids: set[str] = set()
+    for item in data:
+        model_id = (
+            item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+        )
+        if not isinstance(model_id, str):
+            raise TypeError("model discovery entries must have string IDs")
+        model_ids.add(model_id)
+    return model_name in model_ids or model_name.split(":", 1)[0] in model_ids
 
 
 class LLMPricing(BaseModel):
@@ -80,11 +113,11 @@ def role_to_user_mapper(
 
 
 class LLMEndpoint(BaseModel, ExternalDependency):
-    """Specification for an LLM endpoint, containing all necessary details for a validated API call."""
+    """Configured model served by a synchronous OpenAI-compatible chat client."""
 
     model_config = {"arbitrary_types_allowed": True}
 
-    client: Any
+    client: Annotated[OpenAICompatibleChatClient, WithJsonSchema({})]
     model_name: str = Field(
         ..., description="The specific model identifier, e.g., 'gpt-4-turbo'."
     )
@@ -148,6 +181,15 @@ class LLMEndpoint(BaseModel, ExternalDependency):
     def kind(self) -> ExternalDependencyKind:
         """Return the model-endpoint resource category."""
         return ExternalDependencyKind.MODEL_ENDPOINT
+
+    def check(self) -> bool:
+        """Confirm this model appears in an OpenAI-compatible model listing.
+
+        Make a model-discovery request with a ten-second timeout; generate no
+        completion or transcription. Return ``False`` for an absent model.
+        Authentication, transport, and malformed-response errors propagate.
+        """
+        return _check_openai_compatible_model(self.client, self.model_name)
 
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe model endpoint metadata for inspection."""
@@ -245,11 +287,11 @@ EndpointLike = LLMEndpoint | MockLLMEndpoint
 
 
 class TranscriptionEndpoint(BaseModel, ExternalDependency):
-    """Specification for an audio transcription endpoint."""
+    """Configured model served by a synchronous OpenAI-compatible audio client."""
 
     model_config = {"arbitrary_types_allowed": True}
 
-    client: Any
+    client: Annotated[OpenAICompatibleTranscriptionClient, WithJsonSchema({})]
     model_name: str = Field(
         ..., description="The provider's speech-to-text model identifier."
     )
@@ -273,6 +315,15 @@ class TranscriptionEndpoint(BaseModel, ExternalDependency):
     def kind(self) -> ExternalDependencyKind:
         """Return the model-endpoint resource category."""
         return ExternalDependencyKind.MODEL_ENDPOINT
+
+    def check(self) -> bool:
+        """Confirm this model appears in an OpenAI-compatible model listing.
+
+        Make a model-discovery request with a ten-second timeout; generate no
+        completion or transcription. Return ``False`` for an absent model.
+        Authentication, transport, and malformed-response errors propagate.
+        """
+        return _check_openai_compatible_model(self.client, self.model_name)
 
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe transcription endpoint metadata for inspection."""
