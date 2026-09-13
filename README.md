@@ -1,6 +1,14 @@
-# RoboZ
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/roboz-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/roboz-logo-light.svg">
+    <img alt="RoboZ logo" src="docs/assets/roboz-logo-light.svg" width="180">
+  </picture>
+</p>
 
-**Chain tools. Skip calls.**
+<h1 align="center">RoboZ</h1>
+
+<p align="center"><strong>Chain tools. Skip calls.</strong></p>
 
 RoboZ is a framework for building llm powered agents. The core ingredient is that every tool can may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
