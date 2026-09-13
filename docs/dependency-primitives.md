@@ -9,8 +9,8 @@ Resource implementers supply the inspection contract through inheritance.
 The primitive checkpoint establishes that binding contract. Its endpoint
 follow-up makes the core `LLMEndpoint` and `TranscriptionEndpoint` directly
 bindable too. Core agents, built-in tools, and deployment bindings now use the
-same contracts. Shed, provider construction, catalogs, and lazy clients remain
-for subsequent checkpoints; Proton is also deferred. No grep integration is introduced
+same contracts. Endpoint adapters and catalogs now return concrete endpoints with
+deferred OpenAI clients. Shed and Proton remain for subsequent checkpoints. No grep integration is introduced
 here. The complete library is not release-ready at this boundary; the primitive
 imports and examples below work independently.
 
@@ -228,7 +228,7 @@ and their types, including the client methods. `LLMEndpoint.client` is typed as
 `OpenAICompatibleChatClient`; the transcription client is typed as
 `OpenAICompatibleTranscriptionClient`. Both protocols, in
 `roboz.llm.openai_compatible`, require synchronous model discovery plus the
-relevant chat or audio API. The real synchronous `openai.OpenAI` client satisfies
+relevant chat or audio API and `close() -> None`. The real synchronous `openai.OpenAI` client satisfies
 both without adapters or casts; an async client or a client missing required
 operations is a static type error.
 
@@ -252,8 +252,8 @@ For a model call, supply an already configured client to `LLMEndpoint` and pass
 helper can validate the completion against an output model. Neither helper
 requires an agent. Likewise, a transcription factory can annotate
 `ctx: TranscriptionEndpoint` and call `call_transcription_api(ctx, ...)`.
-Constructing clients is the caller's responsibility; no lazy construction is
-added at this step.
+Core accepts an already constructed client. The endpoint companion also supplies
+concrete endpoints with clients that initialize on demand, as described below.
 
 `resolve_endpoint` and the transcription validator return the supplied endpoint
 unchanged, rejecting other resources and the wrong endpoint family. They no
@@ -271,7 +271,74 @@ overriding framework-owned request fields remain in place.
 
 The selector defined alongside the endpoint types now holds concrete
 `LLMEndpoint` objects instead of deleted lazy wrappers. Its selection and locking
-behavior is unchanged; catalog integration and live routing remain deferred.
+behavior is unchanged; live routing remains deferred.
+
+## Lazy initialization on invocation
+
+The default endpoint lifecycle is lazy. Selecting a catalog endpoint, binding it,
+copying its tool or request policy, and inspecting it require no SDK import or
+credential lookup. A bound tool calls the context's optional `materialize()` hook
+immediately before its factory callable runs. Initialization errors propagate
+before the callable executes. The hook is called on each invocation, so it must
+be idempotent; endpoint clients cache successful initialization under a lock.
+
+`Materializable` is a separate, optional protocol exported by `roboz` and
+`roboz.tooling`. Its `materialize() -> Self` method initializes deferred state and
+returns the same object. Explicit inheritance requires an implementation, and
+structural implementations also work. Plain contexts remain unrestricted.
+The supplied context is always preserved; the hook does not substitute another
+object or widen the factory's concrete context type.
+
+Both concrete endpoint types implement `materialize() -> Self`. With an adapter
+endpoint, an explicit call initializes the SDK client and credentials immediately,
+without checking availability or making a request. It returns that same endpoint.
+A caller-supplied SDK client is already initialized and remains unchanged. Direct
+client API use and explicit availability checks initialize deferred clients too.
+`ExternalDependency` itself has no materialization requirement.
+
+```python
+from roboz import Message, Str, factory
+from roboz.llm import LLMEndpoint
+from roboz_endpoints.adapters.openai_compatible import chat_endpoint
+
+
+@factory
+def describe_lazy_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
+    """Describe the supplied text using the configured model name."""
+    return Str(value=f"{ctx.model_name}: {input.value}")
+
+
+endpoint = chat_endpoint(
+    model="example", max_context_tokens=4096,
+    base_url="https://example.invalid/v1", api_key="example-only-key",
+)
+bound = describe_lazy_model(endpoint)
+assert bound.external_dependencies()[0] is endpoint
+# First invocation initializes the optional SDK client, but this tool makes no request.
+assert bound(Str(value="hello"), []).value == "example: hello"
+assert endpoint.materialize() is endpoint  # Optional early initialization is also idempotent.
+endpoint.client.close()
+```
+
+Aggregate contexts explicitly delegate initialization, just as they explicitly
+report dependencies. `PromptAgentContext.materialize()` initializes its endpoint
+before the agent's prompt callable runs. Factory invocation does not traverse
+arbitrary fields or automatically initialize everything returned by inspection.
+Plain lists and configuration-only contexts require no hooks.
+
+`roboz-endpoints` owns the synchronous OpenAI client initialization, optional SDK
+loading, credential lookup, and per-endpoint cache. Failed initialization is not
+cached, allowing retry after credentials become available. Policy copies share
+that client; newly configured catalogs have independent clients. Call
+`endpoint.client.close()` after use; it closes an initialized client or marks an
+unused one closed without constructing it. Closing is idempotent, affects policy
+copies sharing the client, and prevents later reopening. Finish active calls
+before closing. Core client protocols include this typed cleanup operation;
+custom clients and test doubles must implement it too.
+
+Catalog attributes and regenerated project inventory declarations preserve exact
+`LLMEndpoint` and `TranscriptionEndpoint` types. See the
+[endpoint migration guide](../packages/endpoints/README.md#migrate-from-lazy-dependency-wrappers).
 
 ## Explicit availability checks
 
@@ -302,12 +369,11 @@ API, `client.models.list(timeout=10.0)`, and confirm the model appears in the
 returned `data`. Model entries can be objects or dictionaries with string `id`
 values. The existing recognition of canonical model names before a route suffix
 is preserved. The check generates no completion or transcription and does not
-replace or construct the client.
+replace the client. A deferred client initializes before the discovery request.
 
 A successful endpoint check confirms the discovery request succeeded and the
 model was listed. A subsequent model call can still fail; availability is an
-observation at the time of the check. Credential loading and lazy client
-construction remain for a later checkpoint. Check scheduling, retries, cached
+observation at the time of the check. Check scheduling, retries, cached
 health status, and deployment readiness policy belong to consumers and are not
 introduced by this method.
 
@@ -410,8 +476,9 @@ aliases or import fallbacks.
 - Resource implementations inherit `ExternalDependency` directly. The separate
   `ExternalDependencySource`, `ExternalDependencyReference`,
   `ModelEndpointDependency`, and `NetworkServiceDependency` bases are removed.
-- `LazyExternalDependency`, `DependencyRoute`, and generic `materialize()` are
-  removed. No replacement lazy-loading subsystem is introduced here.
+- `LazyExternalDependency` and `DependencyRoute` are removed. Resources have no
+  universal materialization requirement. The optional `Materializable` capability
+  now describes initialization on invocation; endpoints implement it directly.
 - Checker registration is removed: `DependencyChecker`, `DependencyRegistration`,
   `BoundDependency`, `bind_dependencies`, and `DependencyContractError`.
 - Replace both `Tool.dependencies` and property access to
@@ -421,8 +488,9 @@ aliases or import fallbacks.
   `roboz` exposes data and factory/tool primitives plus the migrated core agent,
   skill, interaction, control, and delegation exports.
 
-Shed and endpoint companion implementations remain unmigrated. Their old `Ctx`,
-reference, and checker-registration imports still fail. Proton is deferred.
+Shed remains unmigrated: its old `Ctx`, reference, and checker-registration
+imports still fail. Proton is deferred. Endpoint adapters and generated catalog
+types now support this contract; regenerate custom inventory modules from JSON.
 The existing README, quick start, and consumer guides may still refer to those
 APIs; this document describes the checkpoint's supported contract. Legacy test
 cases for removed APIs also require migration. Release requires those migrations

@@ -6,7 +6,6 @@ from textwrap import dedent, indent
 from types import ModuleType
 from typing import TypeAliasType
 
-import roboz
 import roboz.llm as llm
 from roboz_endpoints import catalog, specs
 from roboz_endpoints.adapters import openai_compatible
@@ -46,8 +45,7 @@ def collection_declaration(
     lines = [f"class {class_name}({base}):"]
     for attribute, model in models.items():
         endpoint = _ENDPOINT_TYPES[type(model)].__name__
-        dependency = roboz.LazyExternalDependency.__name__
-        lines.append(f"    {attribute}: {prefix}{dependency}[{prefix}{endpoint}]")
+        lines.append(f"    {attribute}: {prefix}{endpoint}")
     if not models:
         lines.append("    ...")
     return [*lines, "", f"{name}: {class_name}"]
@@ -64,7 +62,6 @@ def _import_from(module: ModuleType, symbol: type | TypeAliasType) -> str:
 
 def _type_declarations(inventory: Inventory) -> str:
     imports = [
-        _import_from(roboz, roboz.LazyExternalDependency),
         *(_import_from(llm, endpoint) for endpoint in _ENDPOINT_TYPES.values()),
         _import_from(specs, ModelSpec),
     ]

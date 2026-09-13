@@ -3,11 +3,12 @@
 import json
 from collections.abc import Callable, Mapping
 from threading import Lock
-from typing import Annotated, Any, Final, Literal, cast
+from typing import Annotated, Any, Final, Literal, Self, cast
 
 from pydantic import BaseModel, Field, WithJsonSchema, field_validator
 
 from roboz.models import Message, Role
+from roboz.tooling.context import Materializable
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm.openai_compatible import (
     OpenAICompatibleChatClient,
@@ -182,6 +183,18 @@ class LLMEndpoint(BaseModel, ExternalDependency):
         """Return the model-endpoint resource category."""
         return ExternalDependencyKind.MODEL_ENDPOINT
 
+    def materialize(self) -> Self:
+        """Initialize a deferred client now and return this same endpoint.
+
+        Factory invocation calls this automatically for a direct endpoint
+        context. Explicit calls allow early credential loading and SDK client
+        construction without checking availability or making a model request.
+        Already constructed clients are preserved; initialization errors propagate.
+        """
+        if isinstance(self.client, Materializable):
+            self.client.materialize()
+        return self
+
     def check(self) -> bool:
         """Confirm this model appears in an OpenAI-compatible model listing.
 
@@ -315,6 +328,18 @@ class TranscriptionEndpoint(BaseModel, ExternalDependency):
     def kind(self) -> ExternalDependencyKind:
         """Return the model-endpoint resource category."""
         return ExternalDependencyKind.MODEL_ENDPOINT
+
+    def materialize(self) -> Self:
+        """Initialize a deferred client now and return this same endpoint.
+
+        Factory invocation calls this automatically for a direct endpoint
+        context. Explicit calls allow early credential loading and SDK client
+        construction without checking availability or making a model request.
+        Already constructed clients are preserved; initialization errors propagate.
+        """
+        if isinstance(self.client, Materializable):
+            self.client.materialize()
+        return self
 
     def check(self) -> bool:
         """Confirm this model appears in an OpenAI-compatible model listing.

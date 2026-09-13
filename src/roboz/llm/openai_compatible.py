@@ -114,6 +114,10 @@ class _Models(Protocol):
 class OpenAICompatibleModelsClient(Protocol):
     """Synchronous client supporting OpenAI-compatible model discovery."""
 
+    def close(self) -> None:
+        """Release client resources; deferred clients must not initialize to close."""
+        ...
+
     @property
     def models(self) -> _Models:
         """Return the model-discovery API; accessing it must not make requests."""

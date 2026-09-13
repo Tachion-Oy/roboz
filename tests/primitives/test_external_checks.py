@@ -66,6 +66,7 @@ def discovery_client(models):
 
     return SimpleNamespace(
         models=models,
+        close=lambda: None,
         chat=SimpleNamespace(completions=SimpleNamespace(create=forbidden)),
         audio=SimpleNamespace(transcriptions=SimpleNamespace(create=forbidden)),
     )

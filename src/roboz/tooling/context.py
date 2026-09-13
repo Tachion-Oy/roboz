@@ -1,7 +1,7 @@
-"""Optional protocol for objects that expose external dependencies."""
+"""Optional inspection and initialization capabilities for concrete contexts."""
 
 from abc import abstractmethod
-from typing import Protocol
+from typing import Protocol, Self, runtime_checkable
 
 from roboz.dependencies import ExternalDependency
 
@@ -21,4 +21,19 @@ class HasExternalDependencies(Protocol):
     @abstractmethod
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Report current resources without performing external work."""
+        ...
+
+
+@runtime_checkable
+class Materializable(Protocol):
+    """Optional initialization hook called immediately before a factory runs.
+
+    Keep initialization idempotent and return the same object. Binding, copying,
+    and inspection never invoke this hook. Aggregate contexts explicitly
+    initialize the resources they need; arbitrary fields are not traversed.
+    """
+
+    @abstractmethod
+    def materialize(self) -> Self:
+        """Initialize deferred state and return this object; propagate failures."""
         ...

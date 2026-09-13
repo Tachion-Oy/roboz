@@ -14,7 +14,7 @@ from roboz_endpoints.inventory import cerebras as cerebras
 from roboz_endpoints.inventory import groq as groq
 
 class Catalog[Spec: ModelSpec]:
-    """A collection of model specifications and independently cached lazy routes."""
+    """A collection of model specifications and independently cached concrete endpoints."""
     api_name: str
     models: tuple[Spec, ...]
     models_by_attribute: Mapping[str, Spec]

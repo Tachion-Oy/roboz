@@ -11,6 +11,7 @@ from roboz._naming import validate_public_name
 from roboz.models import Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
 from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
+from roboz.tooling.context import Materializable
 from roboz.dependencies import (
     ExternalDependency,
     dedupe_external_dependencies,
@@ -272,7 +273,9 @@ class Factory[
 
         Any concrete context type is supported and checked statically. Resource
         inspection is optional; when provided, its method must be callable.
-        Runtime binding does not validate the context's annotation.
+        Runtime binding does not validate the context's annotation. A context
+        implementing ``Materializable`` is initialized immediately before the
+        factory callable runs, preserving the supplied object.
 
         Raises:
             TypeError: If ``external_dependencies`` is present but non-callable.
@@ -282,6 +285,8 @@ class Factory[
             raise TypeError("context external_dependencies must be callable")
 
         def _func_ctx(input: TInput, messages: list[Message]) -> TOutput:
+            if isinstance(ctx, Materializable):
+                ctx.materialize()
             return self._func(input=input, messages=messages, ctx=ctx)
 
         _func_ctx.__name__ = self._func.__name__

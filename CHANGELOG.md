@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Initialize factory contexts lazily on invocation through the optional
+  `Materializable.materialize() -> Self` protocol. Binding, copying, and inspection
+  stay side-effect free. Endpoints support explicit early `materialize()` calls
+  while preserving their identity; prompt contexts delegate initialization.
+  Breaking: OpenAI-compatible client protocols now require `close() -> None` for
+  typed cleanup. See [the lifecycle contract](docs/dependency-primitives.md).
+
 - Make resource-inspection declarations explicit: aggregate contexts and agents
   implement the `HasExternalDependencies` protocol, renamed from `Context` with
   no compatibility alias. Authors can inherit it to require

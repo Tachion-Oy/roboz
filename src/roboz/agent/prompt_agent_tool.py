@@ -1,18 +1,19 @@
 """Factory tool that asks a model to choose an agent action."""
 
 from dataclasses import dataclass
+from typing import Self
 
 from roboz.dependencies import ExternalDependency
 from roboz.llm import EndpointLike, call_llm_api, get_completion
 from roboz.models import Empty, Invoke, Message
 from roboz.runtime.pipe import EventPipe
-from roboz.tooling.context import HasExternalDependencies
+from roboz.tooling.context import HasExternalDependencies, Materializable
 from roboz.tooling.core import Tool
 from roboz.tooling.decorators import factory
 
 
 @dataclass(frozen=True, kw_only=True)
-class PromptAgentContext(HasExternalDependencies):
+class PromptAgentContext(HasExternalDependencies, Materializable):
     """Model, available actions, and output pipe for one agent prompt."""
 
     endpoint: EndpointLike
@@ -22,6 +23,12 @@ class PromptAgentContext(HasExternalDependencies):
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
         """Report the prompt's endpoint; the agent owns its action-tool graph."""
         return self.endpoint.external_dependencies()
+
+    def materialize(self) -> Self:
+        """Initialize the prompt endpoint before the factory callable runs."""
+        if isinstance(self.endpoint, Materializable):
+            self.endpoint.materialize()
+        return self
 
 
 @factory

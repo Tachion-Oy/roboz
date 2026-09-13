@@ -55,7 +55,6 @@ def render() -> dict[str, str]:
             "        ...",
         ])
     inventory_lines = [
-        "from roboz import LazyExternalDependency",
         "from roboz.llm import LLMEndpoint, TranscriptionEndpoint",
         "from roboz_endpoints.catalog import Catalog",
         "from roboz_endpoints.specs import (",

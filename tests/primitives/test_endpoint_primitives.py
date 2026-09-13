@@ -36,6 +36,9 @@ class ScriptedClient:
             transcriptions=SimpleNamespace(create=self.transcribe)
         )
 
+    def close(self):
+        pass
+
     def list_models(self, *, timeout):
         raise AssertionError("model discovery was not requested")
 
@@ -152,7 +155,8 @@ def test_endpoint_resource_contract_retains_identity_and_safe_metadata(
     serialized = endpoint.model_dump()
     assert "dependency_id" not in serialized
     assert "kind" not in serialized
-    assert not hasattr(endpoint, "materialize")
+    assert endpoint.materialize() is endpoint
+    assert endpoint.client is serialized["client"]
 
 
 def test_endpoint_schema_defaults_and_validation_remain_unchanged():

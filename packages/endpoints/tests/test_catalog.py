@@ -140,6 +140,12 @@ def test_discovery_does_not_import_sdk_or_read_credentials():
             builtins.__import__ = import_module
             os.environ.get = get_environment
             from roboz_endpoints import openrouter, cerebras, groq
+            from roboz import Message, Str, factory
+            from roboz.llm import LLMEndpoint, TranscriptionEndpoint, with_request_options
+
+            @factory
+            def describe(input: Str, messages: list[Message], ctx: LLMEndpoint | TranscriptionEndpoint) -> Str:
+                return Str(value=ctx.model_name)
             for provider in (openrouter, cerebras, groq):
                 assert provider.models
                 assert set(provider.models_by_attribute) <= set(dir(provider))
@@ -147,7 +153,13 @@ def test_discovery_does_not_import_sdk_or_read_credentials():
                     endpoint = getattr(provider, name)
                     assert endpoint.dependency_id
                     assert endpoint.redacted_metadata()
-                    assert 'materialized' not in endpoint.__dict__
+                    bound = describe(endpoint)
+                    assert bound.external_dependencies()[0] is endpoint
+                    assert bound.copy().external_dependencies()[0] is endpoint
+                    if isinstance(endpoint, LLMEndpoint):
+                        configured = with_request_options(endpoint, extra_body={})
+                        assert configured.client is endpoint.client
+                    endpoint.client.close()
         """),
         ],
         check=True,

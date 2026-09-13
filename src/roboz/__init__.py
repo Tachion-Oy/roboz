@@ -32,7 +32,7 @@ from roboz.models import (
     Str,
     Strs,
 )
-from roboz.tooling import HasExternalDependencies, Factory, Tool
+from roboz.tooling import HasExternalDependencies, Materializable, Factory, Tool
 from roboz.tooling.decorators import factory, tool
 
 __all__ = [
@@ -48,6 +48,7 @@ __all__ = [
     "Invoke",
     "Location",
     "LocationStr",
+    "Materializable",
     "Message",
     "PromptUser",
     "Role",

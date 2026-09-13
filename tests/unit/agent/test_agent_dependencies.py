@@ -41,7 +41,7 @@ def _agent(*, endpoint=None) -> Agent:
         default_tools=[default],
         agent_endpoint=endpoint
         or LLMEndpoint(
-            client=SimpleNamespace(models=object(), chat=object()),
+            client=SimpleNamespace(models=object(), chat=object(), close=lambda: None),
             api_name="test",
             model_name="agent-model",
         ),

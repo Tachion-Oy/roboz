@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Breaking: adapters and catalogs return concrete `LLMEndpoint` and
+  `TranscriptionEndpoint` objects. Initialization stays lazy by default: tool
+  invocation initializes the client, or call `endpoint.materialize()` explicitly
+  to initialize earlier. Inspection needs no SDK or credentials. Policy copies
+  share one client, initialization is safe under concurrency, and failed
+  credential lookup can be retried. Use `endpoint.client.close()` for cleanup,
+  including unused endpoints. Regenerate project inventory modules from JSON
+  for the concrete annotations; see the README migration guide.
+- Classify OpenAI-compatible HTTP failures using core's status/message handling.
+  Invalid requests are no longer universally labeled context-limit errors;
+  authentication, rate-limit, and actual context-limit failures remain distinct.
+
 ## 0.1.0a3 - 2026-09-10
 
 ### Added
