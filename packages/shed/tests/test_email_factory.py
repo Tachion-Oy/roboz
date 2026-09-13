@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,6 +44,10 @@ from roboshed.tools.email.inputs import (
     SearchEmail,
 )
 from roboshed.tools.types import ResolvedFileCommand
+
+from roboz import Agent, stop
+from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
+from roboshed.dependency_health import DependencyHealthMonitor, DependencyStatus
 
 from roboz.exceptions import (
     ExternalCallCancelledError,
@@ -789,3 +794,76 @@ def test_email_skill_requires_fresh_search_after_rejected_source() -> None:
     assert "rejected" in EMAIL_INSTRUCTIONS
     assert "reference" in EMAIL_INSTRUCTIONS
     assert "as a way to inspect" in EMAIL_INSTRUCTIONS
+
+
+class _ProbeService(_FakeMailboxService):
+    def __init__(self, result=None, error=None):
+        super().__init__()
+        self.probe_calls = 0
+        self.probe_result = {} if result is None else result
+        self.probe_error = error
+
+    def probe(self):
+        self.probe_calls += 1
+        if self.probe_error is not None:
+            raise self.probe_error
+        return self.probe_result
+
+
+def test_email_dependencies_are_inspected_without_mailbox_work_then_monitored(tmp_path):
+    service = _ProbeService()
+    tools = _tools(tmp_path, service)
+    reports = [tool.external_dependencies() for tool in tools]
+    assert sum(bool(report) for report in reports) == 5
+    assert all(report == () or report == (service,) for report in reports)
+    for tool in tools:
+        for resource in tool.copy().external_dependencies():
+            assert resource is service
+    agent = Agent(
+        name="email_worker", is_agentic=False, agent_endpoint=None,
+        default_tools=(stop,), tools=tools,
+    )
+    assert agent.external_dependencies() == (service,)
+    assert agent.external_dependencies()[0] is service
+    monitor = DependencyHealthMonitor(agent.external_dependencies())
+    assert service.probe_calls == 0
+    assert monitor.records()[0].status is DependencyStatus.PENDING
+
+    asyncio.run(monitor.run_once())
+
+    assert service.probe_calls == 1
+    assert service.kind is ExternalDependencyKind.NETWORK_SERVICE
+    assert monitor.records()[0].status is DependencyStatus.AVAILABLE
+    assert service.draft_requests == service.search_requests == service.reply_requests == []
+    assert service.read_requests == service.download_requests == []
+
+
+@pytest.mark.parametrize("result", [False, [], "available"])
+def test_email_check_rejects_invalid_probe_results(result):
+    service = _ProbeService(result=result)
+    with pytest.raises(TypeError, match="probe.*dictionary"):
+        service.check()
+    assert service.probe_calls == 1
+
+
+def test_email_check_propagates_probe_failure():
+    error = ConnectionError("service unavailable")
+    service = _ProbeService(error=error)
+    with pytest.raises(ConnectionError) as raised:
+        service.check()
+    assert raised.value is error
+    assert service.probe_calls == 1
+
+
+def test_email_service_requires_identity_metadata_and_mailbox_operations():
+    class Incomplete(EmailService):
+        pass
+
+    with pytest.raises(TypeError, match="abstract"):
+        Incomplete()
+
+
+@pytest.mark.parametrize("service", [object(), ExecutableDependency("python")])
+def test_email_builder_requires_the_complete_service_contract(tmp_path, service):
+    with pytest.raises(TypeError, match="EmailService"):
+        get_work_with_email(service=service, base=tmp_path, default_verdict=ActionVerdict.deny)

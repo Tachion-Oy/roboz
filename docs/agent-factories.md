@@ -225,10 +225,11 @@ operations in tool invocation or explicit resource checks when authoring builder
 The former `roboshed.dependency_health.inspect_dependencies()` callback helper,
 including its temporary sandbox, is removed. The definition inspection method
 is optional and requires complete build configuration. It is not called by the
-monitor or by the existing deployment lifecycle. How applications discover agent
-dependencies before that configuration exists remains unresolved in this
-checkpoint; it does not require moving their existing build or invocation steps.
-If runtime agents already exist, their inspection methods remain available.
+monitor or by the existing deployment lifecycle. Discovery uses normal construction
+to determine the actual tool graph. Agents need not be running. Any substituted
+configuration used for discovery must produce the same resource declarations as
+the actual deployment. If runtime agents already exist, their inspection methods
+remain available.
 
 The health monitor also accepts dependencies unrelated to an agent. For example,
 combine `(*definition.external_dependencies(), *selectable_models, transcription)`
@@ -237,5 +238,5 @@ model before an invocation chooses one. The monitor deduplicates the combined
 resources and checks them only when observation runs; see the
 [Shed health guide](../packages/shed/README.md#dependency-health).
 
-Shed's file and maintenance tool contexts are migrated. Capability call sites,
-email contexts, and the RoboSprawl recipe migration remain in progress.
+Shed's file, maintenance, and email tool contexts are migrated. Capability call
+sites and the RoboSprawl recipe migration remain in progress.

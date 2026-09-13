@@ -2,7 +2,6 @@
 
 import re
 from email.headerregistry import Address
-from functools import partial
 from pathlib import Path
 
 from roboshed.models import (
@@ -23,7 +22,7 @@ from roboshed.tools.email.contracts import (
 )
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.tools.utils import resolve_single_file_path
-from roboz import Ctx
+from roboshed.tools.contexts import EmailContext
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -31,7 +30,6 @@ from roboz.exceptions import (
 )
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation
-from roboz.tooling.context import _prepare_context
 from roboz.tooling.decorators import factory
 
 from .inputs import (
@@ -40,7 +38,7 @@ from .inputs import (
     DownloadEmailAttachment,
     SearchEmail,
 )
-from .runtime import _prepare_email_context, run_email_call
+from .runtime import run_email_call
 
 
 def resolve_draft_request(
@@ -203,13 +201,13 @@ def _resolve_attachment_items(
 
 @factory
 def resolve_email_input(
-    input: CreateEmailDraft, messages: list[Message], ctx: Ctx
+    input: CreateEmailDraft, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand | ParseError:
     """Prepare a new email draft and its attachments for permission checking."""
     del messages
     try:
         resolve_draft_request(input)
-        base = ctx.base.resolve()
+        base = ctx.resolve()
         items = _resolve_attachment_items(input.attachment_paths, base=base)
         return ResolvedFileCommand(original_input=input, items=items)
     except ValueError as exc:
@@ -221,15 +219,13 @@ def resolve_email_input(
 
 @factory
 def resolve_reply_draft_input(
-    input: CreateReplyDraft, messages: list[Message], ctx: Ctx
+    input: CreateReplyDraft, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an email reply draft and its attachments for permission checking."""
     del messages
     try:
         resolve_reply_draft_request(input)
-        items = _resolve_attachment_items(
-            input.attachment_paths, base=ctx.base.resolve()
-        )
+        items = _resolve_attachment_items(input.attachment_paths, base=ctx.resolve())
         return ResolvedFileCommand(original_input=input, items=items)
     except ValueError as exc:
         return ParseError(
@@ -242,14 +238,14 @@ def resolve_reply_draft_input(
 def resolve_attachment_download(
     input: DownloadEmailAttachment,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: Path,
 ) -> ResolvedFileCommand | ParseError:
     """Prepare an email attachment destination for permission checking."""
     del messages
     try:
         destination = resolve_single_file_path(
             input.destination_path,
-            base=ctx.base.resolve(),
+            base=ctx.resolve(),
             label="destination_path",
         )
         if destination.exists() and not destination.is_file():
@@ -296,7 +292,7 @@ def _attachments_from_guard(
 def execute_email_operation(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: EmailContext,
 ) -> Str:
     """Create an approved email draft without sending it."""
     del messages
@@ -356,7 +352,7 @@ def execute_email_operation(
 def execute_reply_draft(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: EmailContext,
 ) -> Str:
     """Create an approved reply draft without sending it."""
     del messages
@@ -416,10 +412,3 @@ def execute_reply_draft(
         return Str(
             value="[error] Unable to create email reply draft due to an email provider failure."
         )
-
-
-resolve_email_input._prepare_ctx = partial(_prepare_context, required=("base",))
-resolve_reply_draft_input._prepare_ctx = partial(_prepare_context, required=("base",))
-resolve_attachment_download._prepare_ctx = partial(_prepare_context, required=("base",))
-execute_email_operation._prepare_ctx = _prepare_email_context
-execute_reply_draft._prepare_ctx = _prepare_email_context

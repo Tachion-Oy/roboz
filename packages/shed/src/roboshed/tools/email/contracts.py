@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
-from roboz.dependencies import NetworkServiceDependency
+from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 
 
 class EmailMailbox(StrEnum):
@@ -167,8 +167,25 @@ class EmailProviderError(RuntimeError):
     """A safe, user-presentable email-provider failure."""
 
 
-class EmailService(NetworkServiceDependency, ABC):
-    """Complete provider contract for every operation in the email bundle."""
+class EmailService(ExternalDependency):
+    """Complete email provider contract and inspectable network resource.
+
+    Implement identity, safe metadata, and every email operation below. The
+    inherited availability check uses the provider's authenticated read-only
+    probe. Inspection reports the service without performing that probe.
+    """
+
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        """Return the network-service category for email providers."""
+        return ExternalDependencyKind.NETWORK_SERVICE
+
+    def check(self) -> bool:
+        """Confirm availability through the read-only probe; propagate failures."""
+        result = self.probe()
+        if not isinstance(result, dict):
+            raise TypeError("EmailService.probe() must return a dictionary")
+        return True
 
     @abstractmethod
     def create_draft(
@@ -179,7 +196,10 @@ class EmailService(NetworkServiceDependency, ABC):
 
     @abstractmethod
     def probe(self) -> dict[str, object]:
-        """Perform an authenticated, read-only service availability probe."""
+        """Return probe details after authenticated read-only access succeeds.
+
+        Raise an exception when the service is unavailable or access fails.
+        """
         ...
 
     @abstractmethod

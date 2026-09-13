@@ -1,0 +1,65 @@
+"""Email factories require concrete contexts with the complete service contract."""
+
+from pathlib import Path
+from typing import assert_type
+
+from roboshed.models import GuardFilesResult, ParseError
+from roboshed.tools.contexts import EmailContext
+from roboshed.tools.email import EmailService, get_work_with_email
+from roboshed.tools.email.drafts import (
+    execute_email_operation,
+    execute_reply_draft,
+    resolve_attachment_download,
+    resolve_email_input,
+    resolve_reply_draft_input,
+)
+from roboshed.tools.email.inputs import (
+    CreateEmailDraft,
+    CreateReplyDraft,
+    DownloadEmailAttachment,
+    ReadEmail,
+    SearchEmail,
+)
+from roboshed.tools.email.messages import (
+    execute_attachment_download,
+    read_email,
+    search_email,
+)
+from roboshed.tools.types import ResolvedFileCommand
+from roboshed.models import ActionVerdict
+from roboz import Factory, Str, Tool
+from roboz.dependencies import ExternalDependency
+
+assert_type(search_email, Factory[SearchEmail, Str, EmailContext])
+assert_type(read_email, Factory[ReadEmail, Str, EmailContext])
+assert_type(execute_email_operation, Factory[GuardFilesResult, Str, EmailContext])
+assert_type(execute_reply_draft, Factory[GuardFilesResult, Str, EmailContext])
+assert_type(execute_attachment_download, Factory[GuardFilesResult, Str, EmailContext])
+assert_type(
+    resolve_email_input,
+    Factory[CreateEmailDraft, ResolvedFileCommand | ParseError, Path],
+)
+assert_type(
+    resolve_reply_draft_input,
+    Factory[CreateReplyDraft, ResolvedFileCommand | ParseError, Path],
+)
+assert_type(
+    resolve_attachment_download,
+    Factory[DownloadEmailAttachment, ResolvedFileCommand | ParseError, Path],
+)
+
+
+def bind(service: EmailService, base: Path) -> None:
+    context = EmailContext(
+        service=service, is_cancelled=lambda: False, timeout_s=30, pipe=None
+    )
+    assert_type(context.service, EmailService)
+    assert_type(context.service.check(), bool)
+    assert_type(context.external_dependencies(), tuple[ExternalDependency, ...])
+    assert_type(search_email(context), Tool[SearchEmail, Str])
+    assert_type(
+        get_work_with_email(
+            service=service, base=base, default_verdict=ActionVerdict.deny
+        ),
+        list[Tool],
+    )

@@ -1,7 +1,7 @@
 # Concrete contexts for Shed tools
 
 Shed's file-command, guard, editing, compaction, snapshot, consolidation, retention,
-and cadence factories now bind concrete typed objects. All these context classes
+cadence, and email factories now bind concrete typed objects. All these context classes
 and `CompactionState` are defined in `roboshed.tools.contexts` and re-exported from
 `roboshed.tools`. The ready-made `get_run_file_command`, `get_apply_patch`, and
 `get_compactify_messages_when_needed_tool` helpers keep their existing keyword
@@ -25,6 +25,8 @@ context class. Type checking and editor completion now follow those fields.
 | `consolidate_memory` | `ConsolidateMemoryContext` |
 | `purge_files` | `PurgeFilesContext` |
 | `sleep_between_runs` | `SleepBetweenRunsContext` |
+| `search_email`, `read_email`, and email execution stages | `EmailContext` |
+| `resolve_email_input`, `resolve_reply_draft_input`, `resolve_attachment_download` | `pathlib.Path` directly |
 
 For example, constructing and inspecting this retention tool does not read or
 delete any files:
@@ -75,6 +77,52 @@ configuration, not model-supplied input. See the
 [primitive contract](dependency-primitives.md) for arbitrary contexts, exact typing,
 resource inspection, copying, and deferred client initialization.
 
+## Email services and contexts
+
+`EmailService` inherits `ExternalDependency` and declares the complete mailbox
+operation interface. Implement its stable `dependency_id`, safe
+`redacted_metadata()`, read-only `probe()`, and draft/search/read/download/reply
+methods. Incomplete subclasses cannot instantiate. The service supplies the
+network-service category and `check() -> bool`: a successful probe returns a
+dictionary, while unavailable or failed access raises an exception. The check
+returns `True` after that successful probe; an invalid probe result raises
+`TypeError`. Provider-specific probes own authentication and service access.
+
+`get_work_with_email` keeps its existing arguments and constructs `EmailContext`
+internally. It requires a complete `EmailService`. For direct bindings, import
+`EmailContext` from `roboshed.tools.contexts`, `roboshed.tools`, or
+`roboshed.tools.email`:
+
+```python
+from roboshed.tools.contexts import EmailContext
+from roboshed.tools.email import EmailService
+from roboshed.tools.email.messages import search_email
+from roboz import Str, Tool
+from roboshed.tools.email.inputs import SearchEmail
+
+
+def bind_search(service: EmailService) -> Tool[SearchEmail, Str]:
+    context = EmailContext(
+        service=service,
+        is_cancelled=lambda: False,
+        timeout_s=30.0,
+        pipe=None,
+    )
+    return search_email(context)
+```
+
+The context reports the supplied service's resources without probing it. Copies
+retain that same context and service. Attachment resolvers and permission guards
+report no service resources; execution stages, search, and read tools report the
+service. Agent inspection deduplicates those reports. The service can also be
+passed directly to `DependencyHealthMonitor((service,))` without any agent.
+
+Inbox confirmation remains disabled by default, and existing draft-only behavior,
+attachment permissions, input normalization, cancellation, timeouts, and sanitized
+error messages are preserved. Checks run only when requested through `check()` or
+health observation, independently of normal mailbox operations. `_prepare_email_context`
+and the email `_prepare_ctx` hooks are removed.
+
 ## Checkpoint boundary
 
 This checkpoint changes tool contexts only. Existing deployment methods,
@@ -82,7 +130,8 @@ capability builders, and recipes are untouched. Migrating the capability call si
 to these context classes remains a subsequent step; this document does not change
 when an application configures, builds, or invokes its deployment.
 
-Email contexts/service contracts, capability bindings, recipes/live model selection,
-and obsolete consumer examples/tests remain to migrate. Proton remains deferred.
-Discovery before full deployment configuration is available remains unresolved.
+Capability bindings, recipes/live model selection, and obsolete consumer
+examples/tests remain to migrate. Proton remains deferred.
+Deployment dependency discovery uses the existing build path and requires
+configuration sufficient for construction; agents do not need to be running.
 The complete library and release gates are not ready at this checkpoint.

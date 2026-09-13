@@ -180,10 +180,11 @@ does not invoke agents or request endpoint initialization or availability checks
 Capability builders run normally, including any construction effects they own.
 
 The former `inspect_dependencies` callback helper and its temporary sandbox are
-removed. The optional definition method requires complete build configuration;
-the monitor never calls it automatically. Discovery before that configuration
-exists remains unresolved and is not a reason to change application deployment
-order. Existing runtime agents can still be inspected directly.
+removed. The optional definition method requires configuration sufficient for
+normal construction; the monitor never calls it automatically. Agents do not need
+to be running. Existing runtime agents can still be inspected directly. If inputs
+are substituted for discovery, they must produce the resource declarations used
+by the actual deployment.
 
 The monitor accepts resources independently of agents. Combine agent resources
 with other resources explicitly, for example:
@@ -233,15 +234,22 @@ implement the synchronous method on the resource instead.
 Replace `check_executable`, `check_openai_compatible_endpoint`, and
 `check_network_service` with `check_dependency` when a sanitized health result
 is needed, or use `resource.check()` for the primitive boolean/exception contract.
-The old helper names have no compatibility aliases. Email contracts and contexts,
-capability bindings, and deployment recipe migrations remain in progress.
+The old helper names have no compatibility aliases. Capability bindings and
+deployment recipe migrations remain in progress.
 
 ## Concrete tool contexts
 
-File-command, guard, editing, and maintenance factories now use concrete context
+File-command, guard, editing, maintenance, and email factories now use concrete context
 classes exported from `roboshed.tools`. Existing `get_run_file_command`,
 `get_apply_patch`, and `get_compactify_messages_when_needed_tool` keyword arguments
 are retained. Direct factory users should follow the
 [context migration guide](../../docs/shed-tool-contexts.md), including the context
 ownership rules for compaction counters. Command and summary resources are
 reported through `tool.external_dependencies()` without running external work.
+
+
+Email contexts live in the same module. `get_work_with_email` keeps its existing
+arguments; direct email execution uses `EmailContext`, and attachment resolvers
+accept `Path`. `EmailService` defines every provider operation and the resource
+identity/metadata contract. Its availability check calls the existing read-only
+probe. See the [email context contract](../../docs/shed-tool-contexts.md#email-services-and-contexts).

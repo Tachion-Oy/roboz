@@ -1,5 +1,7 @@
 """Complete provider-neutral email tool bundle."""
 
+from roboshed.tools.contexts import EmailContext
+
 from .contracts import (
     DownloadedEmailAttachment,
     EmailDraftAttachment,
@@ -27,6 +29,7 @@ from .inputs import (
 )
 
 __all__ = [
+    "EmailContext",
     "DownloadedEmailAttachment",
     "CreateEmailDraft",
     "CreateReplyDraft",

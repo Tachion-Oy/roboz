@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Breaking: email factories now use the central `EmailContext`; attachment
+  resolvers bind a `Path` directly. `get_work_with_email` keeps its arguments and
+  requires a complete `EmailService`, which now inherits `ExternalDependency`
+  and implements `check()` using its read-only probe. Email dependencies are
+  inspectable without mailbox access and can be monitored without an agent.
+  Mailbox operations, permission checks, defaults, and error messages are preserved.
+  See the [context migration guide](../../docs/shed-tool-contexts.md#email-services-and-contexts).
+
 - Breaking: bind built-in file and maintenance factories to concrete typed contexts
   instead of `Ctx`; direct patch stages accept a `Path` or `TruncationSpec`.
   Existing `get_*` helper arguments remain supported. Command and summary contexts

@@ -488,8 +488,8 @@ aliases or import fallbacks.
   `roboz` exposes data and factory/tool primitives plus the migrated core agent,
   skill, interaction, control, and delegation exports.
 
-Shed built-in file and maintenance tools now use concrete contexts. Email and
-composition consumers remain unmigrated: their old `Ctx` and reference imports
+Shed built-in file, maintenance, and email tools now use concrete contexts.
+Composition consumers remain unmigrated: their old `Ctx` and reference imports
 still fail. Proton is deferred. Endpoint adapters and generated catalog
 types now support this contract; regenerate custom inventory modules from JSON.
 The existing README, quick start, and consumer guides may still refer to those
@@ -519,9 +519,8 @@ Use `check_dependency(resource)` for a single sanitized result. It replaces
 Shed's executable, OpenAI, and network probe functions. Service-specific checks
 belong to resource implementations; Shed converts the boolean or exception to a
 health observation. See the [Shed health guide](../packages/shed/README.md#dependency-health).
-Shed file and maintenance tools follow the [concrete-context guide](shed-tool-contexts.md).
-Email contexts, composition builders, live routing, and their legacy tests remain
-for later checkpoints.
+Shed file, maintenance, and email tools follow the [concrete-context guide](shed-tool-contexts.md).
+Composition builders, live routing, and their legacy tests remain for later checkpoints.
 
 ## Focused checks
 
