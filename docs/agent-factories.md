@@ -186,6 +186,56 @@ own persistence sink below the scoped conversation-log directory, while caller
 sinks reach foreground branches only. The application owns invocation,
 interruption, cancellation, background shutdown, and dependency health.
 
-`roboshed.dependency_health.inspect_dependencies()` accepts a callback that
-builds and returns the same `(root, background_agents)` tuple against its
-temporary sandbox. It does not require a deployment wrapper.
+## Inspect before invocation
+
+Use the configured `DeployableAgent` as the inspection surface:
+
+```python
+from roboz import Str, stop
+from roboz.deployment import Capability, DeployableAgent
+from roboshed.dependency_health import DependencyHealthMonitor
+
+
+definition = DeployableAgent(
+    name="worker", is_agentic=False,
+    default_capabilities=(Capability(default_tools=(stop,)),),
+)
+resources = definition.external_dependencies()
+monitor = DependencyHealthMonitor(resources)
+agent, background_agents = definition.build()
+result, messages = agent.invoke(input=Str(value="done"))
+assert resources == ()
+assert result.value == "done"
+```
+
+`external_dependencies()` calls `build()` without event sinks, then delegates to
+`Agent.external_dependencies()`. The root agent already includes its foreground
+and background children through their bound tool contexts, as well as default,
+active, passive, and unloaded skill tools. Equal dependency IDs retain the first
+resource in the agent's inspection order. Capabilities continue to implement
+`required_attributes` and `build`; their tools supply the dependency information.
+
+Each inspection validates the current configuration and constructs fresh runtime
+agents, pipes, and capability bindings. It does not invoke agents, read their
+initial messages, or request endpoint initialization or availability checks.
+Custom capability builders execute normally: construction effects and errors
+remain possible. This method does not isolate filesystem access. Keep external
+operations in tool invocation or explicit resource checks when authoring builders.
+
+The former `roboshed.dependency_health.inspect_dependencies()` callback helper,
+including its temporary sandbox, is removed. The definition inspection method
+is optional and requires complete build configuration. It is not called by the
+monitor or by the existing deployment lifecycle. How applications discover agent
+dependencies before that configuration exists remains unresolved in this
+checkpoint; it does not require moving their existing build or invocation steps.
+If runtime agents already exist, their inspection methods remain available.
+
+The health monitor also accepts dependencies unrelated to an agent. For example,
+combine `(*definition.external_dependencies(), *selectable_models, transcription)`
+when constructing `DependencyHealthMonitor`. This can check every selectable
+model before an invocation chooses one. The monitor deduplicates the combined
+resources and checks them only when observation runs; see the
+[Shed health guide](../packages/shed/README.md#dependency-health).
+
+Shed's remaining built-in tool contexts and RoboSprawl recipe migrations are still
+in progress at this checkpoint.

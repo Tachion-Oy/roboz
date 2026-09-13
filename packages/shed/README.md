@@ -154,9 +154,10 @@ capabilities, and sinks remain caller-owned. No execution state is retained on
 the definition. The old deployment wrapper, factories, host protocols, and
 result bundles are removed.
 Use core's `roboz.llm.ModelSelector` for lazy model selection.
-`roboz.dependencies` supplies exact dependency registration and binding;
-`roboshed.dependency_health` supplies isolated `inspect_dependencies`, probes,
-and monitoring without a web framework or provider SDK.
+`roboz.dependencies` supplies the resource contract and ordered deduplication.
+`DeployableAgent.external_dependencies()` builds an unstarted graph and inspects
+its resources. `roboshed.dependency_health` monitors resource-owned checks without a
+web framework or provider SDK.
 Permission policies treat configured folder names literally. Health scheduling
 retries observation failures; timed-out workers retain their concurrency slots
 until completion.
@@ -167,3 +168,70 @@ HUD file-link/markdown contract. The external RoboSprawl application may select
 it through `Capability(auto_loaded_skills=(robosprawl,))`. Concrete paths,
 endpoints, extra capabilities, and specialist definitions remain application
 choices. The `robosprawl` recipe assembles and builds a fresh agent graph.
+
+
+## Dependency health
+
+Call `definition.external_dependencies()` on the configured `DeployableAgent`.
+It constructs fresh agents without event sinks and delegates to their existing
+tool dependency inspection, including foreground and background descendants and
+unloaded skills. It returns a deduplicated `tuple[ExternalDependency, ...]` and
+does not invoke agents or request endpoint initialization or availability checks.
+Capability builders run normally, including any construction effects they own.
+
+The former `inspect_dependencies` callback helper and its temporary sandbox are
+removed. The optional definition method requires complete build configuration;
+the monitor never calls it automatically. Discovery before that configuration
+exists remains unresolved and is not a reason to change application deployment
+order. Existing runtime agents can still be inspected directly.
+
+The monitor accepts resources independently of agents. Combine agent resources
+with other resources explicitly, for example:
+
+```python
+monitor = DependencyHealthMonitor((
+    *definition.external_dependencies(),
+    *selectable_models,
+    transcription_endpoint,
+))
+```
+
+Here `selectable_models` is a sequence of concrete `LLMEndpoint` objects; they need
+not be attached to an agent or selected yet. The monitor keeps the first resource
+for each dependency ID across the combined sequence. Resources are captured when
+the monitor is constructed; create a new monitor if the resource set changes.
+
+Pass those resources directly to `DependencyHealthMonitor(resources)`. Its
+constructor creates pending records without performing checks. Explicit
+`run_once()` or scheduled observation calls each resource's synchronous
+`check() -> bool` in a worker thread. Checks own their service-specific behavior
+and any required client initialization; the monitor supplies bounded concurrency,
+timeouts, scheduling, and cached observations.
+
+```python
+import asyncio
+import sys
+
+from roboz.dependencies import ExecutableDependency
+from roboshed.dependency_health import DependencyHealthMonitor, DependencyStatus
+
+program = ExecutableDependency(sys.executable)
+monitor = DependencyHealthMonitor((program,))
+assert monitor.records()[0].status is DependencyStatus.PENDING
+asyncio.run(monitor.run_once())
+assert monitor.records()[0].status is DependencyStatus.AVAILABLE
+```
+
+`check_dependency(resource)` performs one synchronous check and returns a
+`DependencyCheckResult`: `True` means available, `False` becomes `model_unavailable`
+for models or `not_found` for other resources, and exceptions become sanitized
+reason codes. Other return values produce `protocol_error`. Provider exception
+payloads are not exposed through records. Record schemas and metadata filtering
+are unchanged. Async checker callbacks and registration records are removed;
+implement the synchronous method on the resource instead.
+
+Replace `check_executable`, `check_openai_compatible_endpoint`, and
+`check_network_service` with `check_dependency` when a sanitized health result
+is needed, or use `resource.check()` for the primitive boolean/exception contract.
+The old helper names have no compatibility aliases. Shed tool contexts and
+composition migrations are still in progress in this checkpoint.

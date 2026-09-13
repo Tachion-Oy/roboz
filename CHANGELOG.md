@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Inspect a configured deployment with `DeployableAgent.external_dependencies()`.
+  It builds fresh, unstarted agents without event sinks and delegates to their
+  existing tool inspection, including child agents and skill resources. Capability
+  construction still runs normally; no additional dependency declaration is required.
+
 - Initialize factory contexts lazily on invocation through the optional
   `Materializable.materialize() -> Self` protocol. Binding, copying, and inspection
   stay side-effect free. Endpoints support explicit early `materialize()` calls

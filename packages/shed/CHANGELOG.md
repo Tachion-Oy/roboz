@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Breaking: remove callback-based `inspect_dependencies`; inspect the configured
+  `DeployableAgent.external_dependencies()` instead; it constructs unstarted
+  agents using normal capability builders, without temporary sandbox isolation.
+  The health monitor accepts the resulting resources together with standalone
+  dependencies such as selectable models, deduplicating the combined sequence. Each resource owns its
+  synchronous `check() -> bool`; remove checker registrations and replace the
+  three category-specific probe helpers with `check_dependency(resource)` when
+  a sanitized observation is needed. Timeout, concurrency, metadata filtering,
+  and cached health-record behavior remain unchanged. See the README health guide.
+
 - Breaking: move permission, sandbox, watched-agent, and default model inputs
   from Shed capability objects to their owning `DeployableAgent` configuration.
   Capability-specific thresholds, limits, timeouts, and endpoint overrides stay

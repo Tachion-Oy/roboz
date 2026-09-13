@@ -488,13 +488,38 @@ aliases or import fallbacks.
   `roboz` exposes data and factory/tool primitives plus the migrated core agent,
   skill, interaction, control, and delegation exports.
 
-Shed remains unmigrated: its old `Ctx`, reference, and checker-registration
-imports still fail. Proton is deferred. Endpoint adapters and generated catalog
+Shed tool and composition consumers remain unmigrated: their old `Ctx` and
+reference imports still fail. Proton is deferred. Endpoint adapters and generated catalog
 types now support this contract; regenerate custom inventory modules from JSON.
 The existing README, quick start, and consumer guides may still refer to those
 APIs; this document describes the checkpoint's supported contract. Legacy test
 cases for removed APIs also require migration. Release requires those migrations
 and the complete release gate.
+
+## Deployable inspection and Shed health
+
+`DeployableAgent.external_dependencies()` builds fresh, unstarted agents without
+passing event sinks and delegates inspection to the root agent. Its existing tool
+contexts include foreground and background descendants, so capabilities need no
+second declaration method. Construction validates the current configuration and
+runs capability builders normally. It neither invokes agents nor requests resource
+initialization or checking; custom builder effects remain possible and there is
+no automatic filesystem isolation. See the
+[deployable inspection contract](agent-factories.md#inspect-before-invocation).
+
+The old callback-based Shed `inspect_dependencies` helper is removed. Pass the
+definition's resources together with any standalone resources, such as selectable
+models or a transcription endpoint, to `DependencyHealthMonitor`. It deduplicates
+the combined sequence; checker registrations are also removed. The monitor runs resource-owned synchronous
+`check()` methods in workers while preserving its timeout, concurrency, sanitized
+record, and scheduling behavior.
+
+Use `check_dependency(resource)` for a single sanitized result. It replaces
+Shed's executable, OpenAI, and network probe functions. Service-specific checks
+belong to resource implementations; Shed converts the boolean or exception to a
+health observation. See the [Shed health guide](../packages/shed/README.md#dependency-health).
+Tool contexts, composition builders, live routing, and their legacy tests remain
+for later checkpoints.
 
 ## Focused checks
 
