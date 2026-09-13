@@ -71,6 +71,8 @@
   remain unmigrated; this checkpoint is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
   for the contract, removed APIs, and migration boundary.
 
+## 0.1.2.dev4 - 2026-09-12
+
 - Breaking: make `DeployableAgent` an explicitly configured class. Constructor
   capabilities are protected defaults; append capabilities and child agents with
   the add methods, configure endpoints and runtime values separately, and unpack

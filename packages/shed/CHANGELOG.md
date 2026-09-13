@@ -34,14 +34,23 @@
   a sanitized observation is needed. Timeout, concurrency, metadata filtering,
   and cached health-record behavior remain unchanged. See the README health guide.
 
+- Breaking: replace the setter-based `RoboSprawl` class with `robosprawl(sandbox, ...)`.
+  Supply deployment choices directly and unpack the returned root/background
+  agents. See [the recipe guide](../../docs/agent-factories.md).
+
+## 0.1.1.dev2 - 2026-09-12
+
 - Breaking: move permission, sandbox, watched-agent, and default model inputs
   from Shed capability objects to their owning `DeployableAgent` configuration.
   Capability-specific thresholds, limits, timeouts, and endpoint overrides stay
   on the capability objects.
-- Breaking: remove `Deployment` and replace the `RoboSprawl` configuration
-  dataclass with the lazy `robosprawl()` function. It owns the fixed orchestrator
-  defaults and Librarian pipeline and directly returns the fresh root/background
-  agent tuple for a scoped sandbox.
+- Breaking: remove `Deployment` and replace the callable `RoboSprawl` dataclass
+  with a standalone configuration class. Construct `RoboSprawl()` without
+  inputs, supply runtime inputs through its setters, then call argument-free
+  `build()` to obtain fresh root/background agents. `robosprawl` aliases the
+  class, not the former function signature. The existing orchestrator defaults,
+  Librarian pipeline, project context, and persistence remain in the recipe.
+  Use one configuration instance per new run; see `docs/agent-factories.md`.
 
 ## 0.1.1.dev1 - 2026-09-12
 
