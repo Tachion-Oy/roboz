@@ -4,7 +4,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from roboz import Ctx
 from roboz.agent.core import Agent
 from roboz.agent.subagent import run_subagent
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -502,7 +501,7 @@ def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
             ]
         ),
     )
-    delegate = run_subagent(Ctx(agent=child)).copy(name="delegate")
+    delegate = run_subagent(child).copy(name="delegate")
     parent = Agent(
         interaction_mode=Output.API,
         name="parent_agent",

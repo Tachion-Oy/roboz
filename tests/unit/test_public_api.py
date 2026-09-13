@@ -64,12 +64,11 @@ def test_domain_ownership_exports() -> None:
     assert not hasattr(roboz.tooling, "factory")
 
 
-def test_single_context_authoring_api() -> None:
-    assert rz.Ctx is roboz.tooling.Ctx
+def test_optional_context_capabilities_are_public() -> None:
+    assert rz.HasExternalDependencies is roboz.tooling.HasExternalDependencies
+    assert rz.Materializable is roboz.tooling.Materializable
     for module in (rz, roboz.agent, roboz.tools, roboz.tooling):
-        assert [name for name in module.__all__ if name.endswith("Ctx")] == (
-            ["Ctx"] if module in (rz, roboz.tooling) else []
-        )
+        assert not hasattr(module, "Ctx")
     assert not hasattr(rz, "FactoryCtx")
     assert not hasattr(rz, "ToolDependency")
 

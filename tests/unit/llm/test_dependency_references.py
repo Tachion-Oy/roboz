@@ -1,23 +1,21 @@
+"""Live model selection retains concrete resources and in-flight requests."""
+
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
-from roboz import (
-    Agent,
-    Ctx,
-    Empty,
-    ExternalDependency,
-    ExternalDependencyKind,
-    DependencyRoute,
-    LazyExternalDependency,
-    Message,
-    Str,
-    factory,
-)
+from roboz import Agent, Empty, Message, Str, factory, stop
+from roboz.dependencies import ExternalDependency
 from roboz.llm import (
+    EndpointLike,
     LLMEndpoint,
+    LLMEndpointRoute,
+    MockLLMEndpoint,
     TranscriptionEndpoint,
+    call_llm_api,
     resolve_endpoint,
     with_openrouter_policy,
     with_request_options,
@@ -27,174 +25,160 @@ from roboz.runtime.events import RunLifecycleEvent
 
 
 @factory
-def selected_model(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
-    return Str(value=resolve_endpoint(ctx.endpoint).model_name)
+def selected_model(input: Empty, messages: list[Message], ctx: EndpointLike) -> Str:
+    return Str(value=resolve_endpoint(ctx).model_name)
+
+
+def _endpoint(name, constructions, requests):
+    initialized = False
+
+    def materialize():
+        nonlocal initialized
+        if not initialized:
+            initialized = True
+            constructions.append(name)
+        return client
+
+    def create(**request):
+        materialize()
+        requests.append(request)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"action":"stop","rationale":"done","value":"ok"}'
+                    )
+                )
+            ],
+            usage=None,
+        )
+
+    def forbidden(**kwargs):
+        pytest.fail("No model discovery or client closing was requested")
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        models=SimpleNamespace(list=forbidden),
+        close=forbidden,
+        materialize=materialize,
+    )
+    return LLMEndpoint(
+        client=client,
+        api_name=f"api-{name}",
+        model_name=name,
+        max_context_tokens=100_000 if name == "first" else 200_000,
+        temperature=0.2 if name == "first" else 0.8,
+        output_format="text" if name == "first" else "json",
+        stream=False,
+    )
 
 
 @pytest.mark.parametrize("policy", ["none", "options", "openrouter"])
-def test_reference_switches_through_context_tools_and_agent(policy: str) -> None:
-    constructions = []
-    requests = []
-    events = []
-
-    def lazy(name: str) -> LazyExternalDependency[LLMEndpoint]:
-        def create(**kwargs):
-            requests.append(kwargs)
-            return SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        message=SimpleNamespace(
-                            content='{"action":"stop","rationale":"done","value":"ok"}'
-                        )
-                    )
-                ],
-                usage=None,
-            )
-
-        def construct():
-            constructions.append(name)
-            return LLMEndpoint(
-                client=SimpleNamespace(
-                    chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-                ),
-                api_name=f"api-{name}",
-                model_name=name,
-                max_context_tokens=100_000 if name == "first" else 200_000,
-                temperature=0.2 if name == "first" else 0.8,
-                output_format="text" if name == "first" else "json",
-                stream=False,
-            )
-
-        return LazyExternalDependency(
-            f"model:api-{name}:{name}",
-            ExternalDependencyKind.MODEL_ENDPOINT,
-            {},
-            construct,
-        )
-
-    first, second = lazy("first"), lazy("second")
+def test_reference_switches_through_context_tools_and_agent(policy):
+    constructions, requests, events = [], [], []
+    first, second = [
+        _endpoint(name, constructions, requests) for name in ("first", "second")
+    ]
     selected = first
-    reference = DependencyRoute(lambda: selected)
-    endpoint = reference
+    route = LLMEndpointRoute(lambda: selected)
     if policy == "options":
         body = {"reasoning": {"effort": "low"}}
-        endpoint = with_request_options(reference, extra_body=body)
+        route = with_request_options(route, extra_body=body)
         body["reasoning"]["effort"] = "high"
     elif policy == "openrouter":
-        endpoint = with_openrouter_policy(reference, reasoning_effort="low")
-    ctx = Ctx(endpoint=endpoint, duplicate=(endpoint,))
-    bound = selected_model(ctx)
+        route = with_openrouter_policy(route, reasoning_effort="low")
+    bound = selected_model(route)
     copied = bound.copy()
-    from roboz.tools import stop
-
+    fixed = selected_model(first)
     agent = Agent(
         name="reference_agent",
         system_prompt="Stop.",
         tools=[stop],
-        agent_endpoint=endpoint,
+        agent_endpoint=route,
         event_sinks=[events.append],
     )
     assert constructions == []
-    assert not isinstance(reference, ExternalDependency)
-    with pytest.raises(AttributeError, match="immutable"):
-        ctx.endpoint = first
+    assert not isinstance(route, ExternalDependency)
     clients = []
     for selected in (first, second, first):
         previous = list(constructions)
         for discovered in (
-            ctx.external_dependencies(),
-            bound.external_dependencies,
-            copied.external_dependencies,
+            route.external_dependencies(),
+            bound.external_dependencies(),
+            copied.external_dependencies(),
             agent.external_dependencies(),
         ):
             assert discovered == (selected,)
-        assert selected.external_dependencies() == (selected,)
+            assert discovered[0] is selected
+        assert fixed.external_dependencies()[0] is first
         assert constructions == previous
-        assert bound(Empty(), []).value == selected.materialize().model_name
-        assert copied(Empty(), []).value == selected.materialize().model_name
-        materialized = resolve_endpoint(endpoint)
-        clients.append(materialized.client)
+        assert (
+            bound(Empty(), []).value == copied(Empty(), []).value == selected.model_name
+        )
+        resolved = resolve_endpoint(route)
+        clients.append(resolved.client)
         if policy != "none":
-            assert materialized.extra_body["reasoning"] == {"effort": "low"}
-            materialized.extra_body["reasoning"] = {"effort": "max"}
-            assert resolve_endpoint(endpoint).extra_body["reasoning"] == {
-                "effort": "low"
-            }
+            assert resolved.extra_body["reasoning"] == {"effort": "low"}
+            resolved.extra_body["reasoning"] = {"effort": "max"}
+            assert resolve_endpoint(route).extra_body["reasoning"] == {"effort": "low"}
+            assert selected.extra_body is None
         events.clear()
         agent.invoke()
-        expected = selected.materialize()
-        assert requests[-1]["model"] == expected.model_name
-        assert requests[-1]["temperature"] == expected.temperature
+        assert requests[-1]["model"] == selected.model_name
+        assert requests[-1]["temperature"] == selected.temperature
         lifecycle = [event for event in events if isinstance(event, RunLifecycleEvent)]
         assert [event.kind for event in lifecycle] == ["started", "stopped"]
         for event in lifecycle:
-            assert event.api_name == expected.api_name
-            assert event.model_name == expected.model_name
-            assert event.max_context_tokens == expected.max_context_tokens
-            assert event.temperature == expected.temperature
-            assert event.output_format == expected.output_format
+            for name in (
+                "api_name",
+                "model_name",
+                "max_context_tokens",
+                "temperature",
+                "output_format",
+            ):
+                assert getattr(event, name) == getattr(selected, name)
     assert constructions == ["first", "second"]
-    assert clients[0] is clients[2]
-    assert clients[0] is not clients[1]
-    # A direct resource still takes precedence when a reference discovers its ID.
-    assert Ctx(reference=reference, direct=first).external_dependencies() == (first,)
+    assert clients[0] is clients[2] and clients[0] is not clients[1]
 
 
-@pytest.mark.parametrize("mismatch", ["id", "kind"])
-def test_selected_lazy_validates_and_retries_failed_resolution(mismatch: str) -> None:
-    good = LLMEndpoint(client=object(), api_name="test", model_name="first")
-    bad = (
-        LLMEndpoint(client=object(), api_name="test", model_name="wrong")
-        if mismatch == "id"
-        else LazyExternalDependency(
-            good.dependency_id, ExternalDependencyKind.NETWORK_SERVICE, {}, lambda: good
-        )
-    )
-    results = iter([bad, bad, good])
-    selected = LazyExternalDependency(
-        good.dependency_id, good.kind, {}, lambda: next(results)
-    )
-    reference = with_request_options(DependencyRoute(lambda: selected), extra_body={})
-    for _ in range(2):
-        with pytest.raises(ValueError, match=f"different dependency {mismatch}"):
-            reference.materialize()
-    assert reference.materialize().client is good.client
-    assert reference.materialize().client is good.client
+def test_binding_and_policy_do_not_call_getter_and_invalid_selection_can_recover():
+    selections = []
+    selected = object()
+
+    def get_endpoint():
+        selections.append(selected)
+        return selected
+
+    route = LLMEndpointRoute(cast(Any, get_endpoint))
+    bound = selected_model(route).copy()
+    configured = with_request_options(route, extra_body={})
+    assert selections == []
+    for inspect in (bound.external_dependencies, configured.resolve):
+        with pytest.raises(TypeError, match="get_endpoint must return"):
+            inspect()
+    selected = _endpoint("valid", [], [])
+    assert configured.resolve().client is selected.client
+    assert bound.external_dependencies()[0] is selected
+    with pytest.raises(TypeError, match="callable"):
+        LLMEndpointRoute(cast(Any, selected))
 
 
-def test_transcription_reference_and_invalid_materialized_endpoints() -> None:
-    transcript = TranscriptionEndpoint(
-        client=object(), api_name="test", model_name="speech"
+def test_chat_route_rejects_transcription_and_nested_routes():
+    client = SimpleNamespace(audio=object(), models=object(), close=lambda: None)
+    transcription = TranscriptionEndpoint(
+        client=client, api_name="test", model_name="speech"
     )
-    lazy = LazyExternalDependency(
-        transcript.dependency_id, transcript.kind, {}, lambda: transcript
-    )
-    reference = DependencyRoute(lambda: lazy)
-    assert resolve_transcription_endpoint(reference) is transcript
-    with pytest.raises(TypeError, match="LLMEndpoint"):
-        resolve_endpoint(cast(Any, reference))
-    with pytest.raises(TypeError, match="LLMEndpoint"):
-        with_request_options(cast(Any, reference), extra_body={}).materialize()
-    llm = LLMEndpoint(client=object(), api_name="test", model_name="chat")
+    route = LLMEndpointRoute(lambda: MockLLMEndpoint([]))
+    for invalid in (transcription, route):
+        with pytest.raises(TypeError, match="get_endpoint must return"):
+            LLMEndpointRoute(cast(Any, lambda: invalid)).resolve()
     with pytest.raises(TypeError, match="TranscriptionEndpoint"):
-        resolve_transcription_endpoint(
-            cast(
-                Any,
-                DependencyRoute(
-                    lambda: LazyExternalDependency(
-                        llm.dependency_id, llm.kind, {}, lambda: llm
-                    )
-                ),
-            )
-        )
+        resolve_transcription_endpoint(cast(Any, route))
+    assert resolve_transcription_endpoint(transcription) is transcription
+    assert route.external_dependencies() == ()
 
 
-def test_switch_during_provider_call_keeps_inflight_endpoint() -> None:
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Event
-
-    from roboz.llm.calls import call_llm_api
-
+def test_switch_during_provider_call_keeps_inflight_endpoint():
     entered, release = Event(), Event()
     requests = []
 
@@ -211,43 +195,26 @@ def test_switch_during_provider_call_keeps_inflight_endpoint() -> None:
         )
 
     client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        models=object(),
+        close=lambda: None,
     )
-
-    def lazy(name):
-        endpoint = LLMEndpoint(
-            client=client, api_name="test", model_name=name, stream=False
-        )
-        return LazyExternalDependency(
-            endpoint.dependency_id, endpoint.kind, {}, lambda: endpoint
-        )
-
-    first, second = lazy("first"), lazy("second")
+    first, second = [
+        LLMEndpoint(client=client, api_name="test", model_name=name, stream=False)
+        for name in ("first", "second")
+    ]
     selected = first
-    reference = with_request_options(DependencyRoute(lambda: selected), extra_body={})
+    route = with_request_options(LLMEndpointRoute(lambda: selected), extra_body={})
     with ThreadPoolExecutor() as pool:
         inflight = pool.submit(
-            call_llm_api, reference, [Message(role="user", content="Hi")]
+            call_llm_api, route, [Message(role="user", content="Hi")]
         )
         try:
             assert entered.wait(5)
             selected = second
-            assert reference.external_dependencies() == (second,)
+            assert route.external_dependencies() == (second,)
         finally:
             release.set()
         assert inflight.result(timeout=5)[0] == "first"
-    assert call_llm_api(reference, [Message(role="user", content="Hi")])[0] == "second"
+    assert call_llm_api(route, [Message(role="user", content="Hi")])[0] == "second"
     assert requests == ["first", "second"]
-
-
-def test_route_follows_concrete_dependencies_and_nested_references() -> None:
-    from roboz import ExecutableDependency
-
-    selected = ExecutableDependency("python")
-    inner = DependencyRoute(lambda: selected)
-    outer = DependencyRoute(lambda: inner)
-    assert outer.external_dependencies() == (selected,)
-    assert outer.materialize() is selected
-    selected = ExecutableDependency("git")
-    assert outer.external_dependencies() == (selected,)
-    assert outer.materialize() is selected

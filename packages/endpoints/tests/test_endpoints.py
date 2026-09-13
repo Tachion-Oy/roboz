@@ -5,8 +5,10 @@ import httpx
 import openai
 import pytest
 
-from roboz import Agent, stop
+from roboz import Agent, Message, Str, factory, stop
 from roboz.llm import (
+    LLMEndpoint,
+    TranscriptionEndpoint,
     call_llm_api,
     call_transcription_api,
     with_openrouter_policy,
@@ -35,31 +37,33 @@ def test_service_validation_message_names_only_service_fields():
         (groq.configured, "whisper_large_v3_turbo"),
     ],
 )
-def test_catalogue_instances_keep_independent_configuration(provider_class, attribute):
+def test_catalogue_instances_keep_independent_configuration(sdk_http, provider_class, attribute):
+    clients, requests = sdk_http(lambda _: pytest.fail("unexpected request"))
     first = provider_class(
         api_key="first-key", timeout_s=12, stream=False
     )
     second = provider_class(api_key="second-key", timeout_s=34)
     chat = isinstance(first.models_by_attribute[attribute], ChatModelSpec)
-    # Select both before materialization so shared catalogue state cannot hide.
-    first_lazy = getattr(first, attribute)
-    second_lazy = getattr(second, attribute)
-    first_endpoint = first_lazy.materialize()
-    second_endpoint = second_lazy.materialize()
-    try:
-        assert first_endpoint.client is not second_endpoint.client
-        assert first_endpoint.client.api_key == "first-key"
-        assert second_endpoint.client.api_key == "second-key"
-        assert first_endpoint.client.timeout == 12
-        assert second_endpoint.client.timeout == 34
-        assert first_lazy.materialize() is first_endpoint
-        assert second_lazy.materialize() is second_endpoint
-        if chat:
-            assert first_endpoint.stream is False
-            assert second_endpoint.stream is True
-    finally:
-        first_endpoint.client.close()
-        second_endpoint.client.close()
+    # Select both before client creation so shared catalogue state cannot hide.
+    first_endpoint = getattr(first, attribute)
+    second_endpoint = getattr(second, attribute)
+    assert not clients
+    assert first_endpoint.client is not second_endpoint.client
+    assert first_endpoint.client.models is first_endpoint.client.models
+    assert second_endpoint.client.models is second_endpoint.client.models
+    assert len(clients) == 2 and not requests
+    assert clients[0].api_key == "first-key"
+    assert clients[1].api_key == "second-key"
+    assert clients[0].timeout == 12
+    assert clients[1].timeout == 34
+    assert getattr(first, attribute) is first_endpoint
+    assert getattr(second, attribute) is second_endpoint
+    if chat:
+        assert first_endpoint.stream is False
+        assert second_endpoint.stream is True
+    first_endpoint.client.close()
+    second_endpoint.client.close()
+    assert all(client.is_closed() for client in clients)
 
 
 def test_inspection_is_lazy_and_credentials_are_redacted(monkeypatch):
@@ -75,10 +79,11 @@ def test_inspection_is_lazy_and_credentials_are_redacted(monkeypatch):
         name="test", system_prompt="Stop.", tools=[stop], agent_endpoint=endpoint
     )
     assert endpoint.dependency_id == "model:openrouter:test/model"
-    assert agent.external_dependencies()
-    assert "materialized" not in endpoint.__dict__
+    assert agent.external_dependencies() == (endpoint,)
+    assert isinstance(endpoint, LLMEndpoint)
+    assert callable(endpoint.materialize)
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
-        endpoint.materialize()
+        endpoint.check()
 
 
 @pytest.mark.parametrize("stream", [False, True])
@@ -167,10 +172,6 @@ def test_sdk_transport_and_policy_through_agent(monkeypatch, stream):
     assert "test-secret" not in json.dumps(dict(endpoint.redacted_metadata()))
     assert not clients
     try:
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            list(executor.map(lambda _: endpoint.materialize(), range(8)))
-        assert len(clients) == 1
-        assert endpoint.materialize() is endpoint.materialize()
         configured = with_request_options(
             endpoint, extra_body={"reasoning": {"effort": "low"}}
         )
@@ -178,8 +179,9 @@ def test_sdk_transport_and_policy_through_agent(monkeypatch, stream):
         agent = Agent(
             name="test", system_prompt="Stop.", tools=[stop], agent_endpoint=endpoint
         )
+        assert not clients
         assert agent.invoke()[0].value == "ok"
-        assert len(requests) == 1
+        assert len(clients) == len(requests) == 1
         request = requests[0]
         assert str(request.url) == "https://openrouter.ai/api/v1/chat/completions"
         assert request.headers["authorization"] == "Bearer test-secret"
@@ -257,20 +259,20 @@ def test_adapter_reuses_service_settings_for_independent_lazy_endpoints(sdk_http
     assert chat.dependency_id == "model:custom:chat"
     assert audio.dependency_id == "model:custom:audio"
 
-    chat_resource = chat.materialize()
-    audio_resource = audio.materialize()
-    assert chat.materialize() is chat_resource
-    assert audio.materialize() is audio_resource
-    assert chat_resource.client is not audio_resource.client
+    assert isinstance(chat, LLMEndpoint)
+    assert isinstance(audio, TranscriptionEndpoint)
+    assert chat.client.models is chat.client.models
+    assert audio.client.models is audio.client.models
+    assert chat.client is not audio.client
     assert len(clients) == 2
     for client in clients:
         assert str(client.base_url) == "https://models.example.com/v1/"
         assert client.api_key == "explicit-secret"
         assert client.timeout == 12
         assert client.max_retries == 0
-    assert chat_resource.stream is False
-    assert chat_resource.max_context_tokens == 123
-    assert chat_resource.extra_body == {"reasoning": {"effort": "low"}}
+    assert chat.stream is False
+    assert chat.max_context_tokens == 123
+    assert chat.extra_body == {"reasoning": {"effort": "low"}}
 
 
 def test_adapter_defers_settings_validation_until_endpoint_selection():
@@ -367,7 +369,7 @@ def test_catalogue_chat_transport(
     assert len(requests) == len(clients) == 1
     assert clients[0].timeout == 60
     assert clients[0].max_retries == 0
-    assert endpoint.materialize().max_context_tokens == context
+    assert endpoint.max_context_tokens == context
     assert str(requests[0].url) == f"{base_url}/chat/completions"
     assert requests[0].headers["authorization"] == "Bearer catalogue-secret"
     body = json.loads(requests[0].content)
@@ -380,9 +382,9 @@ def test_catalogue_chat_transport(
         assert body["reasoning"] == {"effort": "low"}
         memory = with_openrouter_policy(canonical, reasoning_effort="high")
         assert memory.dependency_id == endpoint.dependency_id == canonical.dependency_id
-        assert memory.materialize().client is endpoint.materialize().client
-        assert memory.materialize().extra_body["reasoning"] == {"effort": "high"}
-        assert canonical.materialize().extra_body is None
+        assert memory.client is endpoint.client
+        assert memory.extra_body["reasoning"] == {"effort": "high"}
+        assert canonical.extra_body is None
     else:
         assert "provider" not in body and "reasoning" not in body
 
@@ -411,7 +413,7 @@ def test_groq_transcription_transport(monkeypatch, sdk_http):
     )
     assert len(clients) == len(requests) == 1
     assert clients[0].timeout == 12 and clients[0].max_retries == 0
-    assert endpoint.materialize() is endpoint.materialize()
+    assert endpoint.client.audio is clients[0].audio
     request = requests[0]
     assert str(request.url) == "https://api.groq.com/openai/v1/audio/transcriptions"
     assert request.headers["authorization"] == "Bearer groq-secret"
@@ -456,7 +458,8 @@ def test_failed_credentials_can_be_retried(monkeypatch, sdk_http, chat):
     with ThreadPoolExecutor(max_workers=4) as executor:
         resources = list(executor.map(lambda _: endpoint.materialize(), range(8)))
     assert all(resource is resources[0] for resource in resources)
-    assert resources[0].model_name == "custom"
+    assert resources[0] is endpoint
+    assert endpoint.model_name == "custom"
     assert len(clients) == 1
     assert "later-secret" not in repr(endpoint)
 
@@ -476,12 +479,92 @@ def test_missing_sdk_error_does_not_hide_broken_dependencies(monkeypatch, missin
     endpoint = transcription_endpoint(model="custom")
     message = r"roboz-endpoints\[openai\]" if missing == "openai" else "jiter"
     with pytest.raises(ModuleNotFoundError, match=message):
-        endpoint.materialize()
+        endpoint.check()
 
 
-def test_client_closed_if_endpoint_validation_fails(sdk_http):
+def test_endpoint_validation_fails_before_client_creation(sdk_http):
     clients, _ = sdk_http(lambda _: pytest.fail("unexpected request"))
-    endpoint = chat_endpoint(model="custom", max_context_tokens=1.5, api_key="test")
     with pytest.raises(ValueError):
-        endpoint.materialize()
-    assert len(clients) == 1 and clients[0].is_closed()
+        chat_endpoint(model="custom", max_context_tokens=1.5, api_key="test")
+    assert clients == []
+
+
+@pytest.mark.parametrize("used", [False, True])
+def test_close_is_shared_idempotent_and_does_not_reopen(sdk_http, used):
+    clients, requests = sdk_http(lambda _: pytest.fail("unexpected request"))
+    endpoint = chat_endpoint(model="custom", max_context_tokens=123, api_key="test")
+    configured = with_openrouter_policy(endpoint)
+    if used:
+        assert endpoint.client.chat is endpoint.client.chat
+    configured.client.close()
+    endpoint.client.close()
+    assert len(clients) == int(used)
+    assert all(client.is_closed() for client in clients)
+    with pytest.raises(RuntimeError, match="closed"):
+        endpoint.check()
+    assert len(clients) == int(used) and not requests
+
+
+@pytest.mark.parametrize("chat", [False, True])
+def test_direct_binding_inspection_and_check_use_the_same_endpoint(sdk_http, chat):
+    def reply(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/models"
+        assert request.headers["authorization"] == "Bearer test"
+        assert set(request.extensions["timeout"].values()) == {10.0}
+        return httpx.Response(200, json={"data": [{"id": "custom"}]})
+
+    clients, requests = sdk_http(reply)
+    endpoint = (
+        chat_endpoint(model="custom", max_context_tokens=123, api_key="test")
+        if chat else transcription_endpoint(model="custom", api_key="test")
+    )
+
+    @factory
+    def describe(input: Str, messages: list[Message], ctx: LLMEndpoint | TranscriptionEndpoint) -> Str:
+        assert ctx is endpoint
+        assert len(clients) == 1 and not requests
+        return Str(value=ctx.model_name)
+
+    bound = describe(endpoint)
+    assert bound.external_dependencies()[0] is endpoint
+    assert bound.copy().external_dependencies()[0] is endpoint
+    assert clients == requests == []
+    assert bound(Str(value="describe"), []).value == "custom"
+    assert len(clients) == 1 and not requests
+    assert endpoint.materialize() is endpoint
+    assert endpoint.check() is True
+    assert endpoint.check() is True
+    assert len(clients) == 1 and len(requests) == 2
+
+
+@pytest.mark.parametrize(
+    "status,message,expected",
+    [
+        (401, "Invalid key", "LLMAuthError"),
+        (429, "Rate limit", "LLMRateLimitExceededError"),
+        (400, "Maximum context length exceeded", "LLMContextLimitExceededError"),
+        (400, "Unsupported response format", "LLMProviderRequestError"),
+    ],
+)
+def test_sdk_errors_use_core_status_and_message_classification(sdk_http, status, message, expected):
+    from roboz import exceptions
+
+    clients, requests = sdk_http(
+        lambda _: httpx.Response(status, json={"error": {"message": message}})
+    )
+    endpoint = chat_endpoint(model="custom", max_context_tokens=123, api_key="test", stream=False)
+    with pytest.raises(getattr(exceptions, expected)):
+        call_llm_api(endpoint, [], max_attempts=1)
+    assert len(clients) == len(requests) == 1
+
+
+def test_explicit_materialization_shares_client_with_policy_copies(sdk_http):
+    clients, requests = sdk_http(lambda _: pytest.fail("unexpected request"))
+    endpoint = chat_endpoint(model="custom", max_context_tokens=123, api_key="test")
+    configured = with_openrouter_policy(endpoint)
+    assert clients == requests == []
+    assert configured.materialize() is configured
+    assert endpoint.materialize() is endpoint
+    assert configured.client is endpoint.client
+    assert len(clients) == 1 and not requests

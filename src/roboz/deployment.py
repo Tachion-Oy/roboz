@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from roboz.agent import Agent, run_background_agent, run_subagent
+from roboz.agent import Agent, BackgroundAgentContext, run_background_agent, run_subagent
+from roboz.dependencies import ExternalDependency
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe, EventSink, Output
 from roboz.skill import Skill
-from roboz.tooling import Tool
-from roboz.tooling.context import Ctx
+from roboz.tooling import HasExternalDependencies, Tool
 
 type RequiredAttributeType = type[object] | tuple[type[object], ...]
 type RequiredAttributes = Mapping[str, RequiredAttributeType]
@@ -54,7 +54,7 @@ class Capability(AgentCapability):
         return self
 
 
-class DeployableAgent:
+class DeployableAgent(HasExternalDependencies):
     """Mutable configuration for one agent and its attached child graph.
 
     Constructor capabilities are fixed defaults. Later capabilities and child
@@ -265,6 +265,21 @@ class DeployableAgent:
             definitions.extend((*agent.subagents, *agent.background_agents))
         return tuple(walked)
 
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Build an unstarted graph and inspect its tools' current resources.
+
+        Use normal configuration validation and capability construction with no
+        event sinks. The root agent includes its foreground and background
+        descendants through their bound tool contexts. No agent is invoked and
+        no resource is checked or materialized by this method.
+
+        Each call builds fresh runtime state. Custom capability builders run as
+        usual, including any construction effects they introduce; inspection
+        does not provide filesystem isolation.
+        """
+        agent, _ = self.build()
+        return agent.external_dependencies()
+
     def build(
         self,
         *,
@@ -305,7 +320,7 @@ class DeployableAgent:
                 event_sinks=event_sinks, event_sink_factory=event_sink_factory
             )
             tools.append(
-                run_subagent(Ctx(agent=child)).copy(
+                run_subagent(child).copy(
                     name=child.name,
                     description=child.description,
                 )
@@ -316,7 +331,7 @@ class DeployableAgent:
                 event_sink_factory=event_sink_factory
             )
             default_tools.append(
-                run_background_agent(Ctx(agent=child)).copy(
+                run_background_agent(BackgroundAgentContext(agent=child)).copy(
                     name=f"start_background_agent_{child.name}",
                 )
             )

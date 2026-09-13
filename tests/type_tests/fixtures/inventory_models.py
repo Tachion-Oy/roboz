@@ -28,20 +28,19 @@ _ROBOZ_ENDPOINTS_INVENTORY = {'schema_version': 1,
                                                'endpoint_type': 'transcription'}}}}}
 
 if _TYPE_CHECKING:
-    from roboz import LazyExternalDependency as _LazyExternalDependency
     from roboz.llm import LLMEndpoint as _LLMEndpoint
     from roboz.llm import TranscriptionEndpoint as _TranscriptionEndpoint
     from roboz_endpoints.specs import ModelSpec as _ModelSpec
 
     class _groq_Catalog(_Catalog[_ModelSpec]):
-        whisper_large_v3_turbo: _LazyExternalDependency[_TranscriptionEndpoint]
-        new_chat: _LazyExternalDependency[_LLMEndpoint]
+        whisper_large_v3_turbo: _TranscriptionEndpoint
+        new_chat: _LLMEndpoint
 
     groq: _groq_Catalog
 
     class _custom_Catalog(_Catalog[_ModelSpec]):
-        chat: _LazyExternalDependency[_LLMEndpoint]
-        audio: _LazyExternalDependency[_TranscriptionEndpoint]
+        chat: _LLMEndpoint
+        audio: _TranscriptionEndpoint
 
     custom: _custom_Catalog
 else:

@@ -1,19 +1,17 @@
 """Shared runtime state and cancellable provider execution."""
 
 from collections.abc import Callable
-from functools import partial
 from typing import TypeVar
 
-from roboz import Ctx
+from roboshed.tools.contexts import EmailContext
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.runtime import run_cancellable_external_call
-from roboz.tooling.context import _prepare_context
 
 T = TypeVar("T")
 
 
 def run_email_call(
-    ctx: Ctx,
+    ctx: EmailContext,
     *,
     label: str,
     cancelled_message: str,
@@ -31,10 +29,3 @@ def run_email_call(
     if ctx.is_cancelled():
         raise ExternalCallCancelledError(cancelled_message)
     return result
-
-
-_prepare_email_context = partial(
-    _prepare_context,
-    required=("service", "is_cancelled", "timeout_s", "pipe"),
-    defaults={"prompt_before_inbox_read": False},
-)

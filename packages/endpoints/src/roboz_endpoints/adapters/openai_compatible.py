@@ -1,30 +1,75 @@
-"""Lazy chat and transcription endpoints using the optional OpenAI SDK."""
+"""Concrete endpoints with deferred clients for the optional synchronous OpenAI SDK."""
 
 import math
 import os
+from collections.abc import Callable
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 from urllib.parse import urlsplit
 
-from roboz import ExternalDependencyKind, LazyExternalDependency
 from roboz.llm import (
     LLMEndpoint,
     RequestOptions,
     TranscriptionEndpoint,
-    with_request_options,
 )
 
 
 if TYPE_CHECKING:
     from openai import OpenAI
+    from openai.resources import Audio, Chat, Models
+
+
+class _DeferredOpenAIClient:
+    """Own one SDK client, created once on demand and never reopened after close."""
+
+    def __init__(self, create: Callable[[], "OpenAI"]) -> None:
+        self._create = create
+        self._client: OpenAI | None = None
+        self._lock = Lock()
+        self._closed = False
+
+    def _get_client(self) -> "OpenAI":
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("OpenAI endpoint client is closed")
+            if self._client is None:
+                # A failed creation is not cached: credentials can be supplied later.
+                self._client = self._create()
+            return self._client
+
+    def materialize(self) -> Self:
+        """Initialize the cached SDK client without making a request."""
+        self._get_client()
+        return self
+
+    @property
+    def models(self) -> "Models":
+        return self._get_client().models
+
+    @property
+    def chat(self) -> "Chat":
+        return self._get_client().chat
+
+    @property
+    def audio(self) -> "Audio":
+        return self._get_client().audio
+
+    def close(self) -> None:
+        """Close the cached client without constructing an unused one."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._client is not None:
+                self._client.close()
 
 
 class OpenAICompatibleAdapter:
-    """Service configuration for lazy chat and transcription endpoints.
+    """Service configuration for concrete chat and transcription endpoints.
 
     Reuse an adapter for models served by the same URL and credentials. Each
-    returned lazy dependency owns its own cached client; the adapter owns no
-    client. Close materialized clients when the application finishes using them.
+    returned endpoint owns its own deferred client; the adapter owns no client.
+    Close endpoint clients when the application finishes using them.
     """
 
     def __init__(
@@ -39,7 +84,7 @@ class OpenAICompatibleAdapter:
         """Store service settings without validation, SDK imports, or I/O.
 
         Settings are validated when describing an endpoint. Credentials are
-        resolved when that endpoint is first materialized, using the explicit
+        resolved when that endpoint first uses its client, using the explicit
         key when provided or the named environment variable otherwise.
         Use a distinct ``api_name`` for each service's dependency identity.
         """
@@ -87,7 +132,7 @@ class OpenAICompatibleAdapter:
             )
 
     def _create_client(self) -> "OpenAI":
-        """Load the optional SDK and credentials when an endpoint is materialized."""
+        """Load the optional SDK and credentials when an endpoint first uses its client."""
         try:
             from openai import OpenAI
         except ModuleNotFoundError as exc:
@@ -117,98 +162,43 @@ class OpenAICompatibleAdapter:
         max_context_tokens: int,
         stream: bool = True,
         extra_body: RequestOptions | None = None,
-    ) -> LazyExternalDependency[LLMEndpoint]:
+    ) -> LLMEndpoint:
         """Describe an OpenAI-compatible Chat Completions endpoint without I/O.
 
         Supply the model's actual context limit. SDK loading and credentials are
-        deferred until first materialization. The resulting endpoint owns its
-        cached SDK client; close that client at host shutdown. Request policy can
-        be supplied here or attached with ``roboz.llm.with_request_options``.
+        deferred until tool invocation, an explicit ``materialize()``, or client
+        use. Close ``endpoint.client`` at host shutdown; closing an unused client performs no construction.
+        Request policy can be supplied here or with ``with_request_options``.
         """
         if max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")
-
         self._validate_settings(model)
-        lock = Lock()
-        constructed: LLMEndpoint | None = None
-
-        def construct() -> LLMEndpoint:
-            nonlocal constructed
-            with lock:
-                if constructed is None:
-                    client = self._create_client()
-                    try:
-                        from openai import BadRequestError, RateLimitError
-
-                        constructed = LLMEndpoint(
-                            client=client,
-                            model_name=model,
-                            api_name=self._api_name,
-                            max_context_tokens=max_context_tokens,
-                            stream=stream,
-                            rate_limit_error=RateLimitError,
-                            context_length_error=BadRequestError,
-                        )
-                    except Exception:
-                        client.close()
-                        raise
-                return constructed
-
-        endpoint = LazyExternalDependency(
-            dependency_id_value=f"model:{self._api_name}:{model}",
-            dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-            metadata={
-                "api_name": self._api_name,
-                "model_name": model,
-                "endpoint_type": "llm",
-            },
-            resolver=construct,
-        )
-        return (
-            with_request_options(endpoint, extra_body=extra_body)
-            if extra_body is not None
-            else endpoint
+        return LLMEndpoint(
+            client=_DeferredOpenAIClient(self._create_client),
+            model_name=model,
+            api_name=self._api_name,
+            max_context_tokens=max_context_tokens,
+            stream=stream,
+            extra_body=extra_body,
         )
 
     def transcription_endpoint(
         self,
         *,
         model: str,
-    ) -> LazyExternalDependency[TranscriptionEndpoint]:
+    ) -> TranscriptionEndpoint:
         """Describe an OpenAI-compatible audio transcription endpoint without I/O.
 
-        SDK loading and credentials are deferred until first materialization;
-        close the cached endpoint's client at host shutdown. Pass language,
-        prompt, and temperature overrides to
-        ``roboz.llm.call_transcription_api`` when transcribing.
+        SDK loading and credentials are deferred until tool invocation, an
+        explicit ``materialize()``, or client use. Close ``endpoint.client`` at
+        host shutdown. Pass language,
+        prompt, and temperature overrides to ``call_transcription_api``.
         """
         self._validate_settings(model)
-        lock = Lock()
-        constructed: TranscriptionEndpoint | None = None
-
-        def construct() -> TranscriptionEndpoint:
-            nonlocal constructed
-            with lock:
-                if constructed is None:
-                    client = self._create_client()
-                    try:
-                        constructed = TranscriptionEndpoint(
-                            client=client, model_name=model, api_name=self._api_name
-                        )
-                    except Exception:
-                        client.close()
-                        raise
-                return constructed
-
-        return LazyExternalDependency(
-            dependency_id_value=f"model:{self._api_name}:{model}",
-            dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-            metadata={
-                "api_name": self._api_name,
-                "model_name": model,
-                "endpoint_type": "transcription",
-            },
-            resolver=construct,
+        return TranscriptionEndpoint(
+            client=_DeferredOpenAIClient(self._create_client),
+            model_name=model,
+            api_name=self._api_name,
         )
 
 
@@ -223,7 +213,7 @@ def chat_endpoint(
     timeout_s: float = 60.0,
     stream: bool = True,
     extra_body: RequestOptions | None = None,
-) -> LazyExternalDependency[LLMEndpoint]:
+) -> LLMEndpoint:
     """Describe an endpoint through a configured ``OpenAICompatibleAdapter``.
 
     This convenience function preserves the existing function API. Reuse an
@@ -251,7 +241,7 @@ def transcription_endpoint(
     api_key: str | None = None,
     api_key_env: str = "OPENAI_API_KEY",
     timeout_s: float = 60.0,
-) -> LazyExternalDependency[TranscriptionEndpoint]:
+) -> TranscriptionEndpoint:
     """Describe an endpoint through a configured ``OpenAICompatibleAdapter``.
 
     This convenience function preserves the existing function API. Reuse an

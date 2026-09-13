@@ -1,4 +1,4 @@
-"""Golden-path authoring API for Roboz."""
+"""Agent, skill, data, tool, and factory authoring primitives for Roboz."""
 
 from roboz.agent import (
     Agent,
@@ -7,16 +7,14 @@ from roboz.agent import (
     run_background_agent,
     run_subagent,
 )
-from roboz.dependencies import (
-    DependencyRoute,
-    ExecutableDependency,
-    ExternalDependency,
-    ExternalDependencyKind,
-    ExternalDependencyReference,
-    ExternalDependencySource,
-    LazyExternalDependency,
-    ModelEndpointDependency,
-    NetworkServiceDependency,
+from roboz.skill import Skill
+from roboz.tools import (
+    PromptUser,
+    message_user,
+    prompt_user,
+    prompt_user_at_start,
+    stop,
+    stop_after,
 )
 from roboz.models import (
     AgentBaseModel,
@@ -34,42 +32,24 @@ from roboz.models import (
     Str,
     Strs,
 )
-from roboz.skill import Skill
-from roboz.tooling import Factory, Tool
-from roboz.tooling.context import Ctx
+from roboz.tooling import HasExternalDependencies, Materializable, Factory, Tool
 from roboz.tooling.decorators import factory, tool
-from roboz.tools import (
-    PromptUser,
-    message_user,
-    prompt_user,
-    prompt_user_at_start,
-    stop,
-    stop_after,
-)
 
 __all__ = [
-    "Ctx",
     "Agent",
     "AgentBaseModel",
     "All",
     "BackgroundAgentStatus",
+    "HasExternalDependencies",
     "Empty",
-    "DependencyRoute",
-    "ExecutableDependency",
-    "ExternalDependency",
-    "ExternalDependencyKind",
-    "ExternalDependencyReference",
-    "ExternalDependencySource",
     "Factory",
     "HashMaps",
     "Int",
     "Invoke",
-    "LazyExternalDependency",
     "Location",
     "LocationStr",
+    "Materializable",
     "Message",
-    "ModelEndpointDependency",
-    "NetworkServiceDependency",
     "PromptUser",
     "Role",
     "Skill",

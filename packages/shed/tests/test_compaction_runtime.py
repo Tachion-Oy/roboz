@@ -5,6 +5,7 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
+from roboshed.tools import CompactionContext
 from roboshed.tools import get_compactify_messages_when_needed_tool
 from roboshed.tools.compactification import (
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
@@ -13,7 +14,7 @@ from roboshed.tools.compactification import (
 )
 from roboshed.tools.compactification.compactify_messages import CompactionState
 
-from roboz import All, Ctx, Message, Role
+from roboz import All, Message, Role
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -24,10 +25,6 @@ from roboz.llm import LLMEndpoint, MockLLMEndpoint, estimate_conversation_tokens
 from roboz.models import MessageKind
 from roboz.runtime import EventPipe
 from roboz.runtime.events import MessageEvent, RuntimeEvent
-from roboz.dependencies import (
-    ExternalDependencyKind,
-    LazyExternalDependency,
-)
 
 
 def _messages():
@@ -48,7 +45,9 @@ def _response(value="continue"):
 def _endpoint(create):
     return LLMEndpoint(
         client=SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+            models=SimpleNamespace(list=lambda **kwargs: pytest.fail("unexpected model check")),
+            close=lambda: None,
         ),
         api_name="test",
         model_name="compaction",
@@ -58,7 +57,7 @@ def _endpoint(create):
 
 
 def _ctx(endpoint, pipe=None, timeout_s=None):
-    return Ctx(
+    return CompactionContext(
         state=CompactionState(),
         endpoint=endpoint,
         threshold_percent=80,
@@ -365,30 +364,25 @@ def test_provider_failure_preserves_history_and_counter():
     assert ctx.state.count == 0
 
 
-def test_lazy_endpoint_inspection_does_not_materialize():
-    resolutions = []
+def test_endpoint_client_is_unused_by_binding_copying_and_inspection():
+    calls = []
 
-    def resolve():
-        resolutions.append(True)
-        return _endpoint(lambda **request: _response())
+    def create(**request):
+        calls.append(request)
+        return _response()
 
-    endpoint = LazyExternalDependency(
-        dependency_id_value="model:test:compaction",
-        dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-        metadata={"api_name": "test", "model_name": "compaction"},
-        resolver=resolve,
-    )
+    endpoint = _endpoint(create)
     tool = get_compactify_messages_when_needed_tool(endpoint=endpoint)
-    assert tool.dependencies[0] is endpoint
-    assert tool.external_dependencies == (endpoint,)
-    assert resolutions == []
+    assert tool.external_dependencies() == (endpoint,)
+    assert tool.copy().external_dependencies()[0] is endpoint
+    assert calls == []
     assert tool(input=All(), messages=_messages()).status == "compacted"
-    assert resolutions == [True]
+    assert len(calls) == 1
 
 
-def test_default_counter_is_per_binding_and_copies_share_the_bound_counter():
-    endpoint = MockLLMEndpoint([{"value": "continue"}] * 3, max_context_tokens=1000)
-    context = Ctx(
+def test_counter_belongs_to_context_and_rebinding_and_copying_share_it():
+    endpoint = MockLLMEndpoint([{"value": "continue"}] * 4, max_context_tokens=1000)
+    context = CompactionContext(
         endpoint=endpoint,
         threshold_percent=80,
         system_prompt=COMPACTIFY_SYSTEM_PROMPT,
@@ -397,5 +391,7 @@ def test_default_counter_is_per_binding_and_copies_share_the_bound_counter():
     first = compactify_messages_when_needed(context)
     second = compactify_messages_when_needed(context)
     assert first(All(), _messages()).compactions == 1
-    assert second(All(), _messages()).compactions == 1
-    assert first.copy()(All(), _messages()).compactions == 2
+    assert second(All(), _messages()).compactions == 2
+    assert first.copy()(All(), _messages()).compactions == 3
+    independent = compactify_messages_when_needed(_ctx(endpoint))
+    assert independent(All(), _messages()).compactions == 1

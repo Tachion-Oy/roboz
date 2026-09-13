@@ -4,7 +4,6 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from roboz import Ctx
 from roboz.agent._identifiers import (
     PROMPT_AGENT_TOOL_NAME,
     RUN_BACKGROUND_AGENT_TOOL_NAME,
@@ -36,7 +35,7 @@ from roboz.tools._identifiers import (
 
 
 def test_prompt_user_at_start_skips_if_assistant_present():
-    tool = prompt_user_at_start(Ctx(message="m"))
+    tool = prompt_user_at_start("m")
     result = tool(
         input=Str(value="prompt text"),
         messages=[Message(role=Role.ASSISTANT, content="{}")],
@@ -46,7 +45,7 @@ def test_prompt_user_at_start_skips_if_assistant_present():
 
 
 def test_prompt_user_at_start_returns_interaction_reply(bind_user_io):
-    tool = prompt_user_at_start(Ctx(message="m"))
+    tool = prompt_user_at_start("m")
     io = bind_user_io(["from user"])
     out = tool(input=Str(value="question"), messages=[])
     assert out.value == "from user"
@@ -90,7 +89,7 @@ def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
 
 
 def test_prompt_user_returns_reply(bind_user_io):
-    tool = prompt_user(Ctx(timeout_reply="continuing"))
+    tool = prompt_user("continuing")
     io = bind_user_io(["hi"])
     out = tool(input=PromptUser(value="q?"), messages=[])
     assert out.value == "hi"
@@ -99,7 +98,7 @@ def test_prompt_user_returns_reply(bind_user_io):
 
 
 def test_prompt_user_forwards_timeout(bind_user_io):
-    tool = prompt_user(Ctx(timeout_reply="continuing"))
+    tool = prompt_user("continuing")
     io = bind_user_io(["hi"])
     out = tool(input=PromptUser(value="q?", timeout_seconds=0.5), messages=[])
     assert out.value == "hi"
@@ -107,7 +106,7 @@ def test_prompt_user_forwards_timeout(bind_user_io):
 
 
 def test_prompt_user_uses_timeout_reply_when_no_response(bind_user_io):
-    tool = prompt_user(Ctx(timeout_reply="continuing"))
+    tool = prompt_user("continuing")
     bind_user_io([None])
     out = tool(input=PromptUser(value="q?", timeout_seconds=0.01), messages=[])
     assert out.value == "continuing"
@@ -139,7 +138,7 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
             {"action": "stop", "rationale": "done", "value": "ok"},
         ]
     )
-    start_only = prompt_user_at_start(Ctx(message="m"))
+    start_only = prompt_user_at_start("m")
     agent = Agent(
         interaction_mode=Output.CLI,
         name="ask_default_tool",
@@ -182,3 +181,11 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
     non_empty_ask_results = [p for p in ask_results if p.get("value")]
     assert len(non_empty_ask_results) == 1
     assert non_empty_ask_results[0].get("value") == "from user\n"
+
+
+def test_fixed_message_context_has_no_dependencies_and_preserves_text(bind_user_io):
+    io = bind_user_io([])
+    bound = message_user("Configured text")
+    assert bound.external_dependencies() == ()
+    assert bound.copy()(Str(value="input"), []).value == "Configured text"
+    assert io.prompts == ["[notify]Configured text"]

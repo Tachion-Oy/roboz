@@ -142,7 +142,7 @@ import roboz as rz
 
 agent = rz.Agent(
     name="my_agent",
-    agent_endpoint=...,             # endpoint or LazyExternalDependency
+    agent_endpoint=...,             # concrete endpoint or LLMEndpointRoute
     tools=[..., rz.stop],           # active + chained
     default_tools=[...],            # startup/default flow
     skills=[...],                   # optional on-demand skills
@@ -169,20 +169,21 @@ By default the view includes tools from configured but not-yet-loaded skills so
 deployment preflight can report potential requirements. Pass
 `include_lazy_skills=False` for only the currently composed graph.
 
-A context can inspect a child before a wrapper tool is constructed:
+A child agent can be bound directly before constructing its wrapper tool:
 
 ```python
-ctx = rz.Ctx(agent=child)
-dependencies = ctx.external_dependencies()
-subagent_tool = rz.run_subagent(ctx)
+dependencies = child.external_dependencies()
+subagent_tool = rz.run_subagent(child)
 ```
 
-Subagent and background-agent tools retain their bound context as a live
-source. Later `child.add()` calls are visible through `ctx.external_dependencies()`,
-the wrapper tool, its copies, and the parent agent's dependency view.
+Subagent tools retain the child as a live source. Later `child.add()` calls are
+visible through the wrapper tool, its copies, and the parent agent's dependency
+view. Background tools use `BackgroundAgentContext` for the child and caller-owned
+state.
 
-Endpoints must be concrete endpoint objects or `LazyExternalDependency`
-instances. Raw callable endpoints are not supported.
+Endpoints must be concrete endpoint objects or `LLMEndpointRoute` instances.
+The route constructor accepts a typed getter returning a concrete endpoint; raw
+callables are not themselves endpoints.
 
 Keep catalog endpoints canonical and attach provider request policy at the use
 site:

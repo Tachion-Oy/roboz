@@ -49,29 +49,30 @@ role definitions.
 Each capability declares the typed attributes it reads from its owning
 `DeployableAgent`. Runtime controls remain separate. Use `set_attributes()` to
 supply standalone permission policies and sandbox inputs before building.
+Capability builders construct the central typed tool contexts; each build gets
+fresh runtime state while retaining the selected endpoint objects. Build-based
+resource inspection uses those tools without initializing model clients.
 
 See the [factory and migration guide](../../docs/agent-factories.md).
 
 ## RoboSprawl deployment recipe
 
-`roboshed.deployments.robosprawl.RoboSprawl` is the concrete lazy persistent
-orchestrator and Librarian recipe. Construct `RoboSprawl()` without inputs;
-supply the required scoped sandbox, endpoint getter, and memory endpoint with
-`set_sandbox()`, `set_endpoint_getter()`, and `set_memory_endpoint()`.
-`set_additional_capabilities()`, `set_specialists()`, `set_interaction_mode()`,
-and `set_event_sinks()` supply optional inputs (empty sequences and
-`interaction_mode=None` by default). A `None` mode inherits core's current output
-setting, falling back to CLI when none is bound. Argument-free `build()` returns
-a fresh root/background-agent tuple
-or reports missing required inputs. `robosprawl` is an alias for this class.
+The recipe still requires migration to the concrete endpoint contract in this
+branch; importing it currently fails on the removed lazy-reference API. The
+standalone `orchestrator` and `librarian` constructors and their capabilities are
+migrated. The description below records the recipe behavior to preserve.
+
+`roboshed.deployments.robosprawl.robosprawl` is the concrete lazy persistent
+orchestrator and Librarian recipe. Call it with an already-scoped sandbox,
+`endpoint_getter`, `memory_endpoint`, `additional_capabilities`, `specialists`,
+`interaction_mode`, and optional `event_sinks`. It returns a fresh root and
+background-agent tuple.
 
 The recipe loads project memory and supplies project locations through initial
 messages. Its root follows the selected model getter; the Librarian uses its
-separate memory endpoint. Configuration and building start no agents or provider
-clients and create no project directories. Use a fresh recipe per new run;
-setters snapshot the sandbox and sequence containers, while supplied endpoints
-and capability/child objects remain caller-owned. The application owns scope
-selection and runtime lifecycle. See the [migration example](../../docs/agent-factories.md#fixed-robosprawl-recipe).
+separate memory endpoint. Construction starts no agents and creates no
+directories before the build requires its persistence sinks. The application
+owns scope selection and runtime lifecycle.
 
 ## Conversation compaction
 
@@ -92,8 +93,9 @@ Include this tool in an agent's `default_tools` and pass that agent's owning
 `system_prompt` and `skill_message` override the full continuation instructions.
 The tool preserves the contiguous bootstrap prefix and folds the remaining
 history, including previous summaries, into a new continuation message. Its
-status also carries the summary for event persistence. Each constructed tool
-owns its compaction count; constructing one per agent keeps counters independent.
+status also carries the summary for event persistence. Each capability build
+creates a fresh compaction context; tools copied or rebound to that context share
+its count, while separate builds keep counters independent.
 
 Successful status reports describe the compacted history's current usage and
 headroom. Summaries are budgeted below the configured threshold and endpoint
@@ -116,12 +118,12 @@ memory pipeline; core provides the mechanisms they use.
 
 ## Context API migration
 
-Low-level tool factories now use `roboz.Ctx(**values)` directly, with service,
-endpoint, and executable objects supplied without wrappers. The specialized
-context classes have been removed. Existing tool builders retain their keyword
-arguments, defaults, permission checks, cancellation, and timeout behavior.
-See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
-for low-level context fields and state ownership.
+Low-level tool factories use concrete context classes from `roboshed.tools`.
+Their typed constructors own required fields, defaults, validation, and fresh
+state. Direct resources such as endpoints may also be factory contexts. Existing
+tool builders retain their keyword arguments, permission checks, cancellation,
+and timeout behavior. See the
+[context guide](../../docs/shed-tool-contexts.md) for the complete mapping.
 
 
 ## Deployable agent graphs
@@ -161,9 +163,10 @@ capabilities, and sinks remain caller-owned. No execution state is retained on
 the definition. The old deployment wrapper, factories, host protocols, and
 result bundles are removed.
 Use core's `roboz.llm.ModelSelector` for lazy model selection.
-`roboz.dependencies` supplies exact dependency registration and binding;
-`roboshed.dependency_health` supplies isolated `inspect_dependencies`, probes,
-and monitoring without a web framework or provider SDK.
+`roboz.dependencies` supplies the resource contract and ordered deduplication.
+`DeployableAgent.external_dependencies()` builds an unstarted graph and inspects
+its resources. `roboshed.dependency_health` monitors resource-owned checks without a
+web framework or provider SDK.
 Permission policies treat configured folder names literally. Health scheduling
 retries observation failures; timed-out workers retain their concurrency slots
 until completion.
@@ -174,3 +177,88 @@ HUD file-link/markdown contract. The external RoboSprawl application may select
 it through `Capability(auto_loaded_skills=(robosprawl,))`. Concrete paths,
 endpoints, extra capabilities, and specialist definitions remain application
 choices. The `robosprawl` recipe assembles and builds a fresh agent graph.
+
+
+## Dependency health
+
+Call `definition.external_dependencies()` on the configured `DeployableAgent`.
+It constructs fresh agents without event sinks and delegates to their existing
+tool dependency inspection, including foreground and background descendants and
+unloaded skills. It returns a deduplicated `tuple[ExternalDependency, ...]` and
+does not invoke agents or request endpoint initialization or availability checks.
+Capability builders run normally, including any construction effects they own.
+
+The former `inspect_dependencies` callback helper and its temporary sandbox are
+removed. The optional definition method requires configuration sufficient for
+normal construction; the monitor never calls it automatically. Agents do not need
+to be running. Existing runtime agents can still be inspected directly. If inputs
+are substituted for discovery, they must produce the resource declarations used
+by the actual deployment.
+
+The monitor accepts resources independently of agents. Combine agent resources
+with other resources explicitly, for example:
+
+```python
+monitor = DependencyHealthMonitor((
+    *definition.external_dependencies(),
+    *selectable_models,
+    transcription_endpoint,
+))
+```
+
+Here `selectable_models` is a sequence of concrete `LLMEndpoint` objects; they need
+not be attached to an agent or selected yet. The monitor keeps the first resource
+for each dependency ID across the combined sequence. Resources are captured when
+the monitor is constructed; create a new monitor if the resource set changes.
+
+Pass those resources directly to `DependencyHealthMonitor(resources)`. Its
+constructor creates pending records without performing checks. Explicit
+`run_once()` or scheduled observation calls each resource's synchronous
+`check() -> bool` in a worker thread. Checks own their service-specific behavior
+and any required client initialization; the monitor supplies bounded concurrency,
+timeouts, scheduling, and cached observations.
+
+```python
+import asyncio
+import sys
+
+from roboz.dependencies import ExecutableDependency
+from roboshed.dependency_health import DependencyHealthMonitor, DependencyStatus
+
+program = ExecutableDependency(sys.executable)
+monitor = DependencyHealthMonitor((program,))
+assert monitor.records()[0].status is DependencyStatus.PENDING
+asyncio.run(monitor.run_once())
+assert monitor.records()[0].status is DependencyStatus.AVAILABLE
+```
+
+`check_dependency(resource)` performs one synchronous check and returns a
+`DependencyCheckResult`: `True` means available, `False` becomes `model_unavailable`
+for models or `not_found` for other resources, and exceptions become sanitized
+reason codes. Other return values produce `protocol_error`. Provider exception
+payloads are not exposed through records. Record schemas and metadata filtering
+are unchanged. Async checker callbacks and registration records are removed;
+implement the synchronous method on the resource instead.
+
+Replace `check_executable`, `check_openai_compatible_endpoint`, and
+`check_network_service` with `check_dependency` when a sanitized health result
+is needed, or use `resource.check()` for the primitive boolean/exception contract.
+The old helper names have no compatibility aliases. Capability bindings and the
+RoboSprawl deployment recipe now use the concrete context and endpoint contracts.
+
+## Concrete tool contexts
+
+File-command, guard, editing, maintenance, and email factories now use concrete context
+classes exported from `roboshed.tools`. Existing `get_run_file_command`,
+`get_apply_patch`, and `get_compactify_messages_when_needed_tool` keyword arguments
+are retained. Direct factory users should follow the
+[context migration guide](../../docs/shed-tool-contexts.md), including the context
+ownership rules for compaction counters. Command and summary resources are
+reported through `tool.external_dependencies()` without running external work.
+
+
+Email contexts live in the same module. `get_work_with_email` keeps its existing
+arguments; direct email execution uses `EmailContext`, and attachment resolvers
+accept `Path`. `EmailService` defines every provider operation and the resource
+identity/metadata contract. Its availability check calls the existing read-only
+probe. See the [email context contract](../../docs/shed-tool-contexts.md#email-services-and-contexts).

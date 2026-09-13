@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from roboz import Agent, Ctx, stop
+from roboz import Agent, stop
 from roboz.agent.subagent import run_subagent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink, RunLifecycleEvent
@@ -22,7 +22,7 @@ def test_subagent_completion(tmp_path: Path) -> None:
             ]
         ),
     )
-    delegate = run_subagent(Ctx(agent=child))
+    delegate = run_subagent(child)
     parent = Agent(
         name="parent",
         interaction_mode=None,

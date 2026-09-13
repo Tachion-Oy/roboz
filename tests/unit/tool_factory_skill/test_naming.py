@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from roboz import Ctx, Empty, Message, Str, factory, tool
+from roboz import Empty, Message, Str, factory, tool
 from roboz.skill import Skill
 
 
@@ -13,7 +13,7 @@ def valid_tool(input: Empty, messages: list[Message]) -> Str:
 
 
 @factory
-def valid_factory(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
+def valid_factory(input: Empty, messages: list[Message], ctx: None) -> Str:
     return Str(value="ok")
 
 
@@ -47,7 +47,7 @@ def test_decorators_reject_invalid_function_names() -> None:
     with pytest.raises(ValueError, match="lowercase ASCII snake_case"):
 
         @factory
-        def InvalidFactory(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
+        def InvalidFactory(input: Empty, messages: list[Message], ctx: None) -> Str:
             return Str(value="invalid")
 
 

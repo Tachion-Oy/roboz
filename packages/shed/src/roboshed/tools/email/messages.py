@@ -6,7 +6,7 @@ from roboshed.models import (
     EmailAttachmentDownloadReady,
     GuardFilesResult,
 )
-from roboz import Ctx
+from roboshed.tools.contexts import EmailContext
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -23,14 +23,14 @@ from .inputs import (
     ReadEmail,
     SearchEmail,
 )
-from .runtime import _prepare_email_context, run_email_call
+from .runtime import run_email_call
 
 
 @factory
 def search_email(
     input: SearchEmail,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: EmailContext,
 ) -> Str:
     """Search email metadata and previews without opening full message bodies."""
     del messages
@@ -98,7 +98,7 @@ def _format_search_results(results: tuple[EmailSummary, ...]) -> str:
 def read_email(
     input: ReadEmail,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: EmailContext,
 ) -> Str:
     """Open one referenced email.
 
@@ -196,7 +196,7 @@ def _confirm_inbox_read(source_message_ref: str, *, pipe: object | None) -> bool
 def execute_attachment_download(
     input: GuardFilesResult,
     messages: list[Message],
-    ctx: Ctx,
+    ctx: EmailContext,
 ) -> Str:
     """Download an approved email attachment to its guarded destination."""
     del messages
@@ -246,8 +246,3 @@ def execute_attachment_download(
 
 def _write_attachment(destination: Path, data: bytes) -> None:
     destination.write_bytes(data)
-
-
-search_email._prepare_ctx = _prepare_email_context
-read_email._prepare_ctx = _prepare_email_context
-execute_attachment_download._prepare_ctx = _prepare_email_context

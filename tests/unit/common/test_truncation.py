@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from roboz import Ctx
+from dataclasses import dataclass
 from roboz.llm._truncation import (
     TRUNCATED_PLACEHOLDER,
     get_truncated_messages_for_context,
@@ -40,6 +40,14 @@ from roboz.models.truncation import (
 from roboz.runtime.pipe import EventPipe
 from roboz.runtime.sinks import PersistenceSink
 from roboz.tooling.decorators import factory
+
+
+@dataclass(frozen=True)
+class OutputContext:
+    threshold: int
+    severity: Severity
+    output_class: type[Empty]
+
 
 # ---------- select_truncation (unit tests) ----------
 
@@ -103,7 +111,7 @@ def test_select_truncation(
 
 @factory
 def truncation_test(
-    input: Empty, messages: list[Message], ctx: Ctx
+    input: Empty, messages: list[Message], ctx: OutputContext
 ) -> Invoke | LocationStr | Stop:
     """Factory: returns output with configurable truncation from context."""
     threshold = ctx.threshold
@@ -150,49 +158,53 @@ def _long_marker(output_class: type) -> str:
     "ctx,num_messages,expected",
     [
         (
-            Ctx(threshold=-1, severity=Severity.LIGHT, output_class=Invoke),
+            OutputContext(threshold=-1, severity=Severity.LIGHT, output_class=Invoke),
             3,
             "all_full",
         ),
         (
-            Ctx(threshold=0, severity=Severity.STUB, output_class=Invoke),
+            OutputContext(threshold=0, severity=Severity.STUB, output_class=Invoke),
             2,
             "all_truncated",
         ),
         (
-            Ctx(threshold=1, severity=Severity.STUB, output_class=Invoke),
+            OutputContext(threshold=1, severity=Severity.STUB, output_class=Invoke),
             3,
             "last_full",
         ),
         (
-            Ctx(threshold=2, severity=Severity.LIGHT, output_class=Invoke),
+            OutputContext(threshold=2, severity=Severity.LIGHT, output_class=Invoke),
             4,
             "last_two_full",
         ),
         (
-            Ctx(threshold=0, severity=Severity.STUB, output_class=LocationStr),
+            OutputContext(
+                threshold=0, severity=Severity.STUB, output_class=LocationStr
+            ),
             1,
             "caller_stub",
         ),
         (
-            Ctx(threshold=1, severity=Severity.STUB, output_class=LocationStr),
+            OutputContext(
+                threshold=1, severity=Severity.STUB, output_class=LocationStr
+            ),
             2,
             "last_full",
         ),
         (
-            Ctx(threshold=0, severity=Severity.STUB, output_class=Stop),
+            OutputContext(threshold=0, severity=Severity.STUB, output_class=Stop),
             1,
             "caller_stub",
         ),
         (
-            Ctx(threshold=1, severity=Severity.STUB, output_class=Stop),
+            OutputContext(threshold=1, severity=Severity.STUB, output_class=Stop),
             2,
             "last_full",
         ),
     ],
 )
 def test_get_messages_for_context_parametrized(
-    ctx: Ctx, num_messages: int, expected: str
+    ctx: OutputContext, num_messages: int, expected: str
 ) -> None:
     tool = truncation_test(ctx)
     messages: list[Message] = [
@@ -240,8 +252,10 @@ def test_get_messages_for_context_parametrized(
 
 def test_get_messages_for_context_remove() -> None:
     """Mixed ctx: (1, remove) + (-1, light) x2; assert 2 msgs, m1 omitted."""
-    ctx_remove = Ctx(threshold=1, severity=Severity.REMOVE, output_class=Invoke)
-    ctx_keep = Ctx(threshold=-1, severity=Severity.LIGHT, output_class=Invoke)
+    ctx_remove = OutputContext(
+        threshold=1, severity=Severity.REMOVE, output_class=Invoke
+    )
+    ctx_keep = OutputContext(threshold=-1, severity=Severity.LIGHT, output_class=Invoke)
     tool_del = truncation_test(ctx_remove)
     tool_keep = truncation_test(ctx_keep)
     m1 = get_finalized_message(tool_del(input=Empty(), messages=[]), tool_del)
@@ -256,7 +270,7 @@ def test_get_messages_for_context_remove() -> None:
 
 def test_pathstr_light() -> None:
     """(0, light, PathStr); assert value truncated to ~200 chars."""
-    ctx = Ctx(threshold=0, severity=Severity.LIGHT, output_class=LocationStr)
+    ctx = OutputContext(threshold=0, severity=Severity.LIGHT, output_class=LocationStr)
     tool = truncation_test(ctx)
     messages = [get_finalized_message(tool(input=Empty(), messages=[]), tool)]
     result = get_truncated_messages_for_context(messages)
@@ -335,15 +349,15 @@ def test_get_messages_for_context_defaults_remove_message() -> None:
 @pytest.mark.parametrize(
     "ctx",
     [
-        Ctx(threshold=0, severity=Severity.STUB, output_class=Invoke),
-        Ctx(threshold=0, severity=Severity.STUB, output_class=LocationStr),
-        Ctx(threshold=0, severity=Severity.STUB, output_class=Stop),
-        Ctx(threshold=1, severity=Severity.STUB, output_class=Invoke),
-        Ctx(threshold=-1, severity=Severity.LIGHT, output_class=Invoke),
+        OutputContext(threshold=0, severity=Severity.STUB, output_class=Invoke),
+        OutputContext(threshold=0, severity=Severity.STUB, output_class=LocationStr),
+        OutputContext(threshold=0, severity=Severity.STUB, output_class=Stop),
+        OutputContext(threshold=1, severity=Severity.STUB, output_class=Invoke),
+        OutputContext(threshold=-1, severity=Severity.LIGHT, output_class=Invoke),
     ],
 )
 def test_pipe_persists_full_content_regardless_of_truncation(
-    pipe: EventPipe, tmp_path: Path, ctx: Ctx
+    pipe: EventPipe, tmp_path: Path, ctx: OutputContext
 ) -> None:
     """The pipe records the message verbatim. ``truncation`` governs only the LLM
     context (``get_truncated_messages_for_context``), never the persisted record —

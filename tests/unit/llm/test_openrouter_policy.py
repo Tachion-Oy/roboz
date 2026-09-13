@@ -1,12 +1,10 @@
 """Tests for explicit per-use OpenRouter request policy."""
 
 from typing import Final
+from types import SimpleNamespace
 
 from roboz.llm import LLMEndpoint, with_openrouter_policy
-from roboz.dependencies import (
-    ExternalDependencyKind,
-    LazyExternalDependency,
-)
+
 
 _API_NAME: Final[str] = "openrouter"
 _MODEL_NAME: Final[str] = "z-ai/glm-5.3"
@@ -15,7 +13,7 @@ _DEPENDENCY_ID: Final[str] = f"model:{_API_NAME}:{_MODEL_NAME}"
 
 def _endpoint() -> LLMEndpoint:
     return LLMEndpoint(
-        client=object(),
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
         model_name=_MODEL_NAME,
         api_name=_API_NAME,
     )
@@ -68,30 +66,17 @@ def test_openrouter_policy_adds_optional_provider_ignore_list() -> None:
     }
 
 
-def test_openrouter_policy_keeps_lazy_endpoint_lazy_and_identity_stable() -> None:
-    constructions = 0
-
-    def construct() -> LLMEndpoint:
-        nonlocal constructions
-        constructions += 1
-        return _endpoint()
-
-    canonical = LazyExternalDependency(
-        dependency_id_value=_DEPENDENCY_ID,
-        dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-        metadata={"api_name": _API_NAME, "model_name": _MODEL_NAME},
-        resolver=construct,
-    )
-
+def test_openrouter_policy_keeps_client_deferred_and_identity_stable():
+    constructions = []
+    canonical = _endpoint()
+    canonical.client.materialize = lambda: constructions.append("initialized")
     configured = with_openrouter_policy(canonical, reasoning_effort="high")
-
-    assert constructions == 0
+    assert constructions == []
     assert configured.dependency_id == canonical.dependency_id
-    assert configured.redacted_metadata()["model_name"] == _MODEL_NAME
-    resolved = configured.materialize()
-    assert constructions == 1
-    assert resolved.model_name == _MODEL_NAME
-    assert resolved.extra_body == {
+    assert configured.client is canonical.client
+    assert configured.materialize() is configured
+    assert constructions == ["initialized"]
+    assert configured.extra_body == {
         "provider": {"sort": "throughput", "require_parameters": True},
         "reasoning": {"effort": "high"},
     }

@@ -1,7 +1,6 @@
 """Cancellable wait between deterministic Librarian maintenance cycles."""
 
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 from time import sleep
 from typing import Final
@@ -10,7 +9,7 @@ from roboshed.identifiers import SLEEP_BETWEEN_RUNS_TOOL_NAME
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.models import NO_MESSAGE, All, Message, Stop, Str
 from roboz.runtime.persistence import active_marker_paths
-from roboz.tooling.context import Ctx, _prepare_context
+from roboshed.tools.contexts import SleepBetweenRunsContext
 from roboz.tooling.decorators import factory
 
 SLEEP_POLL_SECONDS: Final[float] = 1.0
@@ -26,7 +25,9 @@ def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
 
 
 @factory
-def sleep_between_runs(input: All, messages: list[Message], ctx: Ctx) -> Str | Stop:
+def sleep_between_runs(
+    input: All, messages: list[Message], ctx: SleepBetweenRunsContext
+) -> Str | Stop:
     """Wait for the next cycle, or stop once the watched project becomes idle."""
     del input, messages
     seconds = max(_MIN_SLEEP_SECONDS, float(ctx.seconds))
@@ -56,12 +57,4 @@ def sleep_between_runs(input: All, messages: list[Message], ctx: Ctx) -> Str | S
     )
 
 
-__all__ = ["SLEEP_POLL_SECONDS", "sleep_between_runs"]
-
-
-sleep_between_runs._prepare_ctx = partial(
-    _prepare_context,
-    required=("seconds",),
-    defaults={"is_cancelled": None, "conversation_root": None},
-    default_factories={"agent_names": set},
-)
+__all__ = ["SLEEP_POLL_SECONDS", "SleepBetweenRunsContext", "sleep_between_runs"]

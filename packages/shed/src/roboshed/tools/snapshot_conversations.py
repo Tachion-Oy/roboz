@@ -3,7 +3,6 @@
 import logging
 from datetime import datetime
 from enum import StrEnum
-from functools import partial
 from typing import Final
 
 from roboshed.identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
@@ -13,7 +12,6 @@ from roboshed.tools._snapshot_metadata import (
     parse_snapshot_document,
 )
 from roboshed.tools.compactification import (
-    DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
     summarize_conversation_segment,
 )
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
@@ -40,7 +38,7 @@ from roboz.runtime.persistence import (
     RunStatus,
     logged_row_to_message,
 )
-from roboz.tooling.context import Ctx, _prepare_context
+from roboshed.tools.contexts import SnapshotConversationsContext
 from roboz.tooling.decorators import factory
 
 logger = logging.getLogger(__name__)
@@ -181,7 +179,7 @@ def _should_snapshot(*, run: ConversationRun, threshold: int, new_tokens: int) -
 def _snapshot_one_run(
     *,
     run: ConversationRun,
-    ctx: Ctx,
+    ctx: SnapshotConversationsContext,
     threshold: int,
 ) -> bool:
     snapshot_folder = ctx.snapshot_root / run.conversation_id
@@ -273,7 +271,9 @@ def _snapshot_one_run(
 
 
 @factory
-def snapshot_conversations(input: All, messages: list[Message], ctx: Ctx) -> Str:
+def snapshot_conversations(
+    input: All, messages: list[Message], ctx: SnapshotConversationsContext
+) -> Str:
     """Create append-only snapshots for eligible persisted conversation runs."""
     del input, messages
     if ctx.pipe is not None:
@@ -317,23 +317,4 @@ def snapshot_conversations(input: All, messages: list[Message], ctx: Ctx) -> Str
     )
 
 
-__all__ = ["SnapshotMode", "snapshot_conversations"]
-
-
-snapshot_conversations._prepare_ctx = partial(
-    _prepare_context,
-    required=(
-        "endpoint",
-        "conversation_root",
-        "snapshot_root",
-        "memory_root",
-        "agent_names",
-        "token_growth_threshold",
-        "max_chars",
-    ),
-    defaults={
-        "max_chars_tolerance_percent": DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
-        "timeout_s": None,
-        "pipe": None,
-    },
-)
+__all__ = ["SnapshotConversationsContext", "SnapshotMode", "snapshot_conversations"]

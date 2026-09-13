@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from roboshed.tools import GuardContext
 from roboshed.models import (
     ActionVerdict,
     GuardFileSingle,
@@ -9,7 +10,7 @@ from roboshed.models import (
 from roboshed.tools.guard import build_guarded_tool_chain, guard_items
 from roboshed.tools.types import ResolvedFileCommand
 
-from roboz import Ctx, Empty, Message, Str, tool
+from roboz import Empty, Message, Str, tool
 
 
 class CustomInput(Empty):
@@ -42,7 +43,7 @@ def test_new_payload_survives_guard_chain_without_shared_type_registration(
         assert isinstance(input.items[0].value, CustomPayload)
         return Str(value=input.items[0].value.items[0])
 
-    ctx = Ctx(
+    ctx = GuardContext(
         base=tmp_path,
         default_verdict=ActionVerdict.allow,
         takes_precedence=ActionVerdict.deny,
@@ -61,7 +62,7 @@ def test_new_payload_survives_guard_chain_without_shared_type_registration(
 
 def test_specialized_guard_models_round_trip(tmp_path: Path):
     original = CustomInput(label="typed")
-    ctx = Ctx(
+    ctx = GuardContext(
         base=tmp_path,
         default_verdict=ActionVerdict.allow,
         takes_precedence=ActionVerdict.deny,

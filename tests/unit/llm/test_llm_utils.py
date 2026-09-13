@@ -61,6 +61,15 @@ from roboz.tooling.core import Tool
 # --- decode_raw_JSON Tests ---
 
 
+class _UnusedModels:
+    def list(self, **kwargs):
+        raise AssertionError("Model discovery was not requested")
+
+
+def _unused_close():
+    raise AssertionError("Client closing was not requested")
+
+
 def test_decode_raw_JSON_valid():
     valid_json = '{"action": "test", "rationale": "because"}'
     assert decode_raw_JSON(valid_json) == {"action": "test", "rationale": "because"}
@@ -652,7 +661,9 @@ def test_call_llm_api_interrupt_before_first_chunk_emits_no_deltas() -> None:
 
     endpoint = LLMEndpoint(
         client=SimpleNamespace(
-            chat=SimpleNamespace(completions=DelayedChatCompletions())
+            models=_UnusedModels(),
+            close=_unused_close,
+            chat=SimpleNamespace(completions=DelayedChatCompletions()),
         ),
         model_name="fake-model",
         api_name="fake",
@@ -706,6 +717,9 @@ class _FakeChat:
 
 
 class _FakeLLMClient:
+    models = _UnusedModels()
+    close = staticmethod(_unused_close)
+
     def __init__(self, response: object) -> None:
         self.chat = _FakeChat(response)
 
@@ -1429,7 +1443,11 @@ def test_call_llm_api_logs_provider_error_as_safe_structured_metadata(
         def create(self, **kwargs: object):
             raise ProviderError("bad api key")
 
-    client = SimpleNamespace(chat=SimpleNamespace(completions=FailingCompletions()))
+    client = SimpleNamespace(
+        models=_UnusedModels(),
+        close=_unused_close,
+        chat=SimpleNamespace(completions=FailingCompletions()),
+    )
     endpoint = LLMEndpoint(
         client=client,
         model_name="fake-model",
@@ -1534,7 +1552,9 @@ def test_classify_llm_provider_error_uses_endpoint_error_types() -> None:
     class ProviderRateLimit(Exception): ...
 
     endpoint = LLMEndpoint(
-        client=object(),
+        client=SimpleNamespace(
+            chat=object(), audio=object(), models=_UnusedModels(), close=_unused_close
+        ),
         model_name="fake-model",
         api_name="fake",
         rate_limit_error=ProviderRateLimit,
@@ -1560,6 +1580,9 @@ class _FakeAudio:
 
 
 class _FakeClient:
+    models = _UnusedModels()
+    close = staticmethod(_unused_close)
+
     def __init__(self) -> None:
         self.audio = _FakeAudio()
 
@@ -1778,6 +1801,9 @@ class _ScriptedChat:
 
 
 class _ScriptedLLMClient:
+    models = _UnusedModels()
+    close = staticmethod(_unused_close)
+
     def __init__(self, script: list[object]) -> None:
         self.chat = _ScriptedChat(script)
 
@@ -1801,6 +1827,9 @@ class _ScriptedAudio:
 
 
 class _ScriptedTranscriptionClient:
+    models = _UnusedModels()
+    close = staticmethod(_unused_close)
+
     def __init__(self, script: list[object]) -> None:
         self.audio = _ScriptedAudio(script)
 
@@ -1847,9 +1876,7 @@ def test_call_llm_api_retries_transient_rate_limit_then_succeeds(
     assert content == '{"arg":"ok"}'
     assert len(client.chat.completions.calls) == 2
     external_records = [
-        record
-        for record in caplog.records
-        if record.name == "roboz.runtime._external"
+        record for record in caplog.records if record.name == "roboz.runtime._external"
     ]
     assert external_records == []
     llm_records = [
@@ -1914,9 +1941,7 @@ def test_call_llm_api_logs_each_failed_provider_attempt(
         if record.name == "roboz.llm._diagnostics"
         and record.getMessage().startswith("LLM provider attempt failed:")
     ]
-    provider_data = [
-        getattr(record, LOG_DATA_ATTRIBUTE) for record in provider_records
-    ]
+    provider_data = [getattr(record, LOG_DATA_ATTRIBUTE) for record in provider_records]
     assert len(provider_data) == 2
     assert [data["attempt"] for data in provider_data] == [1, 2]
     call_ids = {data["call_id"] for data in provider_data}
@@ -2170,7 +2195,11 @@ def test_call_transcription_api_times_out_and_raises_llm_call_timeout_error() ->
             time.sleep(1.0)
             return _transcription_response("too slow")
 
-    client = SimpleNamespace(audio=SimpleNamespace(transcriptions=SlowTranscriptions()))
+    client = SimpleNamespace(
+        models=_UnusedModels(),
+        close=_unused_close,
+        audio=SimpleNamespace(transcriptions=SlowTranscriptions()),
+    )
     endpoint = TranscriptionEndpoint(
         client=client, model_name="whisper-test", api_name="test-provider"
     )
@@ -2196,7 +2225,11 @@ def test_call_transcription_api_timeout_is_not_retried() -> None:
             time.sleep(1.0)
             return _transcription_response("too slow")
 
-    client = SimpleNamespace(audio=SimpleNamespace(transcriptions=SlowTranscriptions()))
+    client = SimpleNamespace(
+        models=_UnusedModels(),
+        close=_unused_close,
+        audio=SimpleNamespace(transcriptions=SlowTranscriptions()),
+    )
     endpoint = TranscriptionEndpoint(
         client=client, model_name="whisper-test", api_name="test-provider"
     )
@@ -2296,7 +2329,11 @@ def test_classify_llm_provider_error_works_for_transcription_endpoint() -> None:
         status_code = 401
 
     endpoint = TranscriptionEndpoint(
-        client=object(), model_name="whisper-test", api_name="test-provider"
+        client=SimpleNamespace(
+            chat=object(), audio=object(), models=_UnusedModels(), close=_unused_close
+        ),
+        model_name="whisper-test",
+        api_name="test-provider",
     )
 
     error = classify_llm_provider_error(ProviderAuthError("bad key"), endpoint)
@@ -2333,7 +2370,13 @@ def _fake_httpx_transport_error() -> Exception:
 
 
 def _endpoint() -> LLMEndpoint:
-    return LLMEndpoint(client=object(), model_name="fake-model", api_name="fake")
+    return LLMEndpoint(
+        client=SimpleNamespace(
+            chat=object(), audio=object(), models=_UnusedModels(), close=_unused_close
+        ),
+        model_name="fake-model",
+        api_name="fake",
+    )
 
 
 def test_classify_llm_provider_error_treats_httpx_transport_error_as_unavailable() -> (

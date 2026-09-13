@@ -5,10 +5,11 @@ from roboshed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Opera
 from roboshed.tools.email.inputs import CreateEmailDraft
 from roboshed.tools.guard import guard_items
 
-from roboz import Ctx, Str
+from roboshed.tools import GuardContext
+from roboz import Str
 
 
-def typed_guard(ctx: Ctx) -> None:
+def typed_guard(ctx: GuardContext) -> None:
     items = [
         GuardFileSingle[Str](
             operation=Operation.READ, location=Path("/tmp"), value=Str(value="payload")

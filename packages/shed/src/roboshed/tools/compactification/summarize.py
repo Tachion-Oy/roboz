@@ -5,6 +5,7 @@ import logging
 import math
 from typing import Final
 
+from roboshed.tools.contexts import DEFAULT_MAX_CHARS_TOLERANCE_PERCENT
 from roboshed.tools.compactification.summary_prompts import (
     SUMMARY_OUTPUT_EXAMPLE,
     build_summary_length_feedback,
@@ -25,7 +26,6 @@ from roboz.runtime import EventPipe, log_with_data
 logger = logging.getLogger(__name__)
 
 SUMMARY_LENGTH_ATTEMPTS: Final[int] = 3
-DEFAULT_MAX_CHARS_TOLERANCE_PERCENT: Final[float] = 15.0
 
 _PERCENT_SCALE: Final[int] = 100
 _FIRST_ATTEMPT: Final[int] = 1

@@ -3,68 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
-import os
 import ssl
-import tempfile
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
-from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel
-from roboshed.sandbox import Sandbox
-from roboz.agent import Agent
 from roboz.dependencies import (
-    BoundDependency,
-    DependencyContractError,
-    DependencyRegistration,
-    ExecutableDependency,
     ExternalDependency,
     ExternalDependencyKind,
-    bind_dependencies,
     dedupe_external_dependencies,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def inspect_dependencies(
-    build_agent: Callable[[Sandbox], tuple[Agent, tuple[Agent, ...]]],
-    *,
-    sandbox: Sandbox,
-    registrations: Sequence[DependencyRegistration] | None,
-    additional_dependencies: Sequence[ExternalDependency] = (),
-) -> tuple[BoundDependency, ...]:
-    """Build against a temporary sandbox and bind exact health registrations.
-
-    The callback selects project inputs and endpoints. Discovery follows the
-    root's complete tool graph without materializing resources or running checks.
-    Temporary storage is removed on success and failure. Omitted registrations
-    select executable and model checks only; other kinds require explicit checks.
-    """
-    with tempfile.TemporaryDirectory(prefix="deployment-dependency-inspection-") as raw:
-        agent, _ = build_agent(replace(sandbox, root=Path(raw)))
-        discovered = (*agent.external_dependencies(), *additional_dependencies)
-        if registrations is None:
-            checks = {
-                ExternalDependencyKind.EXECUTABLE: check_executable,
-                ExternalDependencyKind.MODEL_ENDPOINT: check_openai_compatible_endpoint,
-            }
-            unique = dedupe_external_dependencies(discovered)
-            if any(item.kind not in checks for item in unique):
-                raise DependencyContractError(
-                    "custom dependency kind requires an explicit checker registration"
-                )
-            registrations = tuple(
-                DependencyRegistration(item.dependency_id, item.kind, checks[item.kind])
-                for item in unique
-            )
-        return bind_dependencies(discovered, registrations)
 
 
 class DependencyReasonCode(StrEnum):
@@ -120,11 +74,16 @@ class DependencyRecord(BaseModel):
 
 
 class DependencyHealthMonitor:
-    """Periodically check validated dependencies and cache sanitized results."""
+    """Periodically call resource-owned checks and cache sanitized observations.
+
+    Combine agent dependencies and standalone resources in the supplied sequence.
+    The first resource for each dependency ID is retained for this monitor's
+    lifetime. Construction records pending status; observation performs checks.
+    """
 
     def __init__(
         self,
-        dependencies: Sequence[BoundDependency],
+        dependencies: Sequence[ExternalDependency],
         *,
         interval_s: float = 60.0,
         timeout_s: float = 20.0,
@@ -134,16 +93,15 @@ class DependencyHealthMonitor:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """Configure checks and scheduling without starting tasks or resolving dependencies."""
-        self._dependencies = {
-            item.dependency.dependency_id: item for item in dependencies
-        }
+        resources = dedupe_external_dependencies(dependencies)
+        self._dependencies = {item.dependency_id: item for item in resources}
         self._records = {
-            item.dependency.dependency_id: DependencyRecord(
-                dependency_id=item.dependency.dependency_id,
-                kind=item.dependency.kind,
-                redacted_metadata=_sanitize_metadata(item.dependency),
+            item.dependency_id: DependencyRecord(
+                dependency_id=item.dependency_id,
+                kind=item.kind,
+                redacted_metadata=_sanitize_metadata(item),
             )
-            for item in dependencies
+            for item in resources
         }
         self._interval_s = interval_s
         self._timeout_s = timeout_s
@@ -256,17 +214,9 @@ class DependencyHealthMonitor:
         )
 
     async def _run_check(self, dependency_id: str) -> DependencyCheckResult:
-        bound = self._dependencies[dependency_id]
+        dependency = self._dependencies[dependency_id]
         async with self._semaphore:
-            if inspect.iscoroutinefunction(bound.check):
-                raw = await bound.check(bound.dependency)
-            else:
-                raw = await asyncio.to_thread(bound.check, bound.dependency)
-                if inspect.isawaitable(raw):
-                    raw = await raw
-        if not isinstance(raw, DependencyCheckResult):
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        return raw
+            return await asyncio.to_thread(check_dependency, dependency)
 
     def _clear_inflight(
         self, dependency_id: str, task: asyncio.Task[DependencyCheckResult]
@@ -277,64 +227,26 @@ class DependencyHealthMonitor:
             self._inflight.pop(dependency_id, None)
 
 
-def check_executable(dependency: ExternalDependency) -> DependencyCheckResult:
-    """Resolve an executable and verify its path without starting it."""
+def check_dependency(dependency: ExternalDependency) -> DependencyCheckResult:
+    """Run the resource's synchronous check and return a sanitized observation.
+
+    Return success only for ``True``. Map ``False`` to model-unavailable for
+    model endpoints or not-found for other resources. Invalid return values
+    produce protocol-error; provider exceptions retain only their reason code.
+    The resource owns availability checking and any initialization it requires.
+    """
     try:
-        materialized = dependency.materialize()
-        if not isinstance(materialized, ExecutableDependency):
+        available = dependency.check()
+        if not isinstance(available, bool):
             return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        resolved = materialized.resolve()
-        if (
-            resolved is None
-            or not resolved.exists()
-            or not os.access(resolved, os.X_OK)
-        ):
-            return DependencyCheckResult.failure(DependencyReasonCode.NOT_FOUND)
-        return DependencyCheckResult.success()
-    except Exception as exc:
-        return DependencyCheckResult.failure(reason_code_for_exception(exc))
-
-
-def check_openai_compatible_endpoint(
-    dependency: ExternalDependency,
-) -> DependencyCheckResult:
-    """Authenticate through model discovery and confirm the configured model."""
-    try:
-        endpoint = dependency.materialize()
-        client = getattr(endpoint, "client", None)
-        model_name = getattr(endpoint, "model_name", None)
-        models_api = getattr(client, "models", None)
-        list_models = getattr(models_api, "list", None)
-        if not isinstance(model_name, str) or not callable(list_models):
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        response = list_models(timeout=10.0)
-        data = getattr(response, "data", None)
-        if data is None and isinstance(response, dict):
-            data = response.get("data")
-        if data is None:
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        model_ids = {_model_id(item) for item in data}
-        if None in model_ids:
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        recognized_name = model_name.split(":", 1)[0]
-        if model_name not in model_ids and recognized_name not in model_ids:
-            return DependencyCheckResult.failure(DependencyReasonCode.MODEL_UNAVAILABLE)
-        return DependencyCheckResult.success()
-    except Exception as exc:
-        return DependencyCheckResult.failure(reason_code_for_exception(exc))
-
-
-def check_network_service(dependency: ExternalDependency) -> DependencyCheckResult:
-    """Run the service-owned safe protocol probe."""
-    try:
-        provider = dependency.materialize()
-        probe = getattr(provider, "probe", None)
-        if not callable(probe):
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        result = probe()
-        if not isinstance(result, dict):
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        return DependencyCheckResult.success()
+        if available:
+            return DependencyCheckResult.success()
+        reason = (
+            DependencyReasonCode.MODEL_UNAVAILABLE
+            if dependency.kind is ExternalDependencyKind.MODEL_ENDPOINT
+            else DependencyReasonCode.NOT_FOUND
+        )
+        return DependencyCheckResult.failure(reason)
     except Exception as exc:
         return DependencyCheckResult.failure(reason_code_for_exception(exc))
 
@@ -405,23 +317,12 @@ def _sanitize_metadata(dependency: ExternalDependency) -> dict[str, str]:
     }
 
 
-def _model_id(item: Any) -> str | None:
-    if isinstance(item, dict):
-        value = item.get("id")
-    else:
-        value = getattr(item, "id", None)
-    return value if isinstance(value, str) else None
-
-
 __all__ = [
     "DependencyCheckResult",
     "DependencyHealthMonitor",
     "DependencyReasonCode",
     "DependencyRecord",
     "DependencyStatus",
-    "check_executable",
-    "check_network_service",
-    "check_openai_compatible_endpoint",
-    "inspect_dependencies",
+    "check_dependency",
     "reason_code_for_exception",
 ]

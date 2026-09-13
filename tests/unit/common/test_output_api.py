@@ -2,7 +2,6 @@
 
 import json
 
-from roboz import Ctx
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Stop, Str
@@ -103,7 +102,7 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
             {"action": "stop", "rationale": "done", "value": "ok"},
         ]
     )
-    start_only = prompt_user_at_start(Ctx(message="m"))
+    start_only = prompt_user_at_start("m")
     agent = Agent(
         interaction_mode=Output.API,
         name="api_output_agent",

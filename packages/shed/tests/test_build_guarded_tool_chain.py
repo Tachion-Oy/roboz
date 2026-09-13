@@ -8,6 +8,7 @@ return the three tools in registration order.
 
 from pathlib import Path
 
+from roboshed.tools import GuardContext
 from roboshed.models import (
     ActionVerdict,
     GuardFilesResult,
@@ -20,7 +21,6 @@ from roboshed.models import (
 from roboshed.tools.guard import build_guarded_tool_chain
 from roboshed.tools.types import ResolvedFileCommand
 
-from roboz import Ctx
 from roboz.models import Empty, Message, Str
 from roboz.models.truncation import Severity, Truncation
 from roboz.tooling import Tool
@@ -47,8 +47,8 @@ def _make_execute() -> Tool:
     return execute
 
 
-def _guard_ctx() -> Ctx:
-    return Ctx(
+def _guard_ctx() -> GuardContext:
+    return GuardContext(
         base=Path("."),
         takes_precedence=ActionVerdict.deny,
         allow=[],

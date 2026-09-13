@@ -149,62 +149,99 @@ writes.
 
 ## Fixed RoboSprawl recipe
 
-`roboshed.deployments.robosprawl.RoboSprawl` is a standalone configuration class,
-not a `DeployableAgent` subclass. It can be created before runtime inputs are
-known. Supply them through setters before calling argument-free `build()`:
+`roboshed.deployments.robosprawl.robosprawl()` is the lazy fixed recipe. It
+accepts a scoped sandbox, selected endpoint getter, separate memory endpoint,
+permitted root additions, specialists, interaction mode, and caller sinks:
 
 ```python
 from roboshed.capabilities import Compactification
-from roboshed.deployments.robosprawl import RoboSprawl
+from roboshed.deployments.robosprawl import robosprawl
 from roboshed.skills import robosprawl as orientation
 from roboz.deployment import Capability
 from roboz.runtime import Output
 
-recipe = RoboSprawl()
-recipe.set_sandbox(sandbox)  # Already scoped with sandbox.for_project(name).
-recipe.set_endpoint_getter(selected_endpoint_getter)
-recipe.set_memory_endpoint(memory_endpoint)
-recipe.set_additional_capabilities(
-    (
+agent, background_agents = robosprawl(
+    sandbox,
+    endpoint_getter=selected_endpoint_getter,
+    memory_endpoint=memory_endpoint,
+    additional_capabilities=(
         Capability(auto_loaded_skills=(orientation,)),
         Compactification(threshold_percent=60.0),
     ),
+    specialists=application_specialists,
+    interaction_mode=Output.API,
+    event_sinks=(ui_event_sink,),
 )
-recipe.set_specialists(application_specialists)
-recipe.set_interaction_mode(Output.API)
-recipe.set_event_sinks((ui_event_sink,))
-agent, background_agents = recipe.build()
 ```
 
-The sandbox, endpoint getter, and memory endpoint are required at build time;
-the other inputs default to empty sequences and `interaction_mode=None`. A `None`
-mode inherits core's current output setting, falling back to CLI when none is
-bound. Missing inputs raise `ValueError` before composition. Configuration and
-building neither invoke
-agents nor materialize provider clients nor create project directories.
-
-Each build creates a fresh configuration graph and then fresh runtimes.
+Each call creates a fresh configuration graph and then builds fresh runtimes.
 The recipe owns the orchestrator defaults and the Librarian; callers cannot
 replace either or alter the Librarian pipeline. Additional capabilities append
 after the orchestrator defaults. Watched names are calculated only after all
 specialists are attached. The root follows model switching through the endpoint
 getter, while the Librarian retains its separate memory endpoint.
 
-Create a new recipe for each new run, not for replies or stream reconnects.
-Setters snapshot the sandbox and sequence containers; endpoints and supplied
-capability/child objects remain caller-owned. Do not concurrently reconfigure
-one shared recipe. Reconfiguring a recipe does not redirect an already-built
-runtime's sandbox or sinks.
-
-Migration: replace the old callable dataclass or function call with the setters
-above. `robosprawl` remains an importable alias for `RoboSprawl`, but does not
-preserve the old argument-taking signature. No `Deployment` wrapper is needed.
-
 Project memory and locations remain initial messages. Each agent receives its
 own persistence sink below the scoped conversation-log directory, while caller
 sinks reach foreground branches only. The application owns invocation,
 interruption, cancellation, background shutdown, and dependency health.
 
-`roboshed.dependency_health.inspect_dependencies()` accepts a callback that
-builds and returns the same `(root, background_agents)` tuple against its
-temporary sandbox. It does not require a deployment wrapper.
+## Inspect before invocation
+
+Use the configured `DeployableAgent` as the inspection surface:
+
+```python
+from roboz import Str, stop
+from roboz.deployment import Capability, DeployableAgent
+from roboshed.dependency_health import DependencyHealthMonitor
+
+
+definition = DeployableAgent(
+    name="worker", is_agentic=False,
+    default_capabilities=(Capability(default_tools=(stop,)),),
+)
+resources = definition.external_dependencies()
+monitor = DependencyHealthMonitor(resources)
+agent, background_agents = definition.build()
+result, messages = agent.invoke(input=Str(value="done"))
+assert resources == ()
+assert result.value == "done"
+```
+
+`external_dependencies()` calls `build()` without event sinks, then delegates to
+`Agent.external_dependencies()`. The root agent already includes its foreground
+and background children through their bound tool contexts, as well as default,
+active, passive, and unloaded skill tools. Equal dependency IDs retain the first
+resource in the agent's inspection order. Capabilities continue to implement
+`required_attributes` and `build`; their tools supply the dependency information.
+
+Each inspection validates the current configuration and constructs fresh runtime
+agents, pipes, and capability bindings. It does not invoke agents, read their
+initial messages, or request endpoint initialization or availability checks.
+Custom capability builders execute normally: construction effects and errors
+remain possible. This method does not isolate filesystem access. Keep external
+operations in tool invocation or explicit resource checks when authoring builders.
+
+The former `roboshed.dependency_health.inspect_dependencies()` callback helper,
+including its temporary sandbox, is removed. The definition inspection method
+is optional and requires complete build configuration. It is not called by the
+monitor or by the existing deployment lifecycle. Discovery uses normal construction
+to determine the actual tool graph. Agents need not be running. Any substituted
+configuration used for discovery must produce the same resource declarations as
+the actual deployment. If runtime agents already exist, their inspection methods
+remain available.
+
+The health monitor also accepts dependencies unrelated to an agent. For example,
+combine `(*definition.external_dependencies(), *selectable_models, transcription)`
+when constructing `DependencyHealthMonitor`. This can check every selectable
+model before an invocation chooses one. The monitor deduplicates the combined
+resources and checks them only when observation runs; see the
+[Shed health guide](../packages/shed/README.md#dependency-health).
+
+Shed's file, maintenance, and email tool contexts and capability bindings are
+migrated. Capabilities construct central typed contexts while preserving their
+arguments, owner configuration, endpoint overrides, defaults, and tool order.
+The RoboSprawl recipe binds its orchestrator to `LLMEndpointRoute`, while fixed
+capability and Librarian endpoints remain concrete. The route follows the getter
+for inspection and each new model operation without changing deployment build or
+invocation order.

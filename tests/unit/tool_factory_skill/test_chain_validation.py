@@ -1,6 +1,5 @@
 import pytest
 
-from roboz import Ctx
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Int, Invoke, Message, Stop, Str, Strs
@@ -153,15 +152,15 @@ def test_tool_chain_list_invalid():
 def test_factory_chain_valid():
 
     @factory
-    def root_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+    def root_factory(input: Str, messages: list[Message], ctx: None) -> Str:
         return Str(value=input.value)
 
     # NOTE: `chained_to` references the Factory, not the resolved Tool.
     @factory(chained_to=root_factory)
-    def next_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+    def next_factory(input: Str, messages: list[Message], ctx: None) -> Str:
         return Str(value=str(int(input.value) + 1))
 
-    ctx = Ctx()
+    ctx = None
     root_tool = root_factory(ctx)
     next_tool = next_factory(ctx)
 
@@ -193,10 +192,10 @@ def test_factory_chain_list_invalid():
         return Str(value=input.value)
 
     @factory(chained_to=[valid_tool, invalid_tool])
-    def next_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+    def next_factory(input: Str, messages: list[Message], ctx: None) -> Str:
         return Str(value="1")
 
-    next_tool = next_factory(Ctx())
+    next_tool = next_factory(None)
 
     @tool
     def default_tool(input: Empty, messages: list[Message]) -> Empty:

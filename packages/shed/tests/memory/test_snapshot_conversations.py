@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from roboshed.tools import SnapshotConversationsContext
 from roboshed.tools import snapshot_conversations
 from roboshed.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
@@ -16,7 +17,6 @@ from roboshed.tools._snapshot_metadata import (
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
-from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import MockLLMEndpoint
 from roboz.models import DEFAULT, BaseNames, Empty, Message, MessageKind, Role
@@ -91,8 +91,8 @@ def _ctx(
     agent_names: set[str] | None = None,
     threshold: int = 1,
     pipe: EventPipe | None = None,
-) -> Ctx:
-    return Ctx(
+) -> SnapshotConversationsContext:
+    return SnapshotConversationsContext(
         endpoint=endpoint,
         conversation_root=conversation_root,
         snapshot_root=snapshot_root,

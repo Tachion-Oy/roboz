@@ -1,29 +1,33 @@
-from collections.abc import Callable
+"""Monitor deployment resources together with standalone selectable endpoints."""
+
+from collections.abc import Sequence
 from typing import assert_type
 
-from roboshed.agents import orchestrator as orchestrator_definition
-from roboshed.dependency_health import inspect_dependencies
-from roboshed.sandbox import Sandbox
-from roboz import Agent, DependencyRoute, LazyExternalDependency
-from roboz.dependencies import BoundDependency
-from roboz.llm import LLMEndpoint
+from roboshed.dependency_health import (
+    DependencyCheckResult,
+    DependencyHealthMonitor,
+    DependencyRecord,
+    check_dependency,
+)
+from roboz import Agent, HasExternalDependencies
+from roboz.dependencies import ExternalDependency
+from roboz.deployment import DeployableAgent
+from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 
 
 def inspect(
-    sandbox: Sandbox, getter: Callable[[], LazyExternalDependency[LLMEndpoint]]
+    definition: DeployableAgent,
+    endpoint: LLMEndpoint,
+    selectable: Sequence[LLMEndpoint],
+    transcription: TranscriptionEndpoint,
 ) -> None:
-    route = DependencyRoute(getter)
-    assert_type(route.materialize(), LLMEndpoint)
-
-    def configure(sandbox: Sandbox) -> tuple[Agent, tuple[Agent, ...]]:
-        sandbox.configure_scope("project")
-        definition = orchestrator_definition(sandbox, agent_endpoint=route)
-        return definition.build(
-            event_sinks=(lambda event: None,),
-        )
-
-    assert_type(configure(sandbox), tuple[Agent, tuple[Agent, ...]])
-    assert_type(
-        inspect_dependencies(configure, sandbox=sandbox, registrations=None),
-        tuple[BoundDependency, ...],
-    )
+    definition.set_agent_endpoint(endpoint)
+    resources = definition.external_dependencies()
+    assert_type(resources, tuple[ExternalDependency, ...])
+    source: HasExternalDependencies = definition
+    assert_type(source.external_dependencies(), tuple[ExternalDependency, ...])
+    assert_type(check_dependency(endpoint), DependencyCheckResult)
+    monitor = DependencyHealthMonitor((*resources, *selectable, transcription))
+    assert_type(monitor.records(), list[DependencyRecord])
+    assert_type(monitor.record(endpoint.dependency_id), DependencyRecord | None)
+    assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])

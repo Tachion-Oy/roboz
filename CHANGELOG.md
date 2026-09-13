@@ -2,6 +2,75 @@
 
 ## Unreleased
 
+- Add `LLMEndpointRoute`, a typed live-selection layer above concrete chat
+  endpoints. Routes retain a caller-owned endpoint getter, report the current
+  selected resource without initializing clients, and resolve once per model
+  operation so in-flight calls retain their endpoint. Request and OpenRouter
+  policies support routes while keeping fixed endpoint use unchanged.
+
+- Inspect a configured deployment with `DeployableAgent.external_dependencies()`.
+  It builds fresh, unstarted agents without event sinks and delegates to their
+  existing tool inspection, including child agents and skill resources. Capability
+  construction still runs normally; no additional dependency declaration is required.
+
+- Initialize factory contexts lazily on invocation through the optional
+  `Materializable.materialize() -> Self` protocol. Binding, copying, and inspection
+  stay side-effect free. Endpoints support explicit early `materialize()` calls
+  while preserving their identity; prompt contexts delegate initialization.
+  Breaking: OpenAI-compatible client protocols now require `close() -> None` for
+  typed cleanup. See [the lifecycle contract](docs/dependency-primitives.md).
+
+- Make resource-inspection declarations explicit: aggregate contexts and agents
+  implement the `HasExternalDependencies` protocol, renamed from `Context` with
+  no compatibility alias. Authors can inherit it to require
+  `external_dependencies()`; missing implementations fail type checking and
+  instantiation. Plain contexts remain unrestricted, and direct resources inherit
+  inspection from `ExternalDependency`.
+
+- Breaking: migrate core interaction and agent factories to concrete contexts.
+  Bind interaction factories to strings, `run_subagent` to the child `Agent`,
+  and background/prompt factories to `BackgroundAgentContext`/`PromptAgentContext`
+  from `roboz.agent`. Background constructors own fresh state; rebinding and copies
+  share supplied state. Agent inspection uses live tool methods, and deployment
+  builders use the same bindings. Restore top-level agent, skill, and built-in
+  tool exports; removed dependency and `Ctx` APIs stay removed. See
+  [the primitive migration](docs/dependency-primitives.md).
+
+- Breaking: core endpoints require synchronous OpenAI-compatible clients instead
+  of an untyped client. Client methods and request controls are checked statically;
+  the real `openai.OpenAI` client satisfies the protocols without a wrapper or an
+  SDK dependency in core. Replace placeholder or incompatible clients with a
+  conforming chat/transcription client. See [the client contract](docs/dependency-primitives.md).
+
+- Breaking: external resource implementations must provide `check() -> bool` for
+  explicit availability checks. Executables check PATH; core endpoints use model
+  discovery without generating output. Results are uncached, absent resources
+  return `False`, and check errors propagate. Binding, copying, and inspection
+  never invoke checks. Plain contexts need no check method. See
+  [resource inspection and availability](docs/dependency-primitives.md).
+
+- Accept any concretely typed factory context, including plain objects and lists.
+  Contexts without resource inspection are passed through unchanged and their
+  tools report no dependencies. Wrong context types remain static binding errors.
+
+- Bind core chat and transcription endpoints directly as typed factory contexts,
+  retaining their identity and client for execution and inspection. Endpoint
+  request helpers and the selector now use concrete endpoints; lazy construction
+  and companion migrations remain deferred. Scripted endpoints report no external
+  resources. See [typed contexts and resource inspection](docs/dependency-primitives.md).
+- Fix `@factory()` input inference so parenthesized factories retain the same
+  concrete input, output, and context types as bare `@factory` declarations.
+
+- Breaking checkpoint: bind factories directly to concrete typed resources or
+  contexts with optional `external_dependencies()`, preserving the supplied object and
+  inspecting it live. Replace `Ctx` and tool dependency properties with concrete
+  contexts and `tool.external_dependencies()`. Dependency extension primitives
+  stay in `roboz.dependencies`; the top-level API now exposes only data and
+  tool/factory/context primitives. Remove legacy dependency bases, lazy/reference
+  helpers, and checker registration. Agent, built-in tool, and companion consumers
+  remain unmigrated; this checkpoint is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
+  for the contract, removed APIs, and migration boundary.
+
 ## 0.1.2.dev4 - 2026-09-12
 
 - Breaking: make `DeployableAgent` an explicitly configured class. Constructor

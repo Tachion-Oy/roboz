@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+- Migrate capability bindings to the central typed contexts. Existing capability
+  arguments, owner configuration, endpoint overrides, defaults, and maintenance
+  order are preserved. Each build creates fresh tool state and reports actual
+  resources without initializing model clients. The RoboSprawl recipe now uses
+  `LLMEndpointRoute` for the selectable orchestrator while its Librarian endpoint
+  remains fixed.
+
+- Breaking: email factories now use the central `EmailContext`; attachment
+  resolvers bind a `Path` directly. `get_work_with_email` keeps its arguments and
+  requires a complete `EmailService`, which now inherits `ExternalDependency`
+  and implements `check()` using its read-only probe. Email dependencies are
+  inspectable without mailbox access and can be monitored without an agent.
+  Mailbox operations, permission checks, defaults, and error messages are preserved.
+  See the [context migration guide](../../docs/shed-tool-contexts.md#email-services-and-contexts).
+
+- Breaking: bind built-in file and maintenance factories to concrete typed contexts
+  instead of `Ctx`; direct patch stages accept a `Path` or `TruncationSpec`.
+  Existing `get_*` helper arguments remain supported. Command and summary contexts
+  report their actual resources through `tool.external_dependencies()`. Compaction
+  counters belong to the context: rebinding/copying shares them; constructing a new
+  context creates fresh state. See the [tool-context migration](../../docs/shed-tool-contexts.md).
+
+- Breaking: remove callback-based `inspect_dependencies`; inspect the configured
+  `DeployableAgent.external_dependencies()` instead; it constructs unstarted
+  agents using normal capability builders, without temporary sandbox isolation.
+  The health monitor accepts the resulting resources together with standalone
+  dependencies such as selectable models, deduplicating the combined sequence. Each resource owns its
+  synchronous `check() -> bool`; remove checker registrations and replace the
+  three category-specific probe helpers with `check_dependency(resource)` when
+  a sanitized observation is needed. Timeout, concurrency, metadata filtering,
+  and cached health-record behavior remain unchanged. See the README health guide.
+
+- Breaking: replace the setter-based `RoboSprawl` class with `robosprawl(sandbox, ...)`.
+  Supply deployment choices directly and unpack the returned root/background
+  agents. See [the recipe guide](../../docs/agent-factories.md).
+
 ## 0.1.1.dev2 - 2026-09-12
 
 - Breaking: move permission, sandbox, watched-agent, and default model inputs

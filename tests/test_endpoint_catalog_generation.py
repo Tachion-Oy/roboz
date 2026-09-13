@@ -137,7 +137,7 @@ assert 'materialized' not in provider.test_model.__dict__
         for node in ast.walk(tree)
         if isinstance(node, ast.AnnAssign) and ast.unparse(node.target) == "test_model"
     )
-    assert ast.unparse(attribute.annotation) == f"LazyExternalDependency[{endpoint_type}]"
+    assert ast.unparse(attribute.annotation) == endpoint_type
     assert run(str(GENERATOR)).returncode == 0
     assert stub.read_bytes() == generated
     assert run(str(GENERATOR), "--check").returncode == 0
@@ -157,19 +157,23 @@ def test_new_mixed_provider_needs_only_inventory_data(isolated_package):
     package, run = isolated_package
     inventory = package / "inventory.py"
     source = inventory.read_text()
-    inventory.write_text(source.replace(
-        "    for collection in (",
-        '''    for collection in (
+    inventory.write_text(
+        source.replace(
+            "    for collection in (",
+            """    for collection in (
         Catalog(
             adapter=OpenAICompatibleAdapter(api_name="new_provider"),
             models={
                 "audio": TranscriptionModelSpec("audio"),
                 "chat": ChatModelSpec("chat", 123),
             },
-        ),''',
-        1,
-    ))
-    result = run("-c", """
+        ),""",
+            1,
+        )
+    )
+    result = run(
+        "-c",
+        """
 from roboz_endpoints import new_provider
 from roboz_endpoints.catalog import new_provider as old_import
 from roboz_endpoints.inventory import NEW_PROVIDER_MODELS
@@ -177,15 +181,16 @@ assert old_import is new_provider
 assert NEW_PROVIDER_MODELS is new_provider.models
 assert new_provider.audio.dependency_id == 'model:new_provider:audio'
 assert new_provider.chat.dependency_id == 'model:new_provider:chat'
-""")
+""",
+    )
     assert result.returncode == 0, result.stderr
     assert run(str(GENERATOR), "--check").returncode == 1
     result = run(str(GENERATOR))
     assert result.returncode == 0, result.stderr
     stub = (package / "inventory.pyi").read_text()
     assert "class _new_provider_Catalog(Catalog[ModelSpec]):" in stub
-    assert "audio: LazyExternalDependency[TranscriptionEndpoint]" in stub
-    assert "chat: LazyExternalDependency[LLMEndpoint]" in stub
+    assert "audio: TranscriptionEndpoint" in stub
+    assert "chat: LLMEndpoint" in stub
     for filename in ("catalog.pyi", "__init__.pyi"):
         assert "import new_provider as new_provider" in (package / filename).read_text()
     assert run(str(GENERATOR), "--check").returncode == 0

@@ -303,7 +303,7 @@ def test_get_run_file_command_returns_stable_tool_chain(tmp_path: Path) -> None:
     assert {
         dependency.dependency_id
         for tool in tools
-        for dependency in tool.external_dependencies
+        for dependency in tool.external_dependencies()
     } == {f"executable:{spec.name}" for spec in FILE_COMMANDS}
 
 

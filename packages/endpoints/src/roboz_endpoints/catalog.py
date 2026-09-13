@@ -10,14 +10,13 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Self
 
-from roboz import LazyExternalDependency
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 from roboz_endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
 from roboz_endpoints.specs import ChatModelSpec, ModelSpec
 
 
 class Catalog[Spec: ModelSpec]:
-    """A collection of model specifications and independently cached lazy routes."""
+    """A collection of model specifications and independently cached concrete endpoints."""
 
     def __init__(
         self,
@@ -63,8 +62,8 @@ class Catalog[Spec: ModelSpec]:
 
     def __getattr__(
         self, name: str
-    ) -> LazyExternalDependency[LLMEndpoint] | LazyExternalDependency[TranscriptionEndpoint]:
-        """Select and cache a lazy route according to its model specification."""
+    ) -> LLMEndpoint | TranscriptionEndpoint:
+        """Select and cache a concrete endpoint according to its model specification."""
         try:
             model = self.models_by_attribute[name]
         except KeyError:

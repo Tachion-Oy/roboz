@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from roboz import Ctx, Int, Message, Str, factory, tool
+from roboz import Int, Message, Str, factory, tool
 
 
 @factory
-def factory_parent_int(input: Int, messages: list[Message], ctx: Ctx) -> Int:
+def factory_parent_int(input: Int, messages: list[Message], ctx: None) -> Int:
     return input
 
 

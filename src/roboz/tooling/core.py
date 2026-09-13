@@ -5,20 +5,21 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from logging import getLogger
-from typing import Any, Callable, Sequence, Type, cast, get_type_hints
+from typing import Any, Callable, Sequence, Type, get_type_hints
 
 from roboz._naming import validate_public_name
 from roboz.models import Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
 from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
-from roboz.tooling.context import Ctx
+from roboz.tooling.context import Materializable
 from roboz.dependencies import (
     ExternalDependency,
-    ExternalDependencySource,
     dedupe_external_dependencies,
 )
 
 logger = getLogger(__name__)
+
+_NO_CONTEXT_INSPECTION = object()
 
 
 class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
@@ -40,8 +41,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         chain_condition: (Callable[[TInput], bool] | Callable[[TInput | TOther], bool]),
         description: str = "",
         _id: str | None = None,
-        _dependencies: tuple[ExternalDependency, ...] = (),
-        _dependency_sources: tuple[ExternalDependencySource, ...] = (),
+        _context: object | None = None,
     ):
         """Initialize a tool from its callable, description, and chain edges."""
         self.caller: ToolFuncProtocol[TInput, Any] = caller
@@ -52,8 +52,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         self.chain_condition = lambda x: True
         self.chain(chained_to=chained_to, chain_condition=chain_condition)
         self._id = _id if _id is not None else str(uuid.uuid4())
-        self._dependencies = _dependencies
-        self._dependency_sources = _dependency_sources
+        self._context = _context
 
     @property
     def name(self) -> str:
@@ -106,18 +105,27 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
         """Return this tool instance's stable graph identity."""
         return self._id
 
-    @property
-    def dependencies(self) -> tuple[ExternalDependency, ...]:
-        """Return direct external-resource bindings captured by this tool."""
-        return self._dependencies
-
-    @property
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
-        """Return deduplicated direct and live graph dependencies."""
-        candidates = list(self._dependencies)
-        for source in self._dependency_sources:
-            candidates.extend(source.external_dependencies())
-        return dedupe_external_dependencies(candidates)
+        """Inspect the retained context's current resources, deduplicated by ID.
+
+        Plain tools and contexts without an inspection method report no
+        resources. Context inspection errors propagate.
+
+        Raises:
+            TypeError: If inspection is non-callable or returns a non-tuple or
+                non-resource entries.
+        """
+        inspect = getattr(
+            self._context, "external_dependencies", _NO_CONTEXT_INSPECTION
+        )
+        if inspect is _NO_CONTEXT_INSPECTION:
+            return ()
+        if not callable(inspect):
+            raise TypeError("context external_dependencies must be callable")
+        resources = inspect()
+        if not isinstance(resources, tuple):
+            raise TypeError("context external_dependencies() must return a tuple")
+        return dedupe_external_dependencies(resources)
 
     def copy[TOther: Empty | Stop](
         self,
@@ -145,8 +153,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
             if chain_condition is None
             else chain_condition,
             description=description if description else self.description,
-            _dependencies=self._dependencies,
-            _dependency_sources=self._dependency_sources,
+            _context=self._context,
         )
         if name is not None:
             t.name = name
@@ -219,7 +226,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
 class Factory[
     TInput: Empty,
     TOutput: Empty | Invoke | Stop,
-    TCtx: Ctx,
+    TCtx,
 ]:
     """Context-bound constructor for typed tools and their dependencies."""
 
@@ -241,7 +248,6 @@ class Factory[
     ) -> None:
         """Initialize a reusable factory from a typed context callable."""
         self._func = func
-        self._prepare_ctx: Callable[[Ctx], Ctx] = lambda ctx: ctx
         self._chained_to = chained_to
         self._chain_condition = chain_condition
         self.name = func.__name__
@@ -263,27 +269,36 @@ class Factory[
         return self._id
 
     def __call__(self, ctx: TCtx) -> Tool[TInput, TOutput]:
-        """Bind an immutable context and materialize its executable tool."""
-        if not isinstance(ctx, Ctx):
-            raise TypeError("factory context must be a Ctx")
+        """Bind the supplied object without copying or inspecting its resources.
 
-        ctx = cast(TCtx, self._prepare_ctx(ctx))
+        Any concrete context type is supported and checked statically. Resource
+        inspection is optional; when provided, its method must be callable.
+        Runtime binding does not validate the context's annotation. A context
+        implementing ``Materializable`` is initialized immediately before the
+        factory callable runs, preserving the supplied object.
+
+        Raises:
+            TypeError: If ``external_dependencies`` is present but non-callable.
+        """
+        inspect = getattr(ctx, "external_dependencies", _NO_CONTEXT_INSPECTION)
+        if inspect is not _NO_CONTEXT_INSPECTION and not callable(inspect):
+            raise TypeError("context external_dependencies must be callable")
 
         def _func_ctx(input: TInput, messages: list[Message]) -> TOutput:
+            if isinstance(ctx, Materializable):
+                ctx.materialize()
             return self._func(input=input, messages=messages, ctx=ctx)
 
         _func_ctx.__name__ = self._func.__name__
         _func_ctx.__annotations__ = {
             k: v for k, v in self._func.__annotations__.items() if k != "ctx"
         }
-        dependencies, _ = ctx._collect_dependencies()
         t: Tool[TInput, TOutput] = Tool(
             caller=_func_ctx,
             chained_to=self._chained_to,
             chain_condition=self._chain_condition,
             description=self.description,
             _id=self.id,
-            _dependencies=dependencies,
-            _dependency_sources=(ctx,),
+            _context=ctx,
         )
         return t

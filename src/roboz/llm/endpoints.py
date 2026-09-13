@@ -2,16 +2,19 @@
 
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from threading import Lock
-from typing import Any, Final, Literal, cast
+from typing import Annotated, Any, Final, Literal, Self, cast
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, WithJsonSchema, field_validator
 
 from roboz.models import Message, Role
-from roboz.dependencies import (
-    ExternalDependencyReference,
-    LazyExternalDependency,
-    ModelEndpointDependency,
+from roboz.tooling.context import HasExternalDependencies, Materializable
+from roboz.dependencies import ExternalDependency, ExternalDependencyKind
+from roboz.llm.openai_compatible import (
+    OpenAICompatibleChatClient,
+    OpenAICompatibleModelsClient,
+    OpenAICompatibleTranscriptionClient,
 )
 
 type JSONValue = (
@@ -45,6 +48,34 @@ def copy_request_options(extra_body: Mapping[str, object]) -> RequestOptions:
         )
     except (TypeError, ValueError) as exc:
         raise ValueError("extra_body must be JSON-compatible") from exc
+
+
+def _check_openai_compatible_model(
+    client: OpenAICompatibleModelsClient, model_name: str
+) -> bool:
+    """Query an OpenAI-compatible client's model listing without generating output.
+
+    Match the configured model or its canonical name before a route suffix.
+    Preserve the existing model-discovery probe's ten-second request timeout.
+    Provider errors propagate; malformed model listings raise ``TypeError``.
+    """
+    response = client.models.list(timeout=10.0)
+    data = (
+        response.get("data")
+        if isinstance(response, dict)
+        else getattr(response, "data", None)
+    )
+    if not isinstance(data, (list, tuple)):
+        raise TypeError("model discovery response must contain a data list")
+    model_ids: set[str] = set()
+    for item in data:
+        model_id = (
+            item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+        )
+        if not isinstance(model_id, str):
+            raise TypeError("model discovery entries must have string IDs")
+        model_ids.add(model_id)
+    return model_name in model_ids or model_name.split(":", 1)[0] in model_ids
 
 
 class LLMPricing(BaseModel):
@@ -83,12 +114,12 @@ def role_to_user_mapper(
     return renamed_messages
 
 
-class LLMEndpoint(BaseModel, ModelEndpointDependency):
-    """Specification for an LLM endpoint, containing all necessary details for a validated API call."""
+class LLMEndpoint(BaseModel, ExternalDependency):
+    """Configured model served by a synchronous OpenAI-compatible chat client."""
 
     model_config = {"arbitrary_types_allowed": True}
 
-    client: Any
+    client: Annotated[OpenAICompatibleChatClient, WithJsonSchema({})]
     model_name: str = Field(
         ..., description="The specific model identifier, e.g., 'gpt-4-turbo'."
     )
@@ -148,6 +179,32 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
         """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
 
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        """Return the model-endpoint resource category."""
+        return ExternalDependencyKind.MODEL_ENDPOINT
+
+    def materialize(self) -> Self:
+        """Initialize a deferred client now and return this same endpoint.
+
+        Factory invocation calls this automatically for a direct endpoint
+        context. Explicit calls allow early credential loading and SDK client
+        construction without checking availability or making a model request.
+        Already constructed clients are preserved; initialization errors propagate.
+        """
+        if isinstance(self.client, Materializable):
+            self.client.materialize()
+        return self
+
+    def check(self) -> bool:
+        """Confirm this model appears in an OpenAI-compatible model listing.
+
+        Make a model-discovery request with a ten-second timeout; generate no
+        completion or transcription. Return ``False`` for an absent model.
+        Authentication, transport, and malformed-response errors propagate.
+        """
+        return _check_openai_compatible_model(self.client, self.model_name)
+
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe model endpoint metadata for inspection."""
         return {
@@ -158,13 +215,13 @@ class LLMEndpoint(BaseModel, ModelEndpointDependency):
 
 
 class ModelSelector:
-    """Select models by stable identity without materializing their clients."""
+    """Select configured model endpoints by stable identity."""
 
     def __init__(
         self,
-        models: Mapping[str, LazyExternalDependency[LLMEndpoint]],
+        models: Mapping[str, LLMEndpoint],
         *,
-        default: LazyExternalDependency[LLMEndpoint],
+        default: LLMEndpoint,
     ) -> None:
         """Copy the catalog and validate identities and the initial selection."""
         self.models = dict(models)
@@ -185,13 +242,13 @@ class ModelSelector:
             return self._selected_model_id
 
     @property
-    def selected_endpoint(self) -> LazyExternalDependency[LLMEndpoint]:
-        """Return the selected lazy endpoint without resolving it."""
+    def selected_endpoint(self) -> LLMEndpoint:
+        """Return the selected endpoint without copying it or calling its client."""
         with self._lock:
             return self._models_by_id[self._selected_model_id]
 
-    def endpoint(self, model_id: str) -> LazyExternalDependency[LLMEndpoint]:
-        """Look up an endpoint without changing the selection."""
+    def endpoint(self, model_id: str) -> LLMEndpoint:
+        """Look up a configured endpoint without changing the selection."""
         try:
             return self._models_by_id[model_id]
         except KeyError:
@@ -226,6 +283,10 @@ class MockLLMEndpoint:
         self.rate_limit_error: type[Exception] = Exception
         self.context_length_error: type[Exception] = Exception
 
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report no external resources for this scripted context."""
+        return ()
+
 
 class MockProviderError(Exception):
     """Scripted provider error for mock endpoints used in tests."""
@@ -236,15 +297,76 @@ class MockProviderError(Exception):
         self.status_code = status_code
 
 
-EndpointLike = LLMEndpoint | MockLLMEndpoint | ExternalDependencyReference[LLMEndpoint]
+@dataclass(frozen=True)
+class LLMEndpointRoute[TEndpoint: LLMEndpoint | MockLLMEndpoint](
+    HasExternalDependencies
+):
+    """Follow a caller-owned model selection without caching or constructing clients.
+
+    The getter must return an existing endpoint without external work. Inspection
+    reports that endpoint; each operation resolves the current selection once.
+    An in-flight provider call retains its resolved endpoint when selection changes.
+    """
+
+    get_endpoint: Callable[[], TEndpoint]
+    _extra_body: RequestOptions | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate the getter and detach request policy without selecting a model."""
+        if not callable(self.get_endpoint):
+            raise TypeError("get_endpoint must be callable")
+        if self._extra_body is not None:
+            object.__setattr__(
+                self, "_extra_body", copy_request_options(self._extra_body)
+            )
+
+    def _selected_endpoint(self) -> TEndpoint:
+        """Validate the getter's current result without initializing its client."""
+        endpoint = self.get_endpoint()
+        if not isinstance(endpoint, (LLMEndpoint, MockLLMEndpoint)):
+            raise TypeError(
+                "get_endpoint must return an LLMEndpoint or MockLLMEndpoint"
+            )
+        return endpoint
+
+    def resolve(self) -> TEndpoint:
+        """Return the selected endpoint with a fresh copy of any per-route policy."""
+        endpoint = self._selected_endpoint()
+        if self._extra_body is None:
+            return endpoint
+        if not isinstance(endpoint, LLMEndpoint):
+            raise TypeError("request options require an LLMEndpoint")
+        return endpoint.model_copy(
+            update={"extra_body": copy_request_options(self._extra_body)}
+        )
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report the selected resource without copying it or initializing clients."""
+        return self._selected_endpoint().external_dependencies()
+
+    def materialize(self) -> Self:
+        """Initialize the currently selected client and retain this live route."""
+        endpoint = self._selected_endpoint()
+        if isinstance(endpoint, Materializable):
+            endpoint.materialize()
+        return self
 
 
-class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
-    """Specification for an audio transcription endpoint."""
+EndpointLike = (
+    LLMEndpoint
+    | MockLLMEndpoint
+    | LLMEndpointRoute[LLMEndpoint]
+    | LLMEndpointRoute[MockLLMEndpoint]
+    | LLMEndpointRoute[LLMEndpoint | MockLLMEndpoint]
+)
+
+
+class TranscriptionEndpoint(BaseModel, ExternalDependency):
+    """Configured model served by a synchronous OpenAI-compatible audio client."""
 
     model_config = {"arbitrary_types_allowed": True}
 
-    client: Any
+    client: Annotated[OpenAICompatibleTranscriptionClient, WithJsonSchema({})]
     model_name: str = Field(
         ..., description="The provider's speech-to-text model identifier."
     )
@@ -263,6 +385,32 @@ class TranscriptionEndpoint(BaseModel, ModelEndpointDependency):
     def dependency_id(self) -> str:
         """Return the endpoint's namespace-qualified model identity."""
         return f"model:{self.api_name}:{self.model_name}"
+
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        """Return the model-endpoint resource category."""
+        return ExternalDependencyKind.MODEL_ENDPOINT
+
+    def materialize(self) -> Self:
+        """Initialize a deferred client now and return this same endpoint.
+
+        Factory invocation calls this automatically for a direct endpoint
+        context. Explicit calls allow early credential loading and SDK client
+        construction without checking availability or making a model request.
+        Already constructed clients are preserved; initialization errors propagate.
+        """
+        if isinstance(self.client, Materializable):
+            self.client.materialize()
+        return self
+
+    def check(self) -> bool:
+        """Confirm this model appears in an OpenAI-compatible model listing.
+
+        Make a model-discovery request with a ten-second timeout; generate no
+        completion or transcription. Return ``False`` for an absent model.
+        Authentication, transport, and malformed-response errors propagate.
+        """
+        return _check_openai_compatible_model(self.client, self.model_name)
 
     def redacted_metadata(self) -> Mapping[str, str]:
         """Return safe transcription endpoint metadata for inspection."""
@@ -288,9 +436,9 @@ class MockTranscriptionEndpoint:
         self.api_name = api_name
         self.model_name = model_name
 
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report no external resources for this scripted context."""
+        return ()
 
-TranscriptionEndpointLike = (
-    TranscriptionEndpoint
-    | MockTranscriptionEndpoint
-    | ExternalDependencyReference[TranscriptionEndpoint]
-)
+
+TranscriptionEndpointLike = TranscriptionEndpoint | MockTranscriptionEndpoint

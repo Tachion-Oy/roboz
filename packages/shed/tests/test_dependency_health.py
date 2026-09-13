@@ -11,71 +11,88 @@ from roboshed.dependency_health import (
     DependencyHealthMonitor,
     DependencyReasonCode,
     DependencyStatus,
-    check_executable,
-    check_network_service,
-    check_openai_compatible_endpoint,
+    check_dependency,
     reason_code_for_exception,
 )
-from roboz.llm import LLMEndpoint
+from roboz.deployment import DeployableAgent
+from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 from roboz.dependencies import (
-    DependencyContractError,
-    DependencyRegistration,
     ExecutableDependency,
+    ExternalDependency,
     ExternalDependencyKind,
-    LazyExternalDependency,
-    NetworkServiceDependency,
-    bind_dependencies,
 )
 
 
-def _registration(
-    name: str,
-    *,
-    kind: ExternalDependencyKind = ExternalDependencyKind.EXECUTABLE,
-    check=check_executable,
-) -> DependencyRegistration:
-    return DependencyRegistration(f"executable:{name}", kind, check)
+class _Resource(ExternalDependency):
+    def __init__(self, name, checker=lambda _: True):
+        self.name = name
+        self.checker = checker
+
+    @property
+    def dependency_id(self) -> str:
+        return f"executable:{self.name}"
+
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        return ExternalDependencyKind.EXECUTABLE
+
+    def redacted_metadata(self):
+        return {"executable": self.name}
+
+    def check(self) -> bool:
+        return self.checker(self)
 
 
-def test_arbitrary_endpoint_ids_each_require_their_own_registration() -> None:
-    first, _ = _lazy_endpoint(model="one")
-    second, _ = _lazy_endpoint(model="two")
-    registrations = [
-        DependencyRegistration(
-            first.dependency_id,
-            ExternalDependencyKind.MODEL_ENDPOINT,
-            check_openai_compatible_endpoint,
-        )
-    ]
-    with pytest.raises(DependencyContractError, match="model:provider:two"):
-        bind_dependencies([first, second], registrations)
+def test_monitor_keeps_first_resource_without_checking_during_construction():
+    calls = []
+    first = _Resource("same", lambda item: calls.append(item) or True)
+    duplicate = _Resource("same", lambda _: pytest.fail("duplicate was checked"))
+    monitor = DependencyHealthMonitor([first, duplicate])
+    assert calls == []
+    assert len(monitor.records()) == 1
+    asyncio.run(monitor.run_once())
+    assert calls == [first]
+
+
+@pytest.mark.parametrize("invalid", [1, None, {}, DependencyCheckResult.success()])
+def test_resource_checks_must_return_a_boolean(invalid):
+    dependency = _Resource("invalid", lambda _: invalid)
+    assert check_dependency(dependency).reason_code is DependencyReasonCode.PROTOCOL_ERROR
+
+
+def test_monitor_rejects_non_resource_entries():
+    with pytest.raises(TypeError, match="ExternalDependency"):
+        DependencyHealthMonitor([object()])
 
 
 def test_executable_checker_found_missing_and_non_executable(tmp_path: Path) -> None:
-    assert check_executable(ExecutableDependency(sys.executable)).available
-    missing = check_executable(ExecutableDependency("definitely-not-an-executable"))
+    assert check_dependency(ExecutableDependency(sys.executable)).available
+    missing = check_dependency(ExecutableDependency("definitely-not-an-executable"))
     assert missing.reason_code is DependencyReasonCode.NOT_FOUND
 
     target = tmp_path / "not-executable"
     target.write_text("data", encoding="utf-8")
     target.chmod(0o644)
-    result = check_executable(ExecutableDependency(str(target)))
+    result = check_dependency(ExecutableDependency(str(target)))
     assert result.reason_code is DependencyReasonCode.NOT_FOUND
 
 
 class _Models:
-    def __init__(self, ids: list[str], calls: list[tuple[str, object]]) -> None:
+    def __init__(self, ids: list[str], calls: list[tuple[str, object]], error=None) -> None:
         self.ids = ids
         self.calls = calls
+        self.error = error
 
     def list(self, *, timeout: float):
+        if self.error is not None:
+            raise self.error
         self.calls.append(("models.list", timeout))
         return SimpleNamespace(data=[SimpleNamespace(id=item) for item in self.ids])
 
 
 class _ProviderClient:
-    def __init__(self, ids: list[str], calls: list[tuple[str, object]]) -> None:
-        self.models = _Models(ids, calls)
+    def __init__(self, ids: list[str], calls: list[tuple[str, object]], error=None) -> None:
+        self.models = _Models(ids, calls, error)
         self.chat = SimpleNamespace(
             completions=SimpleNamespace(
                 create=lambda **kwargs: (_ for _ in ()).throw(
@@ -92,55 +109,73 @@ class _ProviderClient:
         )
 
 
-def _lazy_endpoint(
-    *, model: str = "provider/model", ids: list[str] | None = None, resolver_error=None
-):
-    calls: list[tuple[str, object]] = []
+    def close(self):
+        pass
 
-    def resolve():
-        if resolver_error is not None:
-            raise resolver_error
-        return LLMEndpoint(
-            client=_ProviderClient(ids or [model], calls),
+
+def _endpoint(*, model="provider/model", ids=None, error=None):
+    calls = []
+    return (
+        LLMEndpoint(
+            client=_ProviderClient(ids if ids is not None else [model], calls, error),
             api_name="provider",
             model_name=model,
-        )
-
-    return (
-        LazyExternalDependency(
-            dependency_id_value=f"model:provider:{model}",
-            dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-            metadata={
-                "api_name": "provider",
-                "model_name": model,
-                "endpoint_type": "llm",
-            },
-            resolver=resolve,
         ),
         calls,
     )
 
 
+def test_monitor_combines_agent_resources_and_standalone_selectable_models():
+    active, active_calls = _endpoint(model="active")
+    selectable, selectable_calls = _endpoint(model="selectable")
+    unavailable, unavailable_calls = _endpoint(model="absent", ids=[])
+    transcription_calls = []
+    transcription = TranscriptionEndpoint(
+        client=_ProviderClient(["transcription"], transcription_calls),
+        api_name="provider", model_name="transcription",
+    )
+    definition = DeployableAgent(name="worker", system_prompt="Complete the task.")
+    definition.set_agent_endpoint(active)
+    resources = definition.external_dependencies()
+    assert resources == (active,)
+    monitor = DependencyHealthMonitor((
+        *resources, active, selectable, unavailable, transcription,
+    ))
+    assert active_calls == selectable_calls == unavailable_calls == transcription_calls == []
+    assert len(monitor.records()) == 4
+    assert all(record.status is DependencyStatus.PENDING for record in monitor.records())
+
+    asyncio.run(monitor.run_once())
+
+    records = {record.dependency_id: record for record in monitor.records()}
+    for endpoint in (active, selectable, transcription):
+        assert records[endpoint.dependency_id].status is DependencyStatus.AVAILABLE
+    assert records[unavailable.dependency_id].status is DependencyStatus.UNAVAILABLE
+    assert records[unavailable.dependency_id].reason_code is DependencyReasonCode.MODEL_UNAVAILABLE
+    assert active_calls == selectable_calls == unavailable_calls == transcription_calls == [("models.list", 10.0)]
+    assert definition.agent_endpoint is active
+
+
 def test_model_checker_uses_only_discovery_and_recognizes_route_suffix() -> None:
-    dependency, calls = _lazy_endpoint(
+    dependency, calls = _endpoint(
         model="provider/model:nitro", ids=["provider/model"]
     )
-    result = check_openai_compatible_endpoint(dependency)
+    result = check_dependency(dependency)
     assert result.available
     assert calls == [("models.list", 10.0)]
 
 
-def test_model_checker_maps_materialization_and_missing_model_failures() -> None:
-    dependency, _ = _lazy_endpoint(
-        resolver_error=ValueError("PROVIDER_API_KEY not found in environment variables")
+def test_model_checker_maps_resource_errors_and_missing_models() -> None:
+    dependency, _ = _endpoint(
+        error=ValueError("PROVIDER_API_KEY not found in environment variables")
     )
     assert (
-        check_openai_compatible_endpoint(dependency).reason_code
+        check_dependency(dependency).reason_code
         is DependencyReasonCode.MISSING_CREDENTIALS
     )
 
-    absent, calls = _lazy_endpoint(ids=["other/model"])
-    result = check_openai_compatible_endpoint(absent)
+    absent, calls = _endpoint(ids=["other/model"])
+    result = check_dependency(absent)
     assert result.reason_code is DependencyReasonCode.MODEL_UNAVAILABLE
     assert calls == [("models.list", 10.0)]
 
@@ -159,15 +194,15 @@ def test_stable_exception_reason_mapping(error: Exception, reason) -> None:
 
 
 def test_multiple_model_endpoints_are_checked_independently() -> None:
-    first, first_calls = _lazy_endpoint(model="one")
-    second, second_calls = _lazy_endpoint(model="two")
-    assert check_openai_compatible_endpoint(first).available
-    assert check_openai_compatible_endpoint(second).available
+    first, first_calls = _endpoint(model="one")
+    second, second_calls = _endpoint(model="two")
+    assert check_dependency(first).available
+    assert check_dependency(second).available
     assert first_calls == [("models.list", 10.0)]
     assert second_calls == [("models.list", 10.0)]
 
 
-class _ProbeProvider(NetworkServiceDependency):
+class _ProbeProvider(ExternalDependency):
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.probe_calls = 0
@@ -176,6 +211,14 @@ class _ProbeProvider(NetworkServiceDependency):
     @property
     def dependency_id(self) -> str:
         return "network:probe"
+
+    @property
+    def kind(self) -> ExternalDependencyKind:
+        return ExternalDependencyKind.NETWORK_SERVICE
+
+    def check(self) -> bool:
+        self.probe()
+        return True
 
     def redacted_metadata(self):
         return {"provider": "probe", "password": "must-not-leak"}
@@ -206,17 +249,17 @@ class _ProbeProvider(NetworkServiceDependency):
 
 def test_network_checker_uses_only_the_service_owned_read_only_probe() -> None:
     provider = _ProbeProvider()
-    assert check_network_service(provider).available
+    assert check_dependency(provider).available
     assert provider.probe_calls == 1
     assert provider.create_calls == 0
 
     failing = _ProbeProvider(ConnectionError("bridge unavailable"))
-    result = check_network_service(failing)
+    result = check_dependency(failing)
     assert result.reason_code is DependencyReasonCode.CONNECTION_FAILED
     assert failing.create_calls == 0
 
 
-class _SensitiveNetworkDependency(NetworkServiceDependency):
+class _SensitiveNetworkDependency(_ProbeProvider):
     @property
     def dependency_id(self) -> str:
         return "network:sensitive"
@@ -231,12 +274,7 @@ class _SensitiveNetworkDependency(NetworkServiceDependency):
 
 def test_health_monitor_strips_unapproved_sensitive_metadata() -> None:
     dependency = _SensitiveNetworkDependency()
-    registration = DependencyRegistration(
-        dependency.dependency_id,
-        dependency.kind,
-        lambda item: DependencyCheckResult.success(),
-    )
-    monitor = DependencyHealthMonitor(bind_dependencies([dependency], [registration]))
+    monitor = DependencyHealthMonitor([dependency])
     record = monitor.record(dependency.dependency_id)
     assert record is not None
     assert record.redacted_metadata == {"provider": "safe-name"}
@@ -253,11 +291,11 @@ def test_health_monitor_initial_pending_success_and_no_overlap() -> None:
         calls += 1
         entered.set()
         release.wait(timeout=5)
-        return DependencyCheckResult.success()
+        return True
 
-    dependency = ExecutableDependency("bash")
+    dependency = _Resource("bash", checker)
     monitor = DependencyHealthMonitor(
-        bind_dependencies([dependency], [_registration("bash", check=checker)]),
+        [dependency],
         interval_s=3600,
     )
     pending = monitor.record("executable:bash")
@@ -298,14 +336,11 @@ def test_health_monitor_enforces_four_check_concurrency() -> None:
         release.wait(timeout=5)
         with lock:
             active -= 1
-        return DependencyCheckResult.success()
+        return True
 
-    dependencies = [ExecutableDependency(f"command-{index}") for index in range(6)]
-    registrations = [
-        _registration(f"command-{index}", check=checker) for index in range(6)
-    ]
+    dependencies = [_Resource(f"command-{index}", checker) for index in range(6)]
     monitor = DependencyHealthMonitor(
-        bind_dependencies(dependencies, registrations),
+        dependencies,
         max_concurrency=4,
     )
 
@@ -330,10 +365,10 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
         clock_calls = 0
         sleep_calls = 0
 
-        async def checker(dependency):
+        def checker(dependency):
             nonlocal calls
             calls += 1
-            return DependencyCheckResult.success()
+            return True
 
         def wall_clock():
             nonlocal clock_calls
@@ -351,9 +386,9 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
             await resume.wait()
             resume.clear()
 
-        dependency = ExecutableDependency("bash")
+        dependency = _Resource("bash", checker)
         monitor = DependencyHealthMonitor(
-            bind_dependencies([dependency], [_registration("bash", check=checker)]),
+            [dependency],
             interval_s=7,
             wall_clock=wall_clock,
             monotonic=lambda: 0.0,
@@ -394,12 +429,12 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
             assert release.wait(timeout=5)
         else:
             second_entered.set()
-        return DependencyCheckResult.success()
+        return True
 
     async def exercise():
-        dependencies = [ExecutableDependency("first"), ExecutableDependency("second")]
+        dependencies = [_Resource("first", checker), _Resource("second", checker)]
         monitor = DependencyHealthMonitor(
-            bind_dependencies(dependencies, [_registration(name, check=checker) for name in ("first", "second")]),
+            dependencies,
             timeout_s=0.05,
             max_concurrency=1,
         )

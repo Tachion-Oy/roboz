@@ -1,4 +1,4 @@
-"""Provider-neutral structured language-model operations."""
+"""Structured model operations using synchronous OpenAI-compatible clients."""
 
 from roboz.llm._truncation import (
     estimate_conversation_tokens,
@@ -11,6 +11,7 @@ from roboz.llm.endpoints import (
     EndpointLike,
     JSONValue,
     LLMEndpoint,
+    LLMEndpointRoute,
     LLMPricing,
     MockLLMEndpoint,
     MockProviderError,
@@ -32,6 +33,7 @@ __all__ = [
     "EndpointLike",
     "JSONValue",
     "LLMEndpoint",
+    "LLMEndpointRoute",
     "LLMPricing",
     "LLMTelemetryDict",
     "MockLLMEndpoint",

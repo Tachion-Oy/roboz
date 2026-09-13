@@ -1,25 +1,26 @@
 import pytest
 
-from roboz import Ctx
-from roboz.agent.background_agent import run_background_agent
+from dataclasses import dataclass
+from types import SimpleNamespace
+from roboz.agent.background_agent import BackgroundAgentContext, run_background_agent
 from roboz.agent.core import Agent
 from roboz.agent.subagent import run_subagent
 from roboz.llm.endpoints import LLMEndpoint, MockLLMEndpoint
 from roboz.models import Empty, Message
 from roboz.skill.core import Skill
 from roboz.tooling.decorators import factory
-from roboz.dependencies import ExecutableDependency
+from roboz.dependencies import ExecutableDependency, ExternalDependency
 
 
 @factory
-def uses_executable(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
+def uses_executable(
+    input: Empty, messages: list[Message], ctx: ExecutableDependency
+) -> Empty:
     return input
 
 
 def _bound(name: str):
-    return uses_executable(Ctx(executable=ExecutableDependency(name))).copy(
-        name=f"use_{name}"
-    )
+    return uses_executable(ExecutableDependency(name)).copy(name=f"use_{name}")
 
 
 def _agent(*, endpoint=None) -> Agent:
@@ -39,7 +40,11 @@ def _agent(*, endpoint=None) -> Agent:
         skills=[skill],
         default_tools=[default],
         agent_endpoint=endpoint
-        or LLMEndpoint(client=object(), api_name="test", model_name="agent-model"),
+        or LLMEndpoint(
+            client=SimpleNamespace(models=object(), chat=object(), close=lambda: None),
+            api_name="test",
+            model_name="agent-model",
+        ),
     )
 
 
@@ -68,7 +73,7 @@ def test_agent_dependency_view_covers_complete_tool_graph() -> None:
         "executable:passive",
         "executable:default",
     }
-    assert agent.master_tool.external_dependencies[0].dependency_id == (
+    assert agent.master_tool.external_dependencies()[0].dependency_id == (
         "model:test:agent-model"
     )
 
@@ -96,13 +101,13 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     child = _agent()
     expected = _ids(child)
 
-    ctx = Ctx(agent=child)
-    nested = Ctx(child=ctx)
+    ctx = child
+    nested = ChildContext(child=child)
     assert {d.dependency_id for d in ctx.external_dependencies()} == expected
     subagent_tool = run_subagent(ctx)
-    background_tool = run_background_agent(Ctx(agent=child))
+    background_tool = run_background_agent(BackgroundAgentContext(agent=child))
     copied_subagent_tool = subagent_tool.copy()
-    nested_tool = uses_executable(nested)
+    nested_tool = uses_child(nested)
     parent = Agent(
         name="parent",
         system_prompt="Use the child.",
@@ -111,10 +116,11 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     )
 
     assert {
-        dependency.dependency_id for dependency in subagent_tool.external_dependencies
+        dependency.dependency_id for dependency in subagent_tool.external_dependencies()
     } == expected
     assert {
-        dependency.dependency_id for dependency in background_tool.external_dependencies
+        dependency.dependency_id
+        for dependency in background_tool.external_dependencies()
     } == expected
 
     child.add(tools=[_bound("added_after_wrapping")])
@@ -125,5 +131,24 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     assert _ids(parent) == updated
     for wrapper in (subagent_tool, background_tool, copied_subagent_tool, nested_tool):
         assert {
-            dependency.dependency_id for dependency in wrapper.external_dependencies
+            dependency.dependency_id for dependency in wrapper.external_dependencies()
         } == updated
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChildContext:
+    child: Agent
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        return self.child.external_dependencies()
+
+
+@factory
+def uses_child(input: Empty, messages: list[Message], ctx: ChildContext) -> Empty:
+    return input
+
+
+@pytest.mark.parametrize("invalid", [ExecutableDependency("python"), object()])
+def test_agent_rejects_resources_that_are_not_chat_endpoints(invalid):
+    with pytest.raises(TypeError, match="agent_endpoint"):
+        _agent(endpoint=invalid)

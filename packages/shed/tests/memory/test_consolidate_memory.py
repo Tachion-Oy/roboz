@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from roboshed.tools import ConsolidateMemoryContext
 from roboshed.tools import consolidate_memory
 from roboshed.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_TAG,
@@ -13,7 +14,6 @@ from roboshed.tools._snapshot_metadata import (
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
-from roboz import Ctx
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty
@@ -63,8 +63,8 @@ def _ctx(
     min_pending_snapshots: int = 3,
     max_pending_age_seconds: float = _ONE_HOUR_SECONDS,
     pipe: EventPipe | None = None,
-) -> Ctx:
-    return Ctx(
+) -> ConsolidateMemoryContext:
+    return ConsolidateMemoryContext(
         endpoint=endpoint,
         snapshot_root=snapshot_root,
         memory_root=memory_root,

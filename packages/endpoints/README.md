@@ -42,8 +42,10 @@ an assurance of account access.
 
 Inspect `openrouter.models` for immutable specs, `openrouter.models_by_attribute`
 for a read-only lookup, or `dir(openrouter)` for available attributes. Attribute
-access returns cached lazy dependencies. IDs and redacted metadata can be
-inspected through the dependency API before any resource is materialized.
+access returns cached `LLMEndpoint` or `TranscriptionEndpoint` objects. IDs,
+configuration fields, and redacted metadata are available before client creation.
+A factory declares `ctx: LLMEndpoint` or `ctx: TranscriptionEndpoint` and binds
+the selected endpoint directly; Pylance retains the concrete type.
 
 ## Configure credentials and clients
 
@@ -71,17 +73,54 @@ and SDK imports are deferred until materialization. All catalogues default to a
 60-second SDK timeout, and chat catalogues enable streaming. SDK retries are
 zero because Roboz owns retries and cancellation.
 
-Each catalogue caches a lazy dependency per model and each dependency constructs
-one client, safely under concurrent access. Failed construction can be retried
-after configuration is repaired. Keep a catalogue for the application's lifetime;
-close the clients of endpoints you have materialized at shutdown. For example,
-`endpoint.materialize().client.close()` closes an already-used endpoint's client.
-Do not materialize unused entries just to close them. A closed cached client is
-not reopened; create a new catalogue for a new application lifetime.
+Laziness is the default. Binding an endpoint to a factory does not initialize it.
+Tool invocation calls `endpoint.materialize()` immediately before the factory
+callable runs, loading the SDK and credentials and creating the client. To
+initialize earlier, call `endpoint.materialize()` yourself; it returns the same
+endpoint without making a request. Direct client API use and `endpoint.check()`
+also initialize on demand. The latter makes a model-discovery request and returns
+whether the model is listed; inspection alone never checks availability.
+
+Each catalogue caches one concrete endpoint per model. Each endpoint owns one
+cached client, safely initialized under concurrent access. Failed initialization
+can be retried after credentials become available. Policy copies share the same
+client, while fresh collections have independent clients. Keep a catalogue for
+the application's lifetime and call `endpoint.client.close()` at shutdown. This
+is safe for unused endpoints and never initializes them just to close them.
+Closing is idempotent; all policy copies then share the closed client. Create a
+new catalogue for a new application lifetime, and finish in-flight calls before
+closing clients.
+
+```python
+from roboz import Message, Str, factory
+from roboz.llm import LLMEndpoint
+from roboz_endpoints import cerebras
+
+
+@factory
+def describe_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
+    """Describe the supplied text using the configured model name."""
+    return Str(value=f"{ctx.model_name}: {input.value}")
+
+
+endpoint = cerebras.configured().gpt_oss_120b
+bound = describe_model(endpoint)  # No SDK import or credential lookup.
+assert bound.external_dependencies()[0] is endpoint
+# Configure CEREBRAS_API_KEY before invoking bound(...).
+# Optional early initialization: endpoint.materialize()
+endpoint.client.close()  # Also safe when no invocation happened.
+```
+
+`Materializable`, exported by `roboz`, describes this optional initialization
+hook for tool contexts. Aggregate contexts implement `materialize()` explicitly
+when they need to prepare contained endpoints; return `self` after delegation.
+The core `PromptAgentContext` does this for agent calls. Ordinary contexts remain
+valid without the hook, and factory invocation does not traverse their fields or
+materialize every dependency reported by inspection.
 
 ## Adapter boundary and manual routes
 
-`roboz.llm` owns the common `LLMEndpoint` and `TranscriptionEndpoint` wrappers.
+`roboz.llm` owns the concrete `LLMEndpoint` and `TranscriptionEndpoint` resource types.
 `roboz_endpoints.specs` defines immutable model record types, also reexported
 from `inventory` for compatibility. `inventory.py` contains the provider settings,
 model data, and named collections. One `Catalog` class consumes that data and
@@ -114,7 +153,7 @@ when using a transcription endpoint.
 
 Creating an adapter stores configuration without validation or I/O. Its endpoint
 methods validate settings; SDK loading and credential lookup happen only when an
-endpoint is materialized. Each returned dependency owns its own cached client,
+endpoint is materialized. Each returned endpoint owns its own cached client,
 even when several models share an adapter. Close those clients at shutdown as
 described above.
 
@@ -127,9 +166,26 @@ Materializing an endpoint without its SDK raises an installation hint for
 `roboz-endpoints[openai]`.
 
 The initial adapter uses Chat Completions and audio transcription. All three
-providers use the OpenAI-compatible SDK path. Future adapters can translate
-other SDKs into the client interface consumed by the core wrappers; this package
-currently supplies no other adapter implementation.
+providers use the synchronous OpenAI-compatible SDK path, with explicit chat,
+audio, model-discovery, and `close()` client contracts. Core remains SDK-free.
+Other provider APIs require their own declared contracts and implementations.
+HTTP failures use core's status/message classification: rate limits and context
+limits remain distinct from other invalid requests. A generic SDK
+`BadRequestError` no longer labels every HTTP 400 as a context-limit error.
+
+## Migrate from lazy dependency wrappers
+
+Adapter methods and catalogue attributes now return concrete endpoints directly.
+Remove `LazyExternalDependency[...]` annotations and use `LLMEndpoint` or
+`TranscriptionEndpoint`. There are no compatibility aliases. The endpoint's own
+`materialize()` now initializes in place and returns itself; a tool bound to it
+calls this automatically on invocation. Use `endpoint.client.close()` for cleanup.
+
+Regenerate project inventory modules from their JSON with
+`roboz-endpoints inventory import --force` so their declarations use the concrete
+endpoint types. Endpoint IDs, model inventory data, and request-policy copying
+remain unchanged. Shed, Proton, and remaining consumer migrations are separate
+checkpoints; this workspace is not yet release-ready.
 
 ## Edit your project's inventory
 
