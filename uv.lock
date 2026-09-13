@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "roboshed"
-version = "0.1.1.dev2"
+version = "0.1.1.dev3"
 source = { editable = "packages/shed" }
 dependencies = [
     { name = "pydantic" },
@@ -916,7 +916,7 @@ requires-dist = [
 
 [[package]]
 name = "roboz"
-version = "0.1.2.dev4"
+version = "0.1.2.dev5"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

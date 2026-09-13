@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev5 - 2026-09-13
+
 - Add `LLMEndpointRoute`, a typed live-selection layer above concrete chat
   endpoints. Routes retain a caller-owned endpoint getter, report the current
   selected resource without initializing clients, and resolve once per model

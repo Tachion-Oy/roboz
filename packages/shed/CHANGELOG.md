@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1.dev3 - 2026-09-13
+
 - Migrate capability bindings to the central typed contexts. Existing capability
   arguments, owner configuration, endpoint overrides, defaults, and maintenance
   order are preserved. Each build creates fresh tool state and reports actual
