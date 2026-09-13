@@ -1,7 +1,6 @@
 import pytest
 from pydantic import BaseModel
 
-from roboz import Ctx
 from roboz.models import Empty, Int, Invoke, Message, Str
 from roboz.tooling.core import Tool
 from roboz.tooling.decorators import factory, tool
@@ -22,11 +21,11 @@ def test_tool_copy_id_changes():
 def test_factory_tool_id_stable():
 
     @factory
-    def my_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+    def my_factory(input: Str, messages: list[Message], ctx: None) -> Str:
         return input
 
-    f_tool1 = my_factory(Ctx())
-    f_tool2 = my_factory(Ctx())
+    f_tool1 = my_factory(None)
+    f_tool2 = my_factory(None)
 
     assert f_tool1.id == my_factory.id
     assert f_tool2.id == my_factory.id
@@ -73,7 +72,7 @@ def test_tool_description_normalizes_multiline_docstring():
 def test_factory_description_normalizes_multiline_docstring():
 
     @factory
-    def described_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+    def described_factory(input: Str, messages: list[Message], ctx: None) -> Str:
         """Use the configured operation.
 
         Return its value without source indentation.
@@ -83,7 +82,7 @@ def test_factory_description_normalizes_multiline_docstring():
     assert described_factory.description == (
         "Use the configured operation.\n\nReturn its value without source indentation."
     )
-    assert described_factory(Ctx()).description == described_factory.description
+    assert described_factory(None).description == described_factory.description
 
 
 def test_tool_invalid_input():

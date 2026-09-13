@@ -241,4 +241,7 @@ resources and checks them only when observation runs; see the
 Shed's file, maintenance, and email tool contexts and capability bindings are
 migrated. Capabilities construct central typed contexts while preserving their
 arguments, owner configuration, endpoint overrides, defaults, and tool order.
-The RoboSprawl recipe and live model selection migration remain in progress.
+The RoboSprawl recipe binds its orchestrator to `LLMEndpointRoute`, while fixed
+capability and Librarian endpoints remain concrete. The route follows the getter
+for inspection and each new model operation without changing deployment build or
+invocation order.

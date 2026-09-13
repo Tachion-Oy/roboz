@@ -489,13 +489,10 @@ aliases or import fallbacks.
   skill, interaction, control, and delegation exports.
 
 Shed built-in file, maintenance, and email tools now use concrete contexts.
-Composition consumers remain unmigrated: their old `Ctx` and reference imports
-still fail. Proton is deferred. Endpoint adapters and generated catalog
-types now support this contract; regenerate custom inventory modules from JSON.
-The existing README, quick start, and consumer guides may still refer to those
-APIs; this document describes the checkpoint's supported contract. Legacy test
-cases for removed APIs also require migration. Release requires those migrations
-and the complete release gate.
+Core and Shed composition consumers use concrete contexts. Endpoint adapters and
+generated catalog types return concrete endpoints; regenerate custom inventory
+modules from JSON. `LLMEndpointRoute` provides typed live chat-model selection.
+Proton implementation work remains deferred.
 
 ## Deployable inspection and Shed health
 
@@ -520,9 +517,9 @@ Shed's executable, OpenAI, and network probe functions. Service-specific checks
 belong to resource implementations; Shed converts the boolean or exception to a
 health observation. See the [Shed health guide](../packages/shed/README.md#dependency-health).
 Shed file, maintenance, and email tools follow the [concrete-context guide](shed-tool-contexts.md).
-Shed capabilities now build tools with those contexts, preserving the existing
-deployment construction sequence. The RoboSprawl recipe, live routing, and their
-legacy tests remain for later checkpoints.
+Shed capabilities and the RoboSprawl recipe build tools with those contexts,
+preserving the existing deployment construction sequence. The selectable
+orchestrator uses `LLMEndpointRoute`; fixed tools retain concrete endpoints.
 
 ## Focused checks
 

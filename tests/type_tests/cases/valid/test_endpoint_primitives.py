@@ -8,6 +8,7 @@ from roboz import HasExternalDependencies, Factory, Message, Str, Tool, factory
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
+    resolve_endpoint,
     LLMEndpoint,
     MockLLMEndpoint,
     MockTranscriptionEndpoint,
@@ -20,11 +21,11 @@ from roboz.llm import (
 
 @factory
 def describe_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
-    assert_type(ctx.model_name, str)
+    assert_type(resolve_endpoint(ctx).model_name, str)
     assert_type(ctx.temperature, float)
     assert_type(ctx.max_context_tokens, int)
     assert_type(ctx.kind, ExternalDependencyKind)
-    return Str(value=f"{ctx.model_name}: {input.value}")
+    return Str(value=f"{resolve_endpoint(ctx).model_name}: {input.value}")
 
 
 @factory()
@@ -37,12 +38,12 @@ def describe_transcription(
 
 @factory(chained_to=describe_model)
 def describe_next_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
-    return Str(value=f"{ctx.model_name}: {input.value}")
+    return Str(value=f"{resolve_endpoint(ctx).model_name}: {input.value}")
 
 
 @factory
 def describe_script(input: Str, messages: list[Message], ctx: EndpointLike) -> Str:
-    return Str(value=ctx.model_name)
+    return Str(value=resolve_endpoint(ctx).model_name)
 
 
 endpoint = LLMEndpoint(
@@ -54,7 +55,7 @@ transcription = TranscriptionEndpoint(
 assert_type(describe_model, Factory[Str, Str, LLMEndpoint])
 assert_type(describe_next_model, Factory[Str, Str, LLMEndpoint])
 assert_type(describe_transcription, Factory[Str, Str, TranscriptionEndpoint])
-assert_type(describe_script, Factory[Str, Str, LLMEndpoint | MockLLMEndpoint])
+assert_type(describe_script, Factory[Str, Str, EndpointLike])
 assert_type(describe_model(endpoint), Tool[Str, Str])
 assert_type(describe_model(endpoint).copy(), Tool[Str, Str])
 assert_type(

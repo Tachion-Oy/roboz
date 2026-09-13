@@ -341,7 +341,7 @@ def test_proton_bridge_bundle_owns_the_final_tool_dependency(tmp_path: Path) -> 
     dependencies = {
         dependency.dependency_id
         for tool in tools
-        for dependency in tool.external_dependencies
+        for dependency in tool.external_dependencies()
     }
     assert dependencies == {"network:proton_bridge"}
     assert {tool.name for tool in tools if tool.chained_to is None} == {

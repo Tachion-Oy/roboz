@@ -1,7 +1,8 @@
+from types import SimpleNamespace
 import importlib
 
 from roboshed.sandbox import Sandbox
-from roboz import ExternalDependencyKind, LazyExternalDependency, stop
+from roboz import stop
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import Output
@@ -25,11 +26,16 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
     tmp_path, monkeypatch
 ):
     sandbox = Sandbox(tmp_path).for_project("project")
-    selected = LazyExternalDependency(
-        "model:test:selected",
-        ExternalDependencyKind.MODEL_ENDPOINT,
-        {},
-        lambda: LLMEndpoint(client=object(), api_name="test", model_name="selected"),
+
+    def forbidden():
+        raise AssertionError("Build and discovery initialized the selected client")
+
+    selected = LLMEndpoint(
+        client=SimpleNamespace(
+            chat=object(), models=object(), close=forbidden, materialize=forbidden
+        ),
+        api_name="test",
+        model_name="selected",
     )
     hidden = _specialist("hidden")
     specialist = _specialist(

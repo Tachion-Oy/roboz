@@ -1,18 +1,23 @@
 from typing import Any, cast
+from types import SimpleNamespace
 
 import pytest
 
 from roboz.llm import (
+    EndpointLike,
     LLMEndpoint,
     MockLLMEndpoint,
     resolve_endpoint,
     with_request_options,
 )
-from roboz.dependencies import ExternalDependencyKind, LazyExternalDependency
 
 
 def test_with_request_options_copies_endpoint_and_body() -> None:
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
+        api_name="test",
+        model_name="model",
+    )
     body = {"provider": {"sort": "throughput"}}
 
     configured = with_request_options(endpoint, extra_body=body)
@@ -26,45 +31,36 @@ def test_with_request_options_copies_endpoint_and_body() -> None:
     assert "extra_body" not in configured.model_dump()
 
 
-def test_with_request_options_keeps_lazy_endpoint_lazy() -> None:
-    resolutions: list[str] = []
-
-    def resolve() -> LLMEndpoint:
-        resolutions.append("resolved")
-        return LLMEndpoint(
-            client=object(),
-            api_name="test",
-            model_name="model",
-            max_context_tokens=42,
-        )
-
-    endpoint = LazyExternalDependency(
-        dependency_id_value="model:test:model",
-        dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-        metadata={
-            "api_name": "test",
-            "model_name": "model",
-            "endpoint_type": "llm",
-        },
-        resolver=resolve,
+def test_with_request_options_keeps_client_deferred():
+    resolutions = []
+    client = SimpleNamespace(
+        chat=object(),
+        models=object(),
+        close=lambda: None,
+        materialize=lambda: resolutions.append("resolved"),
     )
-
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="model", max_context_tokens=42
+    )
     configured = with_request_options(
         endpoint, extra_body={"reasoning": {"effort": "low"}}
     )
-
-    assert resolutions == []
     assert configured is not endpoint
+    assert configured.client is endpoint.client
     assert configured.dependency_id == endpoint.dependency_id
-    assert configured.redacted_metadata() == endpoint.redacted_metadata()
-    materialized = configured.materialize()
+    assert resolve_endpoint(configured) is configured
+    assert resolutions == []
+    assert configured.materialize() is configured
     assert resolutions == ["resolved"]
-    assert materialized.max_context_tokens == 42
-    assert materialized.extra_body == {"reasoning": {"effort": "low"}}
+    assert configured.extra_body == {"reasoning": {"effort": "low"}}
 
 
 def test_with_request_options_creates_independent_configurations() -> None:
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
+        api_name="test",
+        model_name="model",
+    )
     low = with_request_options(endpoint, extra_body={"reasoning": {"effort": "low"}})
     high = with_request_options(endpoint, extra_body={"reasoning": {"effort": "high"}})
 
@@ -89,7 +85,11 @@ def test_with_request_options_creates_independent_configurations() -> None:
 def test_with_request_options_rejects_framework_owned_keys(
     protected_key: str,
 ) -> None:
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
+        api_name="test",
+        model_name="model",
+    )
 
     with pytest.raises(ValueError, match="framework-owned"):
         with_request_options(endpoint, extra_body={protected_key: True})
@@ -97,37 +97,45 @@ def test_with_request_options_rejects_framework_owned_keys(
 
 @pytest.mark.parametrize("invalid_value", [{"not-json"}, float("nan")])
 def test_with_request_options_rejects_non_json_values(invalid_value: object) -> None:
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
+        api_name="test",
+        model_name="model",
+    )
 
     with pytest.raises(ValueError, match="extra_body"):
         with_request_options(endpoint, extra_body={"provider": invalid_value})
 
 
 def test_endpoint_can_be_bound_directly() -> None:
-    from roboz import Ctx, Empty, Message, factory
+    from roboz import Empty, Message, factory
 
     @factory
-    def use_endpoint(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
-        assert resolve_endpoint(ctx.endpoint) is endpoint
+    def use_endpoint(input: Empty, messages: list[Message], ctx: EndpointLike) -> Empty:
+        assert resolve_endpoint(ctx) is endpoint
         return input
 
-    endpoint = LLMEndpoint(client=object(), api_name="test", model_name="model")
-    bound = use_endpoint(Ctx(endpoint=endpoint))
-    assert bound.dependencies == (endpoint,)
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(chat=object(), models=object(), close=lambda: None),
+        api_name="test",
+        model_name="model",
+    )
+    bound = use_endpoint(endpoint)
+    assert bound.external_dependencies() == (endpoint,)
     bound(Empty(), [])
 
 
 def test_mock_endpoint_does_not_declare_external_resources() -> None:
-    from roboz import Ctx, Empty, Message, factory
+    from roboz import Empty, Message, factory
 
     @factory
-    def use_endpoint(input: Empty, messages: list[Message], ctx: Ctx) -> Empty:
-        assert resolve_endpoint(ctx.endpoint) is endpoint
+    def use_endpoint(input: Empty, messages: list[Message], ctx: EndpointLike) -> Empty:
+        assert resolve_endpoint(ctx) is endpoint
         return input
 
     endpoint = MockLLMEndpoint([])
-    bound = use_endpoint(Ctx(endpoint=endpoint))
-    assert bound.external_dependencies == ()
+    bound = use_endpoint(endpoint)
+    assert bound.external_dependencies() == ()
     bound(Empty(), [])
 
 

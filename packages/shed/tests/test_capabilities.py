@@ -54,51 +54,36 @@ def test_compaction_without_any_endpoint_fails_before_starting_work():
         definition.build()
 
 
-def test_compaction_preserves_live_lazy_endpoint_selection():
-    from roboz.llm import LLMEndpoint
-    from roboz.dependencies import (
-        ExternalDependencyReference,
-        LazyExternalDependency,
+def test_compaction_follows_selection_without_initializing_idle_models():
+    from types import SimpleNamespace
+    from roboz.llm import LLMEndpoint, LLMEndpointRoute
+
+    def forbidden():
+        pytest.fail("Idle compaction must not initialize a client")
+
+    client = SimpleNamespace(
+        chat=object(), models=object(), close=forbidden, materialize=forbidden
     )
-
-    constructed = []
-
-    def lazy(name, budget):
-        endpoint = LLMEndpoint(
-            client=object(), api_name="test", model_name=name, max_context_tokens=budget
-        )
-
-        def construct():
-            constructed.append(name)
-            return endpoint
-
-        return LazyExternalDependency(
-            endpoint.dependency_id, endpoint.kind, {}, construct
-        )
-
-    selected = lazy("first", 2000)
-
-    class Reference(ExternalDependencyReference[LLMEndpoint]):
-        def external_dependencies(self):
-            return (selected,)
-
-        def materialize(self):
-            return selected.materialize()
-
-    default = LLMEndpoint(client=object(), api_name="test", model_name="default")
-    agent = DeployableAgent(
+    default = LLMEndpoint(client=client, api_name="test", model_name="default")
+    first = LLMEndpoint(
+        client=client, api_name="test", model_name="first", max_context_tokens=2000
+    )
+    second = LLMEndpoint(
+        client=client, api_name="test", model_name="second", max_context_tokens=3000
+    )
+    selected = first
+    definition = DeployableAgent(
         name="test",
         system_prompt="Compact the conversation.",
-        default_capabilities=(Compactification(endpoint=Reference()),),
+        default_capabilities=(
+            Compactification(endpoint=LLMEndpointRoute(lambda: selected)),
+        ),
     )
-    agent.set_agent_endpoint(default)
-    agent, _ = agent.build()
+    definition.set_agent_endpoint(default)
+    agent, _ = definition.build()
     (tool,) = agent.default_tools
-    assert agent.external_dependencies() == (default, selected)
-    assert constructed == []
+    assert agent.external_dependencies() == (default, first)
     assert tool(input=All(), messages=[]).to_compaction == "1.6k"
-    selected = lazy("second", 3000)
-    assert agent.external_dependencies() == (default, selected)
-    assert constructed == ["first"]
+    selected = second
+    assert agent.external_dependencies() == (default, second)
     assert tool(input=All(), messages=[]).to_compaction == "2.4k"
-    assert constructed == ["first", "second"]

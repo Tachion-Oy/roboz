@@ -1,44 +1,31 @@
 """Unit coverage for lazy model endpoint selection."""
 
-from roboz.llm import LLMEndpoint, ModelSelector
-from roboz.dependencies import (
-    DependencyRoute,
-    ExternalDependencyKind,
-    LazyExternalDependency,
-)
+from types import SimpleNamespace
+from roboz.llm import LLMEndpoint, LLMEndpointRoute, ModelSelector
 
 
-def _lazy_model(
-    name: str,
-    resolutions: list[str],
-) -> LazyExternalDependency[LLMEndpoint]:
-    dependency_id = f"model:test:{name}"
+def _model(name: str, resolutions: list[str]) -> LLMEndpoint:
+    initialized = False
 
-    def resolve() -> LLMEndpoint:
-        resolutions.append(name)
-        return LLMEndpoint(
-            client=object(),
-            api_name="test",
-            model_name=name,
-            max_context_tokens=1_000,
-        )
+    def materialize():
+        nonlocal initialized
+        if not initialized:
+            resolutions.append(name)
+            initialized = True
+        return client
 
-    return LazyExternalDependency(
-        dependency_id_value=dependency_id,
-        dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-        metadata={
-            "api_name": "test",
-            "model_name": name,
-            "endpoint_type": "llm",
-        },
-        resolver=resolve,
+    client = SimpleNamespace(
+        chat=object(), models=object(), close=lambda: None, materialize=materialize
+    )
+    return LLMEndpoint(
+        client=client, api_name="test", model_name=name, max_context_tokens=1_000
     )
 
 
 def test_listing_and_selecting_do_not_materialize_models() -> None:
     resolutions: list[str] = []
-    first = _lazy_model("first", resolutions)
-    second = _lazy_model("second", resolutions)
+    first = _model("first", resolutions)
+    second = _model("second", resolutions)
     selector = ModelSelector(
         {"First": first, "Second": second},
         default=first,
@@ -56,8 +43,8 @@ def test_listing_and_selecting_do_not_materialize_models() -> None:
 
 def test_selected_endpoint_tracks_the_latest_selection() -> None:
     resolutions: list[str] = []
-    first = _lazy_model("first", resolutions)
-    second = _lazy_model("second", resolutions)
+    first = _model("first", resolutions)
+    second = _model("second", resolutions)
     selector = ModelSelector(
         {"First": first, "Second": second},
         default=first,
@@ -72,7 +59,7 @@ def test_selected_endpoint_tracks_the_latest_selection() -> None:
 
 def test_unknown_model_does_not_change_selection() -> None:
     resolutions: list[str] = []
-    endpoint = _lazy_model("first", resolutions)
+    endpoint = _model("first", resolutions)
     selector = ModelSelector(
         {"First": endpoint},
         default=endpoint,
@@ -91,15 +78,16 @@ def test_unknown_model_does_not_change_selection() -> None:
 
 def test_live_route_follows_selection_without_resolving_during_discovery() -> None:
     resolutions: list[str] = []
-    first = _lazy_model("first", resolutions)
-    second = _lazy_model("second", resolutions)
+    first = _model("first", resolutions)
+    second = _model("second", resolutions)
     selector = ModelSelector({"First": first, "Second": second}, default=first)
-    route = DependencyRoute(lambda: selector.selected_endpoint)
+    route = LLMEndpointRoute(lambda: selector.selected_endpoint)
 
     assert route.external_dependencies() == (first,)
     selector.select(second.dependency_id)
     assert route.external_dependencies() == (second,)
     assert resolutions == []
-    assert route.materialize().model_name == "second"
-    assert route.materialize() is second.materialize()
+    assert route.resolve() is second
+    assert route.materialize() is route
+    assert route.resolve() is second.materialize()
     assert resolutions == ["second"]

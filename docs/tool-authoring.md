@@ -44,31 +44,34 @@ def summarize(input: rz.Empty, messages: list[rz.Message]) -> rz.Str:
 
 ### Context-aware factory
 
-Use `Ctx` directly; no class definition or inheritance is needed.
+Annotate `ctx` with the exact type the factory requires. Use an ordinary typed
+class when several values belong together.
 
 ```python
+from dataclasses import dataclass
+
 import roboz as rz
+
+
+@dataclass(frozen=True, kw_only=True)
+class PrefixContext:
+    prefix: str
 
 @rz.factory
 def add_prefix(
-    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
+    input: rz.Str, messages: list[rz.Message], ctx: PrefixContext
 ) -> rz.Str:
     """Prefix the supplied text with the configured label."""
     return rz.Str(value=f"{ctx.prefix}{input.value}")
 
-tool_instance = add_prefix(rz.Ctx(prefix="[agent] "))
+tool_instance = add_prefix(PrefixContext(prefix="[agent] "))
 ```
 
-`Ctx` accepts keyword fields and exposes them as attributes. Names must be public
-Python identifiers and cannot be keywords or reserved API/implementation names.
-`external_dependencies` is reserved; `dependencies` and `values` remain valid fields.
-Bindings cannot be reassigned or deleted, but contained objects keep their
-identity and may be mutable. A missing field raises `AttributeError`. Contexts
-are runtime configuration, outside the model's input schema and prompts.
-
-Tool inputs, outputs, and chaining retain their type contracts. Arbitrary
-context fields are dynamic: Pyright does not infer their names or types from
-`Ctx(...)`. Validate application-specific values where they are consumed.
+The context constructor owns required fields, defaults, validation, and fresh
+state. Pyright and Pylance preserve this exact type through the factory and flag
+wrong bindings or fields. Binding retains the supplied object and excludes it
+from the model-facing schema and prompt. Plain values such as strings and lists
+are also valid contexts.
 
 See [context migration and built-in fields](context-migration.md) for existing
 call sites, built-in defaults, and state ownership.
@@ -82,51 +85,35 @@ in a factory context so the same objects drive execution and inspection:
 from subprocess import run
 
 import roboz as rz
+from roboz.dependencies import ExecutableDependency
 
 @rz.factory
 def convert(
-    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
+    input: rz.Str,
+    messages: list[rz.Message],
+    ctx: ExecutableDependency,
 ) -> rz.Str:
     """Run the configured converter on the supplied value."""
-    run([ctx.converter.require(), input.value], check=True)
+    run([ctx.require(), input.value], check=True)
     return input
 
-ctx = rz.Ctx(prefix="[agent]", converter=rz.ExecutableDependency("my-converter"))
-dependencies = ctx.external_dependencies()  # Inspect before building a tool.
-tool_instance = convert(ctx)
+converter = ExecutableDependency("my-converter")
+tool_instance = convert(converter)
+dependencies = tool_instance.external_dependencies()
 ```
 
 `require()` resolves the configured executable using `shutil.which()` and returns
 a `pathlib.Path`, or raises `FileNotFoundError`. `subprocess.run()` executes it.
-The resulting tool exposes the same executable object through `dependencies`
-and `external_dependencies`; authors do not maintain a separate resource list.
+The resulting tool exposes the same executable object. Authors do not maintain a
+second resource list. An `ExternalDependency` implements its stable identity,
+kind, safe metadata, and explicit `check() -> bool` operation.
 
-Service adapters implement `NetworkServiceDependency`. Bind the service directly
-and invoke it through `ctx.service`, for example `ctx.service.search_messages(...)`.
-Factories that independently require several resources use several context
-fields. Direct tuple entries are also collected. Ordinary configuration values
-are ignored; arbitrary nested containers and object attributes are not walked.
-Aggregate catalogs and agents expose their current dependencies through
-`ExternalDependencySource`. `Ctx` also implements this interface, so contexts
-can contain other contexts as live sources.
-
-Every `ExternalDependency` supports `materialize()`. Eager dependencies return
-themselves; `LazyExternalDependency` carries inspectable identity and caches its
-first successful resolution. Context binding, `Tool.copy()`, and dependency
-inspection do not materialize resources, contact services, or execute processes.
-Use `ExternalDependencyReference` for routes whose selected resource can change.
-The selected dependency owns its identity validation and client cache.
-
-`Ctx.external_dependencies()` returns a `tuple[ExternalDependency, ...]`: direct
-resources first, then live-source resources, deduplicated by ID while retaining
-the first object. Each inspection reads the current source graphs without
-copying resources or running health checkers.
-
-`Tool.dependencies` contains direct resources in field/tuple order, including
-repeated resources. `Tool.external_dependencies` adds live source dependencies
-from its bound context and deduplicates by `dependency_id`, retaining the first
-resource. Copies keep the original callable, resource identities, and captured
-state.
+An aggregate context explicitly implements `external_dependencies()` and may
+inherit `HasExternalDependencies` to require the method. Tool inspection validates
+the returned tuple and deduplicates by ID, retaining the first resource. Ordinary
+configuration contexts need no inspection method. Fields and arbitrary nested
+objects are never traversed automatically. Binding and `Tool.copy()` do not
+inspect, initialize, check, or execute resources.
 
 ## Standalone LLM-backed tools
 
@@ -135,27 +122,28 @@ object directly and validate its completion against the output model:
 
 ```python
 import roboz as rz
-from roboz.llm import call_llm_api, get_completion
+from roboz.llm import EndpointLike, call_llm_api, get_completion
 
 @rz.factory
 def summarize_with_llm(
-    input: rz.Str, messages: list[rz.Message], ctx: rz.Ctx
+    input: rz.Str, messages: list[rz.Message], ctx: EndpointLike
 ) -> rz.Str:
     """Summarize the conversation using the configured model."""
     result = get_completion(
         messages=messages,
         LlmOutputModel=rz.Str,
-        call_llm_api=lambda current: call_llm_api(ctx.endpoint, current),
+        call_llm_api=lambda current: call_llm_api(ctx, current),
     )
     return rz.Str(**result)
 
-summarize = summarize_with_llm(rz.Ctx(endpoint=endpoint))
+summarize = summarize_with_llm(endpoint)
 ```
 
-Supply an `EndpointLike`: a concrete endpoint, an `ExternalDependencyReference`
-(including lazy endpoint resources), or a `MockLLMEndpoint` for deterministic tests. Real endpoint resources are discovered
-automatically; mocks are ordinary context values and add no external dependency.
-The LLM call resolves the endpoint when it is needed.
+`EndpointLike` accepts a concrete `LLMEndpoint`, an `LLMEndpointRoute` for live
+selection, or a `MockLLMEndpoint` for deterministic tests. Real endpoints are
+discovered automatically; mocks add no external resource. Use
+`ctx: LLMEndpoint` when the factory deliberately requires a fixed concrete
+endpoint.
 
 ## Tool Chaining
 

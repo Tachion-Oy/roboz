@@ -6,7 +6,7 @@ from roboshed.models import ActionVerdict, Operation
 from roboshed.sandbox import PermissionPolicy, Sandbox
 from roboshed.tools.utils import check_allow_deny_permission
 
-from roboz import Ctx
+from roboshed.tools.contexts import GuardContext
 
 
 def test_constructs_unscoped_sandbox_with_layout_configuration(tmp_path):
@@ -151,9 +151,7 @@ def test_sandbox_names_and_persistence_are_independently_configurable(tmp_path):
     assert project_root == tmp_path / "root/jobs/research"
     assert sandbox.project_logs_dir() == tmp_path / "separate-logs"
     assert sandbox.project_snapshots_dir() == project_root / "summaries"
-    assert sandbox.artifact_dir("reports/draft") == (
-        project_root / "reports/draft"
-    )
+    assert sandbox.artifact_dir("reports/draft") == (project_root / "reports/draft")
     assert sandbox.shared_dir == tmp_path / "root/team"
     assert not sandbox.root.exists()
     with pytest.raises(ValueError, match="inside"):
@@ -273,12 +271,8 @@ def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped)
     sandbox = Sandbox(root)
     if project_scoped:
         sandbox.configure_scope("research")
-    policy = (
-        sandbox.permissions()
-        if project_scoped
-        else PermissionPolicy.local(root)
-    )
-    ctx = Ctx(
+    policy = sandbox.permissions() if project_scoped else PermissionPolicy.local(root)
+    ctx = GuardContext(
         base=policy.base,
         takes_precedence=policy.takes_precedence,
         allow=list(policy.allow),

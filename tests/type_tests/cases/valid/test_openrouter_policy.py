@@ -1,22 +1,13 @@
-from roboz.llm import LLMEndpoint, with_openrouter_policy
-from roboz.dependencies import (
-    ExternalDependencyKind,
-    LazyExternalDependency,
-)
+from typing import assert_type
+from roboz.llm import LLMEndpoint, LLMEndpointRoute, with_openrouter_policy
 
-endpoint = LLMEndpoint(client=object(), model_name="model", api_name="openrouter")
-configured: LLMEndpoint = with_openrouter_policy(
-    endpoint,
-    reasoning_effort="high",
-)
 
-lazy = LazyExternalDependency(
-    dependency_id_value="model:openrouter:model",
-    dependency_kind=ExternalDependencyKind.MODEL_ENDPOINT,
-    metadata={"api_name": "openrouter", "model_name": "model"},
-    resolver=lambda: endpoint,
-)
-configured_lazy: LazyExternalDependency[LLMEndpoint] = with_openrouter_policy(
-    lazy,
-    reasoning_effort="low",
-)
+def configure(endpoint: LLMEndpoint) -> None:
+    configured: LLMEndpoint = with_openrouter_policy(endpoint, reasoning_effort="high")
+    route = LLMEndpointRoute(lambda: endpoint)
+    configured_route: LLMEndpointRoute[LLMEndpoint] = with_openrouter_policy(
+        route, reasoning_effort="low"
+    )
+
+    assert_type(configured, LLMEndpoint)
+    assert_type(configured_route, LLMEndpointRoute[LLMEndpoint])

@@ -1,34 +1,28 @@
+from dataclasses import dataclass
 from typing import assert_type
 
-from roboz import (
-    Ctx,
-    ExecutableDependency,
-    ExternalDependency,
-    ExternalDependencySource,
-    Factory,
-    Message,
-    Str,
-    Tool,
-    factory,
-)
+from roboz import Factory, HasExternalDependencies, Message, Str, Tool, factory
+from roboz.dependencies import ExecutableDependency, ExternalDependency
+
+
+@dataclass(frozen=True)
+class PrefixContext:
+    prefix: str
 
 
 @factory
-def add_prefix(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def add_prefix(input: Str, messages: list[Message], ctx: PrefixContext) -> Str:
     return Str(value=f"{ctx.prefix}{input.value}")
 
 
-assert_type(add_prefix, Factory[Str, Str, Ctx])
-assert_type(add_prefix(Ctx(prefix="hello")), Tool[Str, Str])
-assert_type(Ctx(converter=ExecutableDependency("python")), Ctx)
+assert_type(add_prefix, Factory[Str, Str, PrefixContext])
+assert_type(add_prefix(PrefixContext("hello")), Tool[Str, Str])
 
 
-ctx = Ctx(converter=ExecutableDependency("python"))
-assert_type(ctx.external_dependencies(), tuple[ExternalDependency, ...])
-
-
-def inspect_source(source: ExternalDependencySource) -> tuple[ExternalDependency, ...]:
+def inspect_source(source: HasExternalDependencies) -> tuple[ExternalDependency, ...]:
     return source.external_dependencies()
 
 
-assert_type(inspect_source(ctx), tuple[ExternalDependency, ...])
+assert_type(
+    inspect_source(ExecutableDependency("python")), tuple[ExternalDependency, ...]
+)

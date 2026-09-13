@@ -1,10 +1,10 @@
 """Typed per-use OpenRouter routing and reasoning policy."""
 
 from collections.abc import Sequence
-from typing import Final, Literal
+from typing import Final, Literal, overload
 
 from roboz.llm.binding import with_request_options
-from roboz.llm.endpoints import JSONValue, LLMEndpoint, RequestOptions
+from roboz.llm.endpoints import JSONValue, LLMEndpoint, LLMEndpointRoute, RequestOptions
 
 type OpenRouterReasoningEffort = Literal["low", "high", "max"]
 type OpenRouterSort = Literal["throughput"]
@@ -35,9 +35,7 @@ def openrouter_request_options(
     """
     provider: dict[str, JSONValue] = {
         OPENROUTER_PROVIDER_SORT_FIELD: OPENROUTER_THROUGHPUT_SORT,
-        OPENROUTER_REQUIRE_PARAMETERS_FIELD: (
-            OPENROUTER_REQUIRE_SUPPORTED_PARAMETERS
-        ),
+        OPENROUTER_REQUIRE_PARAMETERS_FIELD: (OPENROUTER_REQUIRE_SUPPORTED_PARAMETERS),
     }
     if ignored_providers:
         provider[OPENROUTER_IGNORE_PROVIDERS_FIELD] = list(ignored_providers)
@@ -49,12 +47,30 @@ def openrouter_request_options(
     return extra_body
 
 
+@overload
 def with_openrouter_policy(
     endpoint: LLMEndpoint,
     *,
     reasoning_effort: OpenRouterReasoningEffort | None = None,
     ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
-) -> LLMEndpoint:
+) -> LLMEndpoint: ...
+
+
+@overload
+def with_openrouter_policy(
+    endpoint: LLMEndpointRoute[LLMEndpoint],
+    *,
+    reasoning_effort: OpenRouterReasoningEffort | None = None,
+    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
+) -> LLMEndpointRoute[LLMEndpoint]: ...
+
+
+def with_openrouter_policy(
+    endpoint: LLMEndpoint | LLMEndpointRoute[LLMEndpoint],
+    *,
+    reasoning_effort: OpenRouterReasoningEffort | None = None,
+    ignored_providers: Sequence[str] = OPENROUTER_IGNORED_PROVIDERS,
+) -> LLMEndpoint | LLMEndpointRoute[LLMEndpoint]:
     """Copy an endpoint with OpenRouter policy while retaining its identity."""
     return with_request_options(
         endpoint,

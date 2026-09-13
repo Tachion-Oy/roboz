@@ -32,7 +32,12 @@ from roboz.exceptions import (
     StopAgent,
 )
 from roboz.llm.binding import resolve_endpoint
-from roboz.llm.endpoints import EndpointLike, LLMEndpoint, MockLLMEndpoint
+from roboz.llm.endpoints import (
+    EndpointLike,
+    LLMEndpoint,
+    LLMEndpointRoute,
+    MockLLMEndpoint,
+)
 from roboz.models import Empty, Invoke, Message, MessageKind, Role, Stop, Str
 from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
@@ -140,10 +145,10 @@ class Agent(HasExternalDependencies):
             else custom_prompt_user_tool
         )
         if agent_endpoint is not None and not isinstance(
-            agent_endpoint, (LLMEndpoint, MockLLMEndpoint)
+            agent_endpoint, (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
         ):
             raise TypeError(
-                "agent_endpoint must be an LLMEndpoint or MockLLMEndpoint"
+                "agent_endpoint must be an LLMEndpoint, MockLLMEndpoint or LLMEndpointRoute"
             )
         if self.is_agentic and agent_endpoint is None:
             raise ValueError("agentic instances require agent_endpoint")

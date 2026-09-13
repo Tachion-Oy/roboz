@@ -118,12 +118,12 @@ memory pipeline; core provides the mechanisms they use.
 
 ## Context API migration
 
-Low-level tool factories now use `roboz.Ctx(**values)` directly, with service,
-endpoint, and executable objects supplied without wrappers. The specialized
-context classes have been removed. Existing tool builders retain their keyword
-arguments, defaults, permission checks, cancellation, and timeout behavior.
-See the [migration guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/context-migration.md)
-for low-level context fields and state ownership.
+Low-level tool factories use concrete context classes from `roboshed.tools`.
+Their typed constructors own required fields, defaults, validation, and fresh
+state. Direct resources such as endpoints may also be factory contexts. Existing
+tool builders retain their keyword arguments, permission checks, cancellation,
+and timeout behavior. See the
+[context guide](../../docs/shed-tool-contexts.md) for the complete mapping.
 
 
 ## Deployable agent graphs
@@ -243,8 +243,8 @@ implement the synchronous method on the resource instead.
 Replace `check_executable`, `check_openai_compatible_endpoint`, and
 `check_network_service` with `check_dependency` when a sanitized health result
 is needed, or use `resource.check()` for the primitive boolean/exception contract.
-The old helper names have no compatibility aliases. Capability bindings and
-deployment recipe migrations remain in progress.
+The old helper names have no compatibility aliases. Capability bindings and the
+RoboSprawl deployment recipe now use the concrete context and endpoint contracts.
 
 ## Concrete tool contexts
 

@@ -46,36 +46,31 @@ def test_imports_are_installed_and_optional_dependencies_stay_optional():
 @pytest.mark.skipif(CASE != "core", reason="Core-only public contract")
 def test_core_dependency_and_agent_contracts():
     import roboz as rz
-    from roboz.dependencies import (
-        DependencyRegistration,
-        DependencyRoute,
-        ExecutableDependency,
-        ExternalDependencyKind,
-        LazyExternalDependency,
-        bind_dependencies,
-    )
-    from roboz.llm import LLMEndpoint, ModelSelector, MockLLMEndpoint
+    from types import SimpleNamespace
+    from roboz.dependencies import ExecutableDependency, dedupe_external_dependencies
+    from roboz.llm import LLMEndpoint, LLMEndpointRoute, ModelSelector, MockLLMEndpoint
 
     resource = ExecutableDependency("python")
-    route = DependencyRoute(lambda: resource)
-    assert route.materialize() is resource
-    assert route.external_dependencies() == (resource,)
-    registration = DependencyRegistration(
-        resource.dependency_id, resource.kind, lambda dependency: True
-    )
-    (bound,) = bind_dependencies([resource], [registration])
-    assert bound.dependency is resource and bound.check is registration.check
+    assert resource.external_dependencies() == (resource,)
+    assert dedupe_external_dependencies((resource, resource)) == (resource,)
 
     def unexpected_resolution():
         raise AssertionError("Selection must not construct clients")
 
-    model = LazyExternalDependency[LLMEndpoint](
-        "model:test:one",
-        ExternalDependencyKind.MODEL_ENDPOINT,
-        {},
-        unexpected_resolution,
+    model = LLMEndpoint(
+        client=SimpleNamespace(
+            chat=object(),
+            models=object(),
+            close=unexpected_resolution,
+            materialize=unexpected_resolution,
+        ),
+        api_name="test",
+        model_name="one",
     )
-    assert ModelSelector({"One": model}, default=model).selected_endpoint is model
+    selector = ModelSelector({"One": model}, default=model)
+    route = LLMEndpointRoute(lambda: selector.selected_endpoint)
+    assert route.resolve() is model
+    assert route.external_dependencies()[0] is model
     agent = rz.Agent(
         name="test",
         tools=[rz.stop],
@@ -99,7 +94,7 @@ def test_core_dependency_and_agent_contracts():
     "roboz_endpoints" not in PACKAGES, reason="Endpoint package contract"
 )
 def test_endpoint_inventory_is_lazy_and_missing_extra_is_explained():
-    from roboz import LazyExternalDependency
+    from roboz.llm import LLMEndpoint, TranscriptionEndpoint
     from roboz_endpoints.inventory import CATALOGS
 
     endpoints = [
@@ -109,7 +104,7 @@ def test_endpoint_inventory_is_lazy_and_missing_extra_is_explained():
     ]
     assert endpoints
     for endpoint in endpoints:
-        assert isinstance(endpoint, LazyExternalDependency)
+        assert isinstance(endpoint, (LLMEndpoint, TranscriptionEndpoint))
         assert "materialized" not in endpoint.__dict__
         assert endpoint.external_dependencies() == (endpoint,)
         metadata = endpoint.redacted_metadata()

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add `LLMEndpointRoute`, a typed live-selection layer above concrete chat
+  endpoints. Routes retain a caller-owned endpoint getter, report the current
+  selected resource without initializing clients, and resolve once per model
+  operation so in-flight calls retain their endpoint. Request and OpenRouter
+  policies support routes while keeping fixed endpoint use unchanged.
+
 - Inspect a configured deployment with `DeployableAgent.external_dependencies()`.
   It builds fresh, unstarted agents without event sinks and delegates to their
   existing tool inspection, including child agents and skill resources. Capability

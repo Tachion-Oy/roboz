@@ -1,6 +1,8 @@
+
 """Exercise guarded file tools through the real agent and event pipeline."""
 
 import json
+from types import SimpleNamespace
 import tempfile
 from pathlib import Path
 
@@ -279,18 +281,23 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
 
 
 def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> None:
-    from roboz import DependencyRoute, ExternalDependencyKind, LazyExternalDependency
+    from roboz.llm import LLMEndpointRoute
     from roboz.llm import LLMEndpoint
 
     sandbox = Sandbox(tmp_path)
     observed = []
-    borrowed = LazyExternalDependency(
-        "model:test:borrowed",
-        ExternalDependencyKind.MODEL_ENDPOINT,
-        {},
-        lambda: LLMEndpoint(client=object(), api_name="test", model_name="borrowed"),
+
+    def forbidden():
+        raise AssertionError("Unused specialist initialized its client")
+
+    borrowed = LLMEndpoint(
+        client=SimpleNamespace(
+            chat=object(), models=object(), close=forbidden, materialize=forbidden
+        ),
+        api_name="test",
+        model_name="borrowed",
     )
-    route = DependencyRoute(lambda: borrowed)
+    route = LLMEndpointRoute(lambda: borrowed)
     sandbox.configure_scope("standalone")
 
     def configure():

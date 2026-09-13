@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from roboz import Ctx, Int, Message, Str, factory, tool
+from roboz import Int, Message, Str, factory, tool
 
 
 @tool
@@ -9,7 +9,7 @@ def seq_tool_parent_str(input: Str, messages: list[Message]) -> Str:
 
 
 @factory
-def seq_factory_parent_str(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def seq_factory_parent_str(input: Str, messages: list[Message], ctx: None) -> Str:
     return input
 
 

@@ -6,9 +6,8 @@ from dataclasses import replace
 from roboshed.agents import librarian, orchestrator
 from roboshed.sandbox import Sandbox
 from roboz.agent import Agent
-from roboz.dependencies import DependencyRoute, LazyExternalDependency
 from roboz.deployment import AgentCapability, DeployableAgent
-from roboz.llm import EndpointLike, LLMEndpoint
+from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute
 from roboz.runtime import EventSink, Output, default_event_sinks
 
 
@@ -16,7 +15,7 @@ def robosprawl(
     sandbox: Sandbox,
     /,
     *,
-    endpoint_getter: Callable[[], LazyExternalDependency[LLMEndpoint]],
+    endpoint_getter: Callable[[], LLMEndpoint],
     memory_endpoint: EndpointLike,
     additional_capabilities: Sequence[AgentCapability],
     specialists: Sequence[DeployableAgent],
@@ -38,7 +37,7 @@ def robosprawl(
 
     root = orchestrator(
         sandbox,
-        agent_endpoint=DependencyRoute(endpoint_getter),
+        agent_endpoint=LLMEndpointRoute(endpoint_getter),
         subagents=tuple(specialists),
         interaction_mode=interaction_mode,
     )

@@ -132,9 +132,9 @@ the supplied endpoints. Building and inspecting those tools does not initialize
 clients. The existing deployment methods and application configuration/build/invoke
 sequence are unchanged.
 
-The RoboSprawl recipe/live model selection and obsolete consumer examples/tests
-remain to migrate. Tests using removed lazy-reference APIs still fail at import;
-they remain in place for that migration. Proton remains deferred.
+The RoboSprawl recipe uses `LLMEndpointRoute` for its selectable orchestrator
+model and keeps the Librarian's endpoint fixed. Legacy core and Shed consumers
+are migrated. Proton implementation work remains deferred.
 Deployment dependency discovery uses the existing build path and requires
 configuration sufficient for construction; agents do not need to be running.
-The complete library and release gates are not ready at this checkpoint.
+The integrated core, Endpoints, and Shed release gates cover this contract.

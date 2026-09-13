@@ -42,11 +42,11 @@ from roboz.deployment import (
     RequiredAttributeType,
     RequiredAttributes,
 )
-from roboz.llm import EndpointLike, LLMEndpoint, MockLLMEndpoint
+from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute, MockLLMEndpoint
 from roboz.runtime import EventPipe
 
 
-_ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint)
+_ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
 _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
     "agent_endpoint": _ENDPOINT_TYPES,
 }

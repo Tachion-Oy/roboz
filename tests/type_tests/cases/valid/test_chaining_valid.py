@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import assert_type
 
-from roboz import Ctx, Int, Message, Stop, Str, Tool, factory, tool
+from roboz import Int, Message, Stop, Str, Tool, factory, tool
 
 
 @tool
@@ -40,12 +40,12 @@ assert_type(third_tool, Tool[Int, Str])
 
 
 @factory
-def root_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def root_factory(input: Str, messages: list[Message], ctx: None) -> Str:
     return input
 
 
 @factory(chained_to=root_factory)
-def next_factory(input: Str, messages: list[Message], ctx: Ctx) -> Int:
+def next_factory(input: Str, messages: list[Message], ctx: None) -> Int:
     return Int(value=len(input.value))
 
 
@@ -55,11 +55,11 @@ def tool_from_factory_parent(input: Str, messages: list[Message]) -> Str:
 
 
 @factory(chained_to=root_tool)
-def factory_from_tool_parent(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def factory_from_tool_parent(input: Str, messages: list[Message], ctx: None) -> Str:
     return input
 
 
-ctx = Ctx()
+ctx = None
 generated_tool = next_factory(ctx)
 assert_type(generated_tool, Tool[Str, Int])
 
@@ -112,7 +112,7 @@ def seq_parent_tool(input: Str, messages: list[Message]) -> Str:
 
 
 @factory
-def seq_parent_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def seq_parent_factory(input: Str, messages: list[Message], ctx: None) -> Str:
     return input
 
 
@@ -131,7 +131,7 @@ def seq_multi_union_child(input: Int, messages: list[Message]) -> Str | Int:
 
 
 @factory(chained_to=[seq_parent_tool, seq_parent_factory])
-def seq_mixed_factory(input: Str, messages: list[Message], ctx: Ctx) -> Str:
+def seq_mixed_factory(input: Str, messages: list[Message], ctx: None) -> Str:
     return input
 
 

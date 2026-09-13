@@ -2,13 +2,14 @@
 
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from threading import Lock
 from typing import Annotated, Any, Final, Literal, Self, cast
 
 from pydantic import BaseModel, Field, WithJsonSchema, field_validator
 
 from roboz.models import Message, Role
-from roboz.tooling.context import Materializable
+from roboz.tooling.context import HasExternalDependencies, Materializable
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm.openai_compatible import (
     OpenAICompatibleChatClient,
@@ -296,7 +297,68 @@ class MockProviderError(Exception):
         self.status_code = status_code
 
 
-EndpointLike = LLMEndpoint | MockLLMEndpoint
+@dataclass(frozen=True)
+class LLMEndpointRoute[TEndpoint: LLMEndpoint | MockLLMEndpoint](
+    HasExternalDependencies
+):
+    """Follow a caller-owned model selection without caching or constructing clients.
+
+    The getter must return an existing endpoint without external work. Inspection
+    reports that endpoint; each operation resolves the current selection once.
+    An in-flight provider call retains its resolved endpoint when selection changes.
+    """
+
+    get_endpoint: Callable[[], TEndpoint]
+    _extra_body: RequestOptions | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate the getter and detach request policy without selecting a model."""
+        if not callable(self.get_endpoint):
+            raise TypeError("get_endpoint must be callable")
+        if self._extra_body is not None:
+            object.__setattr__(
+                self, "_extra_body", copy_request_options(self._extra_body)
+            )
+
+    def _selected_endpoint(self) -> TEndpoint:
+        """Validate the getter's current result without initializing its client."""
+        endpoint = self.get_endpoint()
+        if not isinstance(endpoint, (LLMEndpoint, MockLLMEndpoint)):
+            raise TypeError(
+                "get_endpoint must return an LLMEndpoint or MockLLMEndpoint"
+            )
+        return endpoint
+
+    def resolve(self) -> TEndpoint:
+        """Return the selected endpoint with a fresh copy of any per-route policy."""
+        endpoint = self._selected_endpoint()
+        if self._extra_body is None:
+            return endpoint
+        if not isinstance(endpoint, LLMEndpoint):
+            raise TypeError("request options require an LLMEndpoint")
+        return endpoint.model_copy(
+            update={"extra_body": copy_request_options(self._extra_body)}
+        )
+
+    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Report the selected resource without copying it or initializing clients."""
+        return self._selected_endpoint().external_dependencies()
+
+    def materialize(self) -> Self:
+        """Initialize the currently selected client and retain this live route."""
+        endpoint = self._selected_endpoint()
+        if isinstance(endpoint, Materializable):
+            endpoint.materialize()
+        return self
+
+
+EndpointLike = (
+    LLMEndpoint
+    | MockLLMEndpoint
+    | LLMEndpointRoute[LLMEndpoint]
+    | LLMEndpointRoute[MockLLMEndpoint]
+    | LLMEndpointRoute[LLMEndpoint | MockLLMEndpoint]
+)
 
 
 class TranscriptionEndpoint(BaseModel, ExternalDependency):

@@ -15,6 +15,15 @@ from roboz.models import LIGHT_MAX_CHARS, NO_TRUNCATION
 from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 
 
+class _UnusedModels:
+    def list(self, **kwargs):
+        raise AssertionError("Model discovery was not requested")
+
+
+def _unused_close():
+    raise AssertionError("Client closing was not requested")
+
+
 def _summarize(
     endpoint: MockLLMEndpoint,
     max_chars: int | None,
@@ -176,7 +185,9 @@ def test_summarize_uses_json_mode_for_real_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     endpoint = LLMEndpoint(
-        client=object(),
+        client=SimpleNamespace(
+            chat=object(), audio=object(), models=_UnusedModels(), close=_unused_close
+        ),
         model_name="summary-model",
         api_name="test",
         output_format="text",
@@ -247,7 +258,11 @@ def test_summarize_abandons_blocking_provider_promptly_on_cancel() -> None:
             )
 
     endpoint = LLMEndpoint(
-        client=SimpleNamespace(chat=SimpleNamespace(completions=BlockingCompletions())),
+        client=SimpleNamespace(
+            models=_UnusedModels(),
+            close=_unused_close,
+            chat=SimpleNamespace(completions=BlockingCompletions()),
+        ),
         model_name="blocking-model",
         api_name="test",
         stream=False,

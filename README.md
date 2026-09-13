@@ -155,7 +155,7 @@ hook mechanism for each new concern.
 | --- | --- |
 | A model-selectable action | Active `@tool` |
 | A deterministic follow-up | Passive chained tool |
-| Runtime configuration or dependencies | `@factory` bound with `Ctx` |
+| Runtime configuration or dependencies | `@factory` bound to a concrete typed object |
 | Startup, preflight, and default flow | `default_tools` |
 | Synchronous delegation | A subagent exposed as a named tool |
 | Background work | An idempotent background-start tool in the default flow |
@@ -167,10 +167,10 @@ second registry.
 ## Put models where they belong
 
 Each agent owns its endpoint. A model-backed factory can bind another endpoint
-through `Ctx`, so a planner, specialist, summarizer, or transcription tool does
-not have to share a model merely because it belongs to the same workflow. Lazy
-endpoint references keep model selection inspectable without constructing
-clients early.
+directly, so a planner, specialist, summarizer, or transcription tool does not
+have to share a model merely because it belongs to the same workflow.
+`LLMEndpointRoute` follows a typed endpoint getter when a tool or agent should
+track live model selection; concrete endpoints keep other uses fixed.
 
 Provider SDKs remain outside core. The `roboz` package supplies the agent,
 tooling, model, runtime, persistence, dependency, and deployment primitives;
@@ -182,7 +182,7 @@ install integrations only where they are needed.
 | --- | --- |
 | `rz.Agent` | Owns the active tool surface, prompt, invoke loop, and runtime events. |
 | `@rz.tool` | Defines an action with typed input and output models. |
-| `@rz.factory` and `rz.Ctx` | Bind configuration and external dependencies to a tool. |
+| `@rz.factory` | Binds a concrete typed context or resource to a tool. |
 | `rz.Skill` | Packages reusable instructions and optional tools. |
 | `rz.Message` | Carries content and its model-context lifecycle. |
 | `roboz.deployment.DeployableAgent` | Composes capabilities, subagents, and background agents. |

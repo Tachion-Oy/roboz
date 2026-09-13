@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-from roboz import Ctx
 from roboz.agent._notifications import (
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
@@ -92,9 +91,11 @@ def noop_entry(input: Empty, messages: list[Message]) -> Str:
 
 
 @factory
-def default_emit_integration(input: Empty, messages: list[Message], ctx: Ctx) -> Str:
+def default_emit_integration(
+    input: Empty, messages: list[Message], ctx: list[int]
+) -> Str:
     """Default-tool stub: alternates truncation severities so the loop can be asserted."""
-    box = ctx.counter
+    box = ctx
     box[0] += 1
     if box[0] % 2 == 1:
         return Str(
@@ -916,7 +917,7 @@ def test_default_tool_integration_mixed_truncation():
         dict(action="stop", rationale="", value="done"),
     ]
     endpoint = MockLLMEndpoint(scripted)
-    emitter = default_emit_integration(Ctx(counter=[0]))
+    emitter = default_emit_integration([0])
     agent = Agent(
         interaction_mode=None,
         name="mixed_truncation",
