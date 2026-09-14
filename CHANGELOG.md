@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev6 - 2026-09-15
+
 - Breaking: make the `roboz` root a lazy authoring facade. It now exports only
   `Agent`, `Skill`, `Tool`, `Factory`, `tool`, and `factory` alongside discoverable
   domain namespaces. Import models from `roboz.models`, agent helpers from
