@@ -45,7 +45,8 @@ from roboshed.tools.email.inputs import (
 )
 from roboshed.tools.types import ResolvedFileCommand
 
-from roboz import Agent, stop
+from roboz import Agent
+from roboz.tools import stop
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
 from roboshed.dependency_health import DependencyHealthMonitor, DependencyStatus
 

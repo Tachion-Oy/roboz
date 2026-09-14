@@ -21,7 +21,7 @@ from roboshed.tools.apply_patch import apply_patch, execute_apply_patch_replace
 from roboshed.tools.compactification import compactify_messages_when_needed
 from roboshed.tools.runner import execute_file_command
 from roboshed.tools.truncation import default_cli_truncation
-from roboz import All, Stop
+from roboz.models import All, Stop
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import LLMEndpoint
 

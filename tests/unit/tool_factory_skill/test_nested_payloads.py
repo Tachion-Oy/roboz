@@ -3,7 +3,8 @@
 import pytest
 from pydantic import Field, SerializeAsAny, ValidationError
 
-from roboz import Empty, Invoke, Message, Str, tool
+from roboz.models import Empty, Invoke, Message, Str
+from roboz import tool
 
 
 class Payload(Empty):

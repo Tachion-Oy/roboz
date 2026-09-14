@@ -1,6 +1,7 @@
 """Plain contexts still require the concrete class declared by the factory."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.dependencies import ExecutableDependency
 from tests.type_tests.fixtures.primitive_contexts import PrefixContext, ProgramContext
 

@@ -1,6 +1,7 @@
 """A transcription endpoint cannot bind a factory declared with a chat context."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.llm import LLMEndpoint
 from roboz_endpoints import groq
 

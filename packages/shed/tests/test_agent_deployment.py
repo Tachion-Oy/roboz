@@ -3,7 +3,8 @@ from roboshed.agents import librarian as librarian_definition
 from roboshed.agents import orchestrator as orchestrator_definition
 from roboshed.sandbox import Sandbox
 
-from roboz import Empty, stop
+from roboz.models import Empty
+from roboz.tools import stop
 from roboz.agent import run_background_agent
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import MockLLMEndpoint

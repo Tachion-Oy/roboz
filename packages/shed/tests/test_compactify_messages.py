@@ -15,7 +15,7 @@ from roboshed.tools.compactification import (
     get_compactify_messages_when_needed_tool,
 )
 
-from roboz import All, Message, Role
+from roboz.models import All, Message, Role
 from roboz.llm import MockLLMEndpoint
 from roboz.models import MessageKind
 from roboz.models.truncation import Severity

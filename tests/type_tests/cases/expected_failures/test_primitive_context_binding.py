@@ -1,6 +1,7 @@
 """An inspectable object still must match the factory's concrete context type."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.dependencies import ExecutableDependency
 from tests.type_tests.fixtures.primitive_contexts import ProgramContext
 

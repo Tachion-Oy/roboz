@@ -10,7 +10,7 @@ from roboshed.models import (
     TInput,
     TPayload,
 )
-from roboz import Empty
+from roboz.models import Empty
 
 if TYPE_CHECKING:
     pass

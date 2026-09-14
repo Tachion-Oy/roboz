@@ -75,8 +75,12 @@ one as an active tool, and its description also appears in developer-facing
 agent inspection.
 
 ```python
-@rz.tool
-def summarize(input: SummaryRequest, messages: list[rz.Message]) -> rz.Str:
+from roboz import tool
+from roboz.models import Message, Str
+
+
+@tool
+def summarize(input: SummaryRequest, messages: list[Message]) -> Str:
     """Summarize the requested material while preserving cited source names."""
 ```
 

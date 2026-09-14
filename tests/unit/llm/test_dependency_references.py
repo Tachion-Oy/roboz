@@ -7,7 +7,9 @@ from typing import Any, cast
 
 import pytest
 
-from roboz import Agent, Empty, Message, Str, factory, stop
+from roboz import Agent, factory
+from roboz.models import Empty, Message, Str
+from roboz.tools import stop
 from roboz.dependencies import ExternalDependency
 from roboz.llm import (
     EndpointLike,

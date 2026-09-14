@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Breaking: make the `roboz` root a lazy authoring facade. It now exports only
+  `Agent`, `Skill`, `Tool`, `Factory`, `tool`, and `factory` alongside discoverable
+  domain namespaces. Import models from `roboz.models`, agent helpers from
+  `roboz.agent`, built-in tools from `roboz.tools`, and context protocols from
+  `roboz.tooling`. See [the import migration guide](docs/imports.md).
+
 ## 0.1.2.dev5 - 2026-09-13
 
 - Add `LLMEndpointRoute`, a typed live-selection layer above concrete chat

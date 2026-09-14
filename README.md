@@ -10,6 +10,10 @@
 
 RoboZ is a framework for building llm powered agents. The core ingredient is that every tool can may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
+The package root contains the concise agent and tool authoring API. Models, LLM
+operations, built-in tools, and runtime interfaces live in their corresponding
+domain namespaces; see [public imports](docs/imports.md).
+
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -46,37 +50,38 @@ TBD
 
 
 ```python
-import roboz as rz
+from roboz import tool
+from roboz.models import Empty, Message
 
 
-class LunchPreference(rz.Empty):
+class LunchPreference(Empty):
     cuisine: str | None
 
 
-class Restaurant(rz.Empty):
+class Restaurant(Empty):
     name: str
     seats_available: bool
 
 
-class Booking(rz.Empty):
+class Booking(Empty):
     confirmation: str
 
 
-@rz.tool
+@tool
 def plan_lunch_with_bob(
-    input: rz.Empty, messages: list[rz.Message]
+    input: Empty, messages: list[Message]
 ) -> LunchPreference:
     ...
 
 
-@rz.tool
+@tool
 def retry_plan_lunch_with_bob(
-    input: Restaurant, messages: list[rz.Message]
+    input: Restaurant, messages: list[Message]
 ) -> LunchPreference:
     ...
 
 
-@rz.tool(
+@tool(
     chained_to=[plan_lunch_with_bob, retry_plan_lunch_with_bob],
     chain_condition=lambda output: (
         isinstance(output, LunchPreference)
@@ -84,7 +89,7 @@ def retry_plan_lunch_with_bob(
     ),
 )
 def find_restaurant(
-    input: LunchPreference, messages: list[rz.Message]
+    input: LunchPreference, messages: list[Message]
 ) -> Restaurant:
     ...
 
@@ -97,13 +102,13 @@ retry_plan_lunch_with_bob.chain(
 )
 
 
-@rz.tool(
+@tool(
     chained_to=find_restaurant,
     chain_condition=lambda output: (
         isinstance(output, Restaurant) and output.seats_available
     ),
 )
-def book_a_table(input: Restaurant, messages: list[rz.Message]) -> Booking:
+def book_a_table(input: Restaurant, messages: list[Message]) -> Booking:
     ...
 ```
 
@@ -186,11 +191,11 @@ install integrations only where they are needed.
 
 | Primitive | Role |
 | --- | --- |
-| `rz.Agent` | Owns the active tool surface, prompt, invoke loop, and runtime events. |
-| `@rz.tool` | Defines an action with typed input and output models. |
-| `@rz.factory` | Binds a concrete typed context or resource to a tool. |
-| `rz.Skill` | Packages reusable instructions and optional tools. |
-| `rz.Message` | Carries content and its model-context lifecycle. |
+| `roboz.Agent` | Owns the active tool surface, prompt, invoke loop, and runtime events. |
+| `roboz.tool` | Defines an action with typed input and output models. |
+| `roboz.factory` | Binds a concrete typed context or resource to a tool. |
+| `roboz.Skill` | Packages reusable instructions and optional tools. |
+| `roboz.models.Message` | Carries content and its model-context lifecycle. |
 | `roboz.deployment.DeployableAgent` | Composes capabilities, subagents, and background agents. |
 
 ## Optional ecosystem

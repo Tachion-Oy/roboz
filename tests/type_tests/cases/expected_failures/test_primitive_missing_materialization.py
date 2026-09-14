@@ -1,6 +1,6 @@
 """Explicit materialization declarations require an implementation."""
 
-from roboz import Materializable
+from roboz.tooling import Materializable
 
 
 class Unfinished(Materializable):

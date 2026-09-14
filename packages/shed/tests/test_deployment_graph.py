@@ -1,7 +1,9 @@
 import pytest
 
 from roboshed.sandbox import Sandbox
-from roboz import Empty, Message, Stop, stop, tool
+from roboz.models import Empty, Message, Stop
+from roboz.tools import stop
+from roboz import tool
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import default_event_sinks

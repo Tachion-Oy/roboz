@@ -1,6 +1,6 @@
 from typing import assert_type
 
-from roboz import All
+from roboz.models import All
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe
 from roboz.tooling import Tool

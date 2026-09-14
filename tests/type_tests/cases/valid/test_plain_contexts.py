@@ -2,7 +2,8 @@
 
 from typing import assert_type
 
-from roboz import Factory, Message, Str, Tool, factory
+from roboz import Factory, Tool, factory
+from roboz.models import Message, Str
 from tests.type_tests.fixtures.primitive_contexts import PrefixContext
 
 

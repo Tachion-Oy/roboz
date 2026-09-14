@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from roboz import Int, Message, Str, Strs, tool
+from roboz.models import Int, Message, Str, Strs
+from roboz import tool
 
 
 # Scenario: union parent child accepts none of members.

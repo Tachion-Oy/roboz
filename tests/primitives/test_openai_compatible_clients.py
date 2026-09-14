@@ -7,7 +7,7 @@ from openai import OpenAI
 from pydantic import ValidationError
 import pytest
 
-from roboz import Message, Role
+from roboz.models import Message, Role
 from roboz.llm import (
     LLMEndpoint,
     TranscriptionEndpoint,

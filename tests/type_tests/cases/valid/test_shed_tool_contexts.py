@@ -25,7 +25,8 @@ from roboshed.tools.compactification import (
 from roboshed.tools.guard import operation_guard
 from roboshed.tools.runner import execute_file_command
 from roboshed.tools.types import ResolvedFileCommand
-from roboz import All, Factory, Stop, Str, Tool
+from roboz.models import All, Stop, Str
+from roboz import Factory, Tool
 from roboz.dependencies import ExternalDependency
 from roboz.models.truncation import TruncationSpec
 

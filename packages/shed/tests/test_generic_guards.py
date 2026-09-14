@@ -10,7 +10,8 @@ from roboshed.models import (
 from roboshed.tools.guard import build_guarded_tool_chain, guard_items
 from roboshed.tools.types import ResolvedFileCommand
 
-from roboz import Empty, Message, Str, tool
+from roboz.models import Empty, Message, Str
+from roboz import tool
 
 
 class CustomInput(Empty):

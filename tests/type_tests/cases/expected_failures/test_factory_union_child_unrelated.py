@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from roboz import Int, Message, Str, Strs, factory
+from roboz.models import Int, Message, Str, Strs
+from roboz import factory
 
 
 # Scenario: union parent where child accepts unrelated type.

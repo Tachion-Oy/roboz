@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependency,

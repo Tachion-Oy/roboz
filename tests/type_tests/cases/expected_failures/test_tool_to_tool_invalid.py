@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from roboz import Int, Message, Str, tool
+from roboz.models import Int, Message, Str
+from roboz import tool
 
 
 # Scenario: direct tool -> tool mismatch.

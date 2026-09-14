@@ -1,10 +1,11 @@
 from builtins import input as read_input
 
-import roboz as rz
+from roboz import Agent, tool
+from roboz.models import Empty, Int, Message, Stop
 
 
-@rz.tool
-def ask_number(input: rz.Empty, messages: list[rz.Message]) -> rz.Int:
+@tool
+def ask_number(input: Empty, messages: list[Message]) -> Int:
     """Ask the user for an integer, repeating until the response is valid."""
     while True:
         try:
@@ -12,32 +13,32 @@ def ask_number(input: rz.Empty, messages: list[rz.Message]) -> rz.Int:
         except EOFError:  # Keep the example runnable in non-interactive checks.
             reply = "7"
         try:
-            return rz.Int(value=int(reply))
+            return Int(value=int(reply))
         except ValueError:
             print("Please enter a whole number.")
 
 
-@rz.tool(
+@tool(
     chained_to=ask_number,
     chain_condition=lambda output: output.value % 2 == 0,
 )
-def report_even(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
+def report_even(input: Int, messages: list[Message]) -> Stop:
     """Report that the supplied integer is even."""
     print(f"{input.value} is even.")
-    return rz.Stop(value="even")
+    return Stop(value="even")
 
 
-@rz.tool(
+@tool(
     chained_to=ask_number,
     chain_condition=lambda output: output.value % 2 != 0,
 )
-def report_odd(input: rz.Int, messages: list[rz.Message]) -> rz.Stop:
+def report_odd(input: Int, messages: list[Message]) -> Stop:
     """Report that the supplied integer is odd."""
     print(f"{input.value} is odd.")
-    return rz.Stop(value="odd")
+    return Stop(value="odd")
 
 
-agent = rz.Agent(
+agent = Agent(
     name="demo",
     is_agentic=False,
     agent_endpoint=None,

@@ -1,6 +1,6 @@
 """Explicit inspection declarations require resource objects in the returned tuple."""
 
-from roboz import HasExternalDependencies
+from roboz.tooling import HasExternalDependencies
 
 
 class InvalidContext(HasExternalDependencies):

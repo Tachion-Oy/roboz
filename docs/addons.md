@@ -69,7 +69,7 @@ for email configuration. Applications own model selection and startup.
 
 ```python
 from pathlib import Path
-from roboz import stop
+from roboz.tools import stop
 from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboshed.capabilities import FileCommands, FileEditing

@@ -2,6 +2,9 @@
 
 Concise reference for the main `roboz` building blocks. Use the source files for exact implementation details; keep narrative documentation in `docs/`.
 
+The root package lazily exposes the concise authoring API. Import other values
+from their owning domain; see [public imports and migration](imports.md).
+
 ## `Agent` Runtime
 
 Main code: [`../src/roboz/agent/core.py`](../src/roboz/agent/core.py)

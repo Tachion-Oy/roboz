@@ -9,7 +9,8 @@ from roboshed.dependency_health import (
     DependencyRecord,
     check_dependency,
 )
-from roboz import Agent, HasExternalDependencies
+from roboz import Agent
+from roboz.tooling import HasExternalDependencies
 from roboz.dependencies import ExternalDependency
 from roboz.deployment import DeployableAgent
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint

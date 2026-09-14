@@ -7,7 +7,8 @@ ordinary typed class. There is no context base class to instantiate.
 ```python
 from dataclasses import dataclass
 
-import roboz as rz
+from roboz import factory
+from roboz.models import Message, Str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -15,14 +16,14 @@ class PrefixContext:
     prefix: str
 
 
-@rz.factory
+@factory
 def add_prefix(
-    input: rz.Str,
-    messages: list[rz.Message],
+    input: Str,
+    messages: list[Message],
     ctx: PrefixContext,
-) -> rz.Str:
+) -> Str:
     """Prefix the supplied text with the configured label."""
-    return rz.Str(value=f"{ctx.prefix}{input.value}")
+    return Str(value=f"{ctx.prefix}{input.value}")
 
 
 tool = add_prefix(PrefixContext(prefix="[agent] "))
@@ -48,12 +49,12 @@ explicit availability check:
 from roboz.dependencies import ExecutableDependency
 
 
-@rz.factory
+@factory
 def convert(
-    input: rz.Str,
-    messages: list[rz.Message],
+    input: Str,
+    messages: list[Message],
     ctx: ExecutableDependency,
-) -> rz.Str:
+) -> Str:
     """Run the configured converter on the supplied value."""
     return input
 
@@ -70,7 +71,7 @@ abstract-class and static typing error. Structural implementations work too.
 ```python
 from dataclasses import dataclass
 
-from roboz import HasExternalDependencies
+from roboz.tooling import HasExternalDependencies
 from roboz.dependencies import ExternalDependency
 
 

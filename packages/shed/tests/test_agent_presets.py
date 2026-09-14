@@ -10,7 +10,8 @@ from roboshed.capabilities import (
     MemoryConsolidation,
 )
 from roboshed.sandbox import Sandbox
-from roboz import Empty, Message, Str, tool
+from roboz.models import Empty, Message, Str
+from roboz import tool
 from roboz.deployment import AgentCapability, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import PersistenceSink, RunLifecycleEvent

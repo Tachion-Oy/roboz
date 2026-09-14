@@ -4,7 +4,7 @@ import pytest
 from roboshed.capabilities import Compactification
 from roboshed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
-from roboz import All
+from roboz.models import All
 from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint
 

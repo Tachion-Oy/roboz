@@ -14,7 +14,7 @@ from roboshed.tools.compactification import (
 )
 from roboshed.tools.compactification.compactify_messages import CompactionState
 
-from roboz import All, Message, Role
+from roboz.models import All, Message, Role
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,

@@ -34,12 +34,14 @@ Start with strong typing early. It prevents chain mismatch issues later.
 ### Simple tool
 
 ```python
-import roboz as rz
+from roboz import tool
+from roboz.models import Empty, Message, Str
 
-@rz.tool
-def summarize(input: rz.Empty, messages: list[rz.Message]) -> rz.Str:
+
+@tool
+def summarize(input: Empty, messages: list[Message]) -> Str:
     """Summarize the available conversation material."""
-    return rz.Str(value="done")
+    return Str(value="done")
 ```
 
 ### Context-aware factory
@@ -50,19 +52,20 @@ class when several values belong together.
 ```python
 from dataclasses import dataclass
 
-import roboz as rz
+from roboz import factory
+from roboz.models import Message, Str
 
 
 @dataclass(frozen=True, kw_only=True)
 class PrefixContext:
     prefix: str
 
-@rz.factory
+@factory
 def add_prefix(
-    input: rz.Str, messages: list[rz.Message], ctx: PrefixContext
-) -> rz.Str:
+    input: Str, messages: list[Message], ctx: PrefixContext
+) -> Str:
     """Prefix the supplied text with the configured label."""
-    return rz.Str(value=f"{ctx.prefix}{input.value}")
+    return Str(value=f"{ctx.prefix}{input.value}")
 
 tool_instance = add_prefix(PrefixContext(prefix="[agent] "))
 ```
@@ -84,15 +87,17 @@ in a factory context so the same objects drive execution and inspection:
 ```python
 from subprocess import run
 
-import roboz as rz
+from roboz import factory
 from roboz.dependencies import ExecutableDependency
+from roboz.models import Message, Str
 
-@rz.factory
+
+@factory
 def convert(
-    input: rz.Str,
-    messages: list[rz.Message],
+    input: Str,
+    messages: list[Message],
     ctx: ExecutableDependency,
-) -> rz.Str:
+) -> Str:
     """Run the configured converter on the supplied value."""
     run([ctx.require(), input.value], check=True)
     return input
@@ -121,20 +126,22 @@ The public `roboz.llm` operations do not require an `Agent`. Bind an endpoint
 object directly and validate its completion against the output model:
 
 ```python
-import roboz as rz
+from roboz import factory
 from roboz.llm import EndpointLike, call_llm_api, get_completion
+from roboz.models import Message, Str
 
-@rz.factory
+
+@factory
 def summarize_with_llm(
-    input: rz.Str, messages: list[rz.Message], ctx: EndpointLike
-) -> rz.Str:
+    input: Str, messages: list[Message], ctx: EndpointLike
+) -> Str:
     """Summarize the conversation using the configured model."""
     result = get_completion(
         messages=messages,
-        LlmOutputModel=rz.Str,
+        LlmOutputModel=Str,
         call_llm_api=lambda current: call_llm_api(ctx, current),
     )
-    return rz.Str(**result)
+    return Str(**result)
 
 summarize = summarize_with_llm(endpoint)
 ```
@@ -177,11 +184,15 @@ agent run immediately, so no successor is selected.
 output type or value and may close over application policy:
 
 ```python
-@rz.tool(
+from roboz import tool
+from roboz.models import Message, Str
+
+
+@tool(
     chained_to=inspect_result,
     chain_condition=lambda output: isinstance(output, Approved),
 )
-def publish(input: Approved, messages: list[rz.Message]) -> rz.Str:
+def publish(input: Approved, messages: list[Message]) -> Str:
     """Publish an approved result."""
     ...
 ```
@@ -224,7 +235,7 @@ TRACEBACK_LIFECYCLE = [
     Truncation(threshold=8, severity=Severity.REMOVE),
 ]
 
-return rz.Str(value=traceback, truncation=TRACEBACK_LIFECYCLE)
+return Str(value=traceback, truncation=TRACEBACK_LIFECYCLE)
 ```
 
 In this policy a short traceback remains readable while fresh (`LIGHT` only caps

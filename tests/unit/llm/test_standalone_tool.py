@@ -1,4 +1,5 @@
-from roboz import Message, Role, Str, factory
+from roboz.models import Message, Role, Str
+from roboz import factory
 from roboz.llm import MockLLMEndpoint, call_llm_api, get_completion
 
 

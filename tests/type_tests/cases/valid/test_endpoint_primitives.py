@@ -4,7 +4,9 @@ from typing import assert_type
 
 from openai import OpenAI
 
-from roboz import HasExternalDependencies, Factory, Message, Str, Tool, factory
+from roboz.tooling import HasExternalDependencies
+from roboz import Factory, Tool, factory
+from roboz.models import Message, Str
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,

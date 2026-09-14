@@ -5,7 +5,9 @@ import httpx
 import openai
 import pytest
 
-from roboz import Agent, Message, Str, factory, stop
+from roboz import Agent, factory
+from roboz.models import Message, Str
+from roboz.tools import stop
 from roboz.llm import (
     LLMEndpoint,
     TranscriptionEndpoint,

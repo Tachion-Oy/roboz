@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from roboz import HasExternalDependencies
+from roboz.tooling import HasExternalDependencies
 
 
 @dataclass(frozen=True, kw_only=True)
