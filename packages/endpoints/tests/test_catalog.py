@@ -140,8 +140,9 @@ def test_discovery_does_not_import_sdk_or_read_credentials():
             builtins.__import__ = import_module
             os.environ.get = get_environment
             from roboz_endpoints import openrouter, cerebras, groq
-            from roboz import Message, Str, factory
+            from roboz import factory
             from roboz.llm import LLMEndpoint, TranscriptionEndpoint, with_request_options
+            from roboz.models import Message, Str
 
             @factory
             def describe(input: Str, messages: list[Message], ctx: LLMEndpoint | TranscriptionEndpoint) -> Str:

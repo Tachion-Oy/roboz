@@ -351,10 +351,10 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
 def test_builtin_default_configuration_is_preserved() -> None:
     from roboshed.tools import sleep_between_runs
 
-    import roboz as rz
+    from roboz.models import All, Str
 
-    result = sleep_between_runs(SleepBetweenRunsContext(seconds=0))(rz.All(), [])
-    assert isinstance(result, rz.Str)
+    result = sleep_between_runs(SleepBetweenRunsContext(seconds=0))(All(), [])
+    assert isinstance(result, Str)
     assert result.value == "sleep_between_runs: slept=0.0s"
 
 

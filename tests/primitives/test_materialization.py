@@ -5,7 +5,9 @@ from typing import Self
 
 import pytest
 
-from roboz import Materializable, Message, Str, factory
+from roboz.tooling import Materializable
+from roboz.models import Message, Str
+from roboz import factory
 
 
 @dataclass

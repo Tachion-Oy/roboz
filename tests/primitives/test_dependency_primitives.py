@@ -10,7 +10,9 @@ import pytest
 from pydantic import BaseModel, Field, SerializeAsAny, ValidationError
 
 import roboz
-from roboz import HasExternalDependencies, Empty, Invoke, Message, Str, factory, tool
+from roboz.tooling import HasExternalDependencies
+from roboz.models import Empty, Invoke, Message, Str
+from roboz import factory, tool
 from roboz.dependencies import (
     ExecutableDependency,
     ExternalDependency,
@@ -451,7 +453,7 @@ def test_plain_context_contents_are_not_automatically_resource_dependencies():
 
 
 def test_explicit_inspection_protocol_requires_an_implementation():
-    from roboz import HasExternalDependencies
+    from roboz.tooling import HasExternalDependencies
 
     class MissingInspection(HasExternalDependencies):
         pass

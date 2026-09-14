@@ -97,7 +97,8 @@ internally. It requires a complete `EmailService`. For direct bindings, import
 from roboshed.tools.contexts import EmailContext
 from roboshed.tools.email import EmailService
 from roboshed.tools.email.messages import search_email
-from roboz import Str, Tool
+from roboz import Tool
+from roboz.models import Str
 from roboshed.tools.email.inputs import SearchEmail
 
 

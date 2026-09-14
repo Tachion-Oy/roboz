@@ -3,7 +3,8 @@
 import tempfile
 from pathlib import Path
 
-from roboz import Agent, stop
+from roboz import Agent
+from roboz.tools import stop
 from roboz.agent.subagent import run_subagent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink, RunLifecycleEvent
@@ -53,7 +54,8 @@ def test_subagent_completion(tmp_path: Path) -> None:
 
 
 def test_generic_definitions_build_without_application_packages(tmp_path: Path) -> None:
-    from roboz import Empty, Message, tool
+    from roboz.models import Empty, Message
+    from roboz import tool
     from roboz.deployment import DeployableAgent, Capability
 
     root_ticks = []

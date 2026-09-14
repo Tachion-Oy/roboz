@@ -17,7 +17,8 @@ from roboshed.capabilities import (
 )
 from roboshed.sandbox import PermissionPolicy, Sandbox
 
-from roboz import Agent, stop
+from roboz import Agent
+from roboz.tools import stop
 from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, Output, PersistenceSink

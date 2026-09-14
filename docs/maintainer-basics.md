@@ -32,8 +32,11 @@ application-specific behaviour. It consumes these packages like any other user.
 There is no literal `_name.py` in this checkout. The likely references are:
 
 - [`src/roboz/__init__.py`](../src/roboz/__init__.py): Python executes this on
-  first import of `roboz` in a process. It re-exports the convenient public API,
-  so users can write `from roboz import Agent`. It is not a release script.
+  first import of `roboz` in a process. It resolves the concise authoring API and
+  domain namespaces lazily, so `from roboz import Agent` stays convenient while
+  importing a domain does not initialize unrelated subsystems. It is not a
+  release script. Keep its matching `__init__.pyi` declarations synchronized so
+  editors expose only the supported surface.
   `__all__` controls wildcard imports; it does not enforce access restrictions.
 - `_something.py`, such as `runtime/_paths.py`: the leading underscore means
   “internal implementation” by convention. Other library modules import it;

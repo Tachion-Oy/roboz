@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import assert_type
 
-from roboz import Int, Message, Stop, Str, Tool, factory, tool
+from roboz.models import Int, Message, Stop, Str
+from roboz import Tool, factory, tool
 
 
 @tool

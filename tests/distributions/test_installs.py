@@ -71,6 +71,47 @@ def test_installed_endpoint_types(consumer):
         assert len(errors) == 1 and errors[0].get("rule") == rule, errors
 
 
+def test_installed_core_types(consumer):
+    case, python, root, env = consumer
+    if case != "core":
+        pytest.skip("Core consumer typing only")
+    config = root / "pyrightconfig.json"
+    config.write_text(
+        json.dumps({"typeCheckingMode": "standard", "pythonVersion": "3.13"})
+    )
+    cases = ROOT / "tests/type_tests/cases"
+    valid = root / "valid.py"
+    shutil.copyfile(cases / "valid/test_public_namespaces.py", valid)
+    command = [
+        sys.executable,
+        "-m",
+        "pyright",
+        "--project",
+        str(config),
+        "--pythonpath",
+        str(python),
+    ]
+    subprocess.run([*command, str(valid)], cwd=root, env=env, check=True)
+    for name in ("test_removed_root_model.py", "test_unknown_root_namespace.py"):
+        invalid = root / name
+        shutil.copyfile(cases / "expected_failures" / name, invalid)
+        result = subprocess.run(
+            [*command, "--outputjson", str(invalid)],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        errors = [
+            item
+            for item in json.loads(result.stdout)["generalDiagnostics"]
+            if item["severity"] == "error"
+        ]
+        assert len(errors) == 1, errors
+        assert errors[0].get("rule") == "reportAttributeAccessIssue", errors
+
+
 def test_installed_inventory_workflow(consumer):
     case, python, root, env = consumer
     if case not in {"endpoints", "endpoints-openai"}:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from roboz import Int, Message, Str, factory
+from roboz.models import Int, Message, Str
+from roboz import factory
 
 
 # Scenario: factory -> factory mismatch.

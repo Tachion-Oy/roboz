@@ -92,8 +92,9 @@ new catalogue for a new application lifetime, and finish in-flight calls before
 closing clients.
 
 ```python
-from roboz import Message, Str, factory
+from roboz import factory
 from roboz.llm import LLMEndpoint
+from roboz.models import Message, Str
 from roboz_endpoints import cerebras
 
 

@@ -2,7 +2,8 @@
 
 from openai import OpenAI
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 
 

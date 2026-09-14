@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from roboz import Message, Skill, Str, factory, stop
+from roboz.models import Message, Str
+from roboz import Skill, factory
+from roboz.tools import stop
 from roboz.dependencies import ExecutableDependency
 from roboz.deployment import AgentCapability, Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint

@@ -1,6 +1,7 @@
 """Parenthesized factories retain the concrete context requirement."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from tests.type_tests.fixtures.primitive_contexts import PrefixContext
 
 

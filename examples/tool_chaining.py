@@ -1,38 +1,39 @@
-import roboz as rz
+from roboz import Agent, tool
 from roboz.llm import MockLLMEndpoint
+from roboz.models import Int, Message, Stop, Str
 
 
-@rz.tool
-def classify_value(input: rz.Str, messages: list[rz.Message]) -> rz.Int | rz.Str:
+@tool
+def classify_value(input: Str, messages: list[Message]) -> Int | Str:
     """Classify the supplied value as an integer or text."""
     try:
-        return rz.Int(value=int(input.value))
+        return Int(value=int(input.value))
     except ValueError:
         return input
 
 
-@rz.tool(
+@tool(
     chained_to=classify_value,
-    chain_condition=lambda output: isinstance(output, rz.Int),
+    chain_condition=lambda output: isinstance(output, Int),
 )
-def describe_number(input: rz.Int, messages: list[rz.Message]) -> rz.Str:
+def describe_number(input: Int, messages: list[Message]) -> Str:
     """Describe a classified integer."""
-    return rz.Str(value=f"{input.value} is a number")
+    return Str(value=f"{input.value} is a number")
 
 
-@rz.tool(
+@tool(
     chained_to=classify_value,
-    chain_condition=lambda output: isinstance(output, rz.Str),
+    chain_condition=lambda output: isinstance(output, Str),
 )
-def describe_text(input: rz.Str, messages: list[rz.Message]) -> rz.Str:
+def describe_text(input: Str, messages: list[Message]) -> Str:
     """Describe classified text."""
-    return rz.Str(value=f"{input.value!r} is text")
+    return Str(value=f"{input.value!r} is text")
 
 
-@rz.tool(chained_to=[describe_number, describe_text])
-def finish_description(input: rz.Str, messages: list[rz.Message]) -> rz.Stop:
+@tool(chained_to=[describe_number, describe_text])
+def finish_description(input: Str, messages: list[Message]) -> Stop:
     """Return the classification description as the final result."""
-    return rz.Stop(value=input.value)
+    return Stop(value=input.value)
 
 
 def classify(value: str) -> str | None:
@@ -46,7 +47,7 @@ def classify(value: str) -> str | None:
             }
         ]
     )
-    agent = rz.Agent(
+    agent = Agent(
         name="classifier",
         system_prompt="Classify the supplied value.",
         tools=[

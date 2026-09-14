@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from roboz import Int, Message, Stop, Str, tool
+from roboz.models import Int, Message, Stop, Str
+from roboz import tool
 
 
 # Scenario: copied tool used in incompatible downstream chain.

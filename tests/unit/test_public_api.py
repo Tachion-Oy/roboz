@@ -1,6 +1,10 @@
+import ast
 import importlib
 import inspect
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
@@ -24,9 +28,118 @@ def test_golden_path_identities() -> None:
     assert rz.Agent is CoreAgent
     assert rz.tool is tooling_tool
     assert rz.factory is tooling_factory
-    assert rz.stop is tools_stop
-    assert rz.prompt_user is tools_prompt_user
-    assert rz.prompt_agent is agent_prompt_agent
+    assert rz.Tool is roboz.tooling.Tool
+    assert rz.Factory is roboz.tooling.Factory
+    assert rz.Skill is roboz.skill.Skill
+
+
+def test_root_exports_only_authoring_primitives_and_domains() -> None:
+    assert set(rz.__all__) == {
+        "Agent",
+        "Factory",
+        "Skill",
+        "Tool",
+        "agent",
+        "dependencies",
+        "deployment",
+        "exceptions",
+        "factory",
+        "llm",
+        "models",
+        "runtime",
+        "skill",
+        "tool",
+        "tooling",
+        "tools",
+    }
+    assert set(rz.__all__) <= set(dir(rz))
+    for name in (
+        "Empty",
+        "HasExternalDependencies",
+        "Materializable",
+        "Message",
+        "PromptUser",
+        "Str",
+        "prompt_agent",
+        "prompt_user",
+        "run_subagent",
+        "stop",
+    ):
+        assert not hasattr(rz, name)
+    with pytest.raises(AttributeError, match="unknown"):
+        getattr(rz, "unknown")
+
+
+def test_root_stub_declares_every_runtime_export() -> None:
+    stub = Path(inspect.getfile(rz)).with_suffix(".pyi")
+    tree = ast.parse(stub.read_text(encoding="utf-8"), stub)
+    declared = {
+        alias.asname
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+        if alias.asname is not None
+    }
+    assert declared == set(rz.__all__)
+
+
+def test_root_domains_resolve_and_cache_canonical_modules() -> None:
+    for name in (
+        "agent",
+        "dependencies",
+        "deployment",
+        "exceptions",
+        "llm",
+        "models",
+        "runtime",
+        "skill",
+        "tooling",
+        "tools",
+    ):
+        domain = getattr(rz, name)
+        assert domain is importlib.import_module(f"roboz.{name}")
+        assert getattr(rz, name) is domain
+
+
+def test_plain_import_and_discovery_do_not_load_domains() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """\
+                import sys
+                import roboz
+
+                assert not any(name.startswith("roboz.") for name in sys.modules)
+                assert {"Agent", "llm", "models", "tool", "tools"} <= set(dir(roboz))
+                assert not any(name.startswith("roboz.") for name in sys.modules)
+                """
+            ),
+        ],
+        check=True,
+    )
+
+
+def test_basic_tooling_does_not_load_agent_llm_or_runtime() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """\
+                import sys
+                import roboz
+
+                assert roboz.tool is roboz.tooling.tool
+                assert roboz.models.Message
+                for name in ("roboz.agent", "roboz.llm", "roboz.runtime"):
+                    assert name not in sys.modules
+                """
+            ),
+        ],
+        check=True,
+    )
 
 
 def test_domain_imports_do_not_replace_top_level_tool() -> None:
@@ -60,22 +173,22 @@ def test_domain_ownership_exports() -> None:
     assert roboz.runtime.persistence.logged_row_to_message is not None
     assert roboz.tools.NO_REPLY == "The user did not respond"
     assert not hasattr(roboz.agent, "stop")
-    assert not hasattr(roboz.tooling, "tool")
-    assert not hasattr(roboz.tooling, "factory")
+    assert roboz.tooling.tool is tooling_tool
+    assert roboz.tooling.factory is tooling_factory
 
 
 def test_optional_context_capabilities_are_public() -> None:
-    assert rz.HasExternalDependencies is roboz.tooling.HasExternalDependencies
-    assert rz.Materializable is roboz.tooling.Materializable
     for module in (rz, roboz.agent, roboz.tools, roboz.tooling):
         assert not hasattr(module, "Ctx")
+    assert not hasattr(rz, "HasExternalDependencies")
+    assert not hasattr(rz, "Materializable")
     assert not hasattr(rz, "FactoryCtx")
     assert not hasattr(rz, "ToolDependency")
 
 
 def test_approved_interaction_rename() -> None:
-    assert hasattr(roboz, "prompt_user_at_start")
     assert hasattr(roboz.tools, "prompt_user_at_start")
+    assert not hasattr(roboz, "prompt_user_at_start")
     assert not hasattr(roboz, "ask_user_at_start")
     assert not hasattr(roboz.tools, "ask_user_at_start")
 

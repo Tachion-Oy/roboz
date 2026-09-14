@@ -27,7 +27,8 @@ from roboshed.tools.email.messages import (
 )
 from roboshed.tools.types import ResolvedFileCommand
 from roboshed.models import ActionVerdict
-from roboz import Factory, Str, Tool
+from roboz import Factory, Tool
+from roboz.models import Str
 from roboz.dependencies import ExternalDependency
 
 assert_type(search_email, Factory[SearchEmail, Str, EmailContext])

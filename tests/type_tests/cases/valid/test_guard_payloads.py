@@ -6,7 +6,7 @@ from roboshed.tools.email.inputs import CreateEmailDraft
 from roboshed.tools.guard import guard_items
 
 from roboshed.tools import GuardContext
-from roboz import Str
+from roboz.models import Str
 
 
 def typed_guard(ctx: GuardContext) -> None:

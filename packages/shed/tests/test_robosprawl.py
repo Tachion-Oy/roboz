@@ -4,7 +4,8 @@ import importlib
 from roboshed.sandbox import Sandbox
 import pytest
 
-from roboz import Empty, stop
+from roboz.models import Empty
+from roboz.tools import stop
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import Output, default_event_sinks

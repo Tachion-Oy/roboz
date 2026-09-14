@@ -108,7 +108,8 @@ def test_with_request_options_rejects_non_json_values(invalid_value: object) -> 
 
 
 def test_endpoint_can_be_bound_directly() -> None:
-    from roboz import Empty, Message, factory
+    from roboz.models import Empty, Message
+    from roboz import factory
 
     @factory
     def use_endpoint(input: Empty, messages: list[Message], ctx: EndpointLike) -> Empty:
@@ -126,7 +127,8 @@ def test_endpoint_can_be_bound_directly() -> None:
 
 
 def test_mock_endpoint_does_not_declare_external_resources() -> None:
-    from roboz import Empty, Message, factory
+    from roboz.models import Empty, Message
+    from roboz import factory
 
     @factory
     def use_endpoint(input: Empty, messages: list[Message], ctx: EndpointLike) -> Empty:

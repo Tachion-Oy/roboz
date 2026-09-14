@@ -138,12 +138,13 @@ References:
 ## Step 6: Minimal Construction Pattern
 
 ```python
-import roboz as rz
+from roboz import Agent
+from roboz.tools import stop
 
-agent = rz.Agent(
+agent = Agent(
     name="my_agent",
     agent_endpoint=...,             # concrete endpoint or LLMEndpointRoute
-    tools=[..., rz.stop],           # active + chained
+    tools=[..., stop],              # active + chained
     default_tools=[...],            # startup/default flow
     skills=[...],                   # optional on-demand skills
     auto_loaded_skills=[...],       # optional always-on skills
@@ -172,8 +173,10 @@ deployment preflight can report potential requirements. Pass
 A child agent can be bound directly before constructing its wrapper tool:
 
 ```python
+from roboz.agent import run_subagent
+
 dependencies = child.external_dependencies()
-subagent_tool = rz.run_subagent(child)
+subagent_tool = run_subagent(child)
 ```
 
 Subagent tools retain the child as a live source. Later `child.add()` calls are

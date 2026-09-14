@@ -24,6 +24,8 @@ def test_package_contents_and_metadata(pytestconfig, package):
         }.items():
             assert metadata[field] == expected
         assert f"{namespace}/py.typed" in names
+        if package == "roboz":
+            assert f"{namespace}/__init__.pyi" in names
         assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
         assert all(
             name.startswith(
@@ -61,3 +63,5 @@ def test_package_contents_and_metadata(pytestconfig, package):
         paths = [Path(name).parts[1:] for name in archive.getnames()]
         assert all(not path or path[0] not in {"scripts", ".github"} for path in paths)
         assert ("src", namespace, "py.typed") in paths
+        if package == "roboz":
+            assert ("src", namespace, "__init__.pyi") in paths

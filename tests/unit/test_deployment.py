@@ -4,7 +4,9 @@ from collections.abc import Mapping
 
 import pytest
 
-from roboz import Empty, Message, Skill, Str, stop, tool
+from roboz.models import Empty, Message, Str
+from roboz import Skill, tool
+from roboz.tools import stop
 from roboz.deployment import (
     AgentCapability,
     Capability,

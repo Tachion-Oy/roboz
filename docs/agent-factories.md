@@ -21,7 +21,7 @@ agent's identity and behavior, fixed default capabilities, and initial child
 definitions. Endpoints and other runtime values may be supplied later.
 
 ```python
-from roboz import stop
+from roboz.tools import stop
 from roboz.deployment import Capability, DeployableAgent
 
 definition = DeployableAgent(
@@ -191,7 +191,8 @@ interruption, cancellation, background shutdown, and dependency health.
 Use the configured `DeployableAgent` as the inspection surface:
 
 ```python
-from roboz import Str, stop
+from roboz.models import Str
+from roboz.tools import stop
 from roboz.deployment import Capability, DeployableAgent
 from roboshed.dependency_health import DependencyHealthMonitor
 

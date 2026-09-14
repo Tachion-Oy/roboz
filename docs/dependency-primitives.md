@@ -48,7 +48,8 @@ fields without the implicit traversal this contract deliberately avoids. For exa
 ```python
 from dataclasses import dataclass
 
-from roboz import Message, Str, factory
+from roboz import factory
+from roboz.models import Message, Str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -74,7 +75,8 @@ chained factory decorators.
 A list is also a valid typed context. Its element type is checked when binding:
 
 ```python
-from roboz import Message, Str, factory
+from roboz import factory
+from roboz.models import Message, Str
 
 
 @factory()
@@ -100,7 +102,7 @@ A context requiring several values is an ordinary typed object too:
 ```python
 from dataclasses import dataclass
 
-from roboz import HasExternalDependencies
+from roboz.tooling import HasExternalDependencies
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 
 
@@ -161,7 +163,8 @@ This complete primitive example demonstrates direct resource binding without an
 endpoint or agent:
 
 ```python
-from roboz import Message, Str, factory
+from roboz import factory
+from roboz.models import Message, Str
 from roboz.dependencies import ExecutableDependency
 
 
@@ -203,7 +206,8 @@ client makes no requests:
 ```python
 from openai import OpenAI
 
-from roboz import Message, Str, factory
+from roboz import factory
+from roboz.models import Message, Str
 from roboz.llm import LLMEndpoint
 
 
@@ -297,7 +301,8 @@ client API use and explicit availability checks initialize deferred clients too.
 `ExternalDependency` itself has no materialization requirement.
 
 ```python
-from roboz import Message, Str, factory
+from roboz import factory
+from roboz.models import Message, Str
 from roboz.llm import LLMEndpoint
 from roboz_endpoints.adapters.openai_compatible import chat_endpoint
 
@@ -437,9 +442,11 @@ uses these same context constructors and direct child bindings.
 This complete example uses a scripted model and starts no background thread:
 
 ```python
-from roboz import Agent, Empty, run_background_agent, run_subagent, stop
-from roboz.agent import BackgroundAgentContext
+from roboz import Agent
+from roboz.agent import BackgroundAgentContext, run_background_agent, run_subagent
 from roboz.llm import MockLLMEndpoint
+from roboz.models import Empty
+from roboz.tools import stop
 
 child = Agent(
     name="child",

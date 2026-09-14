@@ -2,16 +2,9 @@
 
 from typing import assert_type
 
-from roboz import (
-    HasExternalDependencies,
-    Factory,
-    Int,
-    Message,
-    Str,
-    Tool,
-    factory,
-    tool,
-)
+from roboz.tooling import HasExternalDependencies
+from roboz import Factory, Tool, factory, tool
+from roboz.models import Int, Message, Str
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 from tests.type_tests.fixtures.primitive_contexts import ProgramContext
 

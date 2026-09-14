@@ -1,6 +1,7 @@
 from typing import assert_type
 
-from roboz import Agent, Empty, Factory, Message, Str, Tool, factory
+from roboz import Agent, Factory, Tool, factory
+from roboz.models import Empty, Message, Str
 from roboz.dependencies import ExternalDependency
 from roboz.llm import (
     EndpointLike,

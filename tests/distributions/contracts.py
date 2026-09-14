@@ -49,6 +49,7 @@ def test_core_dependency_and_agent_contracts():
     from types import SimpleNamespace
     from roboz.dependencies import ExecutableDependency, dedupe_external_dependencies
     from roboz.llm import LLMEndpoint, LLMEndpointRoute, ModelSelector, MockLLMEndpoint
+    from roboz.tools import stop
 
     resource = ExecutableDependency("python")
     assert resource.external_dependencies() == (resource,)
@@ -73,7 +74,7 @@ def test_core_dependency_and_agent_contracts():
     assert route.external_dependencies()[0] is model
     agent = rz.Agent(
         name="test",
-        tools=[rz.stop],
+        tools=[stop],
         system_prompt="Stop.",
         agent_endpoint=MockLLMEndpoint(
             [{"action": "stop", "rationale": "test", "value": "ok"}]

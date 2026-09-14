@@ -1,6 +1,7 @@
 """A list context retains its declared element type at factory binding."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 
 
 @factory()

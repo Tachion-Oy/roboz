@@ -4,7 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from roboz import Agent, Message, Str, factory, stop
+from roboz import Agent, factory
+from roboz.models import Message, Str
+from roboz.tools import stop
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import MockLLMEndpoint
 

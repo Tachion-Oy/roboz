@@ -1,7 +1,9 @@
 from collections.abc import Mapping
 from typing import assert_type
 
-from roboz import Agent, Factory, Materializable, Message, Str, Tool, factory
+from roboz import Agent, Factory, Tool, factory
+from roboz.tooling import Materializable
+from roboz.models import Message, Str
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint, with_openrouter_policy
 from roboz_endpoints import cerebras, groq, openrouter
 from roboz_endpoints.adapters.openai_compatible import (

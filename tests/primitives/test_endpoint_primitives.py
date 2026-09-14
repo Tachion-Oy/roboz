@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from roboz import Message, Role, Str, factory
+from roboz.models import Message, Role, Str
+from roboz import factory
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,

@@ -1,6 +1,7 @@
 """Chaining preserves the child's concrete context requirement."""
 
-from roboz import Message, Str, factory, tool
+from roboz.models import Message, Str
+from roboz import factory, tool
 from roboz.dependencies import ExecutableDependency
 from tests.type_tests.fixtures.primitive_contexts import ProgramContext
 

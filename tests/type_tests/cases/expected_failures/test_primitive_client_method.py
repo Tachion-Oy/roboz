@@ -1,6 +1,7 @@
 """Client method names remain checked through a factory's concrete context."""
 
-from roboz import Message, Str, factory
+from roboz.models import Message, Str
+from roboz import factory
 from roboz.llm import LLMEndpoint
 
 

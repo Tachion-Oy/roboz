@@ -1,8 +1,7 @@
 import json
 
-import roboz as rz
 from roboz.llm import get_truncated_messages_for_context
-from roboz.models import NO_MESSAGE, NO_TRUNCATION, Severity, Truncation
+from roboz.models import NO_MESSAGE, NO_TRUNCATION, Message, Role, Severity, Truncation
 
 TRACEBACK_LIFECYCLE = [
     Truncation(threshold=0, severity=Severity.LIGHT),
@@ -10,8 +9,8 @@ TRACEBACK_LIFECYCLE = [
     Truncation(threshold=6, severity=Severity.REMOVE),
 ]
 
-traceback_message = rz.Message(
-    role=rz.Role.USER,
+traceback_message = Message(
+    role=Role.USER,
     content=json.dumps(
         {
             "caller": "run_job",
@@ -25,8 +24,8 @@ traceback_message = rz.Message(
 def visibility_after(newer_count: int) -> str:
     """Describe the traceback's model-visible state after newer messages arrive."""
     newer_messages = [
-        rz.Message(
-            role=rz.Role.USER,
+        Message(
+            role=Role.USER,
             content=f"newer message {index}",
             truncation=NO_TRUNCATION,
         )
@@ -46,8 +45,8 @@ def visibility_after(newer_count: int) -> str:
 for distance in (0, 3, 6):
     print(f"distance {distance}: {visibility_after(distance)}")
 
-internal_message = rz.Message(
-    role=rz.Role.USER,
+internal_message = Message(
+    role=Role.USER,
     content="retained operational detail",
     truncation=NO_MESSAGE,
 )

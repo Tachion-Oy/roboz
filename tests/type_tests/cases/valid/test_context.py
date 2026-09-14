@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import assert_type
 
-from roboz import Factory, HasExternalDependencies, Message, Str, Tool, factory
+from roboz import Factory, Tool, factory
+from roboz.tooling import HasExternalDependencies
+from roboz.models import Message, Str
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 
 

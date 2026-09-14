@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from roboz import Empty, Message, Str, factory, tool
+from roboz.models import Empty, Message, Str
+from roboz import factory, tool
 from roboz.skill import Skill
 
 
