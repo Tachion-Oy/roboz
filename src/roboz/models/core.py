@@ -89,6 +89,13 @@ class Int(Empty):
     model_config = ConfigDict(extra="forbid")
 
 
+class Ints(Empty):
+    """Carry one integer value between tools."""
+
+    value: list[int] = Field(...)
+    model_config = ConfigDict(extra="forbid")
+
+
 class Str(Empty):
     """Carry one string value between tools."""
 
