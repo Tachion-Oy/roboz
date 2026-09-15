@@ -19,6 +19,7 @@ from roboz.models.core import (
     Str,
     Strs,
 )
+from roboz.models.messages import filter_messages
 from roboz.models.truncation import (
     DEFAULT,
     ERROR_RETRY,
@@ -58,4 +59,5 @@ __all__ = [
     "Strs",
     "Truncation",
     "TruncationSpec",
+    "filter_messages",
 ]

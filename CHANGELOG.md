@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Filter conversation history with `roboz.models.filter_messages` by role,
+  requested action, or result caller while retaining message order and metadata.
+
 - Call `get_completion(endpoint=..., messages=...)` directly without an API
   callback. `MockLLMEndpoint` now accepts literal text responses as well as JSON
   objects and exceptions.

@@ -67,6 +67,22 @@ Tool names should be imperative action phrases, for example `stop`, `throw_dice`
 
 ## Message Context and Truncation
 
+Use `filter_messages(messages, *, role=None, action=None, caller=None)` from
+`roboz.models` to select history entries. Supplied filters must all match;
+`None` leaves a filter unrestricted. The result is a new `list[Message]` retaining
+the original objects, order, and duplicates, or `[]` when nothing matches.
+
+`role` matches the message role. `action` and `caller` match exact top-level JSON
+fields in message content: `action` identifies a requested tool, while `caller`
+identifies the producer of a recorded result. Plain text, invalid or non-object
+JSON, and missing or null fields do not match action or caller filters. Role-only
+filtering does not parse content. No filters returns every message.
+
+For example, `filter_messages(messages, role=Role.ASSISTANT)` selects assistant
+messages, and `filter_messages(messages, caller="initialize_context")` finds
+recorded results from that tool. Truncation is not applied, so a result carrying
+`NO_MESSAGE` remains searchable in the full history passed to tools.
+
 Main code:
 
 - [`../src/roboz/models/truncation.py`](../src/roboz/models/truncation.py)
