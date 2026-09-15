@@ -10,10 +10,6 @@
 
 RoboZ is a framework for building llm powered agents. The core ingredient is that every tool can may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
-The package root contains the concise agent and tool authoring API. Models, LLM
-operations, built-in tools, and runtime interfaces live in their corresponding
-domain namespaces; see [public imports](docs/imports.md).
-
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -24,9 +20,9 @@ domain namespaces; see [public imports](docs/imports.md).
 
 ## Basic idea
 
-![The usual agent loop sends every lunch-planning step back through the agent. A Roboz chain returns to the agent when Bob wants no lunch, passes any cuisine into one parameterized restaurant search, and retries the plan directly when no seats are available.](docs/assets/tool-chaining.svg)
+![](docs/assets/tool-chaining.svg)
 
-### Problems in agents: Context bloat and excessive back-and-forth
+### Problems to solve: Context bloat and too many llm calls
 Suppose the task we want to achieve is ask our buddy Bob out to lunch and then book a table. For the sake of argument assume that our agent has access to the following MCP servers (Note: this is an example, RoboZ has native Tool primitives):
 
 - Ask Bob what they want
@@ -45,72 +41,48 @@ Lengthy tasks with many tool calls also add many tokens in the context that may 
 
 
 
-## Code example
-TBD
-
+## Simple example: Agent with a custom tool
 
 ```python
-from roboz import tool
-from roboz.models import Empty, Message
+from random import choice
 
+from simpsons_quotes import QUOTES
 
-class LunchPreference(Empty):
-    cuisine: str | None
-
-
-class Restaurant(Empty):
-    name: str
-    seats_available: bool
-
-
-class Booking(Empty):
-    confirmation: str
+from roboz import Agent, tool
+from roboz.llm.endpoints import MockLLMEndpoint
+from roboz.models import Empty, Message, Stop
 
 
 @tool
-def plan_lunch_with_bob(
-    input: Empty, messages: list[Message]
-) -> LunchPreference:
-    ...
+def get_quote(input: Empty, messages: list[Message]) -> Stop:
+    """Return a random Simpsons quote and then stop."""
+    return Stop(value=choice(QUOTES))
 
 
-@tool
-def retry_plan_lunch_with_bob(
-    input: Restaurant, messages: list[Message]
-) -> LunchPreference:
-    ...
-
-
-@tool(
-    chained_to=[plan_lunch_with_bob, retry_plan_lunch_with_bob],
-    chain_condition=lambda output: (
-        isinstance(output, LunchPreference)
-        and output.cuisine is not None
-    ),
-)
-def find_restaurant(
-    input: LunchPreference, messages: list[Message]
-) -> Restaurant:
-    ...
-
-
-retry_plan_lunch_with_bob.chain(
-    chained_to=find_restaurant,
-    chain_condition=lambda output: (
-        isinstance(output, Restaurant) and not output.seats_available
-    ),
+mock = MockLLMEndpoint(
+    responses=[{"action": "get_quote", "rationale": "Need Simpsons quote!"}]
 )
 
-
-@tool(
-    chained_to=find_restaurant,
-    chain_condition=lambda output: (
-        isinstance(output, Restaurant) and output.seats_available
-    ),
+agent = Agent(
+    name="demo",
+    system_prompt="You are a Simpsons quote generator",
+    agent_endpoint=mock,
+    tools=[get_quote],
 )
-def book_a_table(input: Restaurant, messages: list[Message]) -> Booking:
-    ...
+
+output, messages_ = agent.invoke()
+print(f'"{output.value}"')
 ```
+
+This [simple example](examples/simple.py) creates an agent that returns a random
+Simpsons quote. It uses a mock endpoint, so you can run it without API keys.
+The quote list lives in [simpsons_quotes.py](examples/simpsons_quotes.py).
+
+- `@tool` exposes `get_quote` as an action the agent can select.
+- `MockLLMEndpoint` supplies a scripted response selecting that action.
+- `Stop` returns the quote and ends the agent run.
+- `agent.invoke()` runs the agent and returns its output and messages.
+
 
 ## factory closure, endpoint instance and seeing the entire prompt
 TBD
