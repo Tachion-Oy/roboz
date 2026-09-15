@@ -183,6 +183,13 @@ have to share a model merely because it belongs to the same workflow.
 `LLMEndpointRoute` follows a typed endpoint getter when a tool or agent should
 track live model selection; concrete endpoints keep other uses fixed.
 
+For an individual model call inside a factory, bind its endpoint directly and use
+`get_completion(endpoint=ctx, messages=messages)` from `roboz.llm`. It returns raw
+text by default, ready for the tool to process. Pass `LlmOutputModel=...` for
+validated JSON dictionaries and output repair. See the
+[completion guide](docs/tool-authoring.md#standalone-llm-backed-tools) and
+[model-backed chain example](examples/chain_with_factory.py).
+
 Provider SDKs remain outside core. The `roboz` package supplies the agent,
 tooling, model, runtime, persistence, dependency, and deployment primitives;
 install integrations only where they are needed.
