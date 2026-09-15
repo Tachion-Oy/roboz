@@ -122,12 +122,12 @@ inspect, initialize, check, or execute resources.
 
 ## Standalone LLM-backed tools
 
-The public `roboz.llm` operations do not require an `Agent`. Bind an endpoint
-object directly and validate its completion against the output model:
+`get_completion` is the normal API for a model call and does not require an
+`Agent`. Bind an endpoint directly to one factory and receive raw text by default:
 
 ```python
 from roboz import factory
-from roboz.llm import EndpointLike, call_llm_api, get_completion
+from roboz.llm import EndpointLike, MockLLMEndpoint, get_completion
 from roboz.models import Message, Str
 
 
@@ -136,21 +136,61 @@ def summarize_with_llm(
     input: Str, messages: list[Message], ctx: EndpointLike
 ) -> Str:
     """Summarize the conversation using the configured model."""
-    result = get_completion(
-        messages=messages,
-        LlmOutputModel=Str,
-        call_llm_api=lambda current: call_llm_api(ctx, current),
-    )
-    return Str(**result)
+    text = get_completion(endpoint=ctx, messages=messages)
+    return Str(value=text)
 
+endpoint = MockLLMEndpoint(["A short summary."])
 summarize = summarize_with_llm(endpoint)
 ```
+
+With `LlmOutputModel=None` and `active_tools=None` (the defaults), the result is a
+string exactly as returned by the transport. The tool can parse or transform it
+itself. There is no JSON decoding or output repair in this mode, and telemetry is
+logged rather than included in the string. `MockLLMEndpoint` accepts literal text,
+JSON objects (encoded as JSON), and exceptions.
+
+For structured output, pass an output model and supply suitable JSON instructions
+in the prompt. `LlmOutputModel` validates the response; it does not add schema
+instructions or change the endpoint's output format. The existing prompt helper
+can construct those instructions:
+
+```python
+from roboz.llm import get_basic_system_prompt
+from roboz.models import Role
+
+prompt = get_basic_system_prompt(
+    system_prompt="Summarize the conversation.", OutputModel=Str
+)
+result = get_completion(
+    endpoint=MockLLMEndpoint([{"value": "A structured summary."}]),
+    messages=[Message(role=Role.SYSTEM, content=prompt)],
+    LlmOutputModel=Str,
+)
+summary = Str.model_validate(result)
+```
+
+Structured calls return validated dictionaries with available telemetry and retry
+malformed output with repair messages. `active_tools=...` requests structured
+agent action selection instead; an explicit empty list still requests that mode.
 
 `EndpointLike` accepts a concrete `LLMEndpoint`, an `LLMEndpointRoute` for live
 selection, or a `MockLLMEndpoint` for deterministic tests. Real endpoints are
 discovered automatically; mocks add no external resource. Use
 `ctx: LLMEndpoint` when the factory deliberately requires a fixed concrete
 endpoint.
+
+Endpoint calls return the complete response without streaming, even if the
+endpoint supports streaming. For advanced execution controls, supply the existing
+`call_llm_api` callback instead of `endpoint`. This callback can bind streaming
+callbacks, the provider event/cancellation pipe, timeouts, or a custom transport.
+Supply exactly one of the endpoint and callback arguments. `error_pipe` receives
+output-repair messages; it is not automatically passed as the provider pipe.
+Request truncation and attempt hooks apply to both modes. Provider retries belong
+to the transport, while `tries` bounds completion attempts and output repairs.
+
+To migrate calls that relied on default action validation, pass `active_tools`
+explicitly. Pass `LlmOutputModel` explicitly for model-validated JSON; omit both
+arguments to receive raw text.
 
 ## Tool Chaining
 

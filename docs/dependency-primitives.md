@@ -251,11 +251,15 @@ contents; optional response diagnostics and stream chunks are inspected
 separately. Different provider APIs need their own explicitly supported
 implementation.
 
-For a model call, supply an already configured client to `LLMEndpoint` and pass
-`ctx` directly to `call_llm_api(ctx, messages)`. The existing `get_completion`
-helper can validate the completion against an output model. Neither helper
-requires an agent. Likewise, a transcription factory can annotate
-`ctx: TranscriptionEndpoint` and call `call_transcription_api(ctx, ...)`.
+For a model call, supply an already configured client to `LLMEndpoint` and use
+`get_completion(endpoint=ctx, messages=messages)`. The result is raw text by
+default; pass `LlmOutputModel=...` or `active_tools=...` for structured validation
+and repair retries. No agent is required. The lower-level `call_llm_api` remains
+available for advanced execution controls and injectable callbacks. Endpoint and
+callback arguments to `get_completion` are mutually exclusive. See the
+[completion guide](tool-authoring.md#standalone-llm-backed-tools).
+Likewise, a transcription factory can annotate `ctx: TranscriptionEndpoint` and
+call `call_transcription_api(ctx, ...)`.
 Core accepts an already constructed client. The endpoint companion also supplies
 concrete endpoints with clients that initialize on demand, as described below.
 

@@ -1,7 +1,7 @@
 """Language-model endpoint contracts, selection, and deterministic test endpoints."""
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Annotated, Any, Final, Literal, Self, cast
@@ -263,19 +263,19 @@ class ModelSelector:
 
 
 class MockLLMEndpoint:
-    """Returns pre-scripted JSON responses instead of calling the API. Used for tests."""
+    """Return scripted text, JSON objects, or exceptions for deterministic tests."""
 
     def __init__(
         self,
-        responses: list[dict[str, Any] | Exception],
+        responses: Sequence[str | dict[str, Any] | Exception],
         *,
         max_context_tokens: int = 128_000,
         api_name: str = "mock",
         model_name: str = "mock",
     ):
-        """Initialize a deterministic endpoint from scripted responses."""
+        """Initialize scripted responses, preserving text and JSON-encoding objects."""
         self.mock_responses: list[str | Exception] = [
-            r if isinstance(r, Exception) else json.dumps(r) for r in responses
+            r if isinstance(r, (str, Exception)) else json.dumps(r) for r in responses
         ]
         self.max_context_tokens = max_context_tokens
         self.api_name = api_name

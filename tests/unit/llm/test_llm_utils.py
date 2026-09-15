@@ -411,6 +411,7 @@ def test_get_completion_persists_error_message_to_given_pipe(tmp_path):
         get_completion(
             messages=[Message(role=Role.USER, content="hi")],
             call_llm_api=call_llm,
+            LlmOutputModel=MockInput,
             tries=1,
             error_pipe=pipe,
         )

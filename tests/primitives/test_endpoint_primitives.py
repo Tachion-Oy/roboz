@@ -68,7 +68,7 @@ def summarize(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
     completion = get_completion(
         messages=messages + [Message(role=Role.USER, content=input.value)],
         LlmOutputModel=Str,
-        call_llm_api=lambda current: call_llm_api(ctx, current),
+        endpoint=ctx,
     )
     return Str.model_validate(completion)
 
@@ -286,3 +286,62 @@ def test_selector_returns_the_supplied_concrete_endpoints():
     with pytest.raises(KeyError):
         selector.select("model:test:missing")
     assert selector.selected_endpoint is second
+
+
+class RawScriptedClient(ScriptedClient):
+    def complete(self, **request):
+        self.chat_requests.append(request)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content="  raw verdict\n"))
+            ],
+            usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3),
+        )
+
+
+@factory
+def review_raw(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str:
+    """Review the supplied conversation using the configured model."""
+    return Str(value=get_completion(endpoint=ctx, messages=messages))
+
+
+def test_raw_factory_uses_non_streaming_transport_and_same_dependency():
+    client = RawScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="scripted", model_name="chat", stream=True
+    )
+    bound = review_raw(endpoint)
+    assert bound.external_dependencies() == (endpoint,)
+    assert client.chat_requests == []
+
+    result = bound(
+        Str(value="input"), [Message(role=Role.USER, content="Review this.")]
+    )
+
+    assert result.value == "  raw verdict\n"
+    assert result.token_input is None
+    assert len(client.chat_requests) == 1
+    assert client.chat_requests[0].get("stream", False) is False
+    assert client.chat_requests[0]["response_format"] == {"type": "text"}
+
+
+def test_endpoint_structured_completion_preserves_provider_telemetry():
+    class UsageClient(ScriptedClient):
+        def complete(self, **request):
+            response = super().complete(**request)
+            response.usage = SimpleNamespace(prompt_tokens=7, completion_tokens=3)
+            return response
+
+    endpoint = LLMEndpoint(client=UsageClient(), api_name="scripted", model_name="chat")
+    result = get_completion(
+        endpoint=endpoint,
+        messages=[Message(role=Role.USER, content="Return JSON.")],
+        LlmOutputModel=Str,
+    )
+    assert result == {
+        "value": "configured endpoint output",
+        "endpoint": "scripted",
+        "model": "chat",
+        "token_input": 7,
+        "token_output": 3,
+    }

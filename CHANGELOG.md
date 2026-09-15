@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Call `get_completion(endpoint=..., messages=...)` directly without an API
+  callback. `MockLLMEndpoint` now accepts literal text responses as well as JSON
+  objects and exceptions.
+- Breaking: completions without an output model or tool list now return raw text
+  verbatim instead of attempting action validation. Supply `LlmOutputModel=...`
+  or `active_tools=...` to retain structured dictionary results and repair retries.
+  Endpoint and callback arguments are mutually exclusive. See the
+  [completion guide](docs/tool-authoring.md#standalone-llm-backed-tools).
+
 ## 0.1.2.dev6 - 2026-09-15
 
 - Breaking: make the `roboz` root a lazy authoring facade. It now exports only
