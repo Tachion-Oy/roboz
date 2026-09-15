@@ -1,6 +1,6 @@
 from roboz.models import Message, Role, Str
 from roboz import factory
-from roboz.llm import MockLLMEndpoint, call_llm_api, get_completion
+from roboz.llm import MockLLMEndpoint, get_completion
 
 
 @factory
@@ -12,7 +12,7 @@ def standalone_llm_tool(
     completion = get_completion(
         messages=messages,
         LlmOutputModel=Str,
-        call_llm_api=lambda current: call_llm_api(ctx, current),
+        endpoint=ctx,
     )
     return Str.model_validate(completion)
 

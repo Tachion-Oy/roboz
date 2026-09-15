@@ -1,11 +1,12 @@
-"""Structured completion parsing, validation, and retry prompting."""
+"""Raw text completions and structured parsing, validation, and retry prompting."""
 
 import json
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
+from functools import partial
 from json import JSONDecodeError
-from typing import Any, Final, cast
+from typing import Any, Final, cast, overload
 
 from pydantic import BaseModel, ValidationError
 
@@ -17,6 +18,8 @@ from roboz.exceptions import (
 )
 from roboz.llm._truncation import get_truncated_messages_for_context
 from roboz.llm.binding import LLMTelemetryDict
+from roboz.llm.calls import call_llm_api as _call_llm_api
+from roboz.llm.endpoints import EndpointLike
 from roboz.llm.prompts import (
     ACTION_FIX_PROMPT,
     JSON_FIX_PROMPT,
@@ -35,6 +38,7 @@ logger = logging.getLogger(__name__)
 type JSONValue = None | bool | int | float | str | list[JSONValue] | JSONDict
 type JSONDict = dict[str, JSONValue]
 type AnyTool = Tool[Any, Any]
+type _CompletionCaller = Callable[[list[Message]], tuple[str, LLMTelemetryDict]]
 
 
 _THINK_TAGS: Final[tuple[str, ...]] = ("</think>", "◁/think▷")
@@ -98,10 +102,59 @@ def decode_raw_JSON(
     return cast(JSONDict, decoded)
 
 
+@overload
+def get_completion(
+    *,
+    LlmOutputModel: None = None,
+    active_tools: None = None,
+    messages: list[Message],
+    endpoint: EndpointLike | None = None,
+    call_llm_api: _CompletionCaller | None = None,
+    error_pipe: EventPipe | None = None,
+    on_attempt_start: Callable[[], None] | None = None,
+    tries: int = 5,
+    include_raw_response_in_reprompt: bool = True,
+    truncate_for_context: Callable[[list[Message]], list[Message]] = ...,
+) -> str: ...
+
+
+@overload
+def get_completion(
+    *,
+    LlmOutputModel: type[BaseModel],
+    active_tools: Sequence[AnyTool] | None = None,
+    messages: list[Message],
+    endpoint: EndpointLike | None = None,
+    call_llm_api: _CompletionCaller | None = None,
+    error_pipe: EventPipe | None = None,
+    on_attempt_start: Callable[[], None] | None = None,
+    tries: int = 5,
+    include_raw_response_in_reprompt: bool = True,
+    truncate_for_context: Callable[[list[Message]], list[Message]] = ...,
+) -> JSONDict: ...
+
+
+@overload
+def get_completion(
+    *,
+    active_tools: Sequence[AnyTool],
+    LlmOutputModel: type[BaseModel] | None = None,
+    messages: list[Message],
+    endpoint: EndpointLike | None = None,
+    call_llm_api: _CompletionCaller | None = None,
+    error_pipe: EventPipe | None = None,
+    on_attempt_start: Callable[[], None] | None = None,
+    tries: int = 5,
+    include_raw_response_in_reprompt: bool = True,
+    truncate_for_context: Callable[[list[Message]], list[Message]] = ...,
+) -> JSONDict: ...
+
+
 def get_completion(
     *,
     messages: list[Message],
-    call_llm_api: Callable[[list[Message]], tuple[str, LLMTelemetryDict]],
+    endpoint: EndpointLike | None = None,
+    call_llm_api: _CompletionCaller | None = None,
     error_pipe: EventPipe | None = None,
     on_attempt_start: Callable[[], None] | None = None,
     active_tools: Sequence[AnyTool] | None = None,
@@ -111,11 +164,41 @@ def get_completion(
     truncate_for_context: Callable[
         [list[Message]], list[Message]
     ] = get_truncated_messages_for_context,
-) -> JSONDict:
-    """Request, parse, and validate a structured completion with retries."""
+) -> str | JSONDict:
+    """Return raw text, or validate a structured completion with repair retries.
+
+    Supply exactly one of ``endpoint`` and ``call_llm_api``. An endpoint uses the
+    standard non-streaming API implementation; a callback can customize transport,
+    streaming, cancellation, or timeouts.
+
+    With neither an output model nor a tool list, return the transport's text
+    verbatim. Raw mode does not decode JSON or retry output-format errors, and
+    telemetry is logged rather than included in the string. An explicit output
+    model or tool list returns the existing validated dictionary with telemetry.
+    Even an empty tool list requests structured action selection.
+
+    ``LlmOutputModel`` validates responses; callers supply the prompt instructions
+    describing the required JSON. ``error_pipe`` receives repair messages and is
+    not forwarded as the provider execution pipe. Provider retries are owned by
+    the transport; ``tries`` bounds completion attempts, including repairs.
+    """
     if not messages:
         raise ValueError("Messages cannot be empty.")
+    if (endpoint is None) == (call_llm_api is None):
+        raise ValueError("Supply exactly one of endpoint and call_llm_api.")
+    if endpoint is not None:
+        call_llm_api = partial(_call_llm_api, endpoint)
+    assert call_llm_api is not None
+
     updated_messages = messages.copy()
+    if active_tools is None and LlmOutputModel is None and tries > 0:
+        messages_to_send = truncate_for_context(updated_messages)
+        if on_attempt_start is not None:
+            on_attempt_start()
+        raw_response, _ = call_llm_api(messages_to_send)
+        return raw_response
+
+    active_tools = active_tools if active_tools is not None else []
     retry_count = 0
     raw_response = ""
     while tries - retry_count > 0:
@@ -125,11 +208,7 @@ def get_completion(
             if on_attempt_start is not None:
                 on_attempt_start()
             raw_response, meta = call_llm_api(messages_to_send)
-            parsed = _parse_response(
-                raw_response,
-                active_tools if active_tools is not None else [],
-                LlmOutputModel,
-            )
+            parsed = _parse_response(raw_response, active_tools, LlmOutputModel)
             for key, value in meta.items():
                 if value is not None:
                     parsed[key] = cast(JSONValue, value)

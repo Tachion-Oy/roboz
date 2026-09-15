@@ -92,6 +92,9 @@ def test_installed_core_types(consumer):
         str(python),
     ]
     subprocess.run([*command, str(valid)], cwd=root, env=env, check=True)
+    completion_types = root / "completion_types.py"
+    shutil.copyfile(cases / "valid/test_completion_api.py", completion_types)
+    subprocess.run([*command, str(completion_types)], cwd=root, env=env, check=True)
     for name in ("test_removed_root_model.py", "test_unknown_root_namespace.py"):
         invalid = root / name
         shutil.copyfile(cases / "expected_failures" / name, invalid)
