@@ -103,7 +103,7 @@ As strict design rule in Roboz, everything that depends on an LLM call must be t
 The [simple example](examples/simple.py) above does not illustrate how these more useful features of RoboZ work. For that see [complex example](examples/complex.py) example below.
 
 
-## Many endpoints, chains, factories and truncation
+## Chains, factories, truncation and many endpoints
 ```python
 from builtins import input as read_input
 
@@ -131,7 +131,7 @@ def ask_number(input: Empty, messages: list[Message]) -> Int:
 def escalate(input: Int, messages: list[Message], ctx: EndpointLike) -> Stop | Str:
     """An even number?! Need to check this with HR!"""
     interact_with_user("Careful now, that is pretty spicy!", with_reply=False)
-    prompt = "The user chose {input.value}. Is this too hot to handle?! (y/n)?"
+    prompt = f"The user chose {input.value}. Is this too hot to handle?! (y/n)?"
     verdict = get_completion(
         endpoint=ctx, messages=[Message(role=Role.SYSTEM, content=prompt)]
     )
@@ -163,7 +163,7 @@ guard_endpoint = MockLLMEndpoint(responses=10 * ["y"])
 
 agent = Agent(
     name="demo",
-    system_prompt="Without exception, use the ask user tool",
+    system_prompt=f"Without exception, use the {ask_number.name} tool.",
     event_sinks=[CliSink.default()],
     agent_endpoint=agent_endpoint,
     tools=[ask_number, escalate(guard_endpoint), give_praise, stop],
@@ -172,10 +172,12 @@ agent.invoke()
 
 
 ```
+![](docs/assets/number-escalation.svg)
 This more realistic example contains much of why RoboZ is useful. The workflow is as follows:
 - user chooses number
 - number is odd user gets a message and loop returns back to the agent
-- number is even, the choice is run by another llm 
+- number is even, the choice is run by another llm.
+- if there are two escalations the process stops
 
 
 ## Try it
