@@ -187,7 +187,7 @@ guard_endpoint = MockLLMEndpoint(responses=10 * ["y"])
 agent = Agent(
     name="demo",
     system_prompt=f"Without exception, use the {ask_number.name} tool.",
-    event_sinks=[CliSink.default()],
+    event_sinks=[CliSink.default()], 
     agent_endpoint=agent_endpoint,
     tools=[ask_number, escalate(guard_endpoint), give_praise, stop],
 )
