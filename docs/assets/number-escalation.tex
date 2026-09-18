@@ -64,7 +64,7 @@
   \node[passive] (escalate) at (6,-8.75) {
     {\scriptsize\bfseries\color{green}PASSIVE TOOL}\\[-0.2mm]
     {\large\bfseries \texttt{escalate(new\_llm\_endpoint)}}\\[-0.2mm]
-    {\scriptsize notify user their are pushing it; ask different LLM for their opinion}
+    {\scriptsize tell user they are pushing it; ask different LLM for their opinion}
   };
   \node[count decision] (count) at (6,-12.1) {
     {\small\bfseries\color{amber}TWO}\\[-0.3mm]
@@ -78,7 +78,8 @@
   };
   \node[stop] (stop) at (8.5,-18.25) {
     {\scriptsize\bfseries\color{red}STOP}\\[-0.2mm]
-    {\large\bfseries Too much spiciness}
+    {\large\bfseries Too much spiciness}\\[-0.2mm]
+    {\scriptsize Two even numbers?! Hot dang!}
   };
   \node[agent] (resume) at (0,-18.25) {
     {\scriptsize\bfseries\color{purple}AGENT}\\[-0.2mm]
