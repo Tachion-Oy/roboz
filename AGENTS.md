@@ -72,7 +72,7 @@ gate before completion:
 ```bash
 uv sync --locked --dev
 uv run pytest
-uv run python examples/quickstart.py
+uv run python examples/simple.py
 uv run ruff check
 uv run pyright
 bash scripts/run_type_tests.sh

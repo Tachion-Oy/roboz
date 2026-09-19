@@ -146,7 +146,7 @@ TYPE_TESTS_VERBOSE=1 bash scripts/run_type_tests.sh
 
 1. Sync dependencies (`uv sync --locked --dev`)
 2. Run pytest (`uv run pytest`)
-3. Run the quick start (`uv run python examples/quickstart.py`)
+3. Run the simple example (`uv run python examples/simple.py`)
 4. Run Ruff (`uv run ruff check`)
 5. Type-check the source (`uv run pyright`)
 6. Run type tests (`bash scripts/run_type_tests.sh`)
