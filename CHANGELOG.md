@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Breaking: replace the `is_agentic` boolean with the string-valued
+  `AgentMode.DETERMINISTIC`, `.STEERABLE`, or `.AUTONOMOUS` enum (the default
+  remains steerable). Autonomous agents use model-driven scheduling without a
+  user-input tool or direct user-interaction sidecar; their tools communicate
+  through the event pipe. Remove `interaction_mode` arguments and
+  `set_interaction_mode` calls: invocation uses a bound host channel, defaulting
+  to CLI, and restores the previous binding automatically. Registering a
+  `UserIO` adapter selects `Output.API` for the binding's lifetime.
+
 - Filter conversation history with `roboz.models.filter_messages` by role,
   requested action, or result caller while retaining message order and metadata.
 

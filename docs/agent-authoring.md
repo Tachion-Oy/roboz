@@ -119,8 +119,20 @@ Typical examples:
 - lightweight usage telemetry reporting
 - first user/task prompt tool
 
-If using non-agentic mode, ensure `default_tools` includes at least one entry.
-In agentic mode, runtime defaults can involve `prompt_agent`.
+With `mode=AgentMode.DETERMINISTIC`, ensure `default_tools` includes at least
+one entry. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` use `prompt_agent`;
+autonomous runs cannot request user input.
+
+Import `AgentMode` from `roboz.agent`. Calling `agent.invoke()` handles the
+interaction binding and cleanup internally: deterministic and steerable agents
+use a bound host output channel, or CLI by default. API hosts register their
+adapter with `bind_api_user_io`, which also selects `Output.API`, at the runtime
+boundary. Autonomous agents leave direct user interaction unbound, including
+notifications; tools communicate
+through the event pipe. Each child invocation uses its own mode; an interactive
+child with no bound channel defaults to CLI. Tools must use
+`interact_with_user` for this restriction to apply; direct terminal reads are
+outside this contract.
 
 Reference: [`reference.md`](reference.md)
 
