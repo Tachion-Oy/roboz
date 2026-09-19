@@ -1,5 +1,11 @@
 # Dependency-reference validation
 
+> This is a historical validation record, not a current command guide. Its dated
+> tables describe those revisions without presenting removed files as runnable.
+> For current validation,
+> run `uv run python examples/simple.py` and follow `AGENTS.md` and
+> `docs/build-and-test.md`.
+
 Validated on 2026-09-07 on Linux x86_64.
 
 - Base: `93edea26ebbafc9d8d27e789fc0022fed8593605` (Ctx PR #14 merged).
@@ -41,7 +47,7 @@ Logs are retained locally in `reports/` (ignored by Git).
 | `uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/coverage.xml --cov-report=json:reports/coverage.json --junitxml=reports/pytest.xml` | 869 passed; exit 0 |
 | `uv run python scripts/check_coverage.py reports/coverage.json` | All four floors pass |
 | `uv run pytest tests/e2e --no-cov` | 3 passed |
-| `uv run python examples/quickstart.py` | Exit 0 |
+| Then-current smoke example (since removed) | Exit 0 |
 | `uv run ruff check` | Exit 0 |
 | `uv run pyright` | Exit 0 |
 | `bash scripts/run_type_tests.sh` | Exit 0 |
@@ -57,7 +63,7 @@ export PATH=/tmp/roboz-ci-tools/bin:$PATH
 export UV_PROJECT_ENVIRONMENT=/tmp/roboz-reference-python3147
 uv sync --locked --dev --python 3.14.7
 uv run --python 3.14.7 --no-sync pytest --no-cov
-uv run --python 3.14.7 --no-sync python examples/quickstart.py
+# The smoke-example command from this historical run referenced a file since removed.
 ```
 
 Earlier `uv sync --locked --dev --python 3.14` attempts used the installed
@@ -116,7 +122,7 @@ Logs are in `reports/review-fix/`.
 | `uv sync --locked --dev` | Exit 0 |
 | `uv run pytest --cov=roboshed --cov=roboz_openai --cov=roboz_proton_bridge --cov-report=xml:reports/review-fix/coverage.xml --cov-report=json:reports/review-fix/coverage.json --junitxml=reports/review-fix/pytest.xml` | Exit 0 |
 | `uv run python scripts/check_coverage.py reports/review-fix/coverage.json` | Exit 0 |
-| `uv run python examples/quickstart.py` | Exit 0 |
+| Then-current smoke example (since removed) | Exit 0 |
 | `uv run ruff check` | Exit 0 |
 | `uv run pyright` | Exit 0 |
 | `bash scripts/run_type_tests.sh` | Exit 0 |
@@ -130,13 +136,13 @@ Shed 90.76%, OpenAI 90.00%, Proton Bridge 89.72%; all floors pass. The independe
 install gate passes wheels and wheels rebuilt from source archives for each
 package and the combined extras.
 
-Additional Python 3.14.7 checks pass (869 tests and quickstart):
+Additional Python 3.14.7 checks passed 869 tests and the then-current smoke example:
 
 ```bash
 export PATH=/tmp/roboz-ci-tools/bin:$PATH
 export UV_PROJECT_ENVIRONMENT=/tmp/roboz-reference-python3147
 uv run --python 3.14.7 --no-sync pytest --no-cov
-uv run --python 3.14.7 --no-sync python examples/quickstart.py
+# The smoke-example command from this historical run referenced a file since removed.
 ```
 
 In the paired Hub worktree at `337ff70` (application source unchanged from

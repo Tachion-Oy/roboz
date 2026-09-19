@@ -73,7 +73,7 @@ print(f'"{output.value}"')
 The above [simple example](examples/simple.py) can be run from the root with 
 
 ```python
-uv run examples/simple.py
+uv run python examples/simple.py
 ```
 It creates an agent that returns a random
 Simpsons quote. It uses a mock endpoint, with pre-determined replies, so you can run it without API keys.
@@ -199,7 +199,7 @@ agent.invoke()
 The above [complex example](examples/complex.py) can be run from the root with
 
 ```python
-uv run examples/complex.py
+uv run python examples/complex.py
 ```
 
 
@@ -236,7 +236,7 @@ adapters.
 | [Tool authoring](docs/tool-authoring.md) | Chaining, factories, conditions, and typed handoffs |
 | [Agent authoring](docs/agent-authoring.md) | Agent composition and prompt policy |
 | [Reference](docs/reference.md) | Runtime and API semantics |
-| [Message truncation example](examples/message_truncation.py) | Sliding model-context visibility |
+| [Complex chaining and truncation example](examples/complex.py) | Conditional chains, factory endpoints, and message visibility |
 | [Testing practices](docs/testing-practices.md) | Deterministic workflow and contract tests |
 
 ## Development
