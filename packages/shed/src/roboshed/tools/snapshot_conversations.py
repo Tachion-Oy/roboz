@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Final
 
 from roboshed.identifiers import SNAPSHOT_CONVERSATIONS_TOOL_NAME
@@ -47,8 +48,6 @@ TERMINAL_SYNCABLE_STATUSES: Final[frozenset[RunStatus]] = frozenset(
     {RunStatus.COMPLETED, RunStatus.FAILED}
 )
 
-_ISO_Z_SUFFIX: Final[str] = "Z"
-_ISO_UTC_OFFSET: Final[str] = "+00:00"
 _NOT_ENDED: Final[str] = "not ended"
 _UNKNOWN_TIME: Final[str] = "unknown"
 _SOURCE_AGENT_KEY: Final[str] = "source_agent"
@@ -69,29 +68,28 @@ class SnapshotMode(StrEnum):
 
 def _uncovered_rows(
     rows: list[LoggedMessageRow],
-    latest_snapshot_time: datetime | None,
     snapshot_document: SnapshotDocument | None,
 ) -> list[LoggedMessageRow]:
-    """Return rows beyond the stored cursor, with timestamp fallback for legacy files."""
+    """Return rows beyond valid stored coverage, reprocessing legacy artifacts."""
     if snapshot_document is not None and snapshot_document.coverage_marker_present:
         covered_sequence = snapshot_document.covered_through_sequence
         if covered_sequence is None:
             return rows
         return [row for row in rows if row.sequence > covered_sequence]
-    if latest_snapshot_time is None:
-        return rows
-    for index, row in enumerate(rows):
-        try:
-            created_at = datetime.fromisoformat(
-                row.created_at.replace(_ISO_Z_SUFFIX, _ISO_UTC_OFFSET)
-            )
-        except ValueError:
-            return rows[index:]
-        if created_at.tzinfo is None:
-            return rows[index:]
-        if created_at > latest_snapshot_time:
-            return rows[index:]
-    return []
+    return rows
+
+
+def _persisted_snapshot_covers(path: Path, *, sequence: int) -> bool:
+    """Return whether a competing snapshot has valid sufficient coverage."""
+    try:
+        document = parse_snapshot_document(path.read_text(encoding=UTF8_ENCODING))
+    except OSError:
+        return False
+    return (
+        document.coverage_marker_present
+        and document.covered_through_sequence is not None
+        and document.covered_through_sequence >= sequence
+    )
 
 
 def _normalize_temporal_messages(
@@ -191,9 +189,7 @@ def _snapshot_one_run(
         if snapshot_location is not None
         else None
     )
-    uncovered_rows = _uncovered_rows(
-        list(run.messages), snapshot_time, snapshot_document
-    )
+    uncovered_rows = _uncovered_rows(list(run.messages), snapshot_document)
     if not uncovered_rows:
         return False
     covered_through_sequence = max(row.sequence for row in uncovered_rows)
@@ -235,9 +231,13 @@ def _snapshot_one_run(
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
 
-    current_time, _ = latest_timestamped_file(snapshot_folder, suffix=MARKDOWN_SUFFIX)
+    current_time, current_location = latest_timestamped_file(
+        snapshot_folder, suffix=MARKDOWN_SUFFIX
+    )
     if current_time is not None and (
         snapshot_time is None or current_time > snapshot_time
+    ) and current_location is not None and _persisted_snapshot_covers(
+        current_location, sequence=covered_through_sequence
     ):
         return False
 

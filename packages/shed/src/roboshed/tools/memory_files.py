@@ -1,7 +1,10 @@
 """Filesystem helpers shared by snapshot and consolidation tools."""
 
-from datetime import UTC, datetime
+import os
+from datetime import UTC, datetime, timedelta
+from itertools import count
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Final
 
 from pydantic import ValidationError
@@ -67,15 +70,45 @@ def write_timestamped_file(
     replace: Path | None,
     pipe: EventPipe | None = None,
 ) -> Path:
-    """Write a new timestamp-named artifact, then optionally delete ``replace``."""
-    path = folder / f"{utc_now().strftime(TIMESTAMP_STEM_FORMAT)}{suffix}"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if pipe is not None:
-        pipe.raise_if_cancelled()
-    path.write_text(body, encoding=UTF8_ENCODING)
+    """Atomically publish a complete timestamped artifact, then remove ``replace``."""
+    folder.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    published_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding=UTF8_ENCODING,
+            dir=folder,
+            prefix=".librarian-",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(body)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+
+        if pipe is not None:
+            pipe.raise_if_cancelled()
+
+        base_time = utc_now()
+        for offset in count():
+            stamp = base_time + timedelta(microseconds=offset)
+            path = folder / f"{stamp.strftime(TIMESTAMP_STEM_FORMAT)}{suffix}"
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError:
+                continue
+            published_path = path
+            break
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
     if replace is not None:
         replace.unlink(missing_ok=True)
-    return path
+    assert published_path is not None
+    return published_path
 
 
 __all__ = [
