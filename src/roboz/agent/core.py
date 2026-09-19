@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from logging import getLogger
 from pathlib import Path
 from typing import Any, Literal, Sequence, TypedDict, Unpack
@@ -43,7 +42,7 @@ from roboz.llm.endpoints import (
     LLMEndpointRoute,
     MockLLMEndpoint,
 )
-from roboz.models import Empty, Invoke, Message, MessageKind, Role, Stop, Str
+from roboz.models import AgentMode, Empty, Invoke, Message, MessageKind, Role, Stop, Str
 from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
 from roboz.runtime.events import EventSink
@@ -56,23 +55,6 @@ from roboz.tooling.core import Factory, Tool
 from roboz.tools.interaction import NO_REPLY, prompt_user
 
 logger = getLogger(__name__)
-
-
-class AgentMode(StrEnum):
-    """Supported agent execution and interaction modes."""
-
-    DETERMINISTIC = "deterministic"
-    STEERABLE = "steerable"
-    AUTONOMOUS = "autonomous"
-
-    @property
-    def allows_user_interaction(self) -> bool:
-        """Return whether this mode permits direct user interaction."""
-        match self:
-            case AgentMode.DETERMINISTIC | AgentMode.STEERABLE:
-                return True
-            case AgentMode.AUTONOMOUS:
-                return False
 
 
 class AgentInputs(TypedDict, total=False):

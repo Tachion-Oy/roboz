@@ -11,6 +11,23 @@ from pydantic import BaseModel, ConfigDict, Field
 from roboz.models.truncation import DEFAULT, TruncationSpec
 
 
+class AgentMode(StrEnum):
+    """Supported agent execution and interaction modes."""
+
+    DETERMINISTIC = "deterministic"
+    STEERABLE = "steerable"
+    AUTONOMOUS = "autonomous"
+
+    @property
+    def allows_user_interaction(self) -> bool:
+        """Return whether this mode permits direct user interaction."""
+        match self:
+            case AgentMode.DETERMINISTIC | AgentMode.STEERABLE:
+                return True
+            case AgentMode.AUTONOMOUS:
+                return False
+
+
 class BaseNames(StrEnum):
     """Canonical field names shared by model and prompt machinery."""
 

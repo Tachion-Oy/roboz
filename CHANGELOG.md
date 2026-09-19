@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2.dev7 - 2026-09-20
+
 - Breaking: replace the `is_agentic` boolean with the string-valued
   `AgentMode.DETERMINISTIC`, `.STEERABLE`, or `.AUTONOMOUS` enum (the default
   remains steerable). Autonomous agents use model-driven scheduling without a
@@ -10,6 +12,8 @@
   `set_interaction_mode` calls: invocation uses a bound host channel, defaulting
   to CLI, and restores the previous binding automatically. Registering a
   `UserIO` adapter selects `Output.API` for the binding's lifetime.
+  `AgentMode` now lives in `roboz.models`; the existing `roboz.agent` export
+  remains available for compatibility.
 
 - Run each configured default tool exactly once per cycle for deterministic agents.
   Model-driven agents retain their master-tool step.

@@ -152,6 +152,7 @@ def test_domain_imports_do_not_replace_top_level_tool() -> None:
 def test_domain_ownership_exports() -> None:
     from roboz.models.messages import filter_messages
 
+    assert roboz.models.AgentMode is roboz.agent.AgentMode
     assert roboz.models.filter_messages is filter_messages
     assert roboz.agent.prompt_agent is agent_prompt_agent
     assert roboz.tools.stop is tools_stop

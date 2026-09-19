@@ -11,9 +11,9 @@ from roboshed.capabilities import (
 )
 from roboshed.identifiers import LIBRARIAN_AGENT_NAME
 from roboshed.sandbox import Sandbox
-from roboz.agent import AgentMode
 from roboz.deployment import DeployableAgent
 from roboz.llm import EndpointLike
+from roboz.models import AgentMode
 
 LIBRARIAN_AGENT_DESCRIPTION: Final[str] = (
     "Runs deterministic maintenance cycles using the configured capabilities."
