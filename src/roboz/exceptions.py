@@ -81,6 +81,10 @@ class AgentError(Exception):
     """Base exception for all agent related errors."""
 
 
+class UserInputUnavailableError(Exception):
+    """Raised when direct user interaction is unavailable."""
+
+
 class StopAgent(AgentError):
     """Raised to break out of agentic loop."""
 
@@ -112,4 +116,5 @@ __all__ = [
     "NonexistentTool",
     "RateLimitExceededError",
     "StopAgent",
+    "UserInputUnavailableError",
 ]

@@ -14,7 +14,6 @@ def test_subagent_completion(tmp_path: Path) -> None:
     events = []
     child = Agent(
         name="child",
-        interaction_mode=None,
         tools=[stop],
         system_prompt="Finish.",
         agent_endpoint=MockLLMEndpoint(
@@ -26,7 +25,6 @@ def test_subagent_completion(tmp_path: Path) -> None:
     delegate = run_subagent(child)
     parent = Agent(
         name="parent",
-        interaction_mode=None,
         tools=[delegate, stop],
         system_prompt="Delegate, then finish.",
         event_pipe=EventPipe(

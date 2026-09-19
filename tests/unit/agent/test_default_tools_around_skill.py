@@ -60,7 +60,6 @@ def test_default_tool_fires_before_calling_a_skill_only_tool():
     ]
 
     agent = Agent(
-        interaction_mode=None,
         name="skill_only_tool_agent",
         tools=[alpha, stop],
         system_prompt="prompt",
@@ -114,7 +113,6 @@ def test_two_default_tools_fire_in_order_after_skill_load():
     ]
 
     agent = Agent(
-        interaction_mode=None,
         name="two_default_skill_agent",
         tools=[stop],
         system_prompt="prompt",

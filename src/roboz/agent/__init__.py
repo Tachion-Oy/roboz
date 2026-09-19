@@ -8,12 +8,13 @@ from roboz.agent.background_agent import (
     BackgroundAgentStatus,
     run_background_agent,
 )
-from roboz.agent.core import Agent
+from roboz.agent.core import Agent, AgentMode
 from roboz.agent.prompt_agent_tool import PromptAgentContext, prompt_agent
 from roboz.agent.subagent import run_subagent
 
 __all__ = [
     "Agent",
+    "AgentMode",
     "BackgroundAgentContext",
     "BackgroundAgentPhase",
     "BackgroundAgentState",

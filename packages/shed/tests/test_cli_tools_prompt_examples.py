@@ -85,7 +85,6 @@ def _run_chain(
         ]
     )
     agent = Agent(
-        interaction_mode=None,
         name="prompt_examples_agent",
         tools=[*_tools(tmp_path), stop],
         system_prompt="x",
@@ -516,7 +515,6 @@ def test_negative_denies_relative_path_outside_allowed_scope(
         ]
     )
     agent = Agent(
-        interaction_mode=None,
         name="negative_scope_agent",
         tools=[*tools, stop],
         system_prompt="x",
@@ -554,7 +552,6 @@ def test_negative_denies_absolute_path_outside_allowed_scope(
         ]
     )
     agent = Agent(
-        interaction_mode=None,
         name="negative_abs_scope_agent",
         tools=[*tools, stop],
         system_prompt="x",
@@ -588,7 +585,6 @@ def test_negative_denies_write_when_rules_are_read_only(prompt_workspace: Path) 
         ]
     )
     agent = Agent(
-        interaction_mode=None,
         name="negative_write_agent",
         tools=[*tools, stop],
         system_prompt="x",

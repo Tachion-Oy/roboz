@@ -1,4 +1,4 @@
-"""System-prompt assembly for agentic and non-agentic runs."""
+"""System-prompt assembly for model-driven agent runs."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _get_available_tools_and_skills_section(
     return section.rstrip()
 
 
-def get_example_agent_discussion() -> str:
+def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
     """Return a multi-turn example showing how turns appear in the agent (roles and JSON shapes)."""
     section = "## Example discussion\n\n<example>\n\n"
     section += (
@@ -48,6 +48,24 @@ def get_example_agent_discussion() -> str:
     section += (
         "System: This is an example system message for illustrative purposes.\n\n"
     )
+    if not allow_user_input:
+        section += "Assistant: "
+        section += (
+            json.dumps(
+                {
+                    "action": "example_tool",
+                    "rationale": "Calling the example tool.",
+                    "value": 42,
+                }
+            )
+            + "\n\n"
+        )
+        section += "User: "
+        section += json.dumps(
+            {"caller": "example_tool", "value": "Example: 42"}
+        )
+        section += "\n\n</example>"
+        return section
     section += "Assistant: "
     section += (
         json.dumps(
@@ -138,6 +156,7 @@ def get_agentic_system_prompt(
     system_prompt: str = "",
     tools: Sequence[Tool] | None = None,
     skills: Sequence[Skill] | None = None,
+    allow_user_input: bool = True,
 ) -> str:
     """Build the complete technical prompt for an agentic run.
 
@@ -149,6 +168,6 @@ def get_agentic_system_prompt(
         AGENT_TOOL_USE_INSTRUCTIONS,
         AGENT_SKILL_USE_INSTRUCTIONS,
         _get_available_tools_and_skills_section(tools, skills),
-        get_example_agent_discussion(),
+        get_example_agent_discussion(allow_user_input=allow_user_input),
     ]
     return "\n\n".join(p for p in parts if p)

@@ -60,7 +60,6 @@ def _invoke_cli_with_tools(
         ]
     )
     agent = Agent(
-        interaction_mode=None,
         name="cli_chain_agent",
         tools=[*tools, stop],
         system_prompt="Run requested commands.",
@@ -965,7 +964,6 @@ def test_and_touch_then_tee_runs_through_agent_routing(tmp_path: Path) -> None:
     )
 
     agent = Agent(
-        interaction_mode=None,
         name="cli_chain_agent_plans",
         tools=[*tools, stop],
         system_prompt="Run requested commands.",

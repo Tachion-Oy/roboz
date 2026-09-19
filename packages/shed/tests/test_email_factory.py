@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
+from roboz.agent import AgentMode
 from roboshed.identifiers import (
     DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
     READ_EMAIL_TOOL_NAME,
@@ -821,7 +822,7 @@ def test_email_dependencies_are_inspected_without_mailbox_work_then_monitored(tm
         for resource in tool.copy().external_dependencies():
             assert resource is service
     agent = Agent(
-        name="email_worker", is_agentic=False, agent_endpoint=None,
+        name="email_worker", mode=AgentMode.DETERMINISTIC, agent_endpoint=None,
         default_tools=(stop,), tools=tools,
     )
     assert agent.external_dependencies() == (service,)

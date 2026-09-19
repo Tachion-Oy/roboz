@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from logging import getLogger
 from pathlib import Path
 from typing import Any, Literal, Sequence, TypedDict, Unpack
@@ -25,6 +26,10 @@ from roboz.agent._notifications import (
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.agent._tool_observer import ToolInvocationObserver
 from roboz.agent.prompt_agent_tool import PromptAgentContext, prompt_agent
+from roboz.dependencies import (
+    ExternalDependency,
+    dedupe_external_dependencies,
+)
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -42,30 +47,37 @@ from roboz.models import Empty, Invoke, Message, MessageKind, Role, Stop, Str
 from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
 from roboz.runtime.events import EventSink
-from roboz.runtime.io import (
-    Output,
-    bind_output,
-    get_bound_output,
-    reset_output,
-)
+from roboz.runtime.io import Output, bind_output, get_bound_output, reset_output
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
 from roboz.tooling.context import HasExternalDependencies
 from roboz.tooling.core import Factory, Tool
-from roboz.dependencies import (
-    ExternalDependency,
-    dedupe_external_dependencies,
-)
 from roboz.tools.interaction import NO_REPLY, prompt_user
 
 logger = getLogger(__name__)
 
 
+class AgentMode(StrEnum):
+    """Supported agent execution and interaction modes."""
+
+    DETERMINISTIC = "deterministic"
+    STEERABLE = "steerable"
+    AUTONOMOUS = "autonomous"
+
+    @property
+    def allows_user_interaction(self) -> bool:
+        """Return whether this mode permits direct user interaction."""
+        match self:
+            case AgentMode.DETERMINISTIC | AgentMode.STEERABLE:
+                return True
+            case AgentMode.AUTONOMOUS:
+                return False
+
+
 class AgentInputs(TypedDict, total=False):
     """Optional fields for `Agent.copy(**...)`; each key replaces the copied value."""
 
-    interaction_mode: Output | None
     name: str
     description: str
     tools: Sequence[Tool]
@@ -73,7 +85,7 @@ class AgentInputs(TypedDict, total=False):
     system_prompt: str
     auto_loaded_skills: Sequence[Skill] | None
     automatic_tool_prompt: bool
-    is_agentic: bool
+    mode: AgentMode
     default_tools: Sequence[Tool] | None
     custom_prompt_user_tool: Tool | None
     agent_endpoint: EndpointLike | None
@@ -96,13 +108,12 @@ class Agent(HasExternalDependencies):
         *,
         name: str,
         description: str = "",
-        interaction_mode: Output | None = Output.CLI,
         tools: Sequence[Tool | Sequence[Tool]] | None = None,
         skills: Sequence[Skill] | None = None,
         system_prompt: str = "",
         auto_loaded_skills: Sequence[Skill] | None = None,
         automatic_tool_prompt: bool = True,
-        is_agentic: bool = True,
+        mode: AgentMode = AgentMode.STEERABLE,
         default_tools: Sequence[Tool] | None = None,
         custom_prompt_user_tool: Tool | None = None,
         agent_endpoint: EndpointLike | None,
@@ -116,11 +127,6 @@ class Agent(HasExternalDependencies):
         self.name = validate_agent_name(name)
         self.description = description
         self.tools = Tool.to_tool_list(tools)
-        self.interaction_mode = (
-            interaction_mode
-            if interaction_mode is not None
-            else get_bound_output(default=Output.CLI)
-        )
         self.pipe = (
             event_pipe if event_pipe is not None else EventPipe(event_sinks=event_sinks)
         )
@@ -132,27 +138,13 @@ class Agent(HasExternalDependencies):
         self.auto_loaded_skills = auto_loaded_skills
         self.system_prompt = system_prompt
         self.automatic_tool_prompt = automatic_tool_prompt
-        self.is_agentic = is_agentic
-        if self.is_agentic and not self.system_prompt.strip():
-            raise ValueError(
-                f"Agent '{self.name}' is agentic but has an empty system prompt. "
-                "Agentic flows require a non-empty system_prompt."
-            )
-        self.default_tools = [] if default_tools is None else list(default_tools)
-        self.prompt_user_tool = (
-            prompt_user(NO_REPLY)
-            if custom_prompt_user_tool is None
-            else custom_prompt_user_tool
+        self._init_execution_mode(
+            mode=mode,
+            default_tools=default_tools,
+            custom_prompt_user_tool=custom_prompt_user_tool,
+            agent_endpoint=agent_endpoint,
         )
-        if agent_endpoint is not None and not isinstance(
-            agent_endpoint, (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
-        ):
-            raise TypeError(
-                "agent_endpoint must be an LLMEndpoint, MockLLMEndpoint or LLMEndpointRoute"
-            )
-        if self.is_agentic and agent_endpoint is None:
-            raise ValueError("agentic instances require agent_endpoint")
-        self.agent_endpoint = agent_endpoint
+
         self.initial_messages = initial_messages if initial_messages else []
 
         self.active_tools: dict[str, Tool] = {}
@@ -182,6 +174,51 @@ class Agent(HasExternalDependencies):
         self.full_system_prompt = self._get_full_system_prompt(
             self.automatic_tool_prompt
         )
+
+    def _init_execution_mode(
+        self,
+        *,
+        mode: AgentMode,
+        default_tools: Sequence[Tool] | None,
+        custom_prompt_user_tool: Tool | None,
+        agent_endpoint: EndpointLike | None,
+    ) -> None:
+        """Validate and initialize mode-dependent agent configuration."""
+        try:
+            self.mode = AgentMode(mode)
+        except ValueError as error:
+            raise ValueError(f"Unsupported agent mode: {mode!r}") from error
+        if self.mode is not AgentMode.DETERMINISTIC and not self.system_prompt.strip():
+            raise ValueError(
+                f"Agent '{self.name}' is {self.mode} but has an empty system prompt. "
+                "Model-driven flows require a non-empty system_prompt."
+            )
+        self.default_tools = [] if default_tools is None else list(default_tools)
+        if (
+            not self.mode.allows_user_interaction
+            and custom_prompt_user_tool is not None
+        ):
+            raise ValueError(
+                "autonomous agents cannot configure custom_prompt_user_tool"
+            )
+        self.prompt_user_tool = (
+            None
+            if not self.mode.allows_user_interaction
+            else (
+                prompt_user(NO_REPLY)
+                if custom_prompt_user_tool is None
+                else custom_prompt_user_tool
+            )
+        )
+        if agent_endpoint is not None and not isinstance(
+            agent_endpoint, (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
+        ):
+            raise TypeError(
+                "agent_endpoint must be an LLMEndpoint, MockLLMEndpoint or LLMEndpointRoute"
+            )
+        if self.mode is not AgentMode.DETERMINISTIC and agent_endpoint is None:
+            raise ValueError("model-driven instances require agent_endpoint")
+        self.agent_endpoint = agent_endpoint
 
     @staticmethod
     def _append_tools_reducer(
@@ -214,13 +251,14 @@ class Agent(HasExternalDependencies):
                 system_prompt=self.system_prompt,
                 tools=tools_for_prompt,
                 skills=list(self._skills.values()),
+                allow_user_input=self.mode.allows_user_interaction,
             )
         return self.system_prompt
 
     def copy(self, **overrides: Unpack[AgentInputs]) -> Agent:
         """Copy this agent configuration while preserving its event pipe by default."""
+        copy_mode = AgentMode(overrides.get("mode", self.mode))
         old_input: AgentInputs = {
-            "interaction_mode": self.interaction_mode,
             "name": self.name,
             "description": self.description,
             "tools": self.tools,
@@ -228,9 +266,11 @@ class Agent(HasExternalDependencies):
             "system_prompt": self.system_prompt,
             "auto_loaded_skills": list(self._auto_loaded_skills.values()),
             "automatic_tool_prompt": self.automatic_tool_prompt,
-            "is_agentic": self.is_agentic,
+            "mode": self.mode,
             "default_tools": self.default_tools,
-            "custom_prompt_user_tool": self.prompt_user_tool,
+            "custom_prompt_user_tool": (
+                None if not copy_mode.allows_user_interaction else self.prompt_user_tool
+            ),
             "agent_endpoint": self.agent_endpoint,
             "initial_messages": None
             if not self.initial_messages
@@ -240,10 +280,10 @@ class Agent(HasExternalDependencies):
         return Agent(**(old_input | overrides))
 
     def _init_default_tool(self):
-        if self.is_agentic:
+        if self.mode is not AgentMode.DETERMINISTIC:
             endpoint = self.agent_endpoint
             if endpoint is None:
-                raise RuntimeError("agentic instance has no endpoint")
+                raise RuntimeError("model-driven instance has no endpoint")
             self.master_tool = prompt_agent(
                 PromptAgentContext(
                     active_tools=tuple(self.active_tools.values()),
@@ -253,7 +293,7 @@ class Agent(HasExternalDependencies):
             )
             return
         if not self.default_tools:
-            raise ValueError("No default tools for a non-agentic instance.")
+            raise ValueError("No default tools for a deterministic instance.")
         self.master_tool = self.default_tools[0]
 
     def _init_tools(self, *, tools: Sequence[Tool], skill: Skill | None):
@@ -282,7 +322,7 @@ class Agent(HasExternalDependencies):
         include_lazy_skills: bool = True,
     ) -> tuple[ExternalDependency, ...]:
         """Derive the agent's dependency catalog exclusively from its Tool graph."""
-        tools: list[Tool] = [
+        tools: list[Tool | None] = [
             self.master_tool,
             self.prompt_user_tool,
             *self.default_tools,
@@ -297,7 +337,12 @@ class Agent(HasExternalDependencies):
                 tools.extend(skill.tools)
 
         return dedupe_external_dependencies(
-            [resource for tool in tools for resource in tool.external_dependencies()]
+            [
+                resource
+                for tool in tools
+                if tool is not None
+                for resource in tool.external_dependencies()
+            ]
         )
 
     @staticmethod
@@ -492,7 +537,6 @@ class Agent(HasExternalDependencies):
             self.append_and_pipe(
                 get_finalized_message(
                     Str(value=AUTO_LOAD_SKILLS_BANNER),
-                    self.prompt_user_tool,
                     message_kind=MessageKind.AUTO_LOAD_BANNER,
                 )
             )
@@ -521,10 +565,10 @@ class Agent(HasExternalDependencies):
         different endpoint for each invocation of the same agent.
         """
         endpoint: LLMEndpoint | MockLLMEndpoint | None = None
-        if self.is_agentic:
+        if self.mode is not AgentMode.DETERMINISTIC:
             configured_endpoint = self.agent_endpoint
             if configured_endpoint is None:
-                raise RuntimeError("agentic instance has no endpoint")
+                raise RuntimeError("model-driven instance has no endpoint")
             endpoint = resolve_endpoint(configured_endpoint)
         self.pipe.initialize(
             dry_run=dry_run,
@@ -546,8 +590,12 @@ class Agent(HasExternalDependencies):
             self.pipe.raise_if_cancelled()
             tool_output = self._tool_invocations.invoke(tool, output, self.messages)
         except LLMProviderRequestError as error:
+            if not self.mode.allows_user_interaction:
+                raise
             return self._handle_provider_request_error(error)
         except ExternalCallInterruptedError:
+            if not self.mode.allows_user_interaction:
+                raise
             logger.info(
                 "Interrupt caught (ExternalCallInterruptedError) in agent '%s' "
                 "while running tool '%s'",
@@ -556,6 +604,8 @@ class Agent(HasExternalDependencies):
             )
             return self._handle_interrupt()
         except KeyboardInterrupt:
+            if not self.mode.allows_user_interaction:
+                raise
             if not self.pipe.interrupted:
                 logger.info(
                     "KeyboardInterrupt in agent '%s' without interrupt flag set; "
@@ -582,11 +632,12 @@ class Agent(HasExternalDependencies):
                 message_kind=MessageKind.INTERRUPTED_GENERATION,
             )
         )
-        interrupt_input = self.prompt_user_tool.InputModel(
-            value=INTERRUPT_PROMPT_TO_USER
-        )
-        interrupt_output = self.prompt_user_tool(interrupt_input, self.messages)
-        message = get_finalized_message(interrupt_output, self.prompt_user_tool)
+        prompt_user_tool = self.prompt_user_tool
+        if prompt_user_tool is None:
+            raise RuntimeError("user interaction tool is unavailable")
+        interrupt_input = prompt_user_tool.InputModel(value=INTERRUPT_PROMPT_TO_USER)
+        interrupt_output = prompt_user_tool(interrupt_input, self.messages)
+        message = get_finalized_message(interrupt_output, prompt_user_tool)
         self.append_and_pipe(message)
         self._ephemeral_default_tools = []
         return None, Empty()
@@ -599,11 +650,14 @@ class Agent(HasExternalDependencies):
             self.name,
             type(error).__name__,
         )
-        retry_input = self.prompt_user_tool.InputModel(
+        prompt_user_tool = self.prompt_user_tool
+        if prompt_user_tool is None:
+            raise RuntimeError("user interaction tool is unavailable")
+        retry_input = prompt_user_tool.InputModel(
             value=LLM_PROVIDER_REQUEST_RETRY_PROMPT
         )
-        retry_output = self.prompt_user_tool(retry_input, self.messages)
-        self.append_and_pipe(get_finalized_message(retry_output, self.prompt_user_tool))
+        retry_output = prompt_user_tool(retry_input, self.messages)
+        self.append_and_pipe(get_finalized_message(retry_output, prompt_user_tool))
         self._ephemeral_default_tools = []
         return None, Empty()
 
@@ -615,7 +669,11 @@ class Agent(HasExternalDependencies):
     ) -> tuple[Stop, list[Message]]:
         """Run the agent synchronously until it stops or is cancelled."""
         stack_token = None
-        output_token = None
+        output_token = bind_output(
+            get_bound_output(default=Output.CLI)
+            if self.mode.allows_user_interaction
+            else None
+        )
         exit_status = RunStatus.FAILED
         logger.debug(
             "Invoke start: agent='%s' stack=%s dry_run=%s",
@@ -624,8 +682,6 @@ class Agent(HasExternalDependencies):
             dry_run,
         )
         try:
-            if self.interaction_mode is not None:
-                output_token = bind_output(self.interaction_mode)
             self._initialize_pipe_for_invoke(dry_run=dry_run)
             if not dry_run:
                 stack_token = push_active_agent(self.name)
@@ -657,11 +713,12 @@ class Agent(HasExternalDependencies):
                 self.name,
                 exit_status,
             )
-            self.pipe.finalize_run(status=exit_status)
-            if stack_token is not None:
-                pop_active_agent(stack_token)
-            if output_token is not None:
+            try:
+                self.pipe.finalize_run(status=exit_status)
+            finally:
                 reset_output(output_token)
+                if stack_token is not None:
+                    pop_active_agent(stack_token)
 
     def show_agent_info(self):
         """Render configured tools, storage locations, and initial messages."""
@@ -693,7 +750,7 @@ class Agent(HasExternalDependencies):
         conf_table.add_row(
             "Main Prompter",
             self.master_tool.name if self.master_tool.name else "Not set",
-            "Set the flag 'is_agentic' to true for agentic flows.",
+            f"Configured for {self.mode} execution.",
             "-",
         )
 

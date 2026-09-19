@@ -7,10 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from roboz.agent import Agent, BackgroundAgentContext, run_background_agent, run_subagent
+from roboz.agent import (
+    Agent,
+    AgentMode,
+    BackgroundAgentContext,
+    run_background_agent,
+    run_subagent,
+)
 from roboz.dependencies import ExternalDependency
 from roboz.llm import EndpointLike
-from roboz.runtime import EventPipe, EventSink, Output
+from roboz.runtime import EventPipe, EventSink
 from roboz.skill import Skill
 from roboz.tooling import HasExternalDependencies, Tool
 
@@ -70,7 +76,7 @@ class DeployableAgent(HasExternalDependencies):
         name: str,
         description: str = "",
         system_prompt: str = "",
-        is_agentic: bool = True,
+        mode: AgentMode = AgentMode.STEERABLE,
         automatic_tool_prompt: bool = True,
         default_capabilities: Sequence[AgentCapability] = (),
         subagents: Sequence["DeployableAgent"] = (),
@@ -80,14 +86,16 @@ class DeployableAgent(HasExternalDependencies):
         self._name = name
         self._description = description
         self._system_prompt = system_prompt
-        self._is_agentic = is_agentic
+        try:
+            self._mode = AgentMode(mode)
+        except ValueError as error:
+            raise ValueError(f"Unsupported agent mode: {mode!r}") from error
         self._automatic_tool_prompt = automatic_tool_prompt
         self._default_capabilities = tuple(default_capabilities)
         self._additional_capabilities: list[AgentCapability] = []
         self._subagents: list[DeployableAgent] = []
         self._background_agents: list[DeployableAgent] = []
         self._agent_endpoint: EndpointLike | None = None
-        self._interaction_mode: Output | None = Output.CLI
         self._initial_messages: tuple[Path | str, ...] = ()
         self._attributes: dict[str, object] = {}
         self.add_subagents(*subagents)
@@ -109,9 +117,9 @@ class DeployableAgent(HasExternalDependencies):
         return self._system_prompt
 
     @property
-    def is_agentic(self) -> bool:
-        """Return whether the runtime agent performs model-driven turns."""
-        return self._is_agentic
+    def mode(self) -> AgentMode:
+        """Return this agent's execution and interaction mode."""
+        return self._mode
 
     @property
     def automatic_tool_prompt(self) -> bool:
@@ -149,11 +157,6 @@ class DeployableAgent(HasExternalDependencies):
         return self._agent_endpoint
 
     @property
-    def interaction_mode(self) -> Output | None:
-        """Return this node's selected interaction mode."""
-        return self._interaction_mode
-
-    @property
     def initial_messages(self) -> tuple[Path | str, ...]:
         """Return configured initial message sources."""
         return self._initial_messages
@@ -169,10 +172,6 @@ class DeployableAgent(HasExternalDependencies):
     def set_agent_endpoint(self, endpoint: EndpointLike | None) -> None:
         """Set or defer this node's model endpoint."""
         self._agent_endpoint = endpoint
-
-    def set_interaction_mode(self, interaction_mode: Output | None) -> None:
-        """Select this node's runtime interaction mode."""
-        self._interaction_mode = interaction_mode
 
     def set_initial_messages(self, messages: Sequence[Path | str]) -> None:
         """Replace this node's initial message sources before a build."""
@@ -343,8 +342,7 @@ class DeployableAgent(HasExternalDependencies):
             description=self.description,
             agent_endpoint=self.agent_endpoint,
             event_pipe=pipe,
-            interaction_mode=self.interaction_mode,
-            is_agentic=self.is_agentic,
+            mode=self.mode,
             automatic_tool_prompt=self.automatic_tool_prompt,
             system_prompt=self.system_prompt,
             tools=tools,
