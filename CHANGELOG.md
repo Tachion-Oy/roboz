@@ -11,6 +11,9 @@
   to CLI, and restores the previous binding automatically. Registering a
   `UserIO` adapter selects `Output.API` for the binding's lifetime.
 
+- Run each configured default tool exactly once per cycle for deterministic agents.
+  Model-driven agents retain their master-tool step.
+
 - Filter conversation history with `roboz.models.filter_messages` by role,
   requested action, or result caller while retaining message order and metadata.
 

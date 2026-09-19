@@ -432,14 +432,12 @@ class Agent(HasExternalDependencies):
         raise RuntimeError
 
     def pop_ephemeral_default_tool(self):
-        """Pop the next per-run default tool, replenishing the sequence as needed."""
-        try:
-            return self._ephemeral_default_tools.pop(0)
-        except IndexError:
-            self._ephemeral_default_tools = list(self.default_tools) + [
-                self.master_tool
-            ]
-            return self._ephemeral_default_tools.pop(0)
+        """Return the next default tool, starting a new scheduling cycle as needed."""
+        if not self._ephemeral_default_tools:
+            self._ephemeral_default_tools = list(self.default_tools)
+            if self.mode is not AgentMode.DETERMINISTIC:
+                self._ephemeral_default_tools.append(self.master_tool)
+        return self._ephemeral_default_tools.pop(0)
 
     def append_and_pipe(self, message: Message):
         """Append a message to conversation state and emit it through the pipe."""
