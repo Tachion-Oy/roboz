@@ -23,5 +23,8 @@ PURGE_FILES_TOOL_NAME: Final[str] = "purge_files"
 PURGE_LOGS_TOOL_NAME: Final[str] = "purge_logs"
 PURGE_SNAPSHOTS_TOOL_NAME: Final[str] = "purge_snapshots"
 PURGE_MEMORY_TOOL_NAME: Final[str] = "purge_memory"
+STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME: Final[str] = (
+    "stop_when_watched_agents_inactive"
+)
 SLEEP_BETWEEN_RUNS_TOOL_NAME: Final[str] = "sleep_between_runs"
 LIBRARIAN_AGENT_NAME: Final[str] = "librarian"

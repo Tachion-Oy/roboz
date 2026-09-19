@@ -12,16 +12,19 @@ from roboshed.tools import (
     PurgeFilesContext,
     SleepBetweenRunsContext,
     SnapshotConversationsContext,
+    StopWhenWatchedAgentsInactiveContext,
     consolidate_memory,
     purge_files,
     sleep_between_runs,
     snapshot_conversations,
+    stop_when_watched_agents_inactive,
 )
 from roboshed.tools.apply_patch import apply_patch, execute_apply_patch_replace
 from roboshed.tools.compactification import compactify_messages_when_needed
 from roboshed.tools.runner import execute_file_command
 from roboshed.tools.truncation import default_cli_truncation
-from roboz.models import All, Stop
+from roboz.models import All, Stop, Str
+from roboz.models._serialization import get_finalized_message
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import LLMEndpoint
 
@@ -117,4 +120,13 @@ def test_configuration_only_contexts_report_no_external_dependencies(tmp_path):
     other = SleepBetweenRunsContext(seconds=0, conversation_root=tmp_path)
     context.agent_names.add("worker")
     assert other.agent_names == set()
-    assert isinstance(sleep_between_runs(other)(All(), []), Stop)
+    assert isinstance(sleep_between_runs(other)(All(), []), Str)
+    idle = stop_when_watched_agents_inactive(
+        StopWhenWatchedAgentsInactiveContext(
+            conversation_root=tmp_path,
+            agent_names={"worker"},
+        )
+    )
+    first = idle(All(), [])
+    assert isinstance(first, Str)
+    assert isinstance(idle(All(), [get_finalized_message(first, idle)]), Stop)

@@ -12,6 +12,7 @@ from roboshed.identifiers import (
     PURGE_SNAPSHOTS_TOOL_NAME,
     SLEEP_BETWEEN_RUNS_TOOL_NAME,
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
+    STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
 from roboshed.skills import cli_skill, file_editing
 from roboshed.tools import (
@@ -30,9 +31,13 @@ from roboshed.tools.contexts import (
     PurgeFilesContext,
     SleepBetweenRunsContext,
     SnapshotConversationsContext,
+    StopWhenWatchedAgentsInactiveContext,
 )
 from roboshed.tools.purge_files import purge_files
 from roboshed.tools.sleep_between_runs import sleep_between_runs
+from roboshed.tools.stop_when_watched_agents_inactive import (
+    stop_when_watched_agents_inactive,
+)
 from roboshed.tools.snapshot_conversations import snapshot_conversations
 from roboshed.sandbox import PermissionPolicy, Sandbox
 from roboz.deployment import (
@@ -326,11 +331,17 @@ class MaintenanceCadence(AgentCapability):
         }
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
-        """Bind cadence and idle stopping to this agent's cancellation state."""
+        """Bind cadence and inactive-agent stopping to cancellation state."""
         sandbox = cast(Sandbox, agent.sandbox)
         watched_agent_names = cast(Collection[str], agent.watched_agent_names)
         return Capability(
             default_tools=(
+                stop_when_watched_agents_inactive(
+                    StopWhenWatchedAgentsInactiveContext(
+                        conversation_root=sandbox.project_logs_dir(),
+                        agent_names=set(watched_agent_names),
+                    )
+                ).copy(name=STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME),
                 sleep_between_runs(
                     SleepBetweenRunsContext(
                         seconds=self.seconds,

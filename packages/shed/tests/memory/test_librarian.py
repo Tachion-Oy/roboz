@@ -24,7 +24,8 @@ from roboz.exceptions import ExternalCallCancelledError, LLMAuthError
 from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint, MockProviderError
 from roboz.models import Empty, Message, Role, Stop, Str
-from roboz.runtime import default_event_sinks
+from roboz.models._serialization import get_finalized_message
+from roboz.runtime import PipeEvent, RuntimeEvent, default_event_sinks
 from roboz.runtime.persistence import (
     ConversationRun,
     RunStatus,
@@ -121,6 +122,14 @@ def _write_source_run(
     return path
 
 
+def _tool_callers(messages: list[Message]) -> list[str]:
+    return [
+        caller
+        for message in messages
+        if (caller := json.loads(message.content).get("caller")) is not None
+    ]
+
+
 def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> None:
     agent = _build(tmp_path)
 
@@ -130,6 +139,7 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
         "purge_logs",
         "purge_snapshots",
         "purge_memory",
+        "stop_when_watched_agents_inactive",
         "sleep_between_runs",
     ]
     assert agent.mode is AgentMode.DETERMINISTIC
@@ -199,10 +209,11 @@ def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
         "purge_logs",
         "purge_snapshots",
         "purge_memory",
+        "stop_when_watched_agents_inactive",
         "sleep_between_runs",
     ]
     result, _ = agent.invoke()
-    assert "project idle" in result.value
+    assert "watched agents inactive" in result.value
     assert agent.external_dependencies() == ()
 
 
@@ -225,7 +236,7 @@ def test_librarians_share_endpoint_but_have_independent_cancellation(
     with pytest.raises(ExternalCallCancelledError):
         first.default_tools[0](input=Empty(), messages=[])
     result, _ = second.invoke()
-    assert "project idle" in result.value
+    assert "watched agents inactive" in result.value
     assert not second.pipe.cancelled
 
 
@@ -249,16 +260,20 @@ def test_snapshot_retention_prunes_empty_conversation_folders(
     assert not empty.exists()
 
 
-def test_wait_stops_immediately_when_project_is_idle(tmp_path: Path) -> None:
+def test_idle_project_gets_a_complete_final_sweep_before_stopping(
+    tmp_path: Path,
+) -> None:
     agent = _build(tmp_path)
-    wait = next(
-        tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
-    )
 
-    result = wait(input=Empty(), messages=[])
+    result, messages = agent.invoke()
 
     assert isinstance(result, Stop)
-    assert result.value == "sleep_between_runs: project idle"
+    assert result.value == "stop_when_watched_agents_inactive: watched agents inactive"
+    calls = _tool_callers(messages)
+    assert calls.count("snapshot_conversations") == 2
+    assert calls.count("consolidate_memory") == 2
+    assert calls.count("purge_memory") == 2
+    assert calls.count("sleep_between_runs") == 1
 
 
 def test_wait_returns_when_observed_active_run_ends(
@@ -283,6 +298,126 @@ def test_wait_returns_when_observed_active_run_ends(
 
     assert isinstance(result, Str)
     assert result.value == "sleep_between_runs: active run ended"
+
+
+@pytest.mark.parametrize(
+    "complete_after", ["snapshot_conversations", "stop_when_watched_agents_inactive"]
+)
+def test_completion_during_maintenance_is_flushed_without_sleeping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, complete_after: str
+) -> None:
+    sandbox = _sandbox(tmp_path)
+    source = _write_source_run(sandbox, status=RunStatus.RUNNING)
+    endpoint = MockLLMEndpoint(
+        [
+            {"value": "Final fact from the completed run."},
+            {"value": "Memory includes the final fact."},
+        ]
+    )
+    agent = _build(
+        tmp_path,
+        endpoint=endpoint,
+        token_growth_threshold=100_000,
+        sleep_seconds=120.0,
+    )
+
+    def complete_run(event: PipeEvent) -> None:
+        if not isinstance(event, RuntimeEvent):
+            return
+        if event.category != "tool" or event.kind != "succeeded":
+            return
+        if event.data is None or event.data.get("tool") != complete_after:
+            return
+        run = ConversationRun.model_validate_json(source.read_text(encoding="utf-8"))
+        if run.status is RunStatus.COMPLETED:
+            return
+        run.status = RunStatus.COMPLETED
+        run.ended_at = utc_iso_z(datetime(2026, 8, 4, tzinfo=timezone.utc))
+        run.messages.append(
+            message_to_logged_row(
+                Message(role=Role.ASSISTANT, content="The final fact."),
+                message_id="final-message",
+                sequence=2,
+                created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
+            )
+        )
+        source.write_text(run.model_dump_json(), encoding="utf-8")
+        clear_conversation_active(
+            agent_dir=source.parent, conversation_id=run.conversation_id
+        )
+
+    agent.pipe.add_sink(complete_run)
+    monkeypatch.setattr(
+        sleep_module,
+        "sleep",
+        lambda seconds: pytest.fail(f"final sweep slept for {seconds}s"),
+    )
+
+    result, _ = agent.invoke()
+
+    assert result.value == "stop_when_watched_agents_inactive: watched agents inactive"
+    snapshots = list(sandbox.project_snapshots_dir().rglob("*.md"))
+    memories = list(sandbox.project_memory_dir().glob("*.md"))
+    assert len(snapshots) == 1
+    assert len(memories) == 1
+    assert "Final fact from the completed run" in snapshots[0].read_text()
+    assert "Memory includes the final fact" in memories[0].read_text()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_repeated_idle_invocations_each_get_a_final_sweep(
+    tmp_path: Path, dry_run: bool
+) -> None:
+    agent = _build(tmp_path)
+
+    for _ in range(2):
+        result, messages = agent.invoke(dry_run=dry_run)
+        assert (
+            result.value == "stop_when_watched_agents_inactive: watched agents inactive"
+        )
+        calls = _tool_callers(messages)
+        assert calls.count("snapshot_conversations") == 2
+
+
+def test_activity_requires_a_new_final_sweep(tmp_path: Path) -> None:
+    agent = _build(tmp_path)
+    check = next(
+        tool
+        for tool in agent.default_tools
+        if tool.name == "stop_when_watched_agents_inactive"
+    )
+    messages: list[Message] = []
+
+    def check_idle() -> Str | Stop:
+        result = check(Empty(), messages)
+        messages.append(get_finalized_message(result, check))
+        return result
+
+    assert isinstance(check_idle(), Str)
+    source = _write_source_run(_sandbox(tmp_path), status=RunStatus.RUNNING)
+    assert (
+        check_idle().value == "stop_when_watched_agents_inactive: watched agents active"
+    )
+    clear_conversation_active(agent_dir=source.parent, conversation_id="source-run")
+
+    assert (
+        check_idle().value == "stop_when_watched_agents_inactive: final sweep required"
+    )
+    assert isinstance(check_idle(), Stop)
+
+
+def test_wait_observes_cancellation_during_sleep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_source_run(_sandbox(tmp_path), status=RunStatus.RUNNING)
+    agent = _build(tmp_path, sleep_seconds=120)
+    wait = next(
+        tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
+    )
+    monkeypatch.setattr(sleep_module, "sleep", lambda seconds: agent.pipe.cancel())
+
+    with pytest.raises(ExternalCallCancelledError):
+        wait(Empty(), [])
 
 
 def test_wait_observes_agent_pipe_cancellation(tmp_path: Path) -> None:

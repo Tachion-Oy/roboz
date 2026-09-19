@@ -134,7 +134,8 @@ Shed centralizes its typed contexts in `roboshed.tools.contexts` and re-exports
 them from `roboshed.tools`: `GuardContext`, `FileCommandResolverContext`,
 `FileCommandExecutionContext`, `CompactionContext`,
 `SnapshotConversationsContext`, `ConsolidateMemoryContext`,
-`PurgeFilesContext`, `SleepBetweenRunsContext`, and `EmailContext`. Their
+`PurgeFilesContext`, `StopWhenWatchedAgentsInactiveContext`,
+`SleepBetweenRunsContext`, and `EmailContext`. Their
 constructors own defaults and fresh state. High-level builders retain their
 keyword arguments and construct these contexts internally.
 

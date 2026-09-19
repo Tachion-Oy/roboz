@@ -12,10 +12,12 @@ from roboshed.tools import (
     PurgeFilesContext,
     SleepBetweenRunsContext,
     SnapshotConversationsContext,
+    StopWhenWatchedAgentsInactiveContext,
     consolidate_memory,
     purge_files,
     sleep_between_runs,
     snapshot_conversations,
+    stop_when_watched_agents_inactive,
 )
 from roboshed.tools.apply_patch import apply_patch, execute_apply_patch_replace
 from roboshed.tools.compactification import (
@@ -45,7 +47,11 @@ assert_type(
 assert_type(snapshot_conversations, Factory[All, Str, SnapshotConversationsContext])
 assert_type(consolidate_memory, Factory[All, Str, ConsolidateMemoryContext])
 assert_type(purge_files, Factory[All, Str, PurgeFilesContext])
-assert_type(sleep_between_runs, Factory[All, Str | Stop, SleepBetweenRunsContext])
+assert_type(sleep_between_runs, Factory[All, Str, SleepBetweenRunsContext])
+assert_type(
+    stop_when_watched_agents_inactive,
+    Factory[All, Str | Stop, StopWhenWatchedAgentsInactiveContext],
+)
 
 
 def bind(context: FileCommandExecutionContext) -> None:

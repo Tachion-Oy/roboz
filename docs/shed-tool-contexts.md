@@ -1,9 +1,10 @@
 # Concrete contexts for Shed tools
 
 Shed's file-command, guard, editing, compaction, snapshot, consolidation, retention,
-cadence, and email factories now bind concrete typed objects. All these context classes
-and `CompactionState` are defined in `roboshed.tools.contexts` and re-exported from
-`roboshed.tools`. The ready-made `get_run_file_command`, `get_apply_patch`, and
+cadence, and email factories now bind concrete typed objects. These context classes
+and `CompactionState` are defined in
+`roboshed.tools.contexts` and re-exported from `roboshed.tools`. The ready-made
+`get_run_file_command`, `get_apply_patch`, and
 `get_compactify_messages_when_needed_tool` helpers keep their existing keyword
 arguments and construct the appropriate contexts internally.
 
@@ -24,6 +25,7 @@ context class. Type checking and editor completion now follow those fields.
 | `snapshot_conversations` | `SnapshotConversationsContext` |
 | `consolidate_memory` | `ConsolidateMemoryContext` |
 | `purge_files` | `PurgeFilesContext` |
+| `stop_when_watched_agents_inactive` | `StopWhenWatchedAgentsInactiveContext` |
 | `sleep_between_runs` | `SleepBetweenRunsContext` |
 | `search_email`, `read_email`, and email execution stages | `EmailContext` |
 | `resolve_email_input`, `resolve_reply_draft_input`, `resolve_attachment_download` | `pathlib.Path` directly |
@@ -71,6 +73,18 @@ for each newly constructed context; reusing one context shares its counter.
 call, preserving independent counters between helper calls. To make another
 independent direct binding, construct another context. There are no `_prepare_ctx`
 hooks or implicit field/default copies at binding time.
+
+`stop_when_watched_agents_inactive` derives finalization entirely from its own results in the current
+message history, using `filter_messages(caller="stop_when_watched_agents_inactive", ...)` as in the
+[complex example](../examples/complex.py). An idle result requests one complete
+maintenance sweep. The next idle check stops only when that request is the tool's
+most recent result; an intervening active result requires another final sweep.
+Direct callers must pass accumulated tool-result messages, as the agent runtime does.
+
+`sleep_between_runs` has no finalization state and never stops the agent. Idle
+skips waiting and leaves shutdown to `stop_when_watched_agents_inactive`. A run ending during sleep
+wakes maintenance promptly; only the stop tool decides whether a final sweep is
+needed.
 
 The factory schema still excludes `ctx`; these constructor fields are Python
 configuration, not model-supplied input. See the
