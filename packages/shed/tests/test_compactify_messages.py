@@ -86,7 +86,7 @@ def test_compactify_messages_rewrites_list_in_place_above_threshold() -> None:
 def test_compactify_messages_preserves_bootstrap_prefix_without_skill_args() -> None:
     ctx = _ctx()
     startup_payload = '{"value":"# Prior memory\\nlong context"}'
-    banner_payload = '{"caller":"prompt_user","value":"skills auto-loaded"}'
+    banner_payload = '{"value":"skills auto-loaded"}'
     skill_payload = '{"caller":"auto","value":"# Instructions\\n\\nSkill instructions"}'
     depends_on_skill_payload = '{"caller":"file_editing","value":"# Important Note\\n\\nDependency note\\n\\n# Instructions\\n\\nSkill instructions"}'
     messages = [

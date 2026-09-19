@@ -8,7 +8,7 @@ from roboz.models import Empty
 from roboz.tools import stop
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
-from roboz.runtime import Output, default_event_sinks
+from roboz.runtime import default_event_sinks
 
 recipe_module = importlib.import_module("roboshed.deployments.robosprawl")
 
@@ -67,7 +67,6 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
             memory_endpoint=MockLLMEndpoint([]),
             additional_capabilities=(Capability(),),
             specialists=(specialist,),
-            interaction_mode=Output.API,
             event_sinks=(events.append,),
         )
 
@@ -115,7 +114,6 @@ def _build_recipe(sandbox, **choices):
         memory_endpoint=choices.pop("memory_endpoint", _endpoint("memory")),
         additional_capabilities=(),
         specialists=choices.pop("specialists", ()),
-        interaction_mode=Output.API,
         event_sinks=choices.pop("event_sinks", ()),
     )
 

@@ -11,7 +11,6 @@ from roboz.tools import stop
 
 def test_run_subagent_returns_child_stop_value() -> None:
     child = Agent(
-        interaction_mode=None,
         name="subagent_child",
         tools=[stop],
         system_prompt="sub",
@@ -32,7 +31,6 @@ def test_run_subagent_returns_child_stop_value() -> None:
 
 def test_run_subagent_uses_placeholder_when_stop_has_no_value() -> None:
     child = Agent(
-        interaction_mode=None,
         name="subagent_placeholder",
         tools=[stop],
         system_prompt="sub",
@@ -46,7 +44,6 @@ def test_run_subagent_uses_placeholder_when_stop_has_no_value() -> None:
 
 def test_run_subagent_passes_input_to_child_agent() -> None:
     child = Agent(
-        interaction_mode=None,
         name="subagent_input",
         tools=[stop],
         system_prompt="sub",

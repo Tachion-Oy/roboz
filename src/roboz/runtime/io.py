@@ -8,6 +8,8 @@ from contextvars import ContextVar, Token
 from enum import Enum, auto
 from typing import Protocol
 
+from roboz.exceptions import UserInputUnavailableError
+
 
 class Output(Enum):
     """Host channel used for user interaction."""
@@ -30,23 +32,31 @@ class UserIO(Protocol):
         ...
 
 
-_current_user_io: ContextVar[UserIO | None] = ContextVar(
-    "_current_user_io", default=None
+_current_api_user_io: ContextVar[UserIO | None] = ContextVar(
+    "_current_api_user_io", default=None
 )
-_current_output: ContextVar[Output | None] = ContextVar("_current_output", default=None)
+_current_output: ContextVar[Output | None] = ContextVar(
+    "_current_output", default=None
+)
 
 
-def bind_api_user_io(user_io: UserIO) -> Token[UserIO | None]:
-    """Bind a host-provided API interaction adapter in the current context."""
-    return _current_user_io.set(user_io)
+def bind_api_user_io(
+    user_io: UserIO,
+) -> tuple[Token[UserIO | None], Token[Output | None]]:
+    """Bind a host-provided API interaction adapter and its output channel."""
+    return _current_api_user_io.set(user_io), _current_output.set(Output.API)
 
 
-def reset_api_user_io(token: Token[UserIO | None]) -> None:
+def reset_api_user_io(
+    token: tuple[Token[UserIO | None], Token[Output | None]],
+) -> None:
     """Restore the API interaction binding represented by a context token."""
-    _current_user_io.reset(token)
+    user_io_token, output_token = token
+    _current_output.reset(output_token)
+    _current_api_user_io.reset(user_io_token)
 
 
-def bind_output(output: Output) -> Token[Output | None]:
+def bind_output(output: Output | None) -> Token[Output | None]:
     """Bind the active interaction channel in the current context."""
     return _current_output.set(output)
 
@@ -63,7 +73,7 @@ def get_bound_output(default: Output | None = None) -> Output | None:
 
 
 def _require_api_user_io() -> UserIO:
-    user_io = _current_user_io.get()
+    user_io = _current_api_user_io.get()
     if user_io is None:
         raise RuntimeError(
             "Output.API requires a UserIO bound via roboz.runtime.bind_api_user_io"
@@ -74,8 +84,8 @@ def _require_api_user_io() -> UserIO:
 def _require_bound_output() -> Output:
     output = _current_output.get()
     if output is None:
-        raise RuntimeError(
-            "Runtime output is not bound; call roboz.runtime.bind_output before invoke"
+        raise UserInputUnavailableError(
+            "Direct user interaction is unavailable in the current context"
         )
     return output
 

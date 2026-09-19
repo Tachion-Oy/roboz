@@ -137,7 +137,6 @@ def test_agent_creates_conversation_folder_and_saves_messages(
     sink = PersistenceSink.for_path(rbz_root)
 
     agent = Agent(
-        interaction_mode=None,
         name="agent_data",
         description="Agent data description.",
         event_sinks=(sink,),
@@ -168,7 +167,6 @@ def test_agent_creates_conversation_folder_and_saves_messages(
 
     sink = PersistenceSink.for_path(rbz_root)
     agent = Agent(
-        interaction_mode=None,
         name="agent_other",
         description="Agent other description.",
         event_sinks=(sink,),

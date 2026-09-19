@@ -1,6 +1,7 @@
 import pytest
 
 from roboshed.sandbox import Sandbox
+from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Stop
 from roboz.tools import stop
 from roboz import tool
@@ -50,7 +51,7 @@ def test_child_slot_selects_invocation_behavior(background):
     child = DeployableAgent(
         name="worker",
         description="Run the worker.",
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         default_capabilities=(Work(),),
     )
     definition = _definition(

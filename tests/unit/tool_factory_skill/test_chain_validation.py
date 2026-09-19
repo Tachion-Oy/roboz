@@ -28,7 +28,6 @@ def test_tool_chain_valid():
 
     # Chain validation happens at Agent init time.
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[root_tool, next_tool],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -42,7 +41,6 @@ def test_tool_chain_valid():
         return Str(value="0")
 
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[root_tool, liskov_tool],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -67,7 +65,6 @@ def test_tool_chain_invalid_type():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[next_tool],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -86,7 +83,6 @@ def test_tool_chain_invalid_type():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[dynamic_tool, chained_from_invoke],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -112,7 +108,6 @@ def test_tool_chain_list_valid():
         return Empty()
 
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[valid_tool, next_tool],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -140,7 +135,6 @@ def test_tool_chain_list_invalid():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[valid_tool, invalid_tool, next_tool],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -172,7 +166,6 @@ def test_factory_chain_valid():
 
     # Validation resolves by name at Agent init time.
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[root_tool, next_tool],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -203,7 +196,6 @@ def test_factory_chain_list_invalid():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[valid_tool, invalid_tool, next_tool],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -232,7 +224,6 @@ def test_tool_chain_fork_valid():
         return Empty()
 
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[tool_d, tool_e, tool_f],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -260,7 +251,6 @@ def test_tool_chain_fork_invalid_child_input_not_in_union():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[tool_d, tool_e],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -290,7 +280,6 @@ def test_tool_chain_fork_invalid_both_children_same_wrong_type():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[tool_d, tool_e, tool_f],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -316,7 +305,6 @@ def test_tool_chain_fork_invalid_union_parent_child_expects_int_only():
 
     with pytest.raises(ValueError):
         Agent(
-            interaction_mode=None,
             name="chain_validation",
             tools=[tool_d, tool_e],
             agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -341,7 +329,6 @@ def test_tool_chain_fork_valid_parent_outputs_stop():
         return Empty()
 
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[tool_d, tool_e],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,
@@ -366,7 +353,6 @@ def test_tool_chain_fork_valid_parent_outputs_union_with_stop():
         return Empty()
 
     Agent(
-        interaction_mode=None,
         name="chain_validation",
         tools=[tool_d, tool_e],
         agent_endpoint=_MOCK_AGENT_ENDPOINT,

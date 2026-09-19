@@ -49,7 +49,7 @@ TOOL_JSON_STRING_ESCAPING_EXAMPLE: Final[
     str
 ] = r"""Example — a single valid tool-call object whose `value` contains quotes, line breaks, a Windows path, an apostrophe, and an emoji, all correctly escaped:
 
-`{"action": "prompt_user", "rationale": "Sharing the draft so it's reviewed before sending.", "value": "Here's the draft:\n\n\"Hi Elton — happy to help.\"\n\nSaved to C:\\Users\\notes.md 🚀"}`"""
+`{"action": "save_draft", "rationale": "Saving the completed draft.", "value": "Here's the draft:\n\n\"Hi Elton — happy to help.\"\n\nSaved to C:\\Users\\notes.md 🚀"}`"""
 
 JSON_STRING_ESCAPING_INSTRUCTIONS: Final[str] = (
     f"{JSON_STRING_ESCAPING_RULES}\n\n{TOOL_JSON_STRING_ESCAPING_EXAMPLE}"

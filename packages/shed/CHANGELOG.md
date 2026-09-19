@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Migrate the Librarian and capability examples to Roboz's explicit
+  `mode=AgentMode.DETERMINISTIC` configuration. Breaking: remove
+  `interaction_mode` arguments from `orchestrator` and `robosprawl` calls;
+  invocation uses a bound host channel, defaulting to CLI. Registering a
+  `UserIO` adapter selects `Output.API` for the binding's lifetime.
+
 ## 0.1.1.dev3 - 2026-09-13
 
 - Migrate capability bindings to the central typed contexts. Existing capability

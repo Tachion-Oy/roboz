@@ -10,10 +10,24 @@ layered only on top of an ``allow`` verdict. A deny is absolute - there is no
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from roboshed.tools import GuardContext
-from roboshed.models import ActionVerdict, GuardDenyReason, Operation, PermissionRule
+from roboshed.models import (
+    ActionVerdict,
+    ApplyPatch,
+    GuardDenyReason,
+    Operation,
+    PermissionRule,
+)
+from roboshed.tools.apply_patch import get_apply_patch
 from roboshed.tools.guard import resolve_allow_verdict
 
+from roboz.exceptions import UserInputUnavailableError
+from roboz.runtime.io import (
+    bind_output,
+    reset_output,
+)
 from roboz.runtime.pipe import EventPipe
 
 CREATE = Operation.CREATE
@@ -121,3 +135,41 @@ def test_overlap_with_deny_precedence_never_prompts(tmp_path: Path) -> None:
     assert verdict == ActionVerdict.deny
     assert reason == GuardDenyReason.POLICY_DENIED
     prompt.assert_not_called()
+
+
+def test_autonomous_approval_failure_leaves_operation_unexecuted(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "shared" / "f.md"
+    target.parent.mkdir()
+    target.write_text("before", encoding="utf-8")
+    rules = [
+        PermissionRule(
+            pattern=PATTERN,
+            operations={CREATE, Operation.READ, Operation.DELETE},
+        )
+    ]
+    entry, guard, _execute = get_apply_patch(
+        base=tmp_path,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=rules,
+        ask_rules=[PermissionRule(pattern=PATTERN, operations={CREATE})],
+        pipe=EventPipe(),
+    )
+    prepared = entry(
+        ApplyPatch(
+            path="shared/f.md",
+            old_string="before",
+            new_string="after",
+            replace_all=False,
+        ),
+        [],
+    )
+    token = bind_output(None)
+    try:
+        with pytest.raises(UserInputUnavailableError):
+            guard(prepared, [])
+    finally:
+        reset_output(token)
+
+    assert target.read_text(encoding="utf-8") == "before"

@@ -7,7 +7,6 @@ from roboshed.capabilities import FileCommands, FileEditing
 from roboshed.sandbox import Sandbox
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import EndpointLike
-from roboz.runtime import Output
 from roboz.tools import stop
 
 ORCHESTRATOR_PROMPT = """You are the user's persistent collaborator. Help them reach their
@@ -26,7 +25,6 @@ def orchestrator(
     agent_endpoint: EndpointLike,
     subagents: Sequence[DeployableAgent] = (),
     background_agents: Sequence[DeployableAgent] = (),
-    interaction_mode: Output | None = Output.CLI,
     initial_messages: Sequence[Path | str] = (),
 ) -> DeployableAgent:
     """Configure the orchestrator for an already-configured sandbox."""
@@ -43,7 +41,6 @@ def orchestrator(
         background_agents=tuple(background_agents),
     )
     agent.set_agent_endpoint(agent_endpoint)
-    agent.set_interaction_mode(interaction_mode)
     agent.set_initial_messages(initial_messages)
     agent.set_attributes(permissions=sandbox.permissions())
     return agent

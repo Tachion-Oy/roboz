@@ -18,10 +18,11 @@ from roboshed.capabilities import (
 from roboshed.sandbox import PermissionPolicy, Sandbox
 
 from roboz import Agent
+from roboz.agent import AgentMode
 from roboz.tools import stop
 from roboz.deployment import DeployableAgent, Capability
 from roboz.llm import MockLLMEndpoint
-from roboz.runtime import EventPipe, Output, PersistenceSink
+from roboz.runtime import EventPipe, PersistenceSink
 
 
 def _build_with_persistence(
@@ -66,7 +67,6 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         ),
     )
     definition.set_attributes(permissions=permissions)
-    definition.set_interaction_mode(Output.API)
     definition.set_agent_endpoint(
         MockLLMEndpoint(
             [
@@ -142,7 +142,6 @@ def _conversation_snapshot_memory_retention(
     memory_root = sandbox.project_memory_dir()
     author = Agent(
         name="author",
-        interaction_mode=None,
         tools=[stop],
         system_prompt="Remember the project decision.",
         initial_messages=["The project uses a blue robot emblem."],
@@ -165,7 +164,7 @@ def _conversation_snapshot_memory_retention(
     ]
     librarian = DeployableAgent(
         name="librarian",
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
         default_capabilities=(
             ConversationSnapshots(
@@ -184,7 +183,6 @@ def _conversation_snapshot_memory_retention(
             MaintenanceCadence(seconds=0),
         ),
     )
-    librarian.set_interaction_mode(None)
     librarian.set_agent_endpoint(
         None if separate_endpoints else MockLLMEndpoint(responses)
     )
@@ -208,7 +206,10 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     tmp_path: Path,
 ) -> None:
     from roboz.deployment import DeployableAgent, Capability
-    from roboz.runtime import Output, bind_api_user_io, reset_api_user_io
+    from roboz.runtime import (
+        bind_api_user_io,
+        reset_api_user_io,
+    )
 
     class Replies:
         def __init__(self):
@@ -232,7 +233,6 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
             [{"action": "stop", "rationale": "done", "value": "specialist result"}]
         )
     )
-    child.set_interaction_mode(Output.API)
     sandbox = Sandbox(tmp_path)
     project_slug = "collaboration"
     sandbox.configure_scope(project_slug)
@@ -259,7 +259,6 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
             ]
         ),
         subagents=(child,),
-        interaction_mode=Output.API,
     )
     events = []
     agent, background_agents = _build_with_persistence(

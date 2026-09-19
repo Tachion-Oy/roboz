@@ -12,11 +12,12 @@ from roboz.agent.background_agent import (
     BackgroundAgentState,
     run_background_agent,
 )
-from roboz.agent.core import Agent
+from roboz.agent.core import Agent, AgentMode
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Empty, Message, Stop
-from roboz.runtime import EventPipe
+from roboz.models import Empty, Message, Stop, Str
+from roboz.runtime import EventPipe, interact_with_user
 from roboz.runtime.persistence import RunStatus
+from roboz.tooling import tool
 
 
 class _TestAgent(Agent):
@@ -116,6 +117,35 @@ def test_run_background_agent_isolates_exceptions_without_logging_their_text(
     assert not thread.is_alive()
     assert "error_type=RuntimeError" in caplog.text
     assert "provider-secret-value" not in caplog.text
+
+
+def test_autonomous_background_agent_has_no_direct_interaction_sidecar(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @tool
+    def ask(input: Empty, messages: list[Message]) -> Str:
+        reply = interact_with_user("question", with_reply=True)
+        return Str(value=reply or "")
+
+    agent = Agent(
+        name="autonomous_background",
+        mode=AgentMode.AUTONOMOUS,
+        tools=[ask],
+        system_prompt="Run the configured action.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "ask", "rationale": "run"}]
+        ),
+    )
+    ctx = BackgroundAgentContext(agent=agent)
+
+    with caplog.at_level(logging.ERROR, logger="roboz.agent.background_agent"):
+        run_background_agent(ctx)(input=Empty(), messages=[])
+        thread = ctx.state.thread
+        assert thread is not None
+        thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert "error_type=UserInputUnavailableError" in caplog.text
 
 
 def test_run_background_agent_times_out_without_started_lifecycle(

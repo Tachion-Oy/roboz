@@ -65,7 +65,7 @@ migrated. The description below records the recipe behavior to preserve.
 `roboshed.deployments.robosprawl.robosprawl` is the concrete lazy persistent
 orchestrator and Librarian recipe. Call it with an already-scoped sandbox,
 `endpoint_getter`, `memory_endpoint`, `additional_capabilities`, `specialists`,
-`interaction_mode`, and optional `event_sinks`. It returns a fresh root and
+and optional `event_sinks`. It returns a fresh root and
 background-agent tuple.
 
 The recipe loads project memory and supplies project locations through initial
