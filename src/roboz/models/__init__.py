@@ -3,6 +3,7 @@
 from roboz.models.core import (
     BOOTSTRAP_MESSAGE_KINDS,
     AgentBaseModel,
+    AgentMode,
     All,
     BaseNames,
     Empty,
@@ -57,6 +58,7 @@ __all__ = [
     "StopLocation",
     "Str",
     "Strs",
+    "AgentMode",
     "Truncation",
     "TruncationSpec",
     "filter_messages",
