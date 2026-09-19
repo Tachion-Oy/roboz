@@ -1,22 +1,17 @@
 """Cancellable wait between deterministic Librarian maintenance cycles."""
 
 from collections.abc import Callable
-from pathlib import Path
 from time import sleep
 from typing import Final
 
 from roboshed.identifiers import SLEEP_BETWEEN_RUNS_TOOL_NAME
-from roboz.exceptions import ExternalCallCancelledError
-from roboz.models import NO_MESSAGE, All, Message, Stop, Str
-from roboz.runtime.persistence import active_marker_paths
 from roboshed.tools.contexts import SleepBetweenRunsContext
+from roboz.exceptions import ExternalCallCancelledError
+from roboz.models import NO_MESSAGE, All, Message, Str
+from roboz.runtime.persistence import active_marker_paths
 from roboz.tooling.decorators import factory
 
 SLEEP_POLL_SECONDS: Final[float] = 1.0
-
-_PROJECT_IDLE_STATUS: Final[str] = "project idle"
-_ACTIVE_RUN_ENDED_STATUS: Final[str] = "active run ended"
-_MIN_SLEEP_SECONDS: Final[float] = 0.0
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -27,19 +22,27 @@ def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
 @factory
 def sleep_between_runs(
     input: All, messages: list[Message], ctx: SleepBetweenRunsContext
-) -> Str | Stop:
-    """Wait for the next cycle, or stop once the watched project becomes idle."""
+) -> Str:
+    """Wait between maintenance cycles, waking promptly when a watched run ends.
+
+    Return immediately when the watched agents are inactive. This tool never
+    decides whether maintenance is complete; use ``stop_when_watched_agents_inactive`` for that.
+    """
     del input, messages
-    seconds = max(_MIN_SLEEP_SECONDS, float(ctx.seconds))
     _raise_if_cancelled(ctx.is_cancelled)
+    active_markers = (
+        active_marker_paths(ctx.conversation_root, ctx.agent_names)
+        if ctx.conversation_root is not None
+        else ()
+    )
+    if ctx.conversation_root is not None and not active_markers:
+        return Str(
+            value=f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: watched agents inactive",
+            truncation=NO_MESSAGE,
+        )
 
-    active_markers: tuple[Path, ...] = ()
-    if ctx.conversation_root is not None:
-        active_markers = active_marker_paths(ctx.conversation_root, ctx.agent_names)
-        if not active_markers:
-            return Stop(value=f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_PROJECT_IDLE_STATUS}")
-
-    slept = _MIN_SLEEP_SECONDS
+    seconds = max(0.0, float(ctx.seconds))
+    slept = 0.0
     while slept < seconds:
         _raise_if_cancelled(ctx.is_cancelled)
         chunk = min(SLEEP_POLL_SECONDS, seconds - slept)
@@ -48,7 +51,7 @@ def sleep_between_runs(
         _raise_if_cancelled(ctx.is_cancelled)
         if any(not marker.exists() for marker in active_markers):
             return Str(
-                value=(f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: {_ACTIVE_RUN_ENDED_STATUS}"),
+                value=f"{SLEEP_BETWEEN_RUNS_TOOL_NAME}: active run ended",
                 truncation=NO_MESSAGE,
             )
     return Str(

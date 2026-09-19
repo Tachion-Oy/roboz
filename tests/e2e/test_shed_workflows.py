@@ -191,7 +191,7 @@ def _conversation_snapshot_memory_retention(
         event_sink_factory=lambda name: (PersistenceSink.for_path(logs / name),)
     )
     result, _ = librarian.invoke()
-    assert "project idle" in result.value
+    assert "watched agents inactive" in result.value
     memory_files = list(memory_root.glob("*.md"))
     assert len(memory_files) == 1
     assert "blue robot emblem" in memory_files[0].read_text()

@@ -56,8 +56,10 @@ project directory. Use the supplied paths instead of guessing folder names.
 
 The Librarian is a deterministic background pipeline. It snapshots conversations,
 consolidates memory, applies retention limits, and waits between maintenance cycles.
-The root starts it through its background-start tool; the host owns cancellation
-and shutdown. Maintenance is asynchronous, so a new conversation may not yet have
+After watched work becomes idle, it performs one complete final sweep without
+sleeping and stops only after confirming that the project remains idle. The root
+starts it through its background-start tool; the host owns cancellation and
+shutdown. Maintenance is asynchronous, so a new conversation may not yet have
 appeared in memory. Conversation logs are written by the runtime.
 
 Do not duplicate that maintenance by writing your own session summaries or memory

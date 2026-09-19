@@ -102,7 +102,9 @@ endpoint overrides remain on the capability object.
 The orchestrator owns its identity, persistent-collaborator prompt, `stop`, and
 guarded file capabilities. The Librarian owns its deterministic settings and
 ordered maintenance pipeline: snapshot conversations, consolidate memory,
-apply artifact retention, then wait or stop when the project is idle.
+apply artifact retention, check for idle, then wait while work remains. Its first
+idle observation schedules one final complete maintenance sweep without sleeping;
+it stops only when the project is still idle after that sweep.
 
 ```python
 from roboshed.agents import librarian, orchestrator

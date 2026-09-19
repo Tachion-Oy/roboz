@@ -256,8 +256,8 @@ Every referenced parent must be present in the same agent graph.
 
 At runtime Roboz requires a unique next tool. Test the no-match, each-match, and
 ambiguous-match cases for conditional branches. See
-[`examples/tool_chaining.py`](../examples/tool_chaining.py) for a runnable
-conditional fan-out that converges on one finalizer.
+[`examples/complex.py`](../examples/complex.py) for runnable conditional branches
+with a factory-bound child tool.
 
 ## Message Lifecycle and Truncation
 
@@ -296,8 +296,8 @@ Use the built-in policies deliberately:
 
 System messages are always retained. Threshold distance counts later messages,
 not turns, tokens, or elapsed time. See
-[`examples/message_truncation.py`](../examples/message_truncation.py) for a
-runnable projection of the same message at several distances.
+[`examples/complex.py`](../examples/complex.py) for a runnable tool result that is
+removed after its first visible model request.
 
 ## Active and Passive Responsibilities
 

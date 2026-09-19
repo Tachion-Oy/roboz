@@ -169,7 +169,7 @@ manually started release workflow can publish an explicitly selected existing
 package tag. Starting that workflow requests publication after successful
 verification and any configured environment approval. There is no TestPyPI stage.
 
-- Python 3.13 and 3.14 run all core and companion tests and the quickstart.
+- Python 3.13 and 3.14 run all core and companion tests and the simple example.
 - Quality runs Ruff, Pyright, and positive/negative typing contracts once.
 - Distribution builds fresh wheels and source archives, checks them with Twine,
   and verifies independent pip installs outside the checkout, including E2E.

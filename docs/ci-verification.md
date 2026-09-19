@@ -1,5 +1,11 @@
 # CI implementation verification — 2026-09-05
 
+> This file is a historical validation ledger. Dated result tables describe the
+> repository as it existed then and are not current instructions; commands for
+> subsequently removed files are intentionally not presented as runnable.
+> The current smoke example is `uv run python examples/simple.py`; follow
+> `AGENTS.md`, `docs/build-and-test.md`, and `.github/workflows/verify.yml`.
+
 ## Current validation boundary — 2026-09-06
 
 Roboz CI validates its core primitives and companion distributions. Application
@@ -9,7 +15,7 @@ All package test, coverage, typing, distribution, and portable-core gates remain
 required. No cross-repository checkout or application credential is needed.
 
 Local Linux validation of this boundary correction passed: 807 tests, all four
-package coverage floors, the quickstart, Ruff, Pyright, positive and negative
+package coverage floors, the then-current smoke example, Ruff, Pyright, positive and negative
 typing contracts, fresh builds of all eight archives, Twine, and independent
 installations from original wheels and source-archive rebuilds. Workflow linting,
 shell syntax checking, and `git diff --check` also passed. The remaining CI jobs,
@@ -49,7 +55,7 @@ prompt, persisted format, dependency range, or version was changed.
 | `uv sync --locked --dev` | Passed with CI-pinned uv; separate environments for both Python versions |
 | `uv run pytest` with all four coverage sources and JUnit/JSON reports | Passed after the review corrections: 770 passed on Python 3.13; the earlier review run passed 770 on Python 3.14 |
 | `uv run python scripts/check_coverage.py <coverage.json>` | Passed after the corrections on Python 3.13 and in the earlier Python 3.14 run: core 95.27%, Shed 90.34%, OpenAI 90.00%, Proton Bridge 89.72% |
-| `uv run python examples/quickstart.py` | Passed on both versions |
+| Then-current smoke example (since removed) | Passed on both versions |
 | `uv run ruff check` | Passed |
 | `uv run pyright` | Passed, zero diagnostics |
 | `bash scripts/run_type_tests.sh` | Positive cases passed; all 14 negative cases failed as expected |

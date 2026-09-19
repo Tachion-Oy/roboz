@@ -12,6 +12,7 @@ from roboshed.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
     SNAPSHOT_COVERAGE_TAG,
     SNAPSHOT_COVERAGE_VERSION,
+    format_snapshot_document,
     parse_snapshot_document,
 )
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
@@ -284,7 +285,13 @@ def test_previous_snapshot_is_grounding_and_only_uncovered_rows_are_new(
         / f"{previous_time.strftime(TIMESTAMP_STEM_FORMAT)}.md"
     )
     previous.parent.mkdir(parents=True)
-    previous.write_text("## Open loose ends\n- File is absent.\n", encoding="utf-8")
+    previous.write_text(
+        format_snapshot_document(
+            "## Open loose ends\n- File is absent.",
+            covered_through_sequence=1,
+        ),
+        encoding="utf-8",
+    )
     _write_run(
         conversation_root,
         status=RunStatus.COMPLETED,
@@ -570,7 +577,7 @@ def test_snapshot_rechecks_cancellation_before_write(
     assert not list(snapshot_root.rglob("*.md"))
 
 
-def test_snapshot_skips_redundant_twin_when_watermark_advances(
+def test_snapshot_skips_redundant_twin_with_sufficient_valid_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     conversation_root = tmp_path / "runs"
@@ -594,7 +601,12 @@ def test_snapshot_skips_redundant_twin_when_watermark_advances(
             / f"{datetime.now(timezone.utc).strftime(TIMESTAMP_STEM_FORMAT)}.md"
         )
         competing.parent.mkdir(parents=True, exist_ok=True)
-        competing.write_text("competing snapshot", encoding="utf-8")
+        competing.write_text(
+            format_snapshot_document(
+                "competing snapshot", covered_through_sequence=1
+            ),
+            encoding="utf-8",
+        )
         return "redundant snapshot"
 
     monkeypatch.setattr(
@@ -610,8 +622,57 @@ def test_snapshot_skips_redundant_twin_when_watermark_advances(
 
     artifacts = list(snapshot_root.rglob("*.md"))
     assert len(artifacts) == 1
-    assert artifacts[0].read_text(encoding="utf-8") == "competing snapshot"
+    assert parse_snapshot_document(
+        artifacts[0].read_text(encoding="utf-8")
+    ).content == "competing snapshot"
     assert "created=0" in result.value
+
+
+def test_invalid_competing_snapshot_does_not_advance_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    _write_run(
+        conversation_root,
+        rows=[
+            _row(
+                sequence=1,
+                created_at=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+                content="Work that must remain covered.",
+            )
+        ],
+    )
+
+    def racing_summary(**kwargs):
+        del kwargs
+        competing = (
+            snapshot_root
+            / _DEFAULT_CONVERSATION
+            / f"{datetime.now(timezone.utc).strftime(TIMESTAMP_STEM_FORMAT)}.md"
+        )
+        competing.parent.mkdir(parents=True, exist_ok=True)
+        competing.write_text("incomplete competing snapshot", encoding="utf-8")
+        return "valid snapshot"
+
+    monkeypatch.setattr(
+        snapshot_module, "summarize_conversation_segment", racing_summary
+    )
+    result = snapshot_conversations(
+        _ctx(
+            conversation_root=conversation_root,
+            snapshot_root=snapshot_root,
+            endpoint=MockLLMEndpoint([]),
+        )
+    )(input=Empty(), messages=[])
+
+    documents = [
+        parse_snapshot_document(path.read_text(encoding="utf-8"))
+        for path in snapshot_root.rglob("*.md")
+    ]
+    assert len(documents) == 2
+    assert any(document.covered_through_sequence == 1 for document in documents)
+    assert "created=1" in result.value
 
 
 def test_snapshot_translates_provider_request_failure(

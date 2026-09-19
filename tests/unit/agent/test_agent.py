@@ -962,6 +962,42 @@ def test_default_tools_run_in_order():
     assert calls == ["d1", "d2", "entry", "d1", "d2"]
 
 
+def test_deterministic_default_cycles_do_not_duplicate_the_first_tool():
+    calls: list[str] = []
+    cycles = 0
+
+    @tool
+    def first(input: Empty, messages: list[Message]) -> Str:
+        del input, messages
+        calls.append("first")
+        return Str(value="first")
+
+    @tool
+    def second(input: Str, messages: list[Message]) -> Str | Stop:
+        nonlocal cycles
+        del input, messages
+        calls.append("second")
+        cycles += 1
+        if cycles == 2:
+            return Stop(value="done")
+        return Str(value="again")
+
+    agent = Agent(
+        name="deterministic_default_cycles",
+        mode=AgentMode.DETERMINISTIC,
+        automatic_tool_prompt=False,
+        system_prompt="",
+        default_tools=[first, second],
+        agent_endpoint=None,
+        initial_messages=None,
+    )
+
+    result, _ = agent.invoke()
+
+    assert result.value == "done"
+    assert calls == ["first", "second", "first", "second"]
+
+
 def test_default_tool_integration_mixed_truncation():
     """Default tool runs several times in the real Agent loop and may emit mixed severities."""
     scripted = [

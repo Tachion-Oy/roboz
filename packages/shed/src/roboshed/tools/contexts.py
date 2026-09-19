@@ -138,8 +138,16 @@ class PurgeFilesContext:
 
 
 @dataclass(frozen=True, kw_only=True)
+class StopWhenWatchedAgentsInactiveContext:
+    """Watched conversations used to decide when maintenance may stop."""
+
+    conversation_root: Path
+    agent_names: set[str]
+
+
+@dataclass(frozen=True, kw_only=True)
 class SleepBetweenRunsContext:
-    """Wait duration, cancellation callback, and watched conversations."""
+    """Wait settings for observing activity between maintenance cycles."""
 
     seconds: float
     is_cancelled: Callable[[], bool] | None = None

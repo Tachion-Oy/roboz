@@ -152,10 +152,12 @@ agent configuration. Each build creates fresh runtime state; applications can
 supply an agent-specific sink factory for persistence.
 
 The Librarian constructor declares its standard maintenance sequence:
-snapshots, consolidation, retention, then cadence. Pass its sandbox and the
-recursive foreground names directly to the constructor before attaching it as
-a background agent. The orchestrator also takes the configured sandbox and
-captures its permission policy when constructed.
+snapshots, consolidation, retention, an idle check, then cadence. The first idle
+observation schedules one complete final sweep without sleeping; the second idle
+observation stops the Librarian. Pass its sandbox and the recursive foreground
+names directly to the constructor before attaching it as a background agent. The
+orchestrator also takes the configured sandbox and captures its permission policy
+when constructed.
 
 Invoke the returned agent directly and retain the background agents for control.
 Repeated builds create fresh runtimes and bindings, but supplied endpoints,
