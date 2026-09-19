@@ -44,7 +44,7 @@ def test_each_companion_has_only_its_own_required_dependencies():
             requirement.split(">=")[0] for requirement in project["dependencies"]
         } == dependencies
         core_minimum = {
-            "shed": "0.1.2.dev5",
+            "shed": "0.1.2.dev7",
             "endpoints": "0.1.2.dev5",
             "proton-bridge": "0.1.1",
         }[directory]

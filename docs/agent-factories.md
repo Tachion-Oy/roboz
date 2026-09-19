@@ -190,9 +190,8 @@ interruption, cancellation, background shutdown, and dependency health.
 Use the configured `DeployableAgent` as the inspection surface:
 
 ```python
-from roboz.models import Str
+from roboz.models import AgentMode, Str
 from roboz.tools import stop
-from roboz.agent import AgentMode
 from roboz.deployment import Capability, DeployableAgent
 from roboshed.dependency_health import DependencyHealthMonitor
 

@@ -123,7 +123,7 @@ With `mode=AgentMode.DETERMINISTIC`, ensure `default_tools` includes at least
 one entry. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` use `prompt_agent`;
 autonomous runs cannot request user input.
 
-Import `AgentMode` from `roboz.agent`. Calling `agent.invoke()` handles the
+Import `AgentMode` from `roboz.models`. Calling `agent.invoke()` handles the
 interaction binding and cleanup internally: deterministic and steerable agents
 use a bound host output channel, or CLI by default. API hosts register their
 adapter with `bind_api_user_io`, which also selects `Output.API`, at the runtime

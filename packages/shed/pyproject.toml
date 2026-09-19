@@ -1,6 +1,6 @@
 [project]
 name = "roboshed"
-version = "0.1.1.dev3"
+version = "0.1.1.dev4"
 description = "roboshed: optional building blocks for Roboz"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -9,7 +9,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 import-names = ["roboshed"]
 classifiers = ["Development Status :: 2 - Pre-Alpha", "Typing :: Typed"]
-dependencies = ["roboz>=0.1.2.dev5,<0.2.0","pydantic>=2.12.4"]
+dependencies = ["roboz>=0.1.2.dev7,<0.2.0","pydantic>=2.12.4"]
 
 [build-system]
 requires = ["hatchling>=1.32"]

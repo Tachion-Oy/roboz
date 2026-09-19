@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1.dev4 - 2026-09-20
+
 - Migrate the Librarian and capability examples to Roboz's explicit
   `mode=AgentMode.DETERMINISTIC` configuration. Breaking: remove
   `interaction_mode` arguments from `orchestrator` and `robosprawl` calls;
