@@ -4,8 +4,8 @@ import os
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Final
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -72,21 +72,13 @@ def write_timestamped_file(
 ) -> Path:
     """Atomically publish a complete timestamped artifact, then remove ``replace``."""
     folder.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
+    temporary_path = folder / f".librarian-{uuid4().hex}.tmp"
     published_path: Path | None = None
     try:
-        with NamedTemporaryFile(
-            mode="w",
-            encoding=UTF8_ENCODING,
-            dir=folder,
-            prefix=".librarian-",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
+        with temporary_path.open("x", encoding=UTF8_ENCODING) as temporary:
             temporary.write(body)
             temporary.flush()
             os.fsync(temporary.fileno())
-            temporary_path = Path(temporary.name)
 
         if pipe is not None:
             pipe.raise_if_cancelled()
@@ -102,12 +94,12 @@ def write_timestamped_file(
             published_path = path
             break
     finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+        temporary_path.unlink(missing_ok=True)
 
+    if published_path is None:
+        raise RuntimeError("timestamp candidate generation exhausted")
     if replace is not None:
         replace.unlink(missing_ok=True)
-    assert published_path is not None
     return published_path
 
 

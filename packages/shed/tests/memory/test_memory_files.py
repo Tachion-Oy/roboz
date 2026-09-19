@@ -1,6 +1,8 @@
 """Regression tests for atomic Librarian artifact publication."""
 
 import importlib
+import os
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,6 +32,39 @@ def test_timestamp_collision_publishes_two_complete_artifacts(
         "first complete body",
         "second complete body",
     }
+    assert not list(tmp_path.glob(".librarian-*.tmp"))
+
+
+def test_published_artifact_uses_normal_umask_permissions(tmp_path: Path) -> None:
+    reference = tmp_path / "reference.md"
+    reference.write_text("reference", encoding="utf-8")
+
+    published = write_timestamped_file(
+        tmp_path, "artifact", suffix=".md", replace=None
+    )
+
+    assert stat.S_IMODE(published.stat().st_mode) == stat.S_IMODE(
+        reference.stat().st_mode
+    )
+
+
+def test_publication_failure_preserves_replaced_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    previous = tmp_path / "previous.md"
+    previous.write_text("previous", encoding="utf-8")
+
+    def fail_publication(*_args, **_kwargs) -> None:
+        raise OSError("disk")
+
+    monkeypatch.setattr(os, "link", fail_publication)
+
+    with pytest.raises(OSError, match="disk"):
+        write_timestamped_file(
+            tmp_path, "replacement", suffix=".md", replace=previous
+        )
+
+    assert previous.read_text(encoding="utf-8") == "previous"
     assert not list(tmp_path.glob(".librarian-*.tmp"))
 
 
