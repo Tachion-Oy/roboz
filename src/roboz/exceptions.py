@@ -81,7 +81,7 @@ class AgentError(Exception):
     """Base exception for all agent related errors."""
 
 
-class UserInputUnavailableError(RuntimeError):
+class UserInputUnavailableError(Exception):
     """Raised when direct user interaction is unavailable."""
 
 
