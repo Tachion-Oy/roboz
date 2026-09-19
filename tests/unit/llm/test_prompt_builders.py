@@ -90,6 +90,19 @@ def test_get_agentic_system_prompt_contains_example_discussion():
     assert '"caller"' in prompt
 
 
+def test_autonomous_generated_prompt_omits_prompt_user_examples():
+    prompt = get_agentic_system_prompt(
+        system_prompt="Test.",
+        tools=[example_tool],
+        skills=None,
+        allow_user_input=False,
+    )
+
+    assert "prompt_user" not in prompt
+    assert '"action": "example_tool"' in prompt
+    assert "Saved to C:\\\\Users\\\\notes.md" in prompt
+
+
 def test_get_agentic_system_prompt_includes_json_shape_and_self_check():
     """Tool instructions include illustrative valid/invalid JSON and pre-send check."""
     prompt = get_agentic_system_prompt(

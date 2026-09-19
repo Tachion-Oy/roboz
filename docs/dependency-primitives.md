@@ -456,7 +456,6 @@ child = Agent(
     name="child",
     system_prompt="Stop with the requested result.",
     tools=[stop],
-    interaction_mode=None,
     agent_endpoint=MockLLMEndpoint([
         {"action": "stop", "rationale": "done", "value": "child result"}
     ]),

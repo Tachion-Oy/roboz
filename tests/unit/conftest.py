@@ -2,12 +2,9 @@
 
 import pytest
 
-from roboz.runtime import Output
 from roboz.runtime.io import (
     bind_api_user_io,
-    bind_output,
     reset_api_user_io,
-    reset_output,
 )
 
 
@@ -39,11 +36,10 @@ def bind_user_io():
 
     def _bind(replies: list[str | None]) -> FakeUserIO:
         io = FakeUserIO(replies)
-        bound.append((bind_output(Output.API), bind_api_user_io(io)))
+        bound.append(bind_api_user_io(io))
         return io
 
     yield _bind
 
-    for output_token, io_token in reversed(bound):
-        reset_api_user_io(io_token)
-        reset_output(output_token)
+    for token in reversed(bound):
+        reset_api_user_io(token)

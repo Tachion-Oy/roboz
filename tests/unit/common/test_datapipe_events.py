@@ -9,7 +9,7 @@ from roboz.agent.subagent import run_subagent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Str
 from roboz.models.truncation import NO_MESSAGE
-from roboz.runtime import LOG_DATA_ATTRIBUTE, Output, sinks
+from roboz.runtime import LOG_DATA_ATTRIBUTE, sinks
 from roboz.runtime.events import (
     MessageDeltaEvent,
     MessageEvent,
@@ -164,7 +164,6 @@ def test_datapipe_message_delta_and_final_message_share_id_with_distinct_sequenc
 def test_rbz_constructor_event_sinks_receive_agent_events() -> None:
     collected: list[object] = []
     agent = Agent(
-        interaction_mode=Output.API,
         name="explicit_sink_agent",
         tools=[stop],
         system_prompt="Stop immediately.",
@@ -185,7 +184,6 @@ def test_rbz_constructor_uses_supplied_event_pipe() -> None:
     collected: list[object] = []
     pipe = EventPipe(event_sinks=(collected.append,))
     agent = Agent(
-        interaction_mode=Output.API,
         name="supplied_pipe_agent",
         tools=[stop],
         system_prompt="Stop immediately.",
@@ -210,7 +208,6 @@ def test_rbz_constructor_uses_supplied_event_pipe() -> None:
 def test_rbz_constructor_rejects_event_pipe_and_event_sinks() -> None:
     with pytest.raises(ValueError, match="either event_pipe or event_sinks"):
         Agent(
-            interaction_mode=Output.API,
             name="ambiguous_pipe_agent",
             tools=[stop],
             system_prompt="Stop immediately.",
@@ -375,7 +372,6 @@ def test_default_event_sinks_can_be_passed_to_agent(tmp_path) -> None:
     sinks = default_event_sinks(data_path=tmp_path, include_cli=False)
     persistence_sink = next(sink for sink in sinks if isinstance(sink, PersistenceSink))
     agent = Agent(
-        interaction_mode=Output.API,
         name="default_sinks_agent",
         tools=[stop],
         system_prompt="Stop immediately.",
@@ -456,23 +452,21 @@ def test_datapipe_started_event_includes_endpoint_metadata() -> None:
     pipe.finalize_run(status=RunStatus.COMPLETED)
 
 
-def test_agent_output_modes_do_not_wire_terminal_subscribers(monkeypatch) -> None:
+def test_agent_does_not_wire_terminal_subscribers(monkeypatch) -> None:
     render = Mock()
     console_print = Mock()
     monkeypatch.setattr(sinks, "rich_print_message_to_terminal", render)
     monkeypatch.setattr(sinks.Console, "print", console_print)
 
-    for output in (Output.CLI, Output.API):
-        agent = Agent(
-            interaction_mode=output,
-            name=f"{output.name.lower()}_agent",
-            tools=[stop],
-            system_prompt="Stop immediately.",
-            agent_endpoint=MockLLMEndpoint(
-                [{"action": "stop", "rationale": "done", "value": "ok"}]
-            ),
-        )
-        agent.invoke()
+    agent = Agent(
+        name="agent",
+        tools=[stop],
+        system_prompt="Stop immediately.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "ok"}]
+        ),
+    )
+    agent.invoke()
 
     render.assert_not_called()
     console_print.assert_not_called()
@@ -486,7 +480,6 @@ def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
 
     event_sinks = (sink,)
     child = Agent(
-        interaction_mode=Output.API,
         name="child_agent",
         tools=[stop],
         system_prompt="Child.",
@@ -503,7 +496,6 @@ def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
     )
     delegate = run_subagent(child).copy(name="delegate")
     parent = Agent(
-        interaction_mode=Output.API,
         name="parent_agent",
         tools=[delegate, stop],
         system_prompt="Parent.",
@@ -585,7 +577,6 @@ def test_persistence_records_no_message_tool_output_during_invoke(tmp_path) -> N
     event_sinks = default_event_sinks(data_path=tmp_path, include_cli=False)
     persistence_sink = next(s for s in event_sinks if isinstance(s, PersistenceSink))
     agent = Agent(
-        interaction_mode=Output.API,
         name="noisy_agent",
         tools=[noisy, stop],
         system_prompt="Make noise, then stop.",

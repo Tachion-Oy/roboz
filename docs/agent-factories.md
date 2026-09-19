@@ -31,7 +31,6 @@ definition = DeployableAgent(
     default_capabilities=(Capability(tools=(stop,)),),
 )
 definition.set_agent_endpoint(worker_endpoint)
-definition.set_interaction_mode(interaction_mode)
 definition.set_initial_messages((project_context,))
 
 agent, background_agents = definition.build()
@@ -151,14 +150,13 @@ writes.
 
 `roboshed.deployments.robosprawl.robosprawl()` is the lazy fixed recipe. It
 accepts a scoped sandbox, selected endpoint getter, separate memory endpoint,
-permitted root additions, specialists, interaction mode, and caller sinks:
+permitted root additions, specialists, and caller sinks:
 
 ```python
 from roboshed.capabilities import Compactification
 from roboshed.deployments.robosprawl import robosprawl
 from roboshed.skills import robosprawl as orientation
 from roboz.deployment import Capability
-from roboz.runtime import Output
 
 agent, background_agents = robosprawl(
     sandbox,
@@ -169,7 +167,6 @@ agent, background_agents = robosprawl(
         Compactification(threshold_percent=60.0),
     ),
     specialists=application_specialists,
-    interaction_mode=Output.API,
     event_sinks=(ui_event_sink,),
 )
 ```
@@ -193,12 +190,13 @@ Use the configured `DeployableAgent` as the inspection surface:
 ```python
 from roboz.models import Str
 from roboz.tools import stop
+from roboz.agent import AgentMode
 from roboz.deployment import Capability, DeployableAgent
 from roboshed.dependency_health import DependencyHealthMonitor
 
 
 definition = DeployableAgent(
-    name="worker", is_agentic=False,
+    name="worker", mode=AgentMode.DETERMINISTIC,
     default_capabilities=(Capability(default_tools=(stop,)),),
 )
 resources = definition.external_dependencies()

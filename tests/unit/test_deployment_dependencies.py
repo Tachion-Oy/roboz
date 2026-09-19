@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from roboz.agent import AgentMode
 from roboz.models import Message, Str
 from roboz import Skill, factory
 from roboz.tools import stop
@@ -184,7 +185,7 @@ def test_inspection_propagates_capability_construction_errors():
 def test_resource_free_definition_can_be_inspected_built_and_invoked():
     definition = DeployableAgent(
         name="worker",
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         default_capabilities=(Capability(default_tools=(stop,)),),
     )
     definition.set_agent_endpoint(_endpoint("unused"))

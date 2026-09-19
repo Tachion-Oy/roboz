@@ -16,7 +16,6 @@ from roboz.agent.subagent import run_subagent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Stop, Str
 from roboz.models.truncation import NO_MESSAGE
-from roboz.runtime import Output
 from roboz.runtime import io as utils
 from roboz.tooling.decorators import tool
 from roboz.tools import (
@@ -72,7 +71,6 @@ def test_tool_name_matches_identifier(tool_obj, identifier):
 def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
     caplog.set_level(logging.INFO, logger="roboz.agent.prompt_agent_tool")
     agent = Agent(
-        interaction_mode=Output.API,
         name="logger_agent",
         tools=[stop],
         system_prompt="Stop immediately.",
@@ -140,7 +138,6 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
     )
     start_only = prompt_user_at_start("m")
     agent = Agent(
-        interaction_mode=Output.CLI,
         name="ask_default_tool",
         tools=[entry, stop],
         system_prompt="Test default tool flow.",

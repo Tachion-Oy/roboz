@@ -209,7 +209,6 @@ def test_message_kind_rejects_unknown_strings() -> None:
 def test_full_system_prompt_excludes_declared_fields_and_defs():
     """Full system prompt generated via Agent init does not expose excluded schema fields/defs."""
     agent = Agent(
-        interaction_mode=None,
         name="schema_scrub_agent",
         tools=[example_tool],
         system_prompt="Test.",

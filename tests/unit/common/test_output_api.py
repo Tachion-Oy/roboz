@@ -2,22 +2,28 @@
 
 import json
 
-from roboz.agent.core import Agent
+import pytest
+
+from roboz.agent import get_active_agent_stack
+from roboz.agent.core import Agent, AgentMode
+from roboz.exceptions import UserInputUnavailableError
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Stop, Str
-from roboz.runtime import Output, bind_output, interact_with_user, reset_output
+from roboz.runtime import (
+    Output,
+    bind_output,
+    interact_with_user,
+    reset_output,
+    run_cancellable_external_call,
+)
 from roboz.runtime import io as utils
 from roboz.tooling.decorators import tool
 from roboz.tools import prompt_user_at_start, stop
 
 
 def test_interact_with_user_requires_bound_output():
-    try:
+    with pytest.raises(UserInputUnavailableError, match="interaction is unavailable"):
         interact_with_user("q?", True)
-    except RuntimeError as e:
-        assert "Runtime output is not bound" in str(e)
-    else:
-        raise AssertionError("expected RuntimeError")
 
 
 def test_interact_with_user_cli_with_reply_reads_line(monkeypatch, capsys):
@@ -91,6 +97,99 @@ def test_interact_with_user_api_notify_uses_bound_user_io(bind_user_io):
     assert io.prompts == ["[notify]hi"]
 
 
+def test_unavailable_output_binding_masks_api_adapter(bind_user_io):
+    bind_user_io([])
+    token = bind_output(None)
+    try:
+        assert utils.get_bound_output() is None
+        assert utils.get_bound_output(default=Output.CLI) is Output.CLI
+    finally:
+        reset_output(token)
+
+    assert utils.get_bound_output() is Output.API
+
+
+@pytest.mark.parametrize("output", list(Output))
+def test_output_getter_preserves_explicit_channel(output, bind_user_io):
+    bind_user_io([])
+    token = bind_output(output)
+    try:
+        assert utils.get_bound_output(default=Output.CLI) is output
+    finally:
+        reset_output(token)
+
+
+def test_missing_sidecar_precedes_cli_output_and_read(monkeypatch, capsys):
+    monkeypatch.setattr(
+        utils.sys.stdin,
+        "readline",
+        lambda: (_ for _ in ()).throw(AssertionError("must not read input")),
+    )
+    output_token = bind_output(Output.CLI)
+    autonomous_token = bind_output(None)
+    try:
+        with pytest.raises(UserInputUnavailableError):
+            interact_with_user("hidden question", True)
+    finally:
+        reset_output(autonomous_token)
+        reset_output(output_token)
+
+    assert capsys.readouterr().out == ""
+
+
+def test_missing_sidecar_rejects_all_direct_interaction_and_restores_context(
+    bind_user_io,
+):
+    io = bind_user_io(["answer"])
+    token = bind_output(None)
+    try:
+        with pytest.raises(UserInputUnavailableError):
+            interact_with_user("status", False)
+        with pytest.raises(UserInputUnavailableError):
+            interact_with_user("question", True)
+    finally:
+        reset_output(token)
+
+    assert interact_with_user("question", True) == "answer"
+    assert io.prompts == ["question"]
+
+
+def test_external_call_worker_has_no_direct_interaction_sidecar(bind_user_io):
+    io = bind_user_io([])
+    with pytest.raises(UserInputUnavailableError):
+        run_cancellable_external_call(lambda: interact_with_user("question", True))
+
+    assert io.prompts == []
+
+
+def test_autonomous_sidecar_mask_resets_when_finalization_fails(
+    bind_user_io, monkeypatch
+):
+    outer_stack = get_active_agent_stack()
+    io = bind_user_io(["after failure"])
+    agent = Agent(
+        name="failing_finalization",
+        mode=AgentMode.AUTONOMOUS,
+        tools=[stop],
+        system_prompt="Stop immediately.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "ok"}]
+        ),
+    )
+
+    def fail_finalization(*, status):
+        raise RuntimeError(f"finalization failed: {status}")
+
+    monkeypatch.setattr(agent.pipe, "finalize_run", fail_finalization)
+
+    with pytest.raises(RuntimeError, match="finalization failed"):
+        agent.invoke()
+
+    assert get_active_agent_stack() == outer_stack
+    assert interact_with_user("still available", True) == "after failure"
+    assert io.prompts == ["still available"]
+
+
 def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
     @tool
     def entry(input: Empty, messages: list[Message]) -> Str:
@@ -104,7 +203,6 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
     )
     start_only = prompt_user_at_start("m")
     agent = Agent(
-        interaction_mode=Output.API,
         name="api_output_agent",
         tools=[entry, stop],
         system_prompt="Test API output user I/O.",

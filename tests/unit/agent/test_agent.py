@@ -10,9 +10,10 @@ from roboz.agent._notifications import (
     INTERRUPTED_GENERATION_CONTEXT,
     LLM_PROVIDER_REQUEST_RETRY_PROMPT,
 )
-from roboz.agent.core import Agent
+from roboz.agent.core import Agent, AgentMode
 from roboz.exceptions import (
     ExternalCallInterruptedError,
+    LLMAuthError,
     LLMCallCancelledError,
     LLMProviderUnavailableError,
     StopAgent,
@@ -30,7 +31,7 @@ from roboz.models import (
     Str,
 )
 from roboz.models.truncation import ERROR_RETRY, NO_MESSAGE, Severity
-from roboz.runtime import EventPipe, Output, PersistenceSink, RuntimeEvent
+from roboz.runtime import EventPipe, PersistenceSink, RuntimeEvent
 from roboz.skill.core import Skill
 from roboz.tooling.decorators import factory, tool
 from roboz.tools import stop, stop_after
@@ -145,7 +146,6 @@ def agent():
         dict(action="stop", rationale="", value="Run finished!"),
     ]
     return Agent(
-        interaction_mode=None,
         name="fixture_agent",
         description="Fixture agent description.",
         tools=tools,
@@ -234,7 +234,6 @@ def test_invoke_stop_agent_finalizes_run_cancelled(
     rbz_root = tmp_path / "roboz_data"
     sink = PersistenceSink.for_path(rbz_root)
     agent = Agent(
-        interaction_mode=None,
         name="stop_agent_run",
         event_sinks=(sink,),
         tools=[raise_stop_agent],
@@ -258,7 +257,6 @@ def test_invoke_llm_cancelled_error_finalizes_run_cancelled(
     rbz_root = tmp_path / "roboz_data"
     sink = PersistenceSink.for_path(rbz_root)
     agent = Agent(
-        interaction_mode=None,
         name="llm_cancelled_run",
         event_sinks=(sink,),
         tools=[raise_llm_cancelled],
@@ -295,9 +293,8 @@ def test_invoke_pipe_cancelled_between_tools_stops_before_next_tool(
 
     sink = PersistenceSink.for_path(tmp_path / "roboz_data")
     agent = Agent(
-        interaction_mode=None,
         name="cancel_between_tools",
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         default_tools=[cancel_after_first, must_not_run],
         tools=[],
         system_prompt="",
@@ -319,7 +316,6 @@ def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
     call_counts["raise_interrupted_once"].clear()
     io = bind_user_io(["detour reply"])
     agent = Agent(
-        interaction_mode=Output.API,
         name="interrupt_resume_run",
         tools=[raise_interrupted_once, stop],
         system_prompt="system",
@@ -374,7 +370,6 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
     io = bind_user_io(["retry"])
     sink = PersistenceSink.for_path(tmp_path)
     agent = Agent(
-        interaction_mode=Output.API,
         name="provider_request_retry_run",
         tools=[stop],
         system_prompt="system",
@@ -409,7 +404,6 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
 def test_invoke_provider_5xx_remains_terminal_failure(tmp_path: Path) -> None:
     sink = PersistenceSink.for_path(tmp_path)
     agent = Agent(
-        interaction_mode=None,
         name="provider_5xx_failure_run",
         tools=[stop],
         system_prompt="system",
@@ -435,11 +429,62 @@ def test_invoke_provider_5xx_remains_terminal_failure(tmp_path: Path) -> None:
     assert failure["level"] == "error"
 
 
+def test_autonomous_agent_completes_without_user_input() -> None:
+    autonomous = Agent(
+        name="autonomous_run",
+        mode=AgentMode.AUTONOMOUS,
+        tools=[stop],
+        system_prompt="Complete the task without user input.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "stop", "rationale": "done", "value": "ok"}]
+        ),
+    )
+
+    output, _ = autonomous.invoke()
+
+    assert output.value == "ok"
+    assert autonomous.prompt_user_tool is None
+    assert "prompt_user" not in autonomous.full_system_prompt
+
+
+def test_autonomous_provider_request_failure_propagates() -> None:
+    autonomous = Agent(
+        name="autonomous_provider_failure",
+        mode=AgentMode.AUTONOMOUS,
+        tools=[stop],
+        system_prompt="Complete the task without user input.",
+        agent_endpoint=MockLLMEndpoint(
+            [MockProviderError("Invalid API key", status_code=401)]
+        ),
+    )
+
+    with pytest.raises(LLMAuthError):
+        autonomous.invoke()
+
+
+def test_autonomous_interruption_propagates() -> None:
+    @tool
+    def interrupt(input: Empty, messages: list[Message]) -> Empty:
+        raise ExternalCallInterruptedError("interrupted")
+
+    autonomous = Agent(
+        name="autonomous_interruption",
+        mode=AgentMode.AUTONOMOUS,
+        tools=[interrupt],
+        system_prompt="Complete the task without user input.",
+        agent_endpoint=MockLLMEndpoint(
+            [{"action": "interrupt", "rationale": "run"}]
+        ),
+    )
+
+    with pytest.raises(ExternalCallInterruptedError, match="interrupted"):
+        autonomous.invoke()
+
+
 def test_agent_without_persistence_sink_does_not_persist(tmp_path: Path) -> None:
     script = [dict(action="stop", rationale="", value="done")]
 
     agent_1 = Agent(
-        interaction_mode=None,
         name="warn_agent_1",
         tools=[stop],
         system_prompt="prompt",
@@ -447,7 +492,6 @@ def test_agent_without_persistence_sink_does_not_persist(tmp_path: Path) -> None
         initial_messages=None,
     )
     agent_2 = Agent(
-        interaction_mode=None,
         name="warn_agent_2",
         tools=[stop],
         system_prompt="prompt",
@@ -463,7 +507,6 @@ def test_agent_without_persistence_sink_does_not_persist(tmp_path: Path) -> None
 def test_agent_emits_tool_events_to_configured_sinks() -> None:
     events: list[object] = []
     agent = Agent(
-        interaction_mode=None,
         name="injected_pipe_agent",
         tools=[stop],
         system_prompt="system",
@@ -507,7 +550,6 @@ def test_stop_after_single_cleanup_runs_before_stop():
         return Str(value="cleanup-overrode-value")
 
     agent = Agent(
-        interaction_mode=None,
         name="stop_after_single_cleanup",
         tools=[stop_after(cleanup)],
         system_prompt="prompt",
@@ -548,7 +590,6 @@ def test_stop_after_cleanup_list_runs_in_order():
         return Str(value=input.value)
 
     agent = Agent(
-        interaction_mode=None,
         name="stop_after_cleanup_list",
         tools=[stop_after([cleanup_one, cleanup_two])],
         system_prompt="prompt",
@@ -573,7 +614,6 @@ def test_stop_after_custom_final_stop_tool_handles_empty_cleanup_output():
         return Stop(value="custom-final-stop")
 
     agent = Agent(
-        interaction_mode=None,
         name="stop_after_empty_cleanup",
         tools=[stop_after(cleanup_empty, final_stop_tool=final_stop_from_empty)],
         system_prompt="prompt",
@@ -600,7 +640,6 @@ def test_stop_after_cleanup_not_run_on_abrupt_cancellation():
         return Str(value=input.value)
 
     agent = Agent(
-        interaction_mode=None,
         name="stop_after_cancelled",
         tools=[abort, stop_after(cleanup)],
         system_prompt="prompt",
@@ -647,7 +686,6 @@ def test_calling(agent):
 def test_agentic_agent_requires_non_empty_system_prompt(empty_prompt):
     with pytest.raises(ValueError, match="empty system prompt"):
         Agent(
-            interaction_mode=None,
             name="empty_prompt_agent",
             tools=[stop],
             system_prompt=empty_prompt,
@@ -661,7 +699,6 @@ def test_agentic_agent_requires_non_empty_system_prompt(empty_prompt):
 def test_disabled_automatic_tool_prompt_uses_only_configured_system_prompt():
     system_prompt = "Use only these configured instructions."
     agent = Agent(
-        interaction_mode=None,
         name="manual_tool_prompt_agent",
         tools=[stop],
         system_prompt=system_prompt,
@@ -679,15 +716,14 @@ def test_disabled_automatic_tool_prompt_uses_only_configured_system_prompt():
     assert agent.full_system_prompt == system_prompt
 
 
-def test_non_agentic_agent_allows_empty_system_prompt():
+def test_deterministic_agent_allows_empty_system_prompt():
     @tool
     def default_stop(input: Empty, messages: list[Message]) -> Stop:
         return Stop(value="done")
 
     agent = Agent(
-        interaction_mode=None,
-        name="non_agentic_empty_prompt",
-        is_agentic=False,
+        name="deterministic_empty_prompt",
+        mode=AgentMode.DETERMINISTIC,
         tools=[stop],
         system_prompt="",
         default_tools=[default_stop],
@@ -718,7 +754,6 @@ def test_duplicate_tool_name_validation():
 
     with pytest.raises(ValueError, match="Duplicate tool name"):
         Agent(
-            interaction_mode=None,
             name="dup_test",
             tools=[duplicate_name_tool],
             skills=[skill],
@@ -743,7 +778,6 @@ def test_duplicate_tool_name_validation_two_tools():
 
     with pytest.raises(ValueError, match="Duplicate tool name"):
         Agent(
-            interaction_mode=None,
             name="dup_test_two",
             tools=[duplicate_name_tool, duplicate_name_tool_2],
             system_prompt="prompt",
@@ -769,7 +803,6 @@ def test_skill_rejects_activating_tool_with_same_name():
         dict(action="duplicate_skill_name", rationale="load skill")
     ]
     agent = Agent(
-        interaction_mode=None,
         name="duplicate_skill_tool_test",
         tools=[stop],
         skills=[skill],
@@ -794,7 +827,6 @@ def test_duplicate_name_ok_if_passive():
     passive_tool.name = "active_tool"
 
     Agent(
-        interaction_mode=None,
         name="passive_dup_ok",
         tools=[active_tool, passive_tool],
         system_prompt="prompt",
@@ -860,13 +892,35 @@ def test_copy_agent_overrides_description(agent):
     assert agent.description == "Fixture agent description."
 
 
-def test_copy_agent_overrides_custom_prompt_user_tool_and_is_agentic(agent):
+def test_copy_agent_overrides_custom_prompt_user_tool_and_mode(agent):
     copied_g = tool_g.copy(name="tool_g_copy")
-    agent_copy = agent.copy(custom_prompt_user_tool=copied_g, is_agentic=False)
+    agent_copy = agent.copy(
+        custom_prompt_user_tool=copied_g, mode=AgentMode.DETERMINISTIC
+    )
     assert agent_copy.prompt_user_tool.name == "tool_g_copy"
-    assert agent_copy.is_agentic is False
-    assert agent.is_agentic is True
+    assert agent_copy.mode is AgentMode.DETERMINISTIC
+    assert agent.mode is AgentMode.STEERABLE
     assert agent.prompt_user_tool.name == "tool_g"
+
+
+def test_copy_into_autonomous_mode_discards_prompt_user_tool(agent):
+    agent_copy = agent.copy(mode=AgentMode.AUTONOMOUS)
+
+    assert agent_copy.mode is AgentMode.AUTONOMOUS
+    assert agent_copy.prompt_user_tool is None
+    assert "prompt_user" not in agent_copy.active_tools
+
+
+def test_autonomous_mode_rejects_custom_prompt_user_tool():
+    with pytest.raises(ValueError, match="custom_prompt_user_tool"):
+        Agent(
+            name="invalid_autonomous",
+            mode=AgentMode.AUTONOMOUS,
+            tools=[stop],
+            system_prompt="Complete the task.",
+            custom_prompt_user_tool=tool_g,
+            agent_endpoint=MockLLMEndpoint([]),
+        )
 
 
 def test_default_tools_run_in_order():
@@ -892,7 +946,6 @@ def test_default_tools_run_in_order():
         dict(action="stop", rationale="", value="ok"),
     ]
     a = Agent(
-        interaction_mode=None,
         name="default_tools_order",
         tools=[entry, stop],
         system_prompt="prompt",
@@ -919,7 +972,6 @@ def test_default_tool_integration_mixed_truncation():
     endpoint = MockLLMEndpoint(scripted)
     emitter = default_emit_integration([0])
     agent = Agent(
-        interaction_mode=None,
         name="mixed_truncation",
         tools=[noop_entry, stop],
         system_prompt="test",
@@ -978,6 +1030,7 @@ def test_auto_load_skills_emit_structured_kinds(agent):
         if message.message_kind == MessageKind.AUTO_LOAD_BANNER
     ]
     assert len(banners) == 1
+    assert BaseNames.CALLER_FIELD not in banners[0]
 
     auto_skill_messages = [
         payload
@@ -1041,7 +1094,6 @@ def test_skill_depends_on_allows_load_after_prerequisite():
         dict(action="stop", rationale="", value="done"),
     ]
     agent = Agent(
-        interaction_mode=None,
         name="skill_dep_ok",
         tools=[tool_a, tool_b, stop],
         system_prompt="prompt",
@@ -1070,7 +1122,6 @@ def test_skill_depends_on_rejects_missing_prerequisite():
     )
     script = [dict(action="dep_child_skill", rationale="skip base")]
     agent = Agent(
-        interaction_mode=None,
         name="skill_dep_bad",
         tools=[tool_a, tool_b, stop],
         system_prompt="prompt",
@@ -1099,7 +1150,6 @@ def test_auto_loaded_skill_dependency_order():
     )
 
     ok_agent = Agent(
-        interaction_mode=None,
         name="auto_dep_ok",
         tools=[tool_a, tool_b, stop],
         system_prompt="prompt",
@@ -1113,7 +1163,6 @@ def test_auto_loaded_skill_dependency_order():
     assert out.value == "done"
 
     bad_agent = Agent(
-        interaction_mode=None,
         name="auto_dep_bad",
         tools=[tool_a, tool_b, stop],
         system_prompt="prompt",
@@ -1132,7 +1181,6 @@ def test_agent_info(tmp_path):
     skills = [skill]
     default_tool2 = default_tool.copy(name="other_default")
     agent = Agent(
-        interaction_mode=None,
         name="test_agent_info",
         tools=tools,
         system_prompt="system_prompt for a testing agent",

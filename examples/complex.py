@@ -24,7 +24,7 @@ def ask_number(input: Empty, messages: list[Message]) -> Int:
 def escalate(input: Int, messages: list[Message], ctx: EndpointLike) -> Stop | Str:
     """An even number?! Need to check this with HR!"""
     interact_with_user("Careful now, that is pretty spicy!", with_reply=False)
-    prompt = "The user chose {input.value}. Is this too hot to handle?! (y/n)?"
+    prompt = f"The user chose {input.value}. Is this too hot to handle?! (y/n)?"
     verdict = get_completion(
         endpoint=ctx, messages=[Message(role=Role.SYSTEM, content=prompt)]
     )
@@ -56,7 +56,7 @@ guard_endpoint = MockLLMEndpoint(responses=10 * ["y"])
 
 agent = Agent(
     name="demo",
-    system_prompt="Without exception, use the ask user tool",
+    system_prompt=f"Without exception, use the {ask_number.name} tool.",
     event_sinks=[CliSink.default()],
     agent_endpoint=agent_endpoint,
     tools=[ask_number, escalate(guard_endpoint), give_praise, stop],

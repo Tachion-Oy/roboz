@@ -8,7 +8,7 @@ from roboshed.sandbox import Sandbox
 from roboz.agent import Agent
 from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute
-from roboz.runtime import EventSink, Output, default_event_sinks
+from roboz.runtime import EventSink, default_event_sinks
 
 
 def robosprawl(
@@ -19,7 +19,6 @@ def robosprawl(
     memory_endpoint: EndpointLike,
     additional_capabilities: Sequence[AgentCapability],
     specialists: Sequence[DeployableAgent],
-    interaction_mode: Output | None,
     event_sinks: Sequence[EventSink] = (),
 ) -> tuple[Agent, tuple[Agent, ...]]:
     """Build a fresh fixed orchestrator and Librarian for a scoped project.
@@ -39,7 +38,6 @@ def robosprawl(
         sandbox,
         agent_endpoint=LLMEndpointRoute(endpoint_getter),
         subagents=tuple(specialists),
-        interaction_mode=interaction_mode,
     )
     root.add_capabilities(*additional_capabilities)
     watched_agent_names = root.agent_names(include_background=False)

@@ -4,6 +4,7 @@ import pytest
 from roboshed.capabilities import Compactification
 from roboshed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
+from roboz.agent import AgentMode
 from roboz.models import All
 from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint
@@ -47,7 +48,7 @@ def test_compaction_without_any_endpoint_fails_before_starting_work():
     definition = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         default_capabilities=(Compactification(),),
     )
     with pytest.raises(ValueError, match="agent_endpoint.*None"):

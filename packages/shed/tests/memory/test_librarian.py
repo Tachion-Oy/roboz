@@ -19,6 +19,7 @@ from roboshed.tools.contexts import SleepBetweenRunsContext
 from roboshed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboshed.sandbox import Sandbox
 
+from roboz.agent import AgentMode
 from roboz.exceptions import ExternalCallCancelledError, LLMAuthError
 from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint, MockProviderError
@@ -78,12 +79,11 @@ def _librarian(sandbox, names, *, endpoint, capabilities):
     definition = DeployableAgent(
         name="librarian",
         description=LIBRARIAN_AGENT_DESCRIPTION,
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
         default_capabilities=capabilities,
     )
     definition.set_agent_endpoint(endpoint)
-    definition.set_interaction_mode(None)
     definition.set_attributes(
         sandbox=sandbox,
         watched_agent_names=names,
@@ -132,7 +132,7 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
         "purge_memory",
         "sleep_between_runs",
     ]
-    assert not agent.is_agentic
+    assert agent.mode is AgentMode.DETERMINISTIC
     assert isinstance(agent.agent_endpoint, MockLLMEndpoint)
     assert agent.description == LIBRARIAN_AGENT_DESCRIPTION
 

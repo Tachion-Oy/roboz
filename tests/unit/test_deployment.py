@@ -4,6 +4,7 @@ from collections.abc import Mapping
 
 import pytest
 
+from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Str
 from roboz import Skill, tool
 from roboz.tools import stop
@@ -14,7 +15,6 @@ from roboz.deployment import (
     RequiredAttributes,
 )
 from roboz.llm import MockLLMEndpoint
-from roboz.runtime import Output
 
 
 class _ConfiguredCapability(AgentCapability):
@@ -35,14 +35,13 @@ def _definition(
 ) -> DeployableAgent:
     definition = DeployableAgent(
         name=name,
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         default_capabilities=(
             capabilities if capabilities else (Capability(default_tools=(stop,)),)
         ),
         subagents=subagents,
         background_agents=background_agents,
     )
-    definition.set_interaction_mode(None)
     return definition
 
 
@@ -104,7 +103,6 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
             ]
         )
     )
-    definition.set_interaction_mode(Output.API)
 
     agent, backgrounds = definition.build()
     second, second_backgrounds = definition.build()
@@ -196,7 +194,7 @@ def test_incomplete_configuration_can_be_completed_later():
 
 
 def test_configuration_can_be_copied_and_unpickled():
-    definition = DeployableAgent(name="copyable", is_agentic=False)
+    definition = DeployableAgent(name="copyable", mode=AgentMode.DETERMINISTIC)
     definition.set_attributes(setting="configured")
 
     restored_definitions = (
@@ -208,6 +206,88 @@ def test_configuration_can_be_copied_and_unpickled():
     for restored in restored_definitions:
         assert restored is not definition
         assert restored.setting == "configured"
+        assert restored.mode is AgentMode.DETERMINISTIC
+
+
+def test_agent_modes_are_string_valued_enums():
+    assert [(mode.name, mode.value) for mode in AgentMode] == [
+        ("DETERMINISTIC", "deterministic"),
+        ("STEERABLE", "steerable"),
+        ("AUTONOMOUS", "autonomous"),
+    ]
+    assert all(isinstance(mode, str) for mode in AgentMode)
+    assert AgentMode.DETERMINISTIC.allows_user_interaction
+    assert AgentMode.STEERABLE.allows_user_interaction
+    assert not AgentMode.AUTONOMOUS.allows_user_interaction
+
+
+@pytest.mark.parametrize("mode", list(AgentMode))
+def test_build_preserves_agent_mode(mode: AgentMode):
+    capability = (
+        Capability(default_tools=(stop,))
+        if mode is AgentMode.DETERMINISTIC
+        else Capability(tools=(stop,))
+    )
+    definition = DeployableAgent(
+        name=f"{mode}_agent",
+        mode=mode,
+        system_prompt=(
+            "Complete the task." if mode is not AgentMode.DETERMINISTIC else ""
+        ),
+        default_capabilities=(capability,),
+    )
+    if mode is not AgentMode.DETERMINISTIC:
+        definition.set_agent_endpoint(MockLLMEndpoint([]))
+
+    agent, _ = definition.build()
+
+    assert agent.mode is mode
+    assert (agent.prompt_user_tool is None) is (mode is AgentMode.AUTONOMOUS)
+
+
+def test_subagent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, capsys):
+    child = DeployableAgent(
+        name="steerable_child",
+        mode=AgentMode.STEERABLE,
+        system_prompt="Ask once, then stop.",
+        default_capabilities=(Capability(tools=(stop,)),),
+    )
+    child.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {
+                    "action": "prompt_user",
+                    "rationale": "ask",
+                    "value": "question",
+                },
+                {"action": "stop", "rationale": "done", "value": "child done"},
+            ]
+        )
+    )
+    parent = DeployableAgent(
+        name="autonomous_parent",
+        mode=AgentMode.AUTONOMOUS,
+        system_prompt="Delegate, then stop.",
+        default_capabilities=(Capability(tools=(stop,)),),
+        subagents=(child,),
+    )
+    parent.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {"action": "steerable_child", "rationale": "delegate"},
+                {"action": "stop", "rationale": "done", "value": "parent done"},
+            ]
+        )
+    )
+    from roboz.runtime import io
+
+    monkeypatch.setattr(io.sys.stdin, "readline", lambda: "answer\n")
+
+    agent, _ = parent.build()
+    result, _ = agent.invoke()
+
+    assert result.value == "parent done"
+    assert "question" in capsys.readouterr().out
 
 
 def test_validation_aggregates_missing_none_and_wrong_types_across_graph():

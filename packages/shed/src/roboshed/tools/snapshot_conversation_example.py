@@ -3,7 +3,7 @@
 from typing import Final
 
 SNAPSHOT_CONVERSATION_EXAMPLE: Final[str] = """## Goals and intent
-- User wants a non-agentic Librarian that runs in the background and maintains conversation memory without user involvement.
+- User wants a deterministic Librarian that runs in the background and maintains conversation memory without user involvement.
 - User stated the snapshots exist to feed a later consolidation step, "the initial raw phase of information gathering".
 
 ## State of work

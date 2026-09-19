@@ -11,6 +11,7 @@ from roboshed.capabilities import (
 )
 from roboshed.identifiers import LIBRARIAN_AGENT_NAME
 from roboshed.sandbox import Sandbox
+from roboz.agent import AgentMode
 from roboz.deployment import DeployableAgent
 from roboz.llm import EndpointLike
 
@@ -29,7 +30,7 @@ def librarian(
     agent = DeployableAgent(
         name=LIBRARIAN_AGENT_NAME,
         description=LIBRARIAN_AGENT_DESCRIPTION,
-        is_agentic=False,
+        mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
         default_capabilities=(
             ConversationSnapshots(),
@@ -39,7 +40,6 @@ def librarian(
         ),
     )
     agent.set_agent_endpoint(agent_endpoint)
-    agent.set_interaction_mode(None)
     agent.set_attributes(
         sandbox=sandbox,
         watched_agent_names=frozenset(watched_agent_names),
