@@ -52,9 +52,10 @@ def _build(
     endpoint: MockLLMEndpoint | None = None,
     token_growth_threshold: int = 100,
     sleep_seconds: float = 0.01,
+    watched_agent_names: set[str] | None = None,
 ):
     sandbox = _sandbox(tmp_path)
-    names = {_WATCHED_AGENT}
+    names = {_WATCHED_AGENT} if watched_agent_names is None else watched_agent_names
     definition = _librarian(
         sandbox,
         names,
@@ -93,12 +94,16 @@ def _librarian(sandbox, names, *, endpoint, capabilities):
 
 
 def _write_source_run(
-    sandbox: Sandbox, *, status: RunStatus = RunStatus.COMPLETED
+    sandbox: Sandbox,
+    *,
+    status: RunStatus = RunStatus.COMPLETED,
+    agent_name: str = _WATCHED_AGENT,
+    conversation_id: str = "source-run",
 ) -> Path:
     created_at = datetime(2026, 8, 4, tzinfo=timezone.utc)
     run = ConversationRun(
-        conversation_id="source-run",
-        agent_name=_WATCHED_AGENT,
+        conversation_id=conversation_id,
+        agent_name=agent_name,
         started_at=utc_iso_z(created_at),
         ended_at=(None if status is RunStatus.RUNNING else utc_iso_z(created_at)),
         status=status,
@@ -111,8 +116,8 @@ def _write_source_run(
             )
         ],
     )
-    agent_dir = sandbox.project_logs_dir() / _WATCHED_AGENT
-    path = agent_dir / "source-run.json"
+    agent_dir = sandbox.project_logs_dir() / agent_name
+    path = agent_dir / f"{conversation_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(run.model_dump_json(), encoding="utf-8")
     if status is RunStatus.RUNNING:
@@ -120,6 +125,26 @@ def _write_source_run(
             agent_dir=agent_dir, conversation_id=run.conversation_id
         )
     return path
+
+
+def _complete_source_run(source: Path, *, final_fact: str = "The final fact.") -> None:
+    run = ConversationRun.model_validate_json(source.read_text(encoding="utf-8"))
+    if run.status is RunStatus.COMPLETED:
+        return
+    run.status = RunStatus.COMPLETED
+    run.ended_at = utc_iso_z(datetime(2026, 8, 4, tzinfo=timezone.utc))
+    run.messages.append(
+        message_to_logged_row(
+            Message(role=Role.ASSISTANT, content=final_fact),
+            message_id=f"{run.conversation_id}-final-message",
+            sequence=max(row.sequence for row in run.messages) + 1,
+            created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
+        )
+    )
+    source.write_text(run.model_dump_json(), encoding="utf-8")
+    clear_conversation_active(
+        agent_dir=source.parent, conversation_id=run.conversation_id
+    )
 
 
 def _tool_callers(messages: list[Message]) -> list[str]:
@@ -301,7 +326,14 @@ def test_wait_returns_when_observed_active_run_ends(
 
 
 @pytest.mark.parametrize(
-    "complete_after", ["snapshot_conversations", "stop_when_watched_agents_inactive"]
+    "complete_after",
+    [
+        "snapshot_conversations",
+        "consolidate_memory",
+        "purge_memory",
+        "stop_when_watched_agents_inactive",
+        "sleep_between_runs",
+    ],
 )
 def test_completion_during_maintenance_is_flushed_without_sleeping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, complete_after: str
@@ -321,37 +353,26 @@ def test_completion_during_maintenance_is_flushed_without_sleeping(
         sleep_seconds=120.0,
     )
 
-    def complete_run(event: PipeEvent) -> None:
+    def complete_after_tool(event: PipeEvent) -> None:
         if not isinstance(event, RuntimeEvent):
             return
         if event.category != "tool" or event.kind != "succeeded":
             return
         if event.data is None or event.data.get("tool") != complete_after:
             return
-        run = ConversationRun.model_validate_json(source.read_text(encoding="utf-8"))
-        if run.status is RunStatus.COMPLETED:
-            return
-        run.status = RunStatus.COMPLETED
-        run.ended_at = utc_iso_z(datetime(2026, 8, 4, tzinfo=timezone.utc))
-        run.messages.append(
-            message_to_logged_row(
-                Message(role=Role.ASSISTANT, content="The final fact."),
-                message_id="final-message",
-                sequence=2,
-                created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
-            )
-        )
-        source.write_text(run.model_dump_json(), encoding="utf-8")
-        clear_conversation_active(
-            agent_dir=source.parent, conversation_id=run.conversation_id
-        )
+        _complete_source_run(source)
 
-    agent.pipe.add_sink(complete_run)
-    monkeypatch.setattr(
-        sleep_module,
-        "sleep",
-        lambda seconds: pytest.fail(f"final sweep slept for {seconds}s"),
-    )
+    if complete_after == "sleep_between_runs":
+        monkeypatch.setattr(
+            sleep_module, "sleep", lambda _seconds: _complete_source_run(source)
+        )
+    else:
+        agent.pipe.add_sink(complete_after_tool)
+        monkeypatch.setattr(
+            sleep_module,
+            "sleep",
+            lambda seconds: pytest.fail(f"final sweep slept for {seconds}s"),
+        )
 
     result, _ = agent.invoke()
 
@@ -362,6 +383,68 @@ def test_completion_during_maintenance_is_flushed_without_sleeping(
     assert len(memories) == 1
     assert "Final fact from the completed run" in snapshots[0].read_text()
     assert "Memory includes the final fact" in memories[0].read_text()
+
+
+def test_all_watched_workers_finish_before_final_maintenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sandbox = _sandbox(tmp_path)
+    first = _write_source_run(
+        sandbox,
+        status=RunStatus.RUNNING,
+        agent_name="worker-one",
+        conversation_id="first-run",
+    )
+    second = _write_source_run(
+        sandbox,
+        status=RunStatus.RUNNING,
+        agent_name="worker-two",
+        conversation_id="second-run",
+    )
+    agent = _build(
+        tmp_path,
+        endpoint=MockLLMEndpoint(
+            [
+                {"value": "First worker final fact."},
+                {"value": "Second worker final fact."},
+                {"value": "Memory includes both worker facts."},
+            ]
+        ),
+        token_growth_threshold=100_000,
+        sleep_seconds=120,
+        watched_agent_names={"worker-one", "worker-two"},
+    )
+
+    def complete_first_after_snapshot(event: PipeEvent) -> None:
+        if (
+            isinstance(event, RuntimeEvent)
+            and event.category == "tool"
+            and event.kind == "succeeded"
+            and event.data is not None
+            and event.data.get("tool") == "snapshot_conversations"
+        ):
+            _complete_source_run(first, final_fact="First worker fact.")
+
+    agent.pipe.add_sink(complete_first_after_snapshot)
+    monkeypatch.setattr(
+        sleep_module,
+        "sleep",
+        lambda _seconds: _complete_source_run(
+            second, final_fact="Second worker fact."
+        ),
+    )
+
+    result, _ = agent.invoke()
+
+    assert result.value == (
+        "stop_when_watched_agents_inactive: watched agents inactive"
+    )
+    snapshots = list(sandbox.project_snapshots_dir().rglob("*.md"))
+    memories = list(sandbox.project_memory_dir().glob("*.md"))
+    assert len(snapshots) == 2
+    assert len(memories) == 1
+    assert {path.parent.name for path in snapshots} == {"first-run", "second-run"}
+    assert "both worker facts" in memories[0].read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("dry_run", [False, True])

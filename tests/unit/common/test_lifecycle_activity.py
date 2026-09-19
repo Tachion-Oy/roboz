@@ -6,6 +6,7 @@ import pytest
 
 from roboz.runtime.events import RunLifecycleEvent
 from roboz.runtime.persistence import (
+    ConversationRun,
     RunStatus,
     active_agent_names,
     active_marker_paths,
@@ -35,6 +36,61 @@ def test_persistence_sink_tracks_active_and_terminal_lifecycle(tmp_path: Path) -
     assert marker.read_bytes() == b""
     sink(_event(kind="stopped", agent="orchestrator", status=RunStatus.COMPLETED))
     assert active_marker_paths(root, {"orchestrator"}) == ()
+
+
+def test_terminal_run_is_persisted_before_active_marker_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "logs"
+    sink = PersistenceSink.for_path(root / "orchestrator")
+    sink(_event(kind="started", agent="orchestrator"))
+    assert sink.conversations_location is not None
+    conversation = sink.conversations_location
+    (marker,) = active_marker_paths(root, {"orchestrator"})
+    real_clear = clear_conversation_active
+
+    def assert_terminal_then_clear(*, agent_dir: Path, conversation_id: str) -> None:
+        persisted = ConversationRun.model_validate_json(
+            conversation.read_text(encoding="utf-8")
+        )
+        assert persisted.status is RunStatus.COMPLETED
+        assert persisted.ended_at is not None
+        assert marker.exists()
+        real_clear(agent_dir=agent_dir, conversation_id=conversation_id)
+
+    monkeypatch.setattr(
+        "roboz.runtime.sinks.clear_conversation_active", assert_terminal_then_clear
+    )
+
+    sink(_event(kind="stopped", agent="orchestrator", status=RunStatus.COMPLETED))
+
+    assert not marker.exists()
+
+
+def test_terminal_persistence_failure_keeps_active_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "logs"
+    sink = PersistenceSink.for_path(root / "orchestrator")
+    sink(_event(kind="started", agent="orchestrator"))
+    assert sink.conversations_location is not None
+    conversation = sink.conversations_location
+    (marker,) = active_marker_paths(root, {"orchestrator"})
+
+    def fail_write(_path: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(sink, "_write_run", fail_write)
+
+    with pytest.raises(OSError, match="disk full"):
+        sink(_event(kind="stopped", agent="orchestrator", status=RunStatus.COMPLETED))
+
+    persisted = ConversationRun.model_validate_json(
+        conversation.read_text(encoding="utf-8")
+    )
+    assert persisted.status is RunStatus.RUNNING
+    assert persisted.ended_at is None
+    assert marker.exists()
 
 
 def test_parallel_same_agent_invocations_have_independent_markers(
