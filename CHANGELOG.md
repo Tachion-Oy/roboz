@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.2.dev8 - 2026-09-20
+
+- Breaking: remove the legacy agent master tool. Model-driven agents run
+  their configured default tools followed by the built-in `prompt_agent` tool;
+  deterministic agents require and run only their configured default tools.
+  Use `default_tools` to configure deterministic steps instead of relying on
+  the removed `master_tool` attribute.
+
 - Show every displayed tool's external dependency IDs and kinds in
   `Agent.show_agent_info()`.
 

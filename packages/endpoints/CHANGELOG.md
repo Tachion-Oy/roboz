@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a5 - 2026-09-20
+
 - Breaking: create an importable `model_catalogue` inside the detected project package by
   default, containing editable `models.json` and generated `providers.py`.
   Existing catalogues are not moved automatically. Preserve the old locations

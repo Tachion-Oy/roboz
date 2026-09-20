@@ -1,6 +1,6 @@
 [project]
 name = "roboz-endpoints"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "Model catalogues and optional endpoint adapters for Roboz"
 readme = "README.md"
 requires-python = ">=3.13"
