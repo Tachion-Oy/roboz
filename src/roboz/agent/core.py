@@ -83,6 +83,14 @@ class Agent(HasExternalDependencies):
     list of callbacks attached to a newly created pipe. Hosts compose CLI,
     run-scoped, process-scoped, or agent-specific callbacks before creating the
     agent; Agent does not construct or distinguish those scopes.
+
+    ``default_tools`` are scheduler-owned chain roots. The scheduler runs them in
+    configuration order whenever the current tool has no chained successor, then
+    repeats that sequence in the next cycle. A downstream tool may declare
+    ``chained_to=default_tool``; when that branch ends, scheduling resumes with the
+    next configured default. A default tool cannot itself declare ``chained_to``
+    because defaults cannot be downstream tools. Default-only tools remain hidden
+    from the model-facing active and passive registries.
     """
 
     def __init__(
@@ -280,23 +288,27 @@ class Agent(HasExternalDependencies):
 
     def _init_tools(self, *, tools: Sequence[Tool], skill: Skill | None):
         for t in self.default_tools:
+            if t.chained_to:
+                raise ValueError(
+                    f"Default tool '{t.name}' cannot declare chained_to"
+                )
             if any(
                 issubclass(output_type, Invoke)
                 for output_type in get_constituent_types(t.OutputModel)
             ):
                 raise ValueError(f"Default tool '{t.name}' cannot return Invoke")
 
-        all_tools = set(tools)
+        registered_tools = set(tools)
         if skill:
-            all_tools |= set(skill.tools)
+            registered_tools |= set(skill.tools)
 
-        for t in all_tools:
+        for t in registered_tools:
             if t.chained_to:
                 self.passive_tools[t.id] = t
                 continue
             self.active_tools[t.id] = t
         self._init_prompt_agent_tool()
-        self._validate_tool_chains(all_tools)
+        self._validate_tool_chains(registered_tools | set(self.default_tools))
 
     def external_dependencies(
         self,

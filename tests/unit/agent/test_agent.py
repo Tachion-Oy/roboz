@@ -966,6 +966,69 @@ def test_default_tools_run_in_order():
     assert calls == ["d1", "d2", "entry", "d1", "d2"]
 
 
+def test_default_only_tools_are_ordered_chain_roots():
+    calls: list[str] = []
+
+    @tool
+    def first(input: Empty, messages: list[Message]) -> Str:
+        calls.append("first")
+        return Str(value="first output")
+
+    @tool(chained_to=first)
+    def after_first(input: Str, messages: list[Message]) -> Empty:
+        calls.append("after_first")
+        return Empty()
+
+    @tool
+    def second(input: Empty, messages: list[Message]) -> Int:
+        calls.append("second")
+        return Int(value=2)
+
+    @tool(chained_to=second)
+    def after_second(input: Int, messages: list[Message]) -> Stop:
+        calls.append("after_second")
+        return Stop(value="done")
+
+    agent = Agent(
+        name="default_chain_roots",
+        mode=AgentMode.DETERMINISTIC,
+        tools=[after_first, after_second],
+        default_tools=[first, second],
+        agent_endpoint=None,
+    )
+
+    assert first.id not in agent.active_tools | agent.passive_tools
+    assert second.id not in agent.active_tools | agent.passive_tools
+    assert set(agent.passive_tools) == {after_first.id, after_second.id}
+
+    result, _ = agent.invoke()
+
+    assert result.value == "done"
+    assert calls == ["first", "after_first", "second", "after_second"]
+
+
+def test_default_tool_cannot_be_chained_downstream():
+    @tool
+    def root(input: Empty, messages: list[Message]) -> Empty:
+        return Empty()
+
+    @tool(chained_to=root)
+    def downstream_default(input: Empty, messages: list[Message]) -> Stop:
+        return Stop(value="done")
+
+    with pytest.raises(
+        ValueError,
+        match="Default tool 'downstream_default' cannot declare chained_to",
+    ):
+        Agent(
+            name="downstream_default",
+            mode=AgentMode.DETERMINISTIC,
+            tools=[root],
+            default_tools=[downstream_default],
+            agent_endpoint=None,
+        )
+
+
 def test_deterministic_default_cycles_do_not_duplicate_the_first_tool():
     calls: list[str] = []
     cycles = 0

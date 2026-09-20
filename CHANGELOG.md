@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.2.dev10 - 2026-09-21
+
+- Define default tools as scheduler-owned chain roots: downstream tools can now
+  reference a default-only parent with `chained_to`, while defaults that are
+  themselves chained downstream are rejected during agent construction.
+
 ## 0.1.2.dev9 - 2026-09-20
 
 - Remove the leftover `proton-bridge-beta` installation extra. Install
