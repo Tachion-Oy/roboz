@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show every displayed tool's external dependency IDs and kinds in
+  `Agent.show_agent_info()`.
+
 ## 0.1.2.dev7 - 2026-09-20
 
 - Breaking: replace the `is_agentic` boolean with the string-valued

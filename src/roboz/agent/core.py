@@ -719,6 +719,7 @@ class Agent(HasExternalDependencies):
         conf_table.add_column("Name", style="cyan")
         conf_table.add_column("Description")
         conf_table.add_column("Chained To")
+        conf_table.add_column("External Dependencies")
 
         no_description = "Not provided"
 
@@ -727,12 +728,26 @@ class Agent(HasExternalDependencies):
                 return "-"
             return ", ".join([c.name for c in t.chained_to])
 
+        def _get_external_dependencies(tools: Sequence[Tool]) -> str:
+            dependencies = dedupe_external_dependencies(
+                dependency
+                for tool in tools
+                for dependency in tool.external_dependencies()
+            )
+            if not dependencies:
+                return "-"
+            return ", ".join(
+                f"{dependency.dependency_id} ({dependency.kind.value})"
+                for dependency in dependencies
+            )
+
         if self._prompt_agent_tool is not None:
             conf_table.add_row(
                 "Prompter",
                 self._prompt_agent_tool.name or "Not set",
                 f"Configured for {self.mode} execution.",
                 "-",
+                _get_external_dependencies((self._prompt_agent_tool,)),
             )
 
         for t in self.active_tools.values():
@@ -741,6 +756,7 @@ class Agent(HasExternalDependencies):
                 t.name,
                 t.description or no_description,
                 _get_chained_to(t),
+                _get_external_dependencies((t,)),
             )
 
         for id, t in self.passive_tools.items():
@@ -749,6 +765,7 @@ class Agent(HasExternalDependencies):
                 t.name,
                 t.description or no_description,
                 _get_chained_to(t),
+                _get_external_dependencies((t,)),
             )
 
         default_tool_names = (
@@ -761,6 +778,7 @@ class Agent(HasExternalDependencies):
             default_tool_names,
             "Configured fallback tool list.",
             "-",
+            _get_external_dependencies(self.default_tools),
         )
 
         console.print(conf_table, end="\n\n")
