@@ -73,7 +73,8 @@ def test_agent_dependency_view_covers_complete_tool_graph() -> None:
         "executable:passive",
         "executable:default",
     }
-    assert agent.master_tool.external_dependencies()[0].dependency_id == (
+    assert agent._prompt_agent_tool is not None
+    assert agent._prompt_agent_tool.external_dependencies()[0].dependency_id == (
         "model:test:agent-model"
     )
 

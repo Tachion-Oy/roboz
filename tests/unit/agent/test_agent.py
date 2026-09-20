@@ -174,7 +174,8 @@ def test_init(agent):
     assert "tool_c" in passive_tool_names
     assert "tool_e" in passive_tool_names
     assert "tool_f" in passive_tool_names
-    assert "prompt_agent" == agent.master_tool.name
+    assert agent._prompt_agent_tool is not None
+    assert "prompt_agent" == agent._prompt_agent_tool.name
 
 
 def test_get_next_tool_invoke_valid(agent):
@@ -734,6 +735,7 @@ def test_deterministic_agent_allows_empty_system_prompt():
     )
     out, _ = agent.invoke()
     assert out.value == "done"
+    assert agent._prompt_agent_tool is None
 
 
 def test_duplicate_tool_name_validation():
@@ -858,7 +860,9 @@ def test_copy_agent(agent):
     for name in orig_tool_names:
         if name not in auto_loaded_names:
             assert name in agent_copy.full_system_prompt
-    assert agent_copy.master_tool.name == agent.master_tool.name
+    assert agent_copy._prompt_agent_tool is not None
+    assert agent._prompt_agent_tool is not None
+    assert agent_copy._prompt_agent_tool.name == agent._prompt_agent_tool.name
     assert agent_copy.pipe is agent.pipe
 
 
