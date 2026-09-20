@@ -29,7 +29,9 @@ from roboz_endpoints.specs import ChatModelSpec, TranscriptionModelSpec
 def project(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert cli.main(["inventory", "export"]) == 0
-    return tmp_path, tmp_path / "models.json", tmp_path / "project_models.py"
+    package = tmp_path / "model_catalogue"
+    assert (package / "__init__.py").is_file()
+    return tmp_path, package / "models.json", package / "providers.py"
 
 
 def run_python(root, source):
@@ -39,6 +41,23 @@ def run_python(root, source):
         capture_output=True,
         text=True,
     )
+
+
+def test_default_uses_the_project_import_package(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "src" / "my_app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").touch()
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "my-app"\nversion = "0.1.0"\n'
+    )
+
+    assert cli.main(["inventory", "export"]) == 0
+    catalogue = package / "model_catalogue"
+    assert (catalogue / "__init__.py").is_file()
+    assert (catalogue / "models.json").is_file()
+    assert cli.main(["inventory", "import"]) == 0
+    assert (catalogue / "providers.py").is_file()
 
 
 def test_round_trip_including_custom_mixed_providers(project):
@@ -77,7 +96,7 @@ def test_round_trip_including_custom_mixed_providers(project):
     result = run_python(
         root,
         """
-        from project_models import groq, my_service
+        from model_catalogue.providers import groq, my_service
         from roboz_endpoints import groq as bundled
         assert not hasattr(bundled, 'new_chat')
         assert groq.new_chat.dependency_id == 'model:groq:new/chat'
@@ -105,7 +124,7 @@ def test_exact_replacement_and_rapid_same_length_updates(project):
         result = run_python(
             root,
             f"""
-            import project_models as models
+            import model_catalogue.providers as models
             assert models.__all__ == ['groq']
             assert models.groq.models[0].model_id == {model_id!r}
         """,
@@ -177,7 +196,7 @@ def test_reset_missing_files_and_unrelated_module(project, monkeypatch):
     assert module.read_text() == "# User-owned Python\n" and not path.exists()
 
 
-@pytest.mark.parametrize("failure_target", ["models.json", "project_models.py"])
+@pytest.mark.parametrize("failure_target", ["models.json", "providers.py"])
 def test_reset_reports_partial_publication(
     project, monkeypatch, capsys, failure_target
 ):
@@ -217,7 +236,7 @@ def test_import_staging_failure_preserves_output_and_cleans_temporary_files(
     root, _, module = project
     assert cli.main(["inventory", "import"]) == 0
     previous = module.read_bytes()
-    existing_files = set(root.iterdir())
+    existing_files = set(root.rglob("*"))
 
     def fail_sync(_):
         raise failure("simulated staging failure")
@@ -225,7 +244,7 @@ def test_import_staging_failure_preserves_output_and_cleans_temporary_files(
     monkeypatch.setattr(os, "fsync", fail_sync)
     assert cli.main(["inventory", "import", "--force"]) == exit_code
     assert module.read_bytes() == previous
-    assert set(root.iterdir()) == existing_files
+    assert set(root.rglob("*")) == existing_files
 
 
 def test_reset_stages_both_files_before_replacing_either(project, monkeypatch, capsys):
@@ -233,7 +252,7 @@ def test_reset_stages_both_files_before_replacing_either(project, monkeypatch, c
     assert cli.main(["inventory", "import"]) == 0
     path.write_text("custom broken input")
     previous = (path.read_bytes(), module.read_bytes())
-    existing_files = set(root.iterdir())
+    existing_files = set(root.rglob("*"))
     real_sync = os.fsync
     synced = 0
 
@@ -249,23 +268,23 @@ def test_reset_stages_both_files_before_replacing_either(project, monkeypatch, c
     assert cli.main(["inventory", "reset"]) == 1
     assert "Changed files: none" in capsys.readouterr().err
     assert (path.read_bytes(), module.read_bytes()) == previous
-    assert set(root.iterdir()) == existing_files
+    assert set(root.rglob("*")) == existing_files
 
 
 @pytest.mark.parametrize(
     "arguments",
-    [("reset", "--force"), ("import", "--from-module", "project_models.py")],
+    [("reset", "--force"), ("import", "--from-module", "providers.py")],
 )
 def test_command_specific_options_cannot_bypass_safety(project, arguments, capsys):
     root, path, _ = project
     previous = path.read_bytes()
-    existing_files = set(root.iterdir())
+    existing_files = set(root.rglob("*"))
     with pytest.raises(SystemExit) as error:
         cli.main(["inventory", *arguments])
     assert error.value.code == 2
     assert "unrecognized arguments" in capsys.readouterr().err
     assert path.read_bytes() == previous
-    assert set(root.iterdir()) == existing_files
+    assert set(root.rglob("*")) == existing_files
 
 
 @pytest.mark.parametrize(
@@ -423,13 +442,39 @@ def test_explicit_paths_overwrite_protection_and_failed_publication(
     assert custom.read_bytes() == before and not module.exists()
 
 
+def test_import_message_does_not_guess_application_package_path(project, capsys):
+    root, path, _ = project
+    capsys.readouterr()
+    output = root / "src" / "my_app" / "model_catalogue" / "providers.py"
+    output.parent.mkdir(parents=True)
+
+    assert (
+        cli.main(
+            [
+                "inventory",
+                "import",
+                "--path",
+                str(path),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+
+    message = capsys.readouterr().out
+    assert str(output) in message
+    assert "application's package path" in message
+    assert "from providers import" not in message
+
+
 def test_empty_inventory_and_builtin_provider_names(project):
     root, path, module = project
     provider = document_from_inventory(bundled_inventory())["providers"]["groq"]
     for providers in ({}, {"globals": provider, "list": provider}):
         path.write_text(json.dumps({"schema_version": 1, "providers": providers}))
         assert cli.main(["inventory", "import", "--force"]) == 0
-        result = run_python(root, "import project_models")
+        result = run_python(root, "import model_catalogue.providers")
         assert result.returncode == 0, result.stderr
         assert read_module(module) == read_json(path)
 
@@ -452,9 +497,9 @@ def test_all_commands_and_generated_inspection_need_no_sdk_or_credentials(tmp_pa
         from roboz_endpoints.cli import main
         assert main(['inventory', 'export']) == 0
         assert main(['inventory', 'import']) == 0
-        import project_models
-        for name in project_models.__all__:
-            collection = getattr(project_models, name)
+        from model_catalogue import providers
+        for name in providers.__all__:
+            collection = getattr(providers, name)
             assert collection.models
             for attribute in collection.models_by_attribute:
                 endpoint = getattr(collection, attribute)
@@ -462,7 +507,7 @@ def test_all_commands_and_generated_inspection_need_no_sdk_or_credentials(tmp_pa
                 assert 'materialized' not in endpoint.__dict__
         builtins.input = lambda _: 'yes'
         assert main(['inventory', 'reset']) == 0
-        assert main(['inventory', 'export', '--from-module', 'project_models.py', '--force']) == 0
+        assert main(['inventory', 'export', '--from-module', 'model_catalogue/providers.py', '--force']) == 0
     """,
     )
     assert result.returncode == 0, result.stderr

@@ -115,17 +115,42 @@ def test_installed_core_types(consumer):
         assert errors[0].get("rule") == "reportAttributeAccessIssue", errors
 
 
-def test_installed_inventory_workflow(consumer):
+@pytest.mark.parametrize("layout", ["src", "flat", "fallback", "custom"])
+def test_installed_inventory_workflow(consumer, layout):
     case, python, root, env = consumer
     if case not in {"endpoints", "endpoints-openai"}:
         pytest.skip("Endpoint inventory only")
-    project = root / "inventory-project"
+    project = root / f"inventory-project-{layout}"
     project.mkdir()
+    import_root = project
+    module_name = "model_catalogue.providers"
+    catalogue = project / "model_catalogue"
+    if layout in {"src", "flat"}:
+        (project / "pyproject.toml").write_text(
+            '[project]\nname = "my-app"\nversion = "0.1.0"\n'
+        )
+        import_root = project / "src" if layout == "src" else project
+        package = import_root / "my_app"
+        package.mkdir(parents=True)
+        (package / "__init__.py").touch()
+        catalogue = package / "model_catalogue"
+        module_name = "my_app.model_catalogue.providers"
+    elif layout == "custom":
+        catalogue = project / "custom_catalogue"
+        catalogue.mkdir()
+        (catalogue / "__init__.py").touch()
+        module_name = "custom_catalogue.selected"
+    editable = catalogue / "models.json"
+    module = catalogue / ("selected.py" if layout == "custom" else "providers.py")
     executable = python.with_name(
         "roboz-endpoints.exe" if os.name == "nt" else "roboz-endpoints"
     )
 
     def run(*args, answer="", expected=0):
+        if layout == "custom" and "--path" not in args:
+            args = (*args, "--path", str(editable))
+            if args[0] in {"import", "reset"}:
+                args = (*args, "--output", str(module))
         result = subprocess.run(
             [str(executable), "inventory", *args],
             input=answer,
@@ -137,7 +162,7 @@ def test_installed_inventory_workflow(consumer):
         assert result.returncode == expected, result.stdout + result.stderr
 
     run("export")
-    editable = project / "models.json"
+    assert (catalogue / "__init__.py").is_file()
     bundled = editable.read_bytes()
     data = json.loads(bundled)
     fixture = ROOT / "tests/type_tests/fixtures/models.json"
@@ -145,7 +170,6 @@ def test_installed_inventory_workflow(consumer):
     editable.write_text(json.dumps(data))
     run("import")
 
-    module = project / "project_models.py"
     run("export", "--from-module", str(module), "--path", "roundtrip.json")
     exported = json.loads((project / "roundtrip.json").read_text())
     assert exported["providers"]["custom"]["timeout_s"] == 12
@@ -159,13 +183,30 @@ def test_installed_inventory_workflow(consumer):
             str(python),
             "-I",
             "-c",
-            f"import sys; sys.path.insert(0, {str(project)!r})\n"
-            "import project_models as models\n"
+            f"import sys; sys.path.insert(0, {str(import_root)!r})\n"
+            f"import {module_name} as models\n"
             "assert models.custom.chat.dependency_id == 'model:custom:custom/chat'\n"
             "assert models.custom.audio.redacted_metadata()['endpoint_type'] == 'transcription'\n"
             "assert models.custom.chat is models.custom.chat\n"
             "assert 'openai' not in sys.modules\n"
             "assert 'materialized' not in models.custom.chat.__dict__\n",
+        ],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+
+    data["providers"]["custom"]["models"]["chat"]["model_id"] = "custom/revised"
+    editable.write_text(json.dumps(data))
+    run("import", "--force")
+    subprocess.run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            f"import sys; sys.path.insert(0, {str(import_root)!r})\n"
+            f"import {module_name} as models\n"
+            "assert models.custom.chat.model_name == 'custom/revised'\n",
         ],
         cwd=root,
         env=env,
@@ -199,11 +240,11 @@ def test_installed_inventory_workflow(consumer):
             "reportArgumentType",
         ),
     ):
-        target = project / Path(source).name
+        target = import_root / Path(source).name
         target.write_text(
             (cases / source)
             .read_text()
-            .replace("tests.type_tests.fixtures.inventory_models", "project_models")
+            .replace("tests.type_tests.fixtures.inventory_models", module_name)
         )
         checked = subprocess.run(
             [*type_command, "--outputjson", str(target)],
@@ -233,8 +274,8 @@ def test_installed_inventory_workflow(consumer):
             str(python),
             "-I",
             "-c",
-            f"import sys; sys.path.insert(0, {str(project)!r})\n"
-            "import project_models as models\n"
+            f"import sys; sys.path.insert(0, {str(import_root)!r})\n"
+            f"import {module_name} as models\n"
             "assert not hasattr(models, 'custom')\n"
             "assert not hasattr(models.groq, 'new_chat')\n"
             "assert models.groq.whisper_large_v3_turbo.dependency_id\n"

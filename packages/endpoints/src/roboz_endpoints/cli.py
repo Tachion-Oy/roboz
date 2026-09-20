@@ -5,9 +5,11 @@ from contextlib import ExitStack, contextmanager
 from importlib.metadata import version
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import time
+import tomllib
 from collections.abc import Generator, Sequence
 
 from roboz_endpoints._inventory_codec import (
@@ -19,6 +21,10 @@ from roboz_endpoints._inventory_codec import (
     render_json,
 )
 from roboz_endpoints._inventory_codegen import render_module
+
+
+FALLBACK_INVENTORY_PATH = Path("model_catalogue/models.json")
+DEFAULT_MODULE_NAME = "providers.py"
 
 
 def _output_path(path: Path, *, module: bool = False) -> Path:
@@ -53,9 +59,38 @@ def _distinct(source: Path, output: Path) -> None:
 
 
 def _module_output(path: Path, output: Path | None) -> Path:
-    output = _output_path(output or path.parent / "project_models.py", module=True)
+    output = _output_path(output or path.parent / DEFAULT_MODULE_NAME, module=True)
     _distinct(path, output)
     return output
+
+
+def _default_inventory_path() -> Path:
+    """Place the catalogue inside the current project's import package."""
+    try:
+        document = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+        project_name = document["project"]["name"]
+    except (KeyError, OSError, tomllib.TOMLDecodeError):
+        return FALLBACK_INVENTORY_PATH
+    if not isinstance(project_name, str):
+        return FALLBACK_INVENTORY_PATH
+    package_name = re.sub(r"[-_.]+", "_", project_name)
+    for package in (Path("src") / package_name, Path(package_name)):
+        if (package / "__init__.py").is_file():
+            return package / "model_catalogue/models.json"
+    return FALLBACK_INVENTORY_PATH
+
+
+def _prepare_default_package(path: Path) -> None:
+    """Create the default import package without replacing existing files."""
+    package = path.parent
+    if package.is_symlink():
+        raise ValueError(f"{package}: default catalogue must not be a symbolic link")
+    package.mkdir(parents=True, exist_ok=True)
+    init = package / "__init__.py"
+    if init.is_symlink() or (init.exists() and not init.is_file()):
+        raise ValueError(f"{init}: package marker must be a regular file")
+    if not init.exists():
+        init.touch()
 
 
 def _advance_module_timestamp(staged: Path, output: Path) -> None:
@@ -182,10 +217,7 @@ def _import(path: Path, output: Path, *, force: bool) -> int:
     _write_output(output, render_module(data), force=force)
     print(f"Generated inventory: {output}")
     if data:
-        print(
-            "Import from your application's module path, for example: "
-            f"from {output.stem} import {next(iter(data))}"
-        )
+        print("Import the generated module through your application's package path.")
     print("Restart applications to use this snapshot.")
     return 0
 
@@ -202,8 +234,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--path",
             type=Path,
-            default=Path("models.json"),
-            help="Editable JSON path (default: ./models.json)",
+            help="Editable JSON path (default: model_catalogue inside project package)",
         )
     export_command.add_argument(
         "--from-module",
@@ -214,7 +245,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--output",
             type=Path,
-            help="Generated .py module (default: project_models.py beside JSON)",
+            help="Generated .py module (default: providers.py beside JSON)",
         )
     for command in (export_command, import_command):
         command.add_argument(
@@ -224,12 +255,15 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
+    path = args.path or _default_inventory_path()
     if args.command == "export":
-        return _export(args.path, from_module=args.from_module, force=args.force)
-    output = _module_output(args.path, args.output)
+        if args.path is None:
+            _prepare_default_package(path)
+        return _export(path, from_module=args.from_module, force=args.force)
+    output = _module_output(path, args.output)
     if args.command == "reset":
-        return _reset(_output_path(args.path), output)
-    return _import(args.path, output, force=args.force)
+        return _reset(_output_path(path), output)
+    return _import(path, output, force=args.force)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
