@@ -31,7 +31,7 @@
   verbatim instead of attempting action validation. Supply `LlmOutputModel=...`
   or `active_tools=...` to retain structured dictionary results and repair retries.
   Endpoint and callback arguments are mutually exclusive. See the
-  [completion guide](docs/tool-authoring.md#standalone-llm-backed-tools).
+  [completion guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/tool-authoring.md#standalone-llm-backed-tools).
 
 ## 0.1.2.dev6 - 2026-09-15
 
@@ -39,7 +39,7 @@
   `Agent`, `Skill`, `Tool`, `Factory`, `tool`, and `factory` alongside discoverable
   domain namespaces. Import models from `roboz.models`, agent helpers from
   `roboz.agent`, built-in tools from `roboz.tools`, and context protocols from
-  `roboz.tooling`. See [the import migration guide](docs/imports.md).
+  `roboz.tooling`. See [the import migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/imports.md).
 
 ## 0.1.2.dev5 - 2026-09-13
 
@@ -59,7 +59,7 @@
   stay side-effect free. Endpoints support explicit early `materialize()` calls
   while preserving their identity; prompt contexts delegate initialization.
   Breaking: OpenAI-compatible client protocols now require `close() -> None` for
-  typed cleanup. See [the lifecycle contract](docs/dependency-primitives.md).
+  typed cleanup. See [the lifecycle contract](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md).
 
 - Make resource-inspection declarations explicit: aggregate contexts and agents
   implement the `HasExternalDependencies` protocol, renamed from `Context` with
@@ -75,20 +75,20 @@
   share supplied state. Agent inspection uses live tool methods, and deployment
   builders use the same bindings. Restore top-level agent, skill, and built-in
   tool exports; removed dependency and `Ctx` APIs stay removed. See
-  [the primitive migration](docs/dependency-primitives.md).
+  [the primitive migration](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md).
 
 - Breaking: core endpoints require synchronous OpenAI-compatible clients instead
   of an untyped client. Client methods and request controls are checked statically;
   the real `openai.OpenAI` client satisfies the protocols without a wrapper or an
   SDK dependency in core. Replace placeholder or incompatible clients with a
-  conforming chat/transcription client. See [the client contract](docs/dependency-primitives.md).
+  conforming chat/transcription client. See [the client contract](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md).
 
 - Breaking: external resource implementations must provide `check() -> bool` for
   explicit availability checks. Executables check PATH; core endpoints use model
   discovery without generating output. Results are uncached, absent resources
   return `False`, and check errors propagate. Binding, copying, and inspection
   never invoke checks. Plain contexts need no check method. See
-  [resource inspection and availability](docs/dependency-primitives.md).
+  [resource inspection and availability](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md).
 
 - Accept any concretely typed factory context, including plain objects and lists.
   Contexts without resource inspection are passed through unchanged and their
@@ -98,7 +98,7 @@
   retaining their identity and client for execution and inspection. Endpoint
   request helpers and the selector now use concrete endpoints; lazy construction
   and companion migrations remain deferred. Scripted endpoints report no external
-  resources. See [typed contexts and resource inspection](docs/dependency-primitives.md).
+  resources. See [typed contexts and resource inspection](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md).
 - Fix `@factory()` input inference so parenthesized factories retain the same
   concrete input, output, and context types as bare `@factory` declarations.
 
@@ -109,7 +109,7 @@
   stay in `roboz.dependencies`; the top-level API now exposes only data and
   tool/factory/context primitives. Remove legacy dependency bases, lazy/reference
   helpers, and checker registration. Agent, built-in tool, and companion consumers
-  remain unmigrated; this checkpoint is not release-ready. See [typed contexts and resource inspection](docs/dependency-primitives.md)
+  remain unmigrated; this checkpoint is not release-ready. See [typed contexts and resource inspection](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/dependency-primitives.md)
   for the contract, removed APIs, and migration boundary.
 
 ## 0.1.2.dev4 - 2026-09-12
@@ -137,7 +137,7 @@
   and background agents start through default tools. Construct generic
   definitions directly with `DeployableAgent(...)`.
   Sandbox-aware `Deployment` lives in `roboshed.deployments`, not core.
-  See `docs/agent-factories.md` for migration.
+  See [the archived agent migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/agent-factories.md) for migration.
 
 ## 0.1.2.dev2 - 2026-09-09
 
@@ -147,7 +147,7 @@
 
 - Breaking: move dependency primitives from `roboz.tooling.dependencies` and
   `roboz.tooling` to `roboz.dependencies`. Update those imports; the existing
-  top-level `roboz` authoring API remains available. See `docs/context-migration.md`.
+  top-level `roboz` authoring API remains available. See [the archived context migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/context-migration.md).
 
 - Add `DependencyRoute` for live caller-owned selections. Materialization and discovery delegate to the current target without introducing a separate identity or caching the selection.
 
@@ -155,11 +155,11 @@
   Capabilities own their tool-specific endpoint choices and receive the agent
   endpoint as a fallback, independently of runtime controls. Lazy/live
   references retain identity and deferred resolution. See
-  `docs/agent-factories.md` for builder migration.
+  [the archived agent migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/agent-factories.md) for builder migration.
 
-- Breaking: move the Librarian and its memory/summarization tools out of core into `roboshed.agents` and `roboshed.tools`. Use `librarian(sandbox, agent_names, agent_endpoint=...)` instead of `LibrarianConstructor` and its path record; see `docs/agent-factories.md`. Core retains control, interaction, and generic construction primitives.
+- Breaking: move the Librarian and its memory/summarization tools out of core into `roboshed.agents` and `roboshed.tools`. Use `librarian(sandbox, agent_names, agent_endpoint=...)` instead of `LibrarianConstructor` and its path record; see [the archived agent migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/agent-factories.md). Core retains control, interaction, and generic construction primitives.
 
-- Add generic `AgentDefinition`, `AgentCapability`, `Capability`, and `SubAgentSpec` in `roboz.deployment`. Configure all tools and skills through capabilities, with fresh agent pipes and explicit sink configuration; definitions select no project, memory, or persistence conventions. See `docs/agent-factories.md`.
+- Add generic `AgentDefinition`, `AgentCapability`, `Capability`, and `SubAgentSpec` in `roboz.deployment`. Configure all tools and skills through capabilities, with fresh agent pipes and explicit sink configuration; definitions select no project, memory, or persistence conventions. See [the archived agent migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/agent-factories.md).
 
 - Breaking: `roboz[shed]` now installs `roboshed` instead of `roboz-shed`. Update direct requirements to `roboshed` and imports from `roboz_shed` to `roboshed`; no compatibility package is provided.
 
@@ -180,7 +180,7 @@
   Contexts implement `ExternalDependencySource`, preserving resource identity
   and reflecting live nested contexts, agents, and catalogs without resolving
   lazy resources. `external_dependencies` is now a reserved context field name;
-  see `docs/context-migration.md`.
+  see [the archived context migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/context-migration.md).
 
 ### Fixed
 
@@ -192,7 +192,7 @@
 - **Breaking:** Construct tool contexts with `Ctx(**values)` and pass resources
   directly. Remove `FactoryCtx`, specialized context classes, `ToolDependency`,
   and endpoint binding wrappers; `Tool.dependencies` now returns resources.
-  See `docs/context-migration.md` for replacements and state ownership.
+  See [the archived context migration guide](https://github.com/Tachion-Oy/roboz/blob/roboz-v0.1.2.dev7/docs/context-migration.md) for replacements and state ownership.
 
 - Define and enforce Google-style source docstrings, and normalize tool
   docstrings before including them in agent prompts.

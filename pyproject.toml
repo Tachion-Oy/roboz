@@ -51,7 +51,7 @@ include = ["/src/roboz", "/README.md", "/CHANGELOG.md", "/LICENSE", "/pyproject.
 Homepage = "https://github.com/Tachion-Oy/roboz"
 Repository = "https://github.com/Tachion-Oy/roboz"
 Issues = "https://github.com/Tachion-Oy/roboz/issues"
-Documentation = "https://github.com/Tachion-Oy/roboz/tree/main/docs"
+Documentation = "https://github.com/Tachion-Oy/roboz#readme"
 
 [tool.pytest.ini_options]
 addopts = "--cov=roboz --cov-report=term-missing --ignore=tests/type_tests"
