@@ -158,7 +158,7 @@ def _tool_callers(messages: list[Message]) -> list[str]:
 def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> None:
     agent = _build(tmp_path)
 
-    assert [tool.name for tool in agent.default_tools] == [
+    expected_names = [
         "snapshot_conversations",
         "consolidate_memory",
         "purge_logs",
@@ -167,6 +167,11 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
         "stop_when_watched_agents_inactive",
         "sleep_between_runs",
     ]
+    assert [tool.name for tool in agent.default_tools] == expected_names
+    assert len({tool.id for tool in agent.default_tools}) == len(expected_names)
+    assert all(tool.chained_to is None for tool in agent.default_tools)
+    registered_ids = agent.active_tools.keys() | agent.passive_tools.keys()
+    assert all(tool.id not in registered_ids for tool in agent.default_tools)
     assert agent.mode is AgentMode.DETERMINISTIC
     assert isinstance(agent.agent_endpoint, MockLLMEndpoint)
     assert agent.description == LIBRARIAN_AGENT_DESCRIPTION

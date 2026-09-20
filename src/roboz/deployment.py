@@ -41,8 +41,12 @@ class AgentCapability(Protocol):
 class Capability(AgentCapability):
     """Already-bound tools and skills that provide an agent feature.
 
-    Tools shared between a chain and default execution retain their identity.
-    Supplied objects remain caller-owned and require no owner configuration.
+    ``default_tools`` are ordered, repeatedly scheduled chain roots. A tool in
+    ``tools`` may declare ``chained_to`` with one of those defaults as its parent,
+    and scheduling resumes with the next default when the downstream branch ends.
+    Defaults cannot themselves declare ``chained_to``. Tools shared between
+    ``tools`` and ``default_tools`` retain their identity. Supplied objects remain
+    caller-owned and require no owner configuration.
     """
 
     tools: tuple[Tool | Sequence[Tool], ...] = ()
