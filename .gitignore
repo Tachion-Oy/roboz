@@ -32,6 +32,10 @@ wheels/
 .eggs/
 site/
 
+# Local font sources used to generate outlined branding
+/*.otf
+/*.ttf
+
 # Editors and operating systems
 .idea/
 .vscode/
