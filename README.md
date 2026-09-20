@@ -1,8 +1,8 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/roboz-logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/roboz-logo-light.svg">
-    <img alt="RoboZ" src="docs/assets/roboz-logo-dark.svg" width="560">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/roboz-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/roboz-logo-light.svg">
+    <img alt="RoboZ" src="https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/roboz-logo-light.svg" width="560">
   </picture>
 
   <p><strong>Chain tools. Skip calls.</strong></p>
@@ -12,7 +12,7 @@ RoboZ is a framework for building llm powered agents. The core ingredient is tha
 
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE)
 
 > [!WARNING]
 > RoboZ is pre-release software requiring Python 3.13 or newer. APIs may change
@@ -20,7 +20,7 @@ RoboZ is a framework for building llm powered agents. The core ingredient is tha
 
 ## Basic idea
 
-![](docs/assets/tool-chaining.svg)
+![Tool-chaining workflow](https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/tool-chaining.svg)
 
 ### Problems to solve: Context bloat and too many llm calls
 Suppose the task we want to achieve is ask our buddy Bob out to lunch and then book a table. For the sake of argument assume that our agent has access to the following MCP servers (Note: this is an example, RoboZ has native Tool primitives):
@@ -70,8 +70,8 @@ output, messages_ = agent.invoke()
 print(f'"{output.value}"')
 ```
 
-The above [simple example](examples/simple.py) uses the accompanying
-[quote file](examples/simpsons_quotes.py) in this repository. Run it from the
+The above [simple example](https://github.com/Tachion-Oy/roboz/blob/main/examples/simple.py) uses the accompanying
+[quote file](https://github.com/Tachion-Oy/roboz/blob/main/examples/simpsons_quotes.py) in this repository. Run it from the
 repository root with
 
 ```bash
@@ -109,12 +109,12 @@ The contract in RoboZ is that every action in the agentic loop is a tool call an
 ### LLM Endpoints are instances
 As a fundamental design rule in Roboz, everything that depends on an LLM call must be trivially swappable to another provider or model. This makes changing an agent endpoint trivial and furthermore multi-endpoint functionality, where inside a single agent several endpoints are implemented, quite easy.
 
-To see the above in practice see the [complex example](examples/complex.py) example below.
+To see the above in practice see the [complex example](https://github.com/Tachion-Oy/roboz/blob/main/examples/complex.py) example below.
 
 
 
 ## Chains, factories, truncation and many endpoints
-![](docs/assets/number-escalation.svg)
+![Number-escalation workflow](https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/number-escalation.svg)
 
 In the code example below we illustrate some of the features that make RoboZ different from other frameworks.
 
@@ -199,7 +199,7 @@ agent.invoke()
 
 ```
 
-The above [complex example](examples/complex.py) can be run from the root with
+The above [complex example](https://github.com/Tachion-Oy/roboz/blob/main/examples/complex.py) can be run from the root with
 
 ```bash
 uv run python examples/complex.py
@@ -227,9 +227,9 @@ application only needs to install the parts it uses.
 | Distribution | Import | Provides |
 | --- | --- | --- |
 | `roboz` | `roboz` | Core agent, tool, workflow, endpoint, and runtime primitives. |
-| [`roboshed`](packages/shed/README.md) | `roboshed` | Reusable capabilities, guarded system tools, memory, agents, and deployment building blocks. |
-| [`roboz-endpoints`](packages/endpoints/README.md) | `roboz_endpoints` | Model catalogues and optional provider adapters. |
-| [`roboz-proton-bridge`](packages/proton-bridge/README.md) | `roboz_proton_bridge` | Proton Bridge email integration. |
+| [`roboshed`](https://pypi.org/project/roboshed/) | `roboshed` | Reusable capabilities, guarded system tools, memory, agents, and deployment building blocks. |
+| [`roboz-endpoints`](https://pypi.org/project/roboz-endpoints/) | `roboz_endpoints` | Model catalogues and optional provider adapters. |
+| [`roboz-proton-bridge`](https://pypi.org/project/roboz-proton-bridge/) | `roboz_proton_bridge` | Proton Bridge email integration. |
 
 The companion packages build on `roboz`; `roboz-proton-bridge` also uses
 `roboshed`.
@@ -244,11 +244,11 @@ uv run pyright
 bash scripts/run_type_tests.sh
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and testing guidance. The
-[verification workflow](.github/workflows/verify.yml) defines the complete CI
+See [CONTRIBUTING.md](https://github.com/Tachion-Oy/roboz/blob/main/CONTRIBUTING.md) for development and testing guidance. The
+[verification workflow](https://github.com/Tachion-Oy/roboz/blob/main/.github/workflows/verify.yml) defines the complete CI
 gate.
 Roboz is typed and ships a PEP 561 `py.typed` marker.
 
 ## License
 
-Roboz is licensed under the [Apache License 2.0](LICENSE). Copyright © 2026 Tachion Oy.
+Roboz is licensed under the [Apache License 2.0](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE). Copyright © 2026 Tachion Oy.

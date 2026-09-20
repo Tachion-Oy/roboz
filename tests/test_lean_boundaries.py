@@ -64,7 +64,4 @@ def test_base_dependency_set_is_primitive_only() -> None:
         for requirement in metadata["project"]["dependencies"]
     }
     assert names == {"pydantic", "python-dotenv", "rich"}
-    extras = metadata["project"]["optional-dependencies"]
-    assert extras == {
-        "proton-bridge-beta": ["roboz-proton-bridge>=0.1.0b1,<0.2.0"],
-    }
+    assert "optional-dependencies" not in metadata["project"]

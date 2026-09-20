@@ -86,11 +86,11 @@ call, use the provider's actual URL, model ID, and context limit, and set
 
 For flat layouts, arbitrary catalogue names, custom generated-module names,
 updates, reset, and recovery, see the
-[project catalogue guide](docs/catalogues.md).
+[project catalogue guide](https://github.com/Tachion-Oy/roboz/blob/main/packages/endpoints/docs/catalogues.md).
 
 Existing catalogues keep their locations when you pass explicit `--path` and
-`--output`; see [upgrading an existing catalogue](docs/catalogues.md#upgrading-an-existing-catalogue).
+`--output`; see [upgrading an existing catalogue](https://github.com/Tachion-Oy/roboz/blob/main/packages/endpoints/docs/catalogues.md#upgrading-an-existing-catalogue).
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [Apache License 2.0](https://github.com/Tachion-Oy/roboz/blob/main/packages/endpoints/LICENSE).

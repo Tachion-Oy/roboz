@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.1.2.dev8"
+version = "0.1.2.dev9"
 description = "Typed primitives for composable agentic workflows"
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
@@ -28,9 +28,6 @@ dependencies = [
 [build-system]
 requires = ["hatchling>=1.32"]
 build-backend = "hatchling.build"
-
-[project.optional-dependencies]
-proton-bridge-beta = ["roboz-proton-bridge>=0.1.0b1,<0.2.0"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
