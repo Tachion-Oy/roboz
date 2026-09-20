@@ -1,6 +1,6 @@
 [project]
 name = "roboshed"
-version = "0.1.1.dev4"
+version = "0.1.1.dev5"
 description = "roboshed: optional building blocks for Roboz"
 readme = "README.md"
 requires-python = ">=3.13"

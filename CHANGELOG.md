@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.2.dev9 - 2026-09-20
+
+- Remove the leftover `proton-bridge-beta` installation extra. Install
+  `roboz-proton-bridge` directly, consistently with the other independently
+  published companion distributions.
+
+- Make images and links in the published package description resolve outside
+  the GitHub repository.
+
 ## 0.1.2.dev8 - 2026-09-20
 
 - Breaking: remove the legacy agent master tool. Model-driven agents run

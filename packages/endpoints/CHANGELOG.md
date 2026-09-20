@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.0a6 - 2026-09-20
+
+- Make links in the published package description resolve to their GitHub
+  destinations.
+
 ## 0.1.0a5 - 2026-09-20
 
 - Breaking: create an importable `model_catalogue` inside the detected project package by

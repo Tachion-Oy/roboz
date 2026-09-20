@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.1.dev5 - 2026-09-20
+
+- Make links in the published package description resolve to their PyPI or
+  GitHub destinations.
+
 ## 0.1.1.dev4 - 2026-09-20
 
 - Migrate the Librarian and capability examples to Roboz's explicit
