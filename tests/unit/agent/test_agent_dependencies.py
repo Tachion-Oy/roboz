@@ -1,7 +1,10 @@
-import pytest
-
 from dataclasses import dataclass
+from io import StringIO
 from types import SimpleNamespace
+
+import pytest
+from rich.console import Console
+
 from roboz.agent.background_agent import BackgroundAgentContext, run_background_agent
 from roboz.agent.core import Agent
 from roboz.agent.subagent import run_subagent
@@ -73,9 +76,42 @@ def test_agent_dependency_view_covers_complete_tool_graph() -> None:
         "executable:passive",
         "executable:default",
     }
-    assert agent.master_tool.external_dependencies()[0].dependency_id == (
+    assert agent._prompt_agent_tool is not None
+    assert agent._prompt_agent_tool.external_dependencies()[0].dependency_id == (
         "model:test:agent-model"
     )
+
+
+def test_agent_info_lists_external_dependency_ids_and_kinds() -> None:
+    agent = _agent()
+    agent.default_tools.append(_bound("default"))
+    output = StringIO()
+
+    agent._show_tools(Console(file=output, width=240, color_system=None))
+
+    rows = output.getvalue().splitlines()
+
+    def row_containing(value: str) -> str:
+        return next(row for row in rows if value in row)
+
+    assert "External Dependencies" in output.getvalue()
+    assert "model:test:agent-model (model_endpoint)" in row_containing("prompt_agent")
+    assert "executable:active (executable)" in row_containing("use_active")
+    assert "executable:passive (executable)" in row_containing("use_passive")
+    default_row = row_containing("use_default, use_default")
+    assert default_row.count("executable:default (executable)") == 1
+
+
+def test_agent_info_uses_placeholder_for_tools_without_dependencies() -> None:
+    agent = _agent(endpoint=MockLLMEndpoint(responses=[]))
+    output = StringIO()
+
+    agent._show_tools(Console(file=output, width=240, color_system=None))
+
+    prompt_row = next(
+        row for row in output.getvalue().splitlines() if "prompt_agent" in row
+    )
+    assert prompt_row.split("│")[-2].strip() == "-"
 
 
 def test_dynamic_tools_update_agent_dependency_view() -> None:

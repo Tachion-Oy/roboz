@@ -176,6 +176,8 @@ class Agent(HasExternalDependencies):
                 "Model-driven flows require a non-empty system_prompt."
             )
         self.default_tools = [] if default_tools is None else list(default_tools)
+        if self.mode is AgentMode.DETERMINISTIC and not self.default_tools:
+            raise ValueError("No default tools for a deterministic instance.")
         if (
             not self.mode.allows_user_interaction
             and custom_prompt_user_tool is not None
@@ -261,22 +263,20 @@ class Agent(HasExternalDependencies):
         }
         return Agent(**(old_input | overrides))
 
-    def _init_default_tool(self):
-        if self.mode is not AgentMode.DETERMINISTIC:
-            endpoint = self.agent_endpoint
-            if endpoint is None:
-                raise RuntimeError("model-driven instance has no endpoint")
-            self.master_tool = prompt_agent(
-                PromptAgentContext(
-                    active_tools=tuple(self.active_tools.values()),
-                    endpoint=endpoint,
-                    pipe=self.pipe,
-                )
-            )
+    def _init_prompt_agent_tool(self) -> None:
+        if self.mode is AgentMode.DETERMINISTIC:
+            self._prompt_agent_tool = None
             return
-        if not self.default_tools:
-            raise ValueError("No default tools for a deterministic instance.")
-        self.master_tool = self.default_tools[0]
+        endpoint = self.agent_endpoint
+        if endpoint is None:
+            raise RuntimeError("model-driven instance has no endpoint")
+        self._prompt_agent_tool = prompt_agent(
+            PromptAgentContext(
+                active_tools=tuple(self.active_tools.values()),
+                endpoint=endpoint,
+                pipe=self.pipe,
+            )
+        )
 
     def _init_tools(self, *, tools: Sequence[Tool], skill: Skill | None):
         for t in self.default_tools:
@@ -295,8 +295,8 @@ class Agent(HasExternalDependencies):
                 self.passive_tools[t.id] = t
                 continue
             self.active_tools[t.id] = t
-        self._init_default_tool()
-        self._validate_tool_chains(all_tools | {self.master_tool})
+        self._init_prompt_agent_tool()
+        self._validate_tool_chains(all_tools)
 
     def external_dependencies(
         self,
@@ -305,7 +305,7 @@ class Agent(HasExternalDependencies):
     ) -> tuple[ExternalDependency, ...]:
         """Derive the agent's dependency catalog exclusively from its Tool graph."""
         tools: list[Tool | None] = [
-            self.master_tool,
+            self._prompt_agent_tool,
             self.prompt_user_tool,
             *self.default_tools,
             *self.active_tools.values(),
@@ -417,8 +417,8 @@ class Agent(HasExternalDependencies):
         """Return the next default tool, starting a new scheduling cycle as needed."""
         if not self._ephemeral_default_tools:
             self._ephemeral_default_tools = list(self.default_tools)
-            if self.mode is not AgentMode.DETERMINISTIC:
-                self._ephemeral_default_tools.append(self.master_tool)
+            if self._prompt_agent_tool is not None:
+                self._ephemeral_default_tools.append(self._prompt_agent_tool)
         return self._ephemeral_default_tools.pop(0)
 
     def append_and_pipe(self, message: Message):
@@ -528,7 +528,7 @@ class Agent(HasExternalDependencies):
                 }
             )
             self._init_skill(output)
-            tool = self.get_next_tool(self.master_tool, output)
+            tool = self.get_next_tool(self._prompt_agent_tool, output)
             output = tool(output, self.messages)
             self.append_and_pipe(
                 get_finalized_message(
@@ -719,6 +719,7 @@ class Agent(HasExternalDependencies):
         conf_table.add_column("Name", style="cyan")
         conf_table.add_column("Description")
         conf_table.add_column("Chained To")
+        conf_table.add_column("External Dependencies")
 
         no_description = "Not provided"
 
@@ -727,21 +728,36 @@ class Agent(HasExternalDependencies):
                 return "-"
             return ", ".join([c.name for c in t.chained_to])
 
-        conf_table.add_row(
-            "Main Prompter",
-            self.master_tool.name if self.master_tool.name else "Not set",
-            f"Configured for {self.mode} execution.",
-            "-",
-        )
+        def _get_external_dependencies(tools: Sequence[Tool]) -> str:
+            dependencies = dedupe_external_dependencies(
+                dependency
+                for tool in tools
+                for dependency in tool.external_dependencies()
+            )
+            if not dependencies:
+                return "-"
+            return ", ".join(
+                f"{dependency.dependency_id} ({dependency.kind.value})"
+                for dependency in dependencies
+            )
 
-        for id, t in self.active_tools.items():
-            if id != self.master_tool.id:
-                conf_table.add_row(
-                    "Active",
-                    t.name,
-                    t.description or no_description,
-                    _get_chained_to(t),
-                )
+        if self._prompt_agent_tool is not None:
+            conf_table.add_row(
+                "Prompter",
+                self._prompt_agent_tool.name or "Not set",
+                f"Configured for {self.mode} execution.",
+                "-",
+                _get_external_dependencies((self._prompt_agent_tool,)),
+            )
+
+        for t in self.active_tools.values():
+            conf_table.add_row(
+                "Active",
+                t.name,
+                t.description or no_description,
+                _get_chained_to(t),
+                _get_external_dependencies((t,)),
+            )
 
         for id, t in self.passive_tools.items():
             conf_table.add_row(
@@ -749,6 +765,7 @@ class Agent(HasExternalDependencies):
                 t.name,
                 t.description or no_description,
                 _get_chained_to(t),
+                _get_external_dependencies((t,)),
             )
 
         default_tool_names = (
@@ -761,6 +778,7 @@ class Agent(HasExternalDependencies):
             default_tool_names,
             "Configured fallback tool list.",
             "-",
+            _get_external_dependencies(self.default_tools),
         )
 
         console.print(conf_table, end="\n\n")
