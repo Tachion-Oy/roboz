@@ -3,30 +3,30 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboshed.models import GuardFilesResult, ParseError
-from roboshed.tools.contexts import EmailContext
-from roboshed.tools.email import EmailService, get_work_with_email
-from roboshed.tools.email.drafts import (
+from roboz.shed.models import GuardFilesResult, ParseError
+from roboz.shed.tools.contexts import EmailContext
+from roboz.shed.tools.email import EmailService, get_work_with_email
+from roboz.shed.tools.email.drafts import (
     execute_email_operation,
     execute_reply_draft,
     resolve_attachment_download,
     resolve_email_input,
     resolve_reply_draft_input,
 )
-from roboshed.tools.email.inputs import (
+from roboz.shed.tools.email.inputs import (
     CreateEmailDraft,
     CreateReplyDraft,
     DownloadEmailAttachment,
     ReadEmail,
     SearchEmail,
 )
-from roboshed.tools.email.messages import (
+from roboz.shed.tools.email.messages import (
     execute_attachment_download,
     read_email,
     search_email,
 )
-from roboshed.tools.types import ResolvedFileCommand
-from roboshed.models import ActionVerdict
+from roboz.shed.tools.types import ResolvedFileCommand
+from roboz.shed.models import ActionVerdict
 from roboz import Factory, Tool
 from roboz.models import Str
 from roboz.dependencies import ExternalDependency

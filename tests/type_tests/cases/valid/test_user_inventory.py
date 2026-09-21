@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from typing import assert_type
 
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint
-from roboz_endpoints.specs import ModelSpec
+from roboz.endpoints.specs import ModelSpec
 from tests.type_tests.fixtures.inventory_models import custom, groq
 
 assert_type(custom.chat, LLMEndpoint)

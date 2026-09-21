@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboshed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
-from roboshed.tools.email.inputs import CreateEmailDraft
-from roboshed.tools.guard import guard_items
+from roboz.shed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
+from roboz.shed.tools.email.inputs import CreateEmailDraft
+from roboz.shed.tools.guard import guard_items
 
-from roboshed.tools import GuardContext
+from roboz.shed.tools import GuardContext
 from roboz.models import Str
 
 

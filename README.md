@@ -209,7 +209,8 @@ uv run python -m roboz.examples.complex
 
 ## Try it out
 
-Add RoboZ to a uv project and run the same bundled example:
+Add RoboZ to a uv project and run the same bundled example. The one dependency
+includes the core framework, Shed, Endpoints, and the OpenAI SDK:
 
 ```bash
 uv add roboz
@@ -223,21 +224,80 @@ python -m pip install roboz
 python -m roboz.examples.simple
 ```
 
-## Packages
+## Shed
 
-This repository contains four independently versioned Python distributions.
-They share development and release tooling, but are published separately so an
-application only needs to install the parts it uses.
+`roboz.shed` provides reusable components built on the core primitives. Use an
+individual guarded file or email tool, add a capability to a
+`DeployableAgent`, start from the orchestrator and Librarian definitions, or use
+the RoboSprawl recipe to assemble a persistent project agent. Applications own
+the model endpoints, event sinks, lifecycle, and filesystem layout.
 
-| Distribution | Import | Provides |
-| --- | --- | --- |
-| `roboz` | `roboz` | Core agent, tool, workflow, endpoint, and runtime primitives. |
-| [`roboshed`](https://pypi.org/project/roboshed/) | `roboshed` | Reusable capabilities, guarded system tools, memory, agents, and deployment building blocks. |
-| [`roboz-endpoints`](https://pypi.org/project/roboz-endpoints/) | `roboz_endpoints` | Model catalogues and optional provider adapters. |
-| [`roboz-proton-bridge`](https://pypi.org/project/roboz-proton-bridge/) | `roboz_proton_bridge` | Proton Bridge email integration. |
+- `roboz.shed.agents` contains the orchestrator and Librarian definitions.
+- `roboz.shed.capabilities` binds reusable behavior to agent configuration.
+- `roboz.shed.tools` contains guarded file commands, patching, email contracts,
+  conversation compaction, snapshots, memory consolidation, and retention.
+- `roboz.shed.skills` supplies the agent instructions for those tools.
+- `roboz.shed.sandbox` defines filesystem scopes and tool permission policies.
+- `roboz.shed.dependency_health` checks configured external resources.
 
-The companion packages build on `roboz`; `roboz-proton-bridge` also uses
-`roboshed`.
+Shed permission policies guard Shed tools. They are not an operating-system
+sandbox.
+
+## Endpoints and model catalogues
+
+`roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`
+objects for OpenAI-compatible APIs. The OpenAI SDK is installed with RoboZ, but
+client construction and credential lookup remain deferred until an endpoint is
+materialized or used. Importing and inspecting the bundled catalogue needs no
+credentials:
+
+```python
+from roboz.endpoints.inventory import openrouter
+
+endpoint = openrouter.z_ai__glm_5_3
+print(endpoint.model_name)
+print(endpoint.max_context_tokens)
+```
+
+The bundled OpenRouter, Cerebras, and Groq entries are examples. Export them to
+an editable project catalogue, change `models.json`, then generate the Python
+snapshot:
+
+```bash
+uv run python -m roboz.endpoints inventory export
+# Edit model_catalogue/models.json.
+uv run python -m roboz.endpoints inventory import
+```
+
+For a src-layout project named `my-app`, the commands create
+`src/my_app/model_catalogue/models.json` and
+`src/my_app/model_catalogue/providers.py`. Import the generated catalogue from
+your application package:
+
+```python
+from my_app.model_catalogue.providers import my_service
+
+endpoint = my_service.chat
+```
+
+Only OpenAI-compatible API protocols are supported. An inventory entry records
+a provider URL, the name of its credential environment variable, and its model
+routes; it never stores the credential itself. See the
+[project catalogue guide](docs/catalogues.md) for custom paths, inventory
+format, reset, and recovery.
+
+## Module map
+
+| Module | Provides |
+| --- | --- |
+| `roboz` | Agent, tool, factory, and skill authoring facade. |
+| `roboz.agent` | Agent implementations, subagents, and background agents. |
+| `roboz.deployment` | Reusable agent definitions and capabilities. |
+| `roboz.llm` | Endpoint contracts, selection, calls, and request policies. |
+| `roboz.models` | Typed messages and tool input/output models. |
+| `roboz.runtime` | Events, pipes, sinks, persistence, and observability. |
+| `roboz.shed` | Reusable capabilities, guarded tools, agents, and recipes. |
+| `roboz.endpoints` | OpenAI-compatible adapters and typed model catalogues. |
 
 ## Development
 

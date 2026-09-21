@@ -54,10 +54,10 @@ def test_committed_catalogue_types_are_current_without_sdk_or_credentials():
 
 @pytest.fixture
 def isolated_package(tmp_path):
-    package = tmp_path / "roboz_endpoints"
+    package = tmp_path / "roboz" / "endpoints"
     shutil.copytree(
-        ROOT / "packages/endpoints/src/roboz_endpoints",
-        package,
+        ROOT / "src" / "roboz",
+        tmp_path / "roboz",
         ignore=shutil.ignore_patterns("__pycache__"),
     )
     env = {**os.environ, "PYTHONPATH": str(tmp_path), "PYTHONDONTWRITEBYTECODE": "1"}
@@ -111,7 +111,7 @@ def test_one_inventory_entry_supplies_runtime_and_generated_api(
     result = run(
         "-c",
         f"""
-from roboz_endpoints import {provider} as provider
+from roboz.endpoints.inventory import {provider} as provider
 assert list(provider.models_by_attribute)[-1] == 'test_model'
 assert tuple(provider.models_by_attribute.values()) == provider.models
 assert provider.models[-1].model_id == 'test/model'
@@ -143,7 +143,7 @@ assert 'materialized' not in provider.test_model.__dict__
     assert run(str(GENERATOR), "--check").returncode == 0
 
 
-@pytest.mark.parametrize("filename", ["catalog.pyi", "inventory.pyi", "__init__.pyi"])
+@pytest.mark.parametrize("filename", ["catalog.pyi", "inventory.pyi"])
 def test_check_missing_output_does_not_create_it(isolated_package, filename):
     package, run = isolated_package
     stub = package / filename
@@ -174,10 +174,7 @@ def test_new_mixed_provider_needs_only_inventory_data(isolated_package):
     result = run(
         "-c",
         """
-from roboz_endpoints import new_provider
-from roboz_endpoints.catalog import new_provider as old_import
-from roboz_endpoints.inventory import NEW_PROVIDER_MODELS
-assert old_import is new_provider
+from roboz.endpoints.inventory import NEW_PROVIDER_MODELS, new_provider
 assert NEW_PROVIDER_MODELS is new_provider.models
 assert new_provider.audio.dependency_id == 'model:new_provider:audio'
 assert new_provider.chat.dependency_id == 'model:new_provider:chat'
@@ -191,6 +188,5 @@ assert new_provider.chat.dependency_id == 'model:new_provider:chat'
     assert "class _new_provider_Catalog(Catalog[ModelSpec]):" in stub
     assert "audio: TranscriptionEndpoint" in stub
     assert "chat: LLMEndpoint" in stub
-    for filename in ("catalog.pyi", "__init__.pyi"):
-        assert "import new_provider as new_provider" in (package / filename).read_text()
+    assert "import new_provider as new_provider" not in (package / "catalog.pyi").read_text()
     assert run(str(GENERATOR), "--check").returncode == 0

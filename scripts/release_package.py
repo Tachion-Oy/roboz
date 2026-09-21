@@ -8,13 +8,8 @@ import subprocess
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECTS = {
-    "roboz": ROOT,
-    "roboshed": ROOT / "packages/shed",
-    "roboz-endpoints": ROOT / "packages/endpoints",
-    "roboz-proton-bridge": ROOT / "packages/proton-bridge",
-}
-PUBLISHABLE_PROJECTS = {"roboz", "roboshed", "roboz-endpoints"}
+PROJECTS = {"roboz": ROOT}
+PUBLISHABLE_PROJECTS = {"roboz"}
 
 
 def git(*args: str) -> str:
@@ -52,7 +47,7 @@ def project_version(name: str, *, commit: str | None = None) -> str:
 def tag_parts(tag: str) -> tuple[str, str]:
     name, separator, version = tag.rpartition("-v")
     if not separator or name not in PROJECTS:
-        raise ValueError("Expected <package>-v<version> for a known workspace package")
+        raise ValueError("Expected roboz-v<version>")
     return name, version
 
 

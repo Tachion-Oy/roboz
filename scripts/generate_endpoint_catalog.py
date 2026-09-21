@@ -9,15 +9,15 @@ import argparse
 import inspect
 from pathlib import Path
 
-from roboz_endpoints import inventory
-from roboz_endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
-from roboz_endpoints.catalog import Catalog
-from roboz_endpoints._inventory_codegen import collection_declaration, spec_type_name
+from roboz.endpoints import inventory
+from roboz.endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
+from roboz.endpoints.catalog import Catalog
+from roboz.endpoints._inventory_codegen import collection_declaration, spec_type_name
 
 
 HEADER = '''"""Generated types for Pylance; DO NOT EDIT.
 
-Source: packages/endpoints/src/roboz_endpoints/inventory.py
+Source: src/roboz/endpoints/inventory.py
 Regenerate: uv run python scripts/generate_endpoint_catalog.py
 Check: uv run python scripts/generate_endpoint_catalog.py --check
 """
@@ -30,8 +30,8 @@ def render() -> dict[str, str]:
     catalog_lines = [
         "from collections.abc import Mapping",
         "from typing import Self",
-        "from roboz_endpoints.adapters.openai_compatible import OpenAICompatibleAdapter",
-        "from roboz_endpoints.specs import ModelSpec",
+        "from roboz.endpoints.adapters.openai_compatible import OpenAICompatibleAdapter",
+        "from roboz.endpoints.specs import ModelSpec",
         "",
         "class Catalog[Spec: ModelSpec]:",
         f'    """{inspect.getdoc(Catalog)}"""',
@@ -56,8 +56,8 @@ def render() -> dict[str, str]:
         ])
     inventory_lines = [
         "from roboz.llm import LLMEndpoint, TranscriptionEndpoint",
-        "from roboz_endpoints.catalog import Catalog",
-        "from roboz_endpoints.specs import (",
+        "from roboz.endpoints.catalog import Catalog",
+        "from roboz.endpoints.specs import (",
         "    ChatModelSpec as ChatModelSpec,",
         "    ModelSpec as ModelSpec,",
         "    TranscriptionModelSpec as TranscriptionModelSpec,",
@@ -65,21 +65,17 @@ def render() -> dict[str, str]:
         "",
         "CATALOGS: dict[str, Catalog[ChatModelSpec] | Catalog[TranscriptionModelSpec] | Catalog[ModelSpec]]",
     ]
-    exports = []
     for name, collection in inventory.CATALOGS.items():
         spec_type = spec_type_name(collection.models_by_attribute)
         inventory_lines.extend(["", *collection_declaration(name, collection.models_by_attribute)])
         inventory_lines.extend([
             f"{name.upper()}_MODELS: tuple[{spec_type}, ...]",
         ])
-        exports.append(f"from roboz_endpoints.inventory import {name} as {name}")
-    catalog_lines[4:4] = exports
     catalog_lines.append("")
     inventory_lines.extend(["", f"__all__ = {inventory.__all__!r}", ""])
     return {
         "catalog.pyi": HEADER + "\n".join(catalog_lines),
         "inventory.pyi": HEADER + "\n".join(inventory_lines),
-        "__init__.pyi": HEADER + "\n".join([*exports, "", f"__all__ = {list(inventory.CATALOGS)!r}", ""]),
     }
 
 

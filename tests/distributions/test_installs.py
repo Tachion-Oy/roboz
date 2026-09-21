@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,40 +8,36 @@ import pytest
 
 from scripts.release_package import ROOT
 
-WORKFLOWS = {
-    "core": "tests/e2e/test_core_workflows.py",
-    "shed": "tests/e2e/test_shed_workflows.py",
-    "endpoints-openai": "packages/endpoints/tests/test_endpoints.py",
-    "proton": "packages/proton-bridge/tests/test_proton_bridge_email.py",
-}
+WORKFLOWS = (
+    "tests/e2e/test_core_workflows.py",
+    "tests/e2e/test_shed_workflows.py",
+    "tests/endpoints/test_endpoints.py",
+)
 
 
 def test_installed_contracts(consumer):
-    case, python, root, env = consumer
+    _, python, root, env = consumer
     command = [str(python), "-I", "-m", "pytest", "-c", str(root / "pytest.ini")]
     # A separate invocation checks lazy imports before adapter tests import SDKs.
     subprocess.run([*command, "test_contracts.py"], cwd=root, env=env, check=True)
-    if case == "core":
-        example = subprocess.run(
-            [str(python), "-I", "-m", "roboz.examples.simple"],
-            cwd=root,
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        output = example.stdout.strip()
-        assert len(output) > 2 and output.startswith('"') and output.endswith('"')
-    if case in WORKFLOWS:
-        contract = root / "test_workflow.py"
-        shutil.copyfile(ROOT / WORKFLOWS[case], contract)
+    example = subprocess.run(
+        [str(python), "-I", "-m", "roboz.examples.simple"],
+        cwd=root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    output = example.stdout.strip()
+    assert len(output) > 2 and output.startswith('"') and output.endswith('"')
+    for index, workflow in enumerate(WORKFLOWS):
+        contract = root / f"test_workflow_{index}.py"
+        shutil.copyfile(ROOT / workflow, contract)
         subprocess.run([*command, str(contract)], cwd=root, env=env, check=True)
 
 
 def test_installed_endpoint_types(consumer):
-    case, python, root, env = consumer
-    if case not in {"endpoints", "endpoints-openai"}:
-        pytest.skip("Endpoint consumer typing only")
+    _, python, root, env = consumer
     config = root / "pyrightconfig.json"
     config.write_text(
         json.dumps({"typeCheckingMode": "standard", "pythonVersion": "3.13"})
@@ -83,9 +78,7 @@ def test_installed_endpoint_types(consumer):
 
 
 def test_installed_core_types(consumer):
-    case, python, root, env = consumer
-    if case != "core":
-        pytest.skip("Core consumer typing only")
+    _, python, root, env = consumer
     config = root / "pyrightconfig.json"
     config.write_text(
         json.dumps({"typeCheckingMode": "standard", "pythonVersion": "3.13"})
@@ -128,9 +121,7 @@ def test_installed_core_types(consumer):
 
 @pytest.mark.parametrize("layout", ["src", "flat", "fallback", "custom"])
 def test_installed_inventory_workflow(consumer, layout):
-    case, python, root, env = consumer
-    if case not in {"endpoints", "endpoints-openai"}:
-        pytest.skip("Endpoint inventory only")
+    _, python, root, env = consumer
     project = root / f"inventory-project-{layout}"
     project.mkdir()
     import_root = project
@@ -153,17 +144,13 @@ def test_installed_inventory_workflow(consumer, layout):
         module_name = "custom_catalogue.selected"
     editable = catalogue / "models.json"
     module = catalogue / ("selected.py" if layout == "custom" else "providers.py")
-    executable = python.with_name(
-        "roboz-endpoints.exe" if os.name == "nt" else "roboz-endpoints"
-    )
-
     def run(*args, answer="", expected=0):
         if layout == "custom" and "--path" not in args:
             args = (*args, "--path", str(editable))
             if args[0] in {"import", "reset"}:
                 args = (*args, "--output", str(module))
         result = subprocess.run(
-            [str(executable), "inventory", *args],
+            [str(python), "-I", "-m", "roboz.endpoints", "inventory", *args],
             input=answer,
             cwd=project,
             env=env,

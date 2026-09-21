@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import assert_type
 
-from roboshed.dependency_health import (
+from roboz.shed.dependency_health import (
     DependencyCheckResult,
     DependencyHealthMonitor,
     DependencyRecord,

@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboshed.models import ApplyPatch, GuardFilesResult, ParseError, RunFileCommands
-from roboshed.tools import (
+from roboz.shed.models import ApplyPatch, GuardFilesResult, ParseError, RunFileCommands
+from roboz.shed.tools import (
     CompactionContext,
     ConsolidateMemoryContext,
     FileCommandExecutionContext,
@@ -19,14 +19,14 @@ from roboshed.tools import (
     snapshot_conversations,
     stop_when_watched_agents_inactive,
 )
-from roboshed.tools.apply_patch import apply_patch, execute_apply_patch_replace
-from roboshed.tools.compactification import (
+from roboz.shed.tools.apply_patch import apply_patch, execute_apply_patch_replace
+from roboz.shed.tools.compactification import (
     CompactifyStatus,
     compactify_messages_when_needed,
 )
-from roboshed.tools.guard import operation_guard
-from roboshed.tools.runner import execute_file_command
-from roboshed.tools.types import ResolvedFileCommand
+from roboz.shed.tools.guard import operation_guard
+from roboz.shed.tools.runner import execute_file_command
+from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.models import All, Stop, Str
 from roboz import Factory, Tool
 from roboz.dependencies import ExternalDependency

@@ -1,6 +1,6 @@
 """Email providers must implement every required resource and mailbox operation."""
 
-from roboshed.tools.email import EmailService
+from roboz.shed.tools.email import EmailService
 
 
 class Incomplete(EmailService):

@@ -4,8 +4,8 @@ from roboz.models import All
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe
 from roboz.tooling import Tool
-from roboshed.tools import get_compactify_messages_when_needed_tool
-from roboshed.tools.compactification import CompactifyStatus
+from roboz.shed.tools import get_compactify_messages_when_needed_tool
+from roboz.shed.tools.compactification import CompactifyStatus
 
 compact = get_compactify_messages_when_needed_tool(
     endpoint=MockLLMEndpoint([]),
