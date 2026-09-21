@@ -5,12 +5,7 @@ from pathlib import Path
 
 
 _REPOSITORY_ROOT = Path(__file__).parents[1]
-_SOURCE_ROOTS = (
-    _REPOSITORY_ROOT / "src",
-    _REPOSITORY_ROOT / "packages" / "shed" / "src",
-    _REPOSITORY_ROOT / "packages" / "endpoints" / "src",
-    _REPOSITORY_ROOT / "packages" / "proton-bridge" / "src",
-)
+_SOURCE_ROOTS = (_REPOSITORY_ROOT / "src",)
 
 
 def _decorator_name(decorator: ast.expr) -> str | None:

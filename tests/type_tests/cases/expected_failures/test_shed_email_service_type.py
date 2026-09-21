@@ -1,6 +1,6 @@
 """An unrelated resource does not provide the email service operations."""
 
-from roboshed.tools.contexts import EmailContext
+from roboz.shed.tools.contexts import EmailContext
 from roboz.dependencies import ExecutableDependency
 
 # Expected: reportArgumentType; EmailContext requires EmailService.

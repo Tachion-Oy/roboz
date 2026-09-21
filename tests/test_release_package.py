@@ -35,7 +35,7 @@ def test_release_selects_verified_bytes_without_rebuilding(tmp_path, monkeypatch
     artifacts = ["roboz-0.1.1-py3-none-any.whl", "roboz-0.1.1.tar.gz"]
     for filename in artifacts:
         (candidates / filename).write_bytes(b"verified bytes: " + filename.encode())
-    (candidates / "roboshed-0.1.0a1-py3-none-any.whl").write_bytes(b"other package")
+    (candidates / "another-0.1.0-py3-none-any.whl").write_bytes(b"other package")
     monkeypatch.setattr(release_package, "ROOT", project)
     monkeypatch.setattr(release_package, "PROJECTS", {"roboz": project})
     monkeypatch.setattr(
@@ -129,35 +129,35 @@ def test_candidate_resolves_existing_package_tags(release_repo, name, annotated)
 
 
 def test_candidate_reads_old_tag_metadata_without_changing_checkout(release_repo):
-    tag = "roboshed-v0.1.0"
+    tag = "roboz-v0.1.0"
     release_repo("tag", tag)
     candidate = release_repo("rev-parse", "HEAD")
-    metadata = release_package.PROJECTS["roboshed"] / "pyproject.toml"
-    metadata.write_text('[project]\nname = "roboshed"\nversion = "0.2.0"\n')
+    metadata = release_package.PROJECTS["roboz"] / "pyproject.toml"
+    metadata.write_text('[project]\nname = "roboz"\nversion = "0.2.0"\n')
     release_repo("commit", "-am", "Prepare the next version")
     current_main = release_repo("rev-parse", "HEAD")
 
     assert release_package.resolve_candidate(tag, current_main) == (
-        "roboshed",
+        "roboz",
         "0.1.0",
         candidate,
     )
     assert release_repo("rev-parse", "HEAD") == current_main
     assert release_repo("status", "--porcelain") == ""
-    assert release_package.project_version("roboshed") == "0.2.0"
+    assert release_package.project_version("roboz") == "0.2.0"
 
 
 @pytest.mark.parametrize(
     "ref", ["main", "HEAD", "refs/tags/roboz-v0.1.0", "other-v0.1.0"]
 )
 def test_candidate_rejects_non_package_tag_inputs(release_repo, ref):
-    with pytest.raises(ValueError, match="Expected <package>"):
+    with pytest.raises(ValueError, match="Expected roboz"):
         release_package.resolve_candidate(ref, release_repo("rev-parse", "HEAD"))
 
 
 def test_candidate_rejects_a_raw_commit(release_repo):
     commit = release_repo("rev-parse", "HEAD")
-    with pytest.raises(ValueError, match="Expected <package>"):
+    with pytest.raises(ValueError, match="Expected roboz"):
         release_package.resolve_candidate(commit, commit)
 
 
@@ -208,24 +208,14 @@ def test_candidate_rejects_version_mismatch(release_repo):
 
 
 def test_candidate_rejects_wrong_package_metadata(release_repo):
-    metadata = release_package.PROJECTS["roboshed"] / "pyproject.toml"
-    metadata.write_text('[project]\nname = "roboz"\nversion = "0.1.0"\n')
+    metadata = release_package.PROJECTS["roboz"] / "pyproject.toml"
+    metadata.write_text('[project]\nname = "another"\nversion = "0.1.0"\n')
     release_repo("commit", "-am", "Incorrect project name")
-    release_repo("tag", "roboshed-v0.1.0")
-    with pytest.raises(ValueError, match="does not name 'roboshed'"):
+    release_repo("tag", "roboz-v0.1.0")
+    with pytest.raises(ValueError, match="does not name 'roboz'"):
         release_package.resolve_candidate(
-            "roboshed-v0.1.0", release_repo("rev-parse", "HEAD")
+            "roboz-v0.1.0", release_repo("rev-parse", "HEAD")
         )
-
-
-def test_candidate_excludes_proton_from_production_but_preserves_local_check(
-    release_repo,
-):
-    tag = "roboz-proton-bridge-v0.1.0"
-    release_repo("tag", tag)
-    assert resolve_tag(tag) == "roboz-proton-bridge"
-    with pytest.raises(ValueError, match="Production publishing is not enabled"):
-        release_package.resolve_candidate(tag, release_repo("rev-parse", "HEAD"))
 
 
 def test_candidate_requires_immutable_main_commit(release_repo):

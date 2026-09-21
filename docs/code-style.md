@@ -13,11 +13,14 @@ stubs are generated; after changing the bundled inventory, run
 `uv run python scripts/generate_endpoint_catalog.py` from the repository root
 and commit the generated declarations. Do not edit generated stubs by hand.
 
-## Package boundaries and public contracts
+## Module boundaries and public contracts
 
-Keep reusable primitives in `src/roboz` and integrations in their companion
-packages under `packages/`. Core must not import companions or provider SDKs.
-Each distribution declares its own runtime dependencies in its `pyproject.toml`.
+Keep reusable primitives in their existing `src/roboz` modules, reusable agent
+components under `roboz.shed`, and provider catalogue code under
+`roboz.endpoints`. Core modules must not import Shed, Endpoints, or provider
+SDKs. Shed must not import Endpoints or provider SDKs. Endpoint client
+construction remains deferred so importing the package performs no credential
+lookup or network I/O.
 
 When changing a public API, consider imports, signatures, typing, schemas,
 persisted data, prompts, defaults, and side effects. Breaking changes should be

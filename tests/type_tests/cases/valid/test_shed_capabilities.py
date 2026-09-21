@@ -2,8 +2,8 @@
 
 from typing import assert_type
 
-from roboshed.agents import librarian, orchestrator
-from roboshed.capabilities import (
+from roboz.shed.agents import librarian, orchestrator
+from roboz.shed.capabilities import (
     ArtifactRetention,
     Compactification,
     ConversationSnapshots,
@@ -12,7 +12,7 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.sandbox import Sandbox
+from roboz.shed.sandbox import Sandbox
 from roboz import Agent
 from roboz.dependencies import ExternalDependency
 from roboz.deployment import AgentCapability, Capability, DeployableAgent

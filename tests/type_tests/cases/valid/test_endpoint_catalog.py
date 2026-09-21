@@ -5,20 +5,21 @@ from roboz import Agent, Factory, Tool, factory
 from roboz.tooling import Materializable
 from roboz.models import Message, Str
 from roboz.llm import LLMEndpoint, TranscriptionEndpoint, with_openrouter_policy
-from roboz_endpoints import cerebras, groq, openrouter
-from roboz_endpoints.adapters.openai_compatible import (
+from roboz.endpoints.adapters.openai_compatible import (
     OpenAICompatibleAdapter,
     chat_endpoint,
     transcription_endpoint,
 )
-from roboz_endpoints.catalog import openrouter as catalogue_openrouter
-from roboz_endpoints.inventory import ChatModelSpec, TranscriptionModelSpec
+from roboz.endpoints.inventory import ChatModelSpec, TranscriptionModelSpec
 
 # All public import paths carry the same generated model types.
-from roboz_endpoints.inventory import (
+from roboz.endpoints.inventory import (
     CEREBRAS_MODELS,
     GROQ_MODELS,
     OPENROUTER_MODELS,
+    cerebras,
+    groq,
+    openrouter,
     openrouter as inventory_openrouter,
 )
 
@@ -27,7 +28,6 @@ assert_type(openrouter.z_ai__glm_5_3, LLMEndpoint)
 assert_type(openrouter.z_ai__glm_5_3_flash, LLMEndpoint)
 assert_type(cerebras.gpt_oss_120b, LLMEndpoint)
 assert_type(groq.whisper_large_v3_turbo, TranscriptionEndpoint)
-assert_type(catalogue_openrouter.z_ai__glm_5_3, LLMEndpoint)
 assert_type(openrouter.models, tuple[ChatModelSpec, ...])
 assert_type(cerebras.models, tuple[ChatModelSpec, ...])
 assert_type(groq.models, tuple[TranscriptionModelSpec, ...])

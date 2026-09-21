@@ -9,12 +9,7 @@ import pytest
 from scripts.release_package import PROJECTS, ROOT, artifacts
 
 CASES = {
-    "core": ("roboz",),
-    "shed": ("roboz", "roboshed"),
-    "endpoints": ("roboz", "roboz-endpoints"),
-    "endpoints-openai": ("roboz", "roboz-endpoints"),
-    "proton": ("roboz", "roboshed", "roboz-proton-bridge"),
-    "extras": tuple(PROJECTS),
+    "roboz": ("roboz",),
 }
 
 
@@ -28,7 +23,7 @@ def pytest_generate_tests(metafunc):
         cases = [
             case
             for case, names in CASES.items()
-            if not package or (case != "extras" and names[-1] == package)
+            if not package or names[-1] == package
         ]
         metafunc.parametrize("consumer", cases, indirect=True, scope="module")
     if "package" in metafunc.fixturenames:
@@ -66,12 +61,7 @@ def consumer(request, tmp_path_factory):
     requirements = []
     for name in local:
         wheel, _ = artifacts(dist, name)
-        extra = ""
-        if name == "roboz" and case == "extras":
-            extra = "[shed,proton-bridge-beta]"
-        if name == "roboz-endpoints" and case in {"endpoints-openai", "extras"}:
-            extra = "[openai]"
-        requirements.append(str(wheel) + extra)
+        requirements.append(str(wheel))
     subprocess.run(
         [
             str(python),

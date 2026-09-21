@@ -1,10 +1,10 @@
-name: Release one Python package
+name: Release RoboZ
 run-name: Release ${{ inputs.tag }} by @${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing package release tag (for example, roboshed-v0.1.0a4)"
+        description: "Existing RoboZ release tag (for example, roboz-v0.1.2.dev12)"
         required: true
         type: string
 permissions:

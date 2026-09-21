@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import tempfile
 from pathlib import Path
 
-from roboshed.agents import orchestrator as orchestrator_definition
-from roboshed.capabilities import (
+from roboz.shed.agents import orchestrator as orchestrator_definition
+from roboz.shed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
     FileCommands,
@@ -15,7 +15,7 @@ from roboshed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboshed.sandbox import PermissionPolicy, Sandbox
+from roboz.shed.sandbox import PermissionPolicy, Sandbox
 
 from roboz import Agent
 from roboz.agent import AgentMode

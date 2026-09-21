@@ -7,20 +7,13 @@ from pathlib import Path
 import pkgutil
 import sys
 
-import pytest
-
 CASE = os.environ["ROBOZ_INSTALL_CASE"]
 PACKAGES = {
-    "core": ("roboz",),
-    "shed": ("roboz", "roboshed"),
-    "endpoints": ("roboz", "roboz_endpoints"),
-    "endpoints-openai": ("roboz", "roboz_endpoints"),
-    "proton": ("roboz", "roboshed", "roboz_proton_bridge"),
-    "extras": ("roboz", "roboshed", "roboz_endpoints", "roboz_proton_bridge"),
+    "roboz": ("roboz",),
 }[CASE]
 
 
-def test_imports_are_installed_and_optional_dependencies_stay_optional():
+def test_all_modules_and_required_dependencies_are_installed():
     for name in PACKAGES:
         module = importlib.import_module(name)
         assert (
@@ -29,21 +22,18 @@ def test_imports_are_installed_and_optional_dependencies_stay_optional():
         for entry in pkgutil.walk_packages(module.__path__, name + "."):
             importlib.import_module(entry.name)
     assert find_spec("roboz_openai") is None
-    optional = {
-        "roboshed": CASE in {"shed", "proton", "extras"},
-        "roboz_endpoints": CASE in {"endpoints", "endpoints-openai", "extras"},
-        "roboz_proton_bridge": CASE in {"proton", "extras"},
-        "openai": CASE in {"endpoints-openai", "extras"},
-        "pydantic_settings": CASE in {"proton", "extras"},
+    dependencies = {
+        "openai": True,
+        "pydantic_settings": False,
         "fastapi": False,
     }
-    for name, present in optional.items():
+    for name, present in dependencies.items():
         assert (find_spec(name) is not None) == present, name
-    if "roboz_endpoints" in PACKAGES:
-        assert "openai" not in sys.modules
+    assert "openai" not in sys.modules
+    for removed in ("roboshed", "roboz_endpoints", "roboz_proton_bridge"):
+        assert find_spec(removed) is None
 
 
-@pytest.mark.skipif(CASE != "core", reason="Core-only public contract")
 def test_core_dependency_and_agent_contracts():
     import roboz as rz
     from types import SimpleNamespace
@@ -91,12 +81,9 @@ def test_core_dependency_and_agent_contracts():
         assert find_spec(name) is None
 
 
-@pytest.mark.skipif(
-    "roboz_endpoints" not in PACKAGES, reason="Endpoint package contract"
-)
-def test_endpoint_inventory_is_lazy_and_missing_extra_is_explained():
+def test_endpoint_inventory_is_lazy():
     from roboz.llm import LLMEndpoint, TranscriptionEndpoint
-    from roboz_endpoints.inventory import CATALOGS
+    from roboz.endpoints.inventory import CATALOGS
 
     endpoints = [
         getattr(provider, name)
@@ -113,16 +100,3 @@ def test_endpoint_inventory_is_lazy_and_missing_extra_is_explained():
             endpoint.dependency_id
             == f"model:{metadata['api_name']}:{metadata['model_name']}"
         )
-        if CASE == "endpoints":
-            with pytest.raises(ModuleNotFoundError, match="roboz-endpoints") as error:
-                endpoint.materialize()
-            assert error.value.name == "openai"
-
-
-@pytest.mark.skipif(
-    "roboz_proton_bridge" not in PACKAGES, reason="Proton package contract"
-)
-def test_proton_service_constructs_without_connecting():
-    from roboz_proton_bridge import ProtonBridgeEmailService
-
-    assert ProtonBridgeEmailService().dependency_id

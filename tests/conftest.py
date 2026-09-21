@@ -5,7 +5,7 @@ def pytest_addoption(parser):
     group.addoption(
         "--published-dependencies",
         action="store_true",
-        help="Resolve companion dependencies from PyPI instead of candidates",
+        help="Resolve the candidate's runtime dependencies from PyPI",
     )
 
 

@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from typing import assert_type
 
-from roboshed.deployments.robosprawl import robosprawl
-from roboshed.sandbox import Sandbox
+from roboz.shed.deployments.robosprawl import robosprawl
+from roboz.shed.sandbox import Sandbox
 from roboz import Agent
 from roboz.llm import EndpointLike, LLMEndpoint
 from roboz.runtime import EventSink

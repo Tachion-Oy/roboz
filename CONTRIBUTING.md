@@ -38,8 +38,8 @@ uv sync --locked --dev
 uv run python -m roboz.examples.simple
 ```
 
-The workspace includes core and all companion packages. The example and default
-test suite require no API keys or live services.
+The development environment includes core, Shed, Endpoints, and the OpenAI SDK.
+The example and default test suite require no API keys or live services.
 
 Before changing code, read the [code style guide](docs/code-style.md) and
 [testing practices](docs/testing-practices.md).
@@ -79,7 +79,7 @@ or speculative improvements. Summarize the change and testing performed,
 including checks you could not run. Update affected examples and documentation,
 and explain how users should adapt to any breaking changes.
 
-Add a short entry under `Unreleased` in each affected package's changelog for
+Add a short entry under `Unreleased` in [CHANGELOG.md](CHANGELOG.md) for
 user-visible changes. Documentation, tests, and internal cleanup generally do
 not need entries. Leave version bumps, tags, and publication to maintainers.
 

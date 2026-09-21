@@ -1,4 +1,4 @@
-from roboshed.capabilities import (
+from roboz.shed.capabilities import (
     Compactification,
     ConversationSnapshots,
     MemoryConsolidation,

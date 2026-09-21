@@ -8,11 +8,9 @@ Read and follow the documents relevant to the task before editing:
   boundaries, and docstrings that become model prompts. Read for source changes.
 - [Testing practices](docs/testing-practices.md): test scope, mocking boundaries,
   and runtime versus typing tests. Read when changing behavior or tests.
-- [README.md](README.md): core concepts, runnable examples, and the package map.
-  For companion changes, also read the owning package's README:
-  [Shed](packages/shed/README.md), [Endpoints](packages/endpoints/README.md), or
-  [Proton Bridge](packages/proton-bridge/README.md).
-- [Endpoint catalogue guide](packages/endpoints/docs/catalogues.md): project
+- [README.md](README.md): core concepts, Shed and Endpoints usage, runnable
+  examples, and the module map.
+- [Endpoint catalogue guide](docs/catalogues.md): project
   catalogue layout, inventory commands, custom locations, reset, and recovery.
 - [Verification workflow](.github/workflows/verify.yml): full CI commands,
   packaging checks, and supported test environments. Consult for changes to

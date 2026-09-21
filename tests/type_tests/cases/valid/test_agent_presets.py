@@ -1,7 +1,7 @@
 from typing import assert_type
 
-from roboshed.agents import librarian, orchestrator
-from roboshed.sandbox import Sandbox
+from roboz.shed.agents import librarian, orchestrator
+from roboz.shed.sandbox import Sandbox
 
 from roboz.deployment import AgentCapability, DeployableAgent
 from roboz.llm import EndpointLike

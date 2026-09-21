@@ -3,7 +3,7 @@
 from roboz.models import Message, Str
 from roboz import factory
 from roboz.llm import LLMEndpoint
-from roboz_endpoints import groq
+from roboz.endpoints.inventory import groq
 
 
 @factory

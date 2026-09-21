@@ -14,16 +14,13 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "firecrawl",
     "groq",
     "openai",
-    "shed",
-    "roboshed",
     "robosprawl",
     "fastapi",
-    "roboz_endpoints",
     "roboz_proton_bridge",
 }
 
 
-def test_addon_namespaces_are_absent() -> None:
+def test_removed_namespaces_are_absent() -> None:
     assert find_spec("roboz.standard") is None
     assert find_spec("roboz.agents") is None
     assert find_spec("roboz.workspace") is None
@@ -31,11 +28,20 @@ def test_addon_namespaces_are_absent() -> None:
     assert find_spec("roboz.tools.compactification") is None
     assert find_spec("roboz.llm.providers") is None
     assert find_spec("roboz_openai") is None
+    assert find_spec("roboshed") is None
+    assert find_spec("roboz_endpoints") is None
+    assert find_spec("roboz_proton_bridge") is None
 
 
 def test_primitives_do_not_import_addon_integrations() -> None:
     violations: set[str] = set()
-    for source_path in SOURCE_ROOT.rglob("*.py"):
+    source_paths = (
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if not path.is_relative_to(SOURCE_ROOT / "shed")
+        and not path.is_relative_to(SOURCE_ROOT / "endpoints")
+    )
+    for source_path in source_paths:
         tree = ast.parse(source_path.read_text(encoding="utf-8"), source_path)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
@@ -57,11 +63,11 @@ def test_primitives_do_not_import_addon_integrations() -> None:
     assert not violations
 
 
-def test_base_dependency_set_is_primitive_only() -> None:
+def test_distribution_dependency_set_has_no_extras() -> None:
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     names = {
         requirement.split(">=", 1)[0]
         for requirement in metadata["project"]["dependencies"]
     }
-    assert names == {"pydantic", "python-dotenv", "rich"}
+    assert names == {"openai", "pydantic", "python-dotenv", "rich"}
     assert "optional-dependencies" not in metadata["project"]

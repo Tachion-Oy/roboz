@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import assert_type
 
 from roboz import Agent
-from roboshed.sandbox import Sandbox
+from roboz.shed.sandbox import Sandbox
 from roboz.deployment import AgentCapability, DeployableAgent
 
 

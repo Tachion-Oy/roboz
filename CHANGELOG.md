@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.1.2.dev12 - 2026-09-21
+
+- Breaking: consolidate core, Shed, and Endpoints into the `roboz`
+  distribution. Replace `roboshed` imports with `roboz.shed` and
+  `roboz_endpoints` imports with `roboz.endpoints`; no compatibility packages
+  or forwarding namespaces are provided.
+- Install the OpenAI SDK as a required dependency while retaining deferred
+  endpoint client construction and credential-free imports. Remove package
+  extras and the `roboz-endpoints` executable; manage catalogues with
+  `python -m roboz.endpoints inventory`.
+- Exclude Proton Bridge from the consolidated distribution. Its pre-migration
+  implementation and development setup remain preserved on the
+  `wip/proton-bridge` branch.
+- Consolidate package documentation into the main README and move the detailed
+  project catalogue guide to `docs/catalogues.md`.
+
 ## 0.1.2.dev11 - 2026-09-21
 
 - Ship the simple and complex examples in `roboz.examples`, so installed users
@@ -172,7 +188,7 @@
 
 - Breaking: remove the `roboz[openai]` extra. Install
   `roboz-endpoints[openai]` directly for the endpoint catalogue and SDK adapter;
-  it installs core automatically. See `packages/endpoints/README.md` for migration.
+  it installs core automatically.
 
 - Breaking: move dependency primitives from `roboz.tooling.dependencies` and
   `roboz.tooling` to `roboz.dependencies`. Update those imports; the existing
