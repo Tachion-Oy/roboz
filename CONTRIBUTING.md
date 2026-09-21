@@ -35,7 +35,7 @@ repository, then install the development environment from its root:
 
 ```bash
 uv sync --locked --dev
-uv run python examples/simple.py
+uv run python -m roboz.examples.simple
 ```
 
 The workspace includes core and all companion packages. The example and default
@@ -52,7 +52,7 @@ change. The standard local checks are:
 
 ```bash
 uv run pytest
-uv run python examples/simple.py
+uv run python -m roboz.examples.simple
 uv run ruff check
 uv run pyright
 bash scripts/run_type_tests.sh

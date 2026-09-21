@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.2.dev11 - 2026-09-21
+
+- Ship the simple and complex examples in `roboz.examples`, so installed users
+  can run the credential-free agent demo with `python -m roboz.examples.simple`
+  without cloning the repository.
+
 ## 0.1.2.dev10 - 2026-09-21
 
 - Define default tools as scheduler-owned chain roots: downstream tools can now

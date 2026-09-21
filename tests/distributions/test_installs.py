@@ -22,6 +22,17 @@ def test_installed_contracts(consumer):
     command = [str(python), "-I", "-m", "pytest", "-c", str(root / "pytest.ini")]
     # A separate invocation checks lazy imports before adapter tests import SDKs.
     subprocess.run([*command, "test_contracts.py"], cwd=root, env=env, check=True)
+    if case == "core":
+        example = subprocess.run(
+            [str(python), "-I", "-m", "roboz.examples.simple"],
+            cwd=root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        output = example.stdout.strip()
+        assert len(output) > 2 and output.startswith('"') and output.endswith('"')
     if case in WORKFLOWS:
         contract = root / "test_workflow.py"
         shutil.copyfile(ROOT / WORKFLOWS[case], contract)
