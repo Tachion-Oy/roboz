@@ -1,3 +1,5 @@
+"""Run an interactive example of chains, factories, and truncation."""
+
 from builtins import input as read_input
 
 from roboz import Agent, factory, tool
@@ -46,19 +48,25 @@ def give_praise(input: Int, messages: list[Message]) -> Str:
     return Str(value=f"{input.value} is good, no biggie.")
 
 
-agent_endpoint = MockLLMEndpoint(
-    responses=[
-        *(10 * [{"action": "ask_number", "rationale": "This is my only job"}]),
-        {"action": "stop", "rationale": "Enough numbers!", "value": ""},
-    ]
-)
-guard_endpoint = MockLLMEndpoint(responses=10 * ["y"])
+def main() -> None:
+    """Build and run the interactive example agent."""
+    agent_endpoint = MockLLMEndpoint(
+        responses=[
+            *(10 * [{"action": "ask_number", "rationale": "This is my only job"}]),
+            {"action": "stop", "rationale": "Enough numbers!", "value": ""},
+        ]
+    )
+    guard_endpoint = MockLLMEndpoint(responses=10 * ["y"])
 
-agent = Agent(
-    name="demo",
-    system_prompt=f"Without exception, use the {ask_number.name} tool.",
-    event_sinks=[CliSink.default()],
-    agent_endpoint=agent_endpoint,
-    tools=[ask_number, escalate(guard_endpoint), give_praise, stop],
-)
-agent.invoke()
+    agent = Agent(
+        name="demo",
+        system_prompt=f"Without exception, use the {ask_number.name} tool.",
+        event_sinks=[CliSink.default()],
+        agent_endpoint=agent_endpoint,
+        tools=[ask_number, escalate(guard_endpoint), give_praise, stop],
+    )
+    agent.invoke()
+
+
+if __name__ == "__main__":
+    main()

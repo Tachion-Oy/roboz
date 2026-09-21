@@ -14,7 +14,7 @@ DOCUMENTS = (
     *sorted((ROOT / "docs").glob("*.md")),
     ROOT / ".github" / "workflows" / "verify.yml",
 )
-EXAMPLE_REFERENCE = re.compile(r"examples/[A-Za-z0-9_./-]+\.py")
+EXAMPLE_REFERENCE = re.compile(r"(?:src/roboz/)?examples/[A-Za-z0-9_./-]+\.py")
 DOCUMENTS_WITH_EXAMPLE_REFERENCES = tuple(
     document
     for document in DOCUMENTS
@@ -41,8 +41,8 @@ def test_operational_example_references_exist(document: Path) -> None:
 
 
 def test_release_gate_and_ci_run_the_current_smoke_example() -> None:
-    """Keep maintainer instructions and CI on the same existing smoke script."""
-    command = "uv run python examples/simple.py"
+    """Keep maintainer instructions and CI on the same installed example."""
+    command = "uv run python -m roboz.examples.simple"
     assert "[CONTRIBUTING.md](CONTRIBUTING.md)" in (
         ROOT / "AGENTS.md"
     ).read_text(encoding="utf-8")
@@ -50,3 +50,17 @@ def test_release_gate_and_ci_run_the_current_smoke_example() -> None:
     assert command in (
         ROOT / ".github" / "workflows" / "verify.yml"
     ).read_text(encoding="utf-8")
+
+
+def test_readme_documents_running_the_installed_smoke_example() -> None:
+    """Install RoboZ before running its bundled credential-free example."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    try_it_out = readme.split("## Try it out", maxsplit=1)[1].split(
+        "## Packages", maxsplit=1
+    )[0]
+    assert (
+        "uv add roboz\nuv run python -m roboz.examples.simple" in try_it_out
+    )
+    assert (
+        "python -m pip install roboz\npython -m roboz.examples.simple" in try_it_out
+    )

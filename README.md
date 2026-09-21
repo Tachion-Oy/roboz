@@ -42,9 +42,8 @@ Chaining not only reduces the llm calls, but it also provides a useful way of in
 ```python
 from random import choice
 
-from simpsons_quotes import QUOTES
-
 from roboz import Agent, tool
+from roboz.examples.simpsons_quotes import QUOTES
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Stop
 
@@ -70,12 +69,12 @@ output, messages_ = agent.invoke()
 print(f'"{output.value}"')
 ```
 
-The above [simple example](https://github.com/Tachion-Oy/roboz/blob/main/examples/simple.py) uses the accompanying
-[quote file](https://github.com/Tachion-Oy/roboz/blob/main/examples/simpsons_quotes.py) in this repository. Run it from the
-repository root with
+The above [simple example](https://github.com/Tachion-Oy/roboz/blob/main/src/roboz/examples/simple.py) uses the accompanying
+[quote file](https://github.com/Tachion-Oy/roboz/blob/main/src/roboz/examples/simpsons_quotes.py). First add RoboZ to your
+environment as shown in [Try it out](#try-it-out), then run it with
 
 ```bash
-uv run python examples/simple.py
+uv run python -m roboz.examples.simple
 ```
 It creates an agent that returns a random
 Simpsons quote. **The docstring in the tool is the instruction that the agent sees**. It uses a mock endpoint, with pre-determined replies, so you can run it without API keys.
@@ -109,7 +108,7 @@ The contract in RoboZ is that every action in the agentic loop is a tool call an
 ### LLM Endpoints are instances
 As a fundamental design rule in Roboz, everything that depends on an LLM call must be trivially swappable to another provider or model. This makes changing an agent endpoint trivial and furthermore multi-endpoint functionality, where inside a single agent several endpoints are implemented, quite easy.
 
-To see the above in practice see the [complex example](https://github.com/Tachion-Oy/roboz/blob/main/examples/complex.py) example below.
+To see the above in practice see the [complex example](https://github.com/Tachion-Oy/roboz/blob/main/src/roboz/examples/complex.py) below.
 
 
 
@@ -199,23 +198,29 @@ agent.invoke()
 
 ```
 
-The above [complex example](https://github.com/Tachion-Oy/roboz/blob/main/examples/complex.py) can be run from the root with
+The above [complex example](https://github.com/Tachion-Oy/roboz/blob/main/src/roboz/examples/complex.py) is also bundled with
+RoboZ. First add the library to your environment as shown in
+[Try it out](#try-it-out), then run it with
 
 ```bash
-uv run python examples/complex.py
+uv run python -m roboz.examples.complex
 ```
 
 
 ## Try it out
 
+Add RoboZ to a uv project and run the same bundled example:
+
 ```bash
 uv add roboz
+uv run python -m roboz.examples.simple
 ```
 
-Or with pip:
+or with pip, install RoboZ into the active environment first:
 
 ```bash
 python -m pip install roboz
+python -m roboz.examples.simple
 ```
 
 ## Packages

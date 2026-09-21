@@ -1,4 +1,5 @@
-"""Short Simpsons quotes collected from Reddit discussions.
+"""Provide short Simpsons quotes collected from Reddit discussions.
+
 Sources are fan recollections; punctuation and capitalization are normalized.
 """
 
