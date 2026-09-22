@@ -33,6 +33,7 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/shed/__init__.py",
             "roboz/shed/capabilities.py",
             "roboz/endpoints/__main__.py",
+            "roboz/endpoints/README.md",
             "roboz/endpoints/adapters/openai_compatible.py",
             "roboz/endpoints/catalog.py",
             "roboz/endpoints/catalog.pyi",
@@ -64,5 +65,6 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert ("src", namespace, "examples", "simple.py") in paths
         assert ("src", namespace, "shed", "capabilities.py") in paths
         assert ("src", namespace, "endpoints", "inventory.pyi") in paths
+        assert ("src", namespace, "endpoints", "README.md") in paths
         assert ("docs", "catalogues.md") in paths
         assert all(not path or path[0] != "packages" for path in paths)

@@ -259,14 +259,14 @@ print(endpoint.model_name)
 print(endpoint.max_context_tokens)
 ```
 
-The bundled OpenRouter, Cerebras, and Groq entries are examples. Export them to
-an editable project catalogue, change `models.json`, then generate the Python
-snapshot:
+The bundled OpenRouter, Cerebras, and Groq entries are examples. Initialize an
+editable project catalogue, change `models.json`, then generate the typed
+Python snapshot:
 
 ```bash
-uv run python -m roboz.endpoints inventory export
+uv run python -m roboz.endpoints inventory init
 # Edit model_catalogue/models.json.
-uv run python -m roboz.endpoints inventory import
+uv run python -m roboz.endpoints inventory generate
 ```
 
 For a src-layout project named `my-app`, the commands create
@@ -277,14 +277,24 @@ your application package:
 ```python
 from my_app.model_catalogue.providers import my_service
 
-endpoint = my_service.chat
+endpoint = my_service.my_chat_model
 ```
 
 Only OpenAI-compatible API protocols are supported. An inventory entry records
 a provider URL, the name of its credential environment variable, and its model
-routes; it never stores the credential itself. See the
-[project catalogue guide](docs/catalogues.md) for custom paths, inventory
-format, reset, and recovery.
+routes; it never stores the credential itself. See the dedicated
+[endpoint catalogue README](src/roboz/endpoints/README.md) for the complete
+workflow and the [project catalogue guide](docs/catalogues.md) for custom paths
+and the inventory format.
+
+Run `python -m roboz.endpoints env encrypt` to create `.env.encrypt` from
+`.env` with a hidden password. The source stays untouched; remove it when
+you no longer need it. Import
+`load_api_keys` from `roboz.endpoints` to decrypt before starting an agent, or
+let an endpoint load its missing key when first used. Loading prefers
+`.env.encrypt` and falls back to plaintext `.env`. The
+[endpoint catalogue README](src/roboz/endpoints/README.md)
+explains password handling and the full workflow.
 
 ## Module map
 

@@ -38,7 +38,7 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
     document = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = document["project"]
     names = {requirement.split(">=", 1)[0] for requirement in project["dependencies"]}
-    assert names == {"openai", "pydantic", "python-dotenv", "rich"}
+    assert names == {"cryptography", "openai", "pydantic", "python-dotenv", "rich"}
     assert "openai>=2.8.1,<3" in project["dependencies"]
     assert "optional-dependencies" not in project
     assert "workspace" not in document.get("tool", {}).get("uv", {})

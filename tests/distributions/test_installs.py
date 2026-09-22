@@ -144,14 +144,13 @@ def test_installed_inventory_workflow(consumer, layout):
         module_name = "custom_catalogue.selected"
     editable = catalogue / "models.json"
     module = catalogue / ("selected.py" if layout == "custom" else "providers.py")
-    def run(*args, answer="", expected=0):
+    def run(*args, expected=0):
         if layout == "custom" and "--path" not in args:
             args = (*args, "--path", str(editable))
-            if args[0] in {"import", "reset"}:
+            if args[0] == "generate":
                 args = (*args, "--output", str(module))
         result = subprocess.run(
             [str(python), "-I", "-m", "roboz.endpoints", "inventory", *args],
-            input=answer,
             cwd=project,
             env=env,
             capture_output=True,
@@ -159,22 +158,14 @@ def test_installed_inventory_workflow(consumer, layout):
         )
         assert result.returncode == expected, result.stdout + result.stderr
 
-    run("export")
+    run("init")
     assert (catalogue / "__init__.py").is_file()
     bundled = editable.read_bytes()
     data = json.loads(bundled)
     fixture = ROOT / "tests/type_tests/fixtures/models.json"
     data["providers"].update(json.loads(fixture.read_text())["providers"])
     editable.write_text(json.dumps(data))
-    run("import")
-
-    run("export", "--from-module", str(module), "--path", "roundtrip.json")
-    exported = json.loads((project / "roundtrip.json").read_text())
-    assert exported["providers"]["custom"]["timeout_s"] == 12
-    assert (
-        exported["providers"]["groq"]["models"] == data["providers"]["groq"]["models"]
-    )
-    assert list(exported["providers"]) == list(data["providers"])
+    run("generate")
 
     subprocess.run(
         [
@@ -196,7 +187,7 @@ def test_installed_inventory_workflow(consumer, layout):
 
     data["providers"]["custom"]["models"]["chat"]["model_id"] = "custom/revised"
     editable.write_text(json.dumps(data))
-    run("import", "--force")
+    run("generate")
     subprocess.run(
         [
             str(python),
@@ -260,13 +251,10 @@ def test_installed_inventory_workflow(consumer, layout):
             ]
             assert len(errors) == 1 and errors[0].get("rule") == rule, errors
 
-    before = editable.read_bytes(), module.read_bytes()
-    run("reset", answer="no\n", expected=1)
-    assert (editable.read_bytes(), module.read_bytes()) == before
-    run("reset", answer="yes\n")
+    editable.unlink()
+    run("init")
     assert editable.read_bytes() == bundled
-    run("export", "--from-module", str(module), "--path", "reset.json")
-    assert (project / "reset.json").read_bytes() == bundled
+    run("generate")
     subprocess.run(
         [
             str(python),

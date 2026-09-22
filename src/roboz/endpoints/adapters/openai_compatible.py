@@ -7,6 +7,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Self
 from urllib.parse import urlsplit
 
+from roboz.endpoints.env import _has_usable_key, load_api_keys
 from roboz.llm import (
     LLMEndpoint,
     RequestOptions,
@@ -134,6 +135,11 @@ class OpenAICompatibleAdapter:
     def _create_client(self) -> "OpenAI":
         """Load the SDK and credentials when an endpoint first uses its client."""
         from openai import OpenAI
+
+        if self._api_key is None:
+            configured = os.environ.get(self._api_key_env)
+            if not _has_usable_key(configured):
+                load_api_keys()
         key = (
             self._api_key
             if self._api_key is not None
