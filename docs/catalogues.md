@@ -131,6 +131,16 @@ requires `max_context_tokens`; a transcription model does not accept it.
 Only OpenAI-compatible APIs are currently supported. Store the environment
 variable name in `api_key_env`, never the credential itself.
 
+API keys may live in a plaintext `.env` or a separate `.env.encrypt` file. Run
+`python -m roboz.endpoints env encrypt [--path .env]`; the command prompts for
+a hidden password or consumes `ROBOZ_ENV_PASSWORD`. It recreates parsed
+assignments in `.env.encrypt` and leaves the source untouched. Remove the
+plaintext source when you no longer need it. Both files use normal dotenv
+syntax. By default, loading prefers `.env.encrypt` and falls back to `.env`.
+Call `load_api_keys(password=...)` before starting an agent, or
+let an endpoint load its missing key when first used. See the
+[endpoint catalogue README](../src/roboz/endpoints/README.md) for details.
+
 ## Regenerate after editing
 
 Run the generator again after every inventory change:

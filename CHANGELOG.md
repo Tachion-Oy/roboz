@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add password-encrypted `.env.encrypt` output beside an untouched `.env`,
+  with a hidden-password CLI command, explicit loading, and deferred endpoint
+  loading. Plaintext dotenv files remain supported.
+
 - Breaking: replace the endpoint inventory `export`, `import`, and `reset`
   commands with `init` and `generate`. Project JSON remains the editable source;
   generated Python refreshes without `--force` while unrelated files remain

@@ -69,5 +69,5 @@ def test_distribution_dependency_set_has_no_extras() -> None:
         requirement.split(">=", 1)[0]
         for requirement in metadata["project"]["dependencies"]
     }
-    assert names == {"openai", "pydantic", "python-dotenv", "rich"}
+    assert names == {"cryptography", "openai", "pydantic", "python-dotenv", "rich"}
     assert "optional-dependencies" not in metadata["project"]

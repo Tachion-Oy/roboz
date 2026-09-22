@@ -2,6 +2,7 @@
 
 import argparse
 from contextlib import contextmanager
+from getpass import getpass
 import os
 from pathlib import Path
 import re
@@ -19,6 +20,7 @@ from roboz.endpoints._inventory_codec import (
     render_json,
 )
 from roboz.endpoints._inventory_codegen import render_module
+from roboz.endpoints.env import _PASSWORD_ENV, encrypt_env
 
 
 FALLBACK_INVENTORY_PATH = Path("model_catalogue/models.json")
@@ -170,9 +172,21 @@ def _generate(path: Path, output: Path) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m roboz.endpoints",
-        description="Create typed project endpoint catalogues from editable JSON.",
+        description=(
+            "Create typed project endpoint catalogues from editable JSON "
+            "and manage encrypted dotenv API keys."
+        ),
     )
-    groups = parser.add_subparsers(required=True)
+    groups = parser.add_subparsers(dest="group", required=True)
+    environment = groups.add_parser("env", help="Manage encrypted dotenv API keys")
+    env_commands = environment.add_subparsers(dest="command", required=True)
+    encrypt_command = env_commands.add_parser(
+        "encrypt", help="Encrypt API keys in a dotenv file"
+    )
+    encrypt_command.add_argument(
+        "--path", type=Path, default=Path(".env"),
+        help="Plaintext source file (default: .env; output adds .encrypt)"
+    )
     inventory = groups.add_parser(
         "inventory",
         help="Initialize JSON and generate a typed endpoint catalogue",
@@ -223,6 +237,15 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
+    if args.group == "env":
+        password = None
+        if _PASSWORD_ENV not in os.environ:
+            password = getpass("Encryption password: ")
+            if password != getpass("Confirm password: "):
+                raise ValueError("Passwords do not match")
+        output = encrypt_env(args.path, password=password)
+        print(f"Encrypted API keys: {output}")
+        return 0
     path = args.path or _default_inventory_path()
     if args.command == "init":
         return _init(path, prepare_package=args.path is None)
@@ -230,13 +253,13 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run inventory commands, reporting expected failures without a traceback."""
+    """Run endpoint commands, reporting expected failures without a traceback."""
     args = _parser().parse_args(argv)
     try:
         return _dispatch(args)
     except KeyboardInterrupt:
         print("\nCancelled.", file=sys.stderr)
         return 130
-    except (OSError, ValueError) as error:
+    except (EOFError, OSError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
