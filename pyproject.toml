@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.1.2.dev12"
+version = "0.1.2a1"
 description = "Typed agents, reusable capabilities, and model catalogues"
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
@@ -10,7 +10,7 @@ import-names = ["roboz"]
 requires-python = ">=3.13"
 keywords = ["agents", "llm", "tool-calling", "workflows", "typing"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",

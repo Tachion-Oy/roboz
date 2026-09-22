@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2a1 - 2026-09-23
+
 - Add password-encrypted `.env.encrypt` output beside an untouched `.env`,
   with a hidden-password CLI command, explicit loading, and deferred endpoint
   loading. Plaintext dotenv files remain supported.
