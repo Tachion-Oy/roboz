@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Breaking: replace the endpoint inventory `export`, `import`, and `reset`
+  commands with `init` and `generate`. Project JSON remains the editable source;
+  generated Python refreshes without `--force` while unrelated files remain
+  protected. Bundled and generated catalogues retain typed model autocomplete.
+
 ## 0.1.2.dev12 - 2026-09-21
 
 - Breaking: consolidate core, Shed, and Endpoints into the `roboz`
