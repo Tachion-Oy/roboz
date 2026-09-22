@@ -110,7 +110,7 @@ def render_module(inventory: Inventory) -> str:
         "\n\n".join(
             [
                 MARKER
-                + '\n"""Project model snapshot. Edit its JSON source and re-run inventory import."""',
+                + '\n"""Project model snapshot. Edit its JSON source and re-run inventory generate."""',
                 "\n".join(imports),
                 f"{DATA_NAME} = {data}",
                 "if _TYPE_CHECKING:\n"

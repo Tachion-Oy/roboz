@@ -1,8 +1,7 @@
-"""Export, import, and reset project inventories without SDKs or credentials."""
+"""Initialize editable endpoint inventories and generate typed catalogues."""
 
 import argparse
-from contextlib import ExitStack, contextmanager
-from importlib.metadata import version
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
@@ -17,7 +16,6 @@ from roboz.endpoints._inventory_codec import (
     bundled_inventory,
     identifier,
     read_json,
-    read_module,
     render_json,
 )
 from roboz.endpoints._inventory_codegen import render_module
@@ -104,168 +102,131 @@ def _advance_module_timestamp(staged: Path, output: Path) -> None:
 
 @contextmanager
 def _stage(path: Path, text: str) -> Generator[Path]:
-    """Prepare a complete same-directory replacement and clean up temporary files."""
-    with ExitStack() as cleanup:
-        file = tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            delete=False,
-        )
-        staged = Path(file.name)
-        cleanup.callback(staged.unlink, missing_ok=True)
+    """Prepare a complete same-directory replacement and remove it after use."""
+    file = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        newline="\n",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    )
+    staged = Path(file.name)
+    try:
         with file:
             file.write(text)
-            file.flush()
-            os.fsync(file.fileno())
         _advance_module_timestamp(staged, path)
         yield staged
+    finally:
+        staged.unlink(missing_ok=True)
 
 
-def _publish(staged: Path, output: Path, *, force: bool) -> None:
-    """Publish atomically, with an exclusive creation when replacement is disabled."""
-    if force:
-        os.replace(staged, output)
-    else:
-        try:
-            os.link(staged, output)
-        except FileExistsError as error:
-            raise ValueError(
-                f"{output}: already exists; use --force to replace it"
-            ) from error
+def _publish_new(staged: Path, output: Path) -> None:
+    try:
+        os.link(staged, output)
+    except FileExistsError as error:
+        raise ValueError(f"{output}: already exists") from error
 
 
-def _write_output(output: Path, text: str, *, force: bool) -> None:
+def _write_new(output: Path, text: str) -> None:
     with _stage(output, text) as staged:
-        _publish(staged, output, force=force)
+        _publish_new(staged, output)
 
 
-def _check_reset_module(output: Path) -> None:
-    """Allow absent or generated modules, but never reset unrelated Python files."""
-    if not output.exists():
-        return
-    with output.open(encoding="utf-8") as file:
-        marker = file.readline().rstrip("\n")
-    if marker != MARKER:
-        raise ValueError(f"{output}: refusing to reset an unrelated Python file")
+def _write_generated(output: Path, text: str) -> None:
+    replace = output.exists()
+    if replace:
+        with output.open(encoding="utf-8") as file:
+            marker = file.readline().rstrip("\n")
+        if marker != MARKER:
+            raise ValueError(f"{output}: refusing to replace an unrelated Python file")
+    with _stage(output, text) as staged:
+        if replace:
+            os.replace(staged, output)
+        else:
+            _publish_new(staged, output)
 
 
-def _confirm_reset(path: Path, output: Path) -> bool:
-    """Require explicit consent; an empty response or EOF never authorizes reset."""
-    print(f"Restore RoboZ {version('roboz')} bundled inventory:")
-    print(f"  Editable JSON: {path}\n  Generated module: {output}")
-    print("Custom providers and models in these files will be discarded.")
-    try:
-        answer = input(
-            "Discard custom inventory changes and restore installed defaults? [y/N] "
-        )
-    except EOFError:
-        return False
-    return answer.strip().lower() in {"y", "yes"}
-
-
-def _restore_files(files: Sequence[tuple[Path, str]]) -> None:
-    """Stage every file before replacing any; report partial publication failures."""
-    changed: list[Path] = []
-    try:
-        with ExitStack() as stack:
-            replacements = [
-                (stack.enter_context(_stage(path, text)), path) for path, text in files
-            ]
-            for staged, target in replacements:
-                _publish(staged, target, force=True)
-                changed.append(target)
-    except OSError as error:
-        updated = ", ".join(str(target) for target in changed) or "none"
-        raise ValueError(
-            f"Reset incomplete. Changed files: {updated}. Re-run reset. {error}"
-        ) from error
-
-
-def _reset(path: Path, output: Path) -> int:
-    """Confirm restoration of both project files from the installed inventory."""
-    if not path.exists() and not output.exists():
-        print("Nothing to reset: neither inventory file exists.")
-        return 0
-    _check_reset_module(output)
-    inventory = bundled_inventory()
-    files = ((path, render_json(inventory)), (output, render_module(inventory)))
-    if not _confirm_reset(path, output):
-        print("Reset cancelled; no files changed.")
-        return 1
-    _restore_files(files)
-    print(
-        "Restored both files to installed defaults. Restart applications to use them."
-    )
-    return 0
-
-
-def _export(path: Path, *, from_module: Path | None, force: bool) -> int:
+def _init(path: Path, *, prepare_package: bool) -> int:
     output = _output_path(path)
-    if from_module is not None:
-        _distinct(from_module, output)
-    data = read_module(from_module) if from_module is not None else bundled_inventory()
-    _write_output(output, render_json(data), force=force)
-    print(f"Exported inventory: {output}")
+    if output.exists():
+        raise ValueError(f"{output}: already exists")
+    text = render_json(bundled_inventory())
+    if prepare_package:
+        _prepare_default_package(path)
+    _write_new(output, text)
+    print(f"Initialized editable inventory: {output}")
     return 0
 
 
-def _import(path: Path, output: Path, *, force: bool) -> int:
+def _generate(path: Path, output: Path) -> int:
     data = read_json(path)
-    _write_output(output, render_module(data), force=force)
-    print(f"Generated inventory: {output}")
-    if data:
-        print("Import the generated module through your application's package path.")
-    print("Restart applications to use this snapshot.")
+    _write_generated(output, render_module(data))
+    print(f"Generated typed catalogue: {output}")
+    print("Restart running applications to use this snapshot.")
     return 0
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m roboz.endpoints", description=__doc__
+        prog="python -m roboz.endpoints",
+        description="Create typed project endpoint catalogues from editable JSON.",
     )
-    groups = parser.add_subparsers(dest="group", required=True)
-    inventory = groups.add_parser("inventory", help="Manage project model snapshots")
+    groups = parser.add_subparsers(required=True)
+    inventory = groups.add_parser(
+        "inventory",
+        help="Initialize JSON and generate a typed endpoint catalogue",
+        description=(
+            "Initialize an editable model inventory from RoboZ examples, then "
+            "generate an importable Python catalogue with editor autocomplete."
+        ),
+        epilog=(
+            "Typical workflow:\n"
+            "  python -m roboz.endpoints inventory init\n"
+            "  # Edit models.json.\n"
+            "  python -m roboz.endpoints inventory generate\n\n"
+            "To restore the bundled examples, delete models.json, then run init "
+            "and generate again."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     commands = inventory.add_subparsers(dest="command", required=True)
-    export_command = commands.add_parser("export")
-    import_command = commands.add_parser("import")
-    reset_command = commands.add_parser("reset")
-    for command in (export_command, import_command, reset_command):
+    init_command = commands.add_parser(
+        "init",
+        help="Create editable JSON from the bundled examples",
+        description=(
+            "Create an editable JSON inventory from the bundled provider and model "
+            "examples. Existing JSON is never replaced; delete it first when "
+            "restoring the bundled examples."
+        ),
+    )
+    generate_command = commands.add_parser(
+        "generate",
+        help="Generate a typed Python catalogue from editable JSON",
+        description=(
+            "Validate the editable JSON and generate an importable Python module. "
+            "Only an existing RoboZ-generated module may be replaced."
+        ),
+    )
+    for command in (init_command, generate_command):
         command.add_argument(
             "--path",
             type=Path,
             help="Editable JSON path (default: model_catalogue inside project package)",
         )
-    export_command.add_argument(
-        "--from-module",
+    generate_command.add_argument(
+        "--output",
         type=Path,
-        help="Read a generated snapshot instead of bundled models",
+        help="Generated .py module (default: providers.py beside JSON)",
     )
-    for command in (import_command, reset_command):
-        command.add_argument(
-            "--output",
-            type=Path,
-            help="Generated .py module (default: providers.py beside JSON)",
-        )
-    for command in (export_command, import_command):
-        command.add_argument(
-            "--force", action="store_true", help="Replace an existing output"
-        )
     return parser
 
 
 def _dispatch(args: argparse.Namespace) -> int:
     path = args.path or _default_inventory_path()
-    if args.command == "export":
-        if args.path is None:
-            _prepare_default_package(path)
-        return _export(path, from_module=args.from_module, force=args.force)
-    output = _module_output(path, args.output)
-    if args.command == "reset":
-        return _reset(_output_path(path), output)
-    return _import(path, output, force=args.force)
+    if args.command == "init":
+        return _init(path, prepare_package=args.path is None)
+    return _generate(path, _module_output(path, args.output))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
