@@ -96,6 +96,20 @@ regenerating. `generate` replaces only a module carrying its generated-file
 marker. Restart a running application after generation to import the new
 snapshot.
 
+## Restore the bundled examples
+
+To discard project customizations and start again from the examples in the
+installed RoboZ version:
+
+1. Delete the catalogue's `models.json`.
+2. Run `inventory init` to recreate it.
+3. Run `inventory generate` to refresh the generated Python module.
+
+`init` never overwrites JSON. `generate` replaces an existing Python file only
+when it carries the RoboZ generated-file marker.
+
+Run `python -m roboz.endpoints inventory <command> --help` for command options.
+
 ## API keys in `.env`
 
 Keep using an ordinary `.env` file with entries such as
@@ -142,16 +156,3 @@ API keys remain available in the application's process environment. Consuming
 a password removes only this process's environment entry; it cannot erase a
 parent-shell copy or guarantee memory wiping.
 
-## Restore the bundled examples
-
-To discard project customizations and start again from the examples in the
-installed RoboZ version:
-
-1. Delete the catalogue's `models.json`.
-2. Run `inventory init` to recreate it.
-3. Run `inventory generate` to refresh the generated Python module.
-
-`init` never overwrites JSON. `generate` replaces an existing Python file only
-when it carries the RoboZ generated-file marker.
-
-Run `python -m roboz.endpoints inventory <command> --help` for command options.
