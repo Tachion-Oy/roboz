@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2a2 - 2026-09-23
+
 - Breaking: rename the RoboSprawl Shed deployment recipe and orientation skill
   to Robozium. Import `robozium` from `roboz.shed.deployments.robozium` and
   `roboz.shed.skills.robozium`; the old `robosprawl` names are removed.
