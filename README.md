@@ -229,7 +229,7 @@ python -m roboz.examples.simple
 `roboz.shed` provides reusable components built on the core primitives. Use an
 individual guarded file or email tool, add a capability to a
 `DeployableAgent`, start from the orchestrator and Librarian definitions, or use
-the RoboSprawl recipe to assemble a persistent project agent. Applications own
+the Robozium recipe to assemble a persistent project agent. Applications own
 the model endpoints, event sinks, lifecycle, and filesystem layout.
 
 - `roboz.shed.agents` contains the orchestrator and Librarian definitions.

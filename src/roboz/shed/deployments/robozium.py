@@ -1,4 +1,4 @@
-"""RoboSprawl's persistent orchestrator and Librarian agent recipe."""
+"""Robozium's persistent orchestrator and Librarian agent recipe."""
 
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -11,7 +11,7 @@ from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute
 from roboz.runtime import EventSink, default_event_sinks
 
 
-def robosprawl(
+def robozium(
     sandbox: Sandbox,
     /,
     *,
@@ -72,4 +72,4 @@ def robosprawl(
     return root.build(event_sinks=caller_sinks, event_sink_factory=sinks)
 
 
-__all__ = ["robosprawl"]
+__all__ = ["robozium"]

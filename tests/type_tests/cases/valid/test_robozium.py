@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import assert_type
 
-from roboz.shed.deployments.robosprawl import robosprawl
+from roboz.shed.deployments.robozium import robozium
 from roboz.shed.sandbox import Sandbox
 from roboz import Agent
 from roboz.llm import EndpointLike, LLMEndpoint
@@ -14,7 +14,7 @@ def configure(
     memory: EndpointLike,
     sink: EventSink,
 ) -> None:
-    agents = robosprawl(
+    agents = robozium(
         sandbox,
         endpoint_getter=getter,
         memory_endpoint=memory,

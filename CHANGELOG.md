@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: rename the RoboSprawl Shed deployment recipe and orientation skill
+  to Robozium. Import `robozium` from `roboz.shed.deployments.robozium` and
+  `roboz.shed.skills.robozium`; the old `robosprawl` names are removed.
+
 ## 0.1.2a1 - 2026-09-23
 
 - Add password-encrypted `.env.encrypt` output beside an untouched `.env`,

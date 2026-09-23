@@ -1,7 +1,4 @@
-"""RoboSprawl orientation and HUD output, following PeffaHub and Robozium.
-
-The original HUD guidance is retained with sandbox-relative path derivation.
-"""
+"""Robozium orientation and HUD output for project agents."""
 
 # MIT License
 #
@@ -27,12 +24,12 @@ The original HUD guidance is retained with sandbox-relative path derivation.
 
 from roboz.skill import Skill
 
-from roboz.shed.identifiers import ROBOSPRAWL_SKILL_NAME
+from roboz.shed.identifiers import ROBOZIUM_SKILL_NAME
 
-robosprawl = Skill(
-    name=ROBOSPRAWL_SKILL_NAME,
-    description="RoboSprawl orientation, project permissions, Librarian memory, and HUD output.",
-    instructions="""## RoboSprawl orientation
+robozium = Skill(
+    name=ROBOZIUM_SKILL_NAME,
+    description="Robozium orientation, project permissions, Librarian memory, and HUD output.",
+    instructions="""## Robozium orientation
 
 The host selects models, capabilities, sandbox layout, and project persistence
 folders. Roboz and Roboshed supply reusable agent, tool, skill, and deployment
