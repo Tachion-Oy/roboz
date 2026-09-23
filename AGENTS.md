@@ -10,8 +10,8 @@ Read and follow the documents relevant to the task before editing:
   and runtime versus typing tests. Read when changing behavior or tests.
 - [README.md](README.md): core concepts, Shed and Endpoints usage, runnable
   examples, and the module map.
-- [Endpoint catalogue guide](docs/catalogues.md): project
-  catalogue layout, inventory commands, custom locations, reset, and recovery.
+- [Endpoint catalogue guide](src/roboz/endpoints/README.md): project
+  catalogue layout, inventory commands, custom locations, and recovery.
 - [Verification workflow](.github/workflows/verify.yml): full CI commands,
   packaging checks, and supported test environments. Consult for changes to
   dependencies, packaging, or CI.
