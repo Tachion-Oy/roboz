@@ -14,7 +14,7 @@ FORBIDDEN_IMPORT_SEGMENTS = {
     "firecrawl",
     "groq",
     "openai",
-    "robosprawl",
+    "robozium",
     "fastapi",
     "roboz_proton_bridge",
 }

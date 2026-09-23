@@ -2,6 +2,8 @@ from types import SimpleNamespace
 import importlib
 
 from roboz.shed.sandbox import Sandbox
+from roboz.shed.deployments import robozium as exported_robozium
+from roboz.shed.skills import robozium as robozium_skill
 import pytest
 
 from roboz.models import Empty
@@ -10,7 +12,12 @@ from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
-recipe_module = importlib.import_module("roboz.shed.deployments.robosprawl")
+recipe_module = importlib.import_module("roboz.shed.deployments.robozium")
+
+
+def test_public_robozium_exports_and_skill_name():
+    assert exported_robozium is recipe_module.robozium
+    assert robozium_skill.name == "robozium"
 
 
 def _specialist(name, *, subagents=(), background_agents=()):
@@ -61,7 +68,7 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
     events = []
 
     def build():
-        return recipe_module.robosprawl(
+        return recipe_module.robozium(
             sandbox,
             endpoint_getter=lambda: selected,
             memory_endpoint=MockLLMEndpoint([]),
@@ -108,7 +115,7 @@ def _endpoint(name):
 
 
 def _build_recipe(sandbox, **choices):
-    return recipe_module.robosprawl(
+    return recipe_module.robozium(
         sandbox,
         endpoint_getter=choices.pop("endpoint_getter", lambda: _endpoint("selected")),
         memory_endpoint=choices.pop("memory_endpoint", _endpoint("memory")),

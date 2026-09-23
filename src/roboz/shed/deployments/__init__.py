@@ -1,5 +1,5 @@
 """Fixed agent recipes assembled from Shed capabilities."""
 
-from .robosprawl import robosprawl
+from .robozium import robozium
 
-__all__ = ["robosprawl"]
+__all__ = ["robozium"]
