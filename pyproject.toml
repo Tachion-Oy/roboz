@@ -37,7 +37,6 @@ packages = ["src/roboz"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/src/roboz",
-    "/docs/catalogues.md",
     "/README.md",
     "/CHANGELOG.md",
     "/LICENSE",

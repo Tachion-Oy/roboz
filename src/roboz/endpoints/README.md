@@ -44,6 +44,10 @@ src/my_app/model_catalogue/
 └── providers.py      # generated; do not edit
 ```
 
+The default location follows the package layout: `src/my_app/` or `my_app/`.
+If neither package exists, the CLI uses `model_catalogue/` in the project root.
+Use `--path` if automatic detection chooses the wrong location.
+
 Add providers and models to `models.json`, then run `generate` again. The
 generated module contains explicit type declarations for every provider and
 model, giving Pylance the same autocomplete and concrete endpoint types as the
@@ -76,7 +80,21 @@ endpoint = my_service.my_chat_model
 Provider and model keys become Python attributes and must be valid public
 Python identifiers. Chat models are typed as `LLMEndpoint`; transcription
 models are typed as `TranscriptionEndpoint`. Regenerate after every JSON change
-so runtime behavior and editor completion stay in sync.
+so runtime behavior and editor completion stay in sync. Chat models require
+`max_context_tokens`; transcription models do not accept it.
+
+Use `--path` to choose another JSON location. `generate` creates `providers.py`
+beside that file unless `--output` selects another module:
+
+```bash
+uv run python -m roboz.endpoints inventory init --path src/my_app/endpoints/models.json
+uv run python -m roboz.endpoints inventory generate --path src/my_app/endpoints/models.json
+```
+
+Create the parent Python package first, then reuse the same paths when
+regenerating. `generate` replaces only a module carrying its generated-file
+marker. Restart a running application after generation to import the new
+snapshot.
 
 ## API keys in `.env`
 
@@ -136,5 +154,4 @@ installed RoboZ version:
 `init` never overwrites JSON. `generate` replaces an existing Python file only
 when it carries the RoboZ generated-file marker.
 
-See the [project catalogue guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/catalogues.md)
-for the complete schema, custom paths, and command options.
+Run `python -m roboz.endpoints inventory <command> --help` for command options.
