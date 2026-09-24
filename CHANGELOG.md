@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an `Email` capability for configured email services, including Proton
+  Bridge. Compose it with `SafeScripts` through Robozium's additional capabilities.
 - Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
   tool discovers protected `.sh` entrypoints and runs them with bounded output,
   deadlines, cancellation, and script output events.
