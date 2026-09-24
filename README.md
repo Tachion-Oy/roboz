@@ -243,11 +243,15 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
-The concrete `ProtonBridgeEmailService` lives in
-`roboz.shed.tools.email.proton_bridge`. Configure it with explicit IMAP settings
-and decrypted `*_SECRET` credentials, then pass it to
-`get_work_with_email(service=..., ...)`. See the [Proton Bridge guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/proton-bridge.md)
-for TLS trust, a complete example, and a live smoke test.
+`roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
+and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
+credentials, decrypted before construction. For a self-signed Bridge certificate,
+configure `certificate_sha256` or a trusted `ca_file`. Pass the service to
+`get_work_with_email(service=..., ...)`.
+
+For Robozium, pass `Email(service)` and `SafeScripts(scripts_dir=...)` from
+`roboz.shed.capabilities` through `additional_capabilities`. Keep the trusted
+script directory outside agent-writable paths.
 
 ## Endpoints and model catalogues
 
