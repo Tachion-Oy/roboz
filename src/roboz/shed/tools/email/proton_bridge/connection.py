@@ -8,7 +8,8 @@ from datetime import date, datetime
 from email import policy
 from email.message import Message
 from email.parser import BytesParser
-from typing import Protocol, cast
+from types import TracebackType
+from typing import Protocol, Self, cast
 
 # IMAPClient has no published stubs; its used API is typed at this boundary.
 from imapclient import IMAPClient  # pyright: ignore[reportMissingTypeStubs]
@@ -24,8 +25,13 @@ class _Client(Protocol):
     normalise_times: bool
 
     def login(self, username: str, password: str) -> object: ...
-    def logout(self) -> object: ...
-    def shutdown(self) -> None: ...
+    def __enter__(self) -> Self: ...
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
     def socket(self) -> ssl.SSLSocket: ...
     def list_folders(self) -> list[tuple[tuple[bytes, ...], bytes, str]]: ...
     def select_folder(
@@ -87,20 +93,9 @@ def open_session(
     try:
         if is_cancelled():
             raise EmailProviderError("email operation was cancelled")
-        client = factory(settings, context)
-        try:
+        with factory(settings, context) as client:
             client.normalise_times = False  # Keep timezone-aware INTERNALDATE values.
-            if settings.certificate_sha256:
-                # Read certificate metadata only; never read/write IMAP bytes via the socket.
-                certificate = client.socket().getpeercert(binary_form=True)
-                if (
-                    not certificate
-                    or hashlib.sha256(certificate).hexdigest()
-                    != settings.certificate_sha256
-                ):
-                    raise EmailProviderError(
-                        "Proton Mail Bridge certificate fingerprint did not match"
-                    )
+            _verify_certificate(client, settings.certificate_sha256)
             session = Session(client, is_cancelled)
             session.check()
             client.login(
@@ -108,16 +103,6 @@ def open_session(
                 settings.password.get_secret_value(),
             )
             yield session
-        finally:
-            try:
-                client.logout()
-            except (IMAPClient.Error, OSError):
-                try:
-                    client.shutdown()
-                except (IMAPClient.Error, OSError):
-                    pass
-    except EmailProviderError:
-        raise
     except IMAPClient.Error as exc:
         raise EmailProviderError(
             "Proton Mail Bridge rejected the IMAP operation"
@@ -126,6 +111,17 @@ def open_session(
         raise EmailProviderError(
             "Unable to communicate with Proton Mail Bridge"
         ) from exc
+
+
+def _verify_certificate(client: _Client, fingerprint: str | None) -> None:
+    if fingerprint is None:
+        return
+    # Read certificate metadata only; never read/write IMAP bytes via the socket.
+    certificate = client.socket().getpeercert(binary_form=True)
+    if not certificate or hashlib.sha256(certificate).hexdigest() != fingerprint:
+        raise EmailProviderError(
+            "Proton Mail Bridge certificate fingerprint did not match"
+        )
 
 
 class Session:

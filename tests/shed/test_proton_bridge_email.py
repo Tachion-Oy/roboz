@@ -7,6 +7,7 @@ from imaplib import IMAP4
 from threading import Event
 
 import pytest
+from imapclient import IMAPClient
 from pydantic import ValidationError
 
 from roboz.exceptions import ExternalCallCancelledError, ExternalCallTimeoutError
@@ -38,7 +39,7 @@ def active():
     return False
 
 
-class FakeClient:
+class FakeClient(IMAPClient):
     def __init__(self):
         self.normalise_times = True
         self.folders = [
