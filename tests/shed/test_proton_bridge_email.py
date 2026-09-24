@@ -1,1295 +1,565 @@
-from __future__ import annotations
-
-import imaplib
-import importlib
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from pathlib import Path
+from imaplib import IMAP4
+from threading import Event
 
 import pytest
+from pydantic import ValidationError
 
-from roboz.shed.identifiers import (
-    CREATE_EMAIL_DRAFT_TOOL_NAME,
-    CREATE_REPLY_DRAFT_TOOL_NAME,
-    DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
-    READ_EMAIL_TOOL_NAME,
-    SEARCH_EMAIL_TOOL_NAME,
-)
+from roboz.exceptions import ExternalCallCancelledError, ExternalCallTimeoutError
+from roboz.runtime.pipe import EventPipe
 from roboz.shed.models import ActionVerdict
-from roboz.shed.tools.email import (
+from roboz.shed.tools.contexts import EmailContext
+from roboz.shed.tools.email import get_work_with_email
+from roboz.shed.tools.email.contracts import (
     EmailDraftAttachment,
     EmailDraftRequest,
-    EmailInlineImage,
     EmailMailbox,
     EmailProviderError,
     EmailReplyDraftRequest,
     EmailSearchRequest,
     EmailSignature,
+    EmailInlineImage,
 )
-from roboz.shed.tools.email.factory import get_work_with_email
 from roboz.shed.tools.email.proton_bridge import (
     ProtonBridgeEmailService,
     ProtonBridgeSettings,
-    ProtonBridgeTlsMode,
 )
-from roboz.shed.tools.email.proton_bridge.message_body import extract_message_body
-from roboz.shed.tools.email.proton_bridge.mime import (
-    build_draft_message,
-    build_reply_draft_message,
-)
-from roboz.shed.tools.email.proton_bridge.models import ReplySourceHeaders
+from roboz.shed.tools.email.proton_bridge.references import encode_source_reference
+from roboz.shed.tools.email.runtime import run_email_call
 
-search_module = importlib.import_module("roboz.shed.tools.email.proton_bridge.search")
+NOW = datetime(2026, 7, 24, 8, 20, 30, tzinfo=timezone.utc)
 
 
-class _FakeImap:
-    def __init__(self) -> None:
-        self.logged_out = False
-        self.append_calls: list[tuple[str, str, object, bytes]] = []
-        self.existing_uids: bytes = b""
-        self.search_uids: bytes = b""
-        self.search_calls: list[tuple[object, ...]] = []
-        self.fetch_calls: list[tuple[object, ...]] = []
-        self.selected: list[tuple[str, bool]] = []
-        self.uid_validity = 77
-        self.fetched_headers: dict[bytes, bytes] = {}
-        self.fetched_messages: dict[bytes, bytes] = {}
-        self.internal_dates: dict[bytes, bytes | None] = {}
-        self.seen_uids: set[bytes] = set()
-        self.store_calls: list[tuple[object, ...]] = []
+def active():
+    return False
 
-    def login(self, user: str, password: str) -> tuple[str, list[bytes]]:
-        assert (user, password) == ("bridge-user", "bridge-password")
-        return "OK", [b"logged in"]
 
-    def list(
-        self, directory: str = '""', pattern: str = "*"
-    ) -> tuple[str, list[bytes | None]]:
-        del directory, pattern
-        return "OK", [
-            b'(\\HasNoChildren \\Drafts) "/" "Drafts"',
-            b'(\\HasNoChildren \\Sent) "/" "Sent"',
+class FakeClient:
+    def __init__(self):
+        self.normalise_times = True
+        self.folders = [
+            ((b"\\Drafts",), b"/", "My Drafts"),
+            ((b"\\Sent",), b"/", "Sent"),
         ]
+        self.messages = {42: source_message()}
+        self.dates = {42: NOW}
+        self.seen = set()
+        self.uids = [42]
+        self.validity = 77
+        self.selected = []
+        self.appended = []
+        self.fetches = []
+        self.searches = []
+        self.closed = False
+        self.login_error = self.logout_error = self.fetch_error = self.append_error = (
+            None
+        )
+        self.after_search = self.after_fetch = lambda: None
+        self.append_response = b"[APPENDUID 77 99] done"
 
-    def append(
-        self, mailbox: str, flags: str, date_time: object, message: bytes
-    ) -> tuple[str, list[bytes]]:
-        self.append_calls.append((mailbox, flags, date_time, message))
-        return "OK", [b"[APPENDUID 9 42]"]
+    def login(self, username, password):
+        assert (username, password) == ("bridge-user", "bridge-password")
+        if self.login_error:
+            raise self.login_error
 
-    def select(self, mailbox: str, readonly: bool = False) -> tuple[str, list[bytes]]:
-        self.selected.append((mailbox, readonly))
-        return "OK", [b"1"]
+    def logout(self):
+        if self.logout_error:
+            raise self.logout_error
+        self.closed = True
 
-    def uid(self, command: str, *args: object) -> tuple[str, list[bytes]]:
-        if command == "SEARCH":
-            if args[:3] == (None, "HEADER", "X-Roboz-Request-Id"):
-                return "OK", [self.existing_uids]
-            self.search_calls.append(args)
-            return "OK", [self.search_uids]
-        if command == "FETCH":
-            self.fetch_calls.append(args)
-            uid = args[0]
-            assert isinstance(uid, bytes)
-            query = str(args[1])
-            if query in {"(UID INTERNALDATE)", "(UID INTERNALDATE FLAGS)"}:
-                response: list[bytes] = []
-                for index, candidate in enumerate(uid.split(b","), start=1):
-                    received_at = self.internal_dates.get(
-                        candidate, b"24-Jul-2026 11:20:30 +0300"
-                    )
-                    if received_at is not None:
-                        response.append(
-                            str(index).encode("ascii")
-                            + b" (UID "
-                            + candidate
-                            + b' INTERNALDATE "'
-                            + received_at
-                            + b'")'
-                            + (
-                                b" FLAGS (\\Seen)"
-                                if candidate in self.seen_uids
-                                else b" FLAGS ()"
-                            )
-                        )
-                return "OK", response
-            payload = (
-                self.fetched_messages.get(uid)
-                if "BODY.PEEK[]" in query
-                else self.fetched_headers.get(uid)
-            )
-            if payload is None:
-                return "OK", [b")"]
-            received_at = self.internal_dates.get(uid, b"24-Jul-2026 11:20:30 +0300")
-            assert received_at is not None
-            metadata = (
-                b"1 (UID "
-                + uid
-                + b' INTERNALDATE "'
-                + received_at
-                + b'" '
-                + b"BODY[] {"
-                + str(len(payload)).encode("ascii")
-                + b"}"
-            )
-            return "OK", [(metadata, payload), b")"]  # type: ignore[list-item]
-        if command == "STORE":
-            self.store_calls.append(args)
-            uid = args[0]
-            assert isinstance(uid, bytes)
-            self.seen_uids.add(uid)
-            return "OK", [b"stored"]
-        raise AssertionError(f"unexpected UID command: {command}")
+    def shutdown(self):
+        self.closed = True
 
-    def response(self, code: str) -> tuple[str, list[bytes]]:
-        assert code == "UIDVALIDITY"
-        return code, [str(self.uid_validity).encode("ascii")]
+    def list_folders(self):
+        return self.folders
 
-    def logout(self) -> tuple[str, list[bytes]]:
-        self.logged_out = True
-        return "BYE", [b"logout"]
+    def select_folder(self, folder, readonly=False):
+        self.selected.append((folder, readonly))
+        return {b"UIDVALIDITY": self.validity}
 
-    def starttls(self, ssl_context: object) -> tuple[str, list[bytes]]:
-        del ssl_context
-        return "OK", [b"TLS"]
+    def search(self, criteria, charset):
+        self.searches.append((criteria, charset))
+        self.after_search()
+        if criteria[0] == "HEADER":
+            return [
+                uid
+                for uid, raw in self.messages.items()
+                if criteria[-1].lower().encode() in raw.lower()
+            ]
+        return self.uids
+
+    def fetch(self, messages, data):
+        self.fetches.append((tuple(messages), tuple(data)))
+        if self.fetch_error:
+            raise self.fetch_error
+        result = {}
+        for uid in messages:
+            if uid not in self.messages:
+                continue
+            values = {
+                b"INTERNALDATE": self.dates.get(uid),
+                b"FLAGS": (b"\\Seen",) if uid in self.seen else (),
+            }
+            for field in data:
+                if field.startswith("BODY.PEEK["):
+                    raw = self.messages[uid]
+                    if "[HEADER]" in field:
+                        raw = raw.split(b"\r\n\r\n")[0] + b"\r\n\r\n"
+                    limit = int(field.rsplit(".", 1)[1][:-1])
+                    key = field.replace("BODY.PEEK", "BODY").split("<")[0] + "<0>"
+                    values[key.encode()] = raw[:limit]
+            result[uid] = values
+        self.after_fetch()
+        return result
+
+    def append(self, folder, msg, flags):
+        self.appended.append((folder, msg, flags))
+        if self.append_error:
+            raise self.append_error
+        return self.append_response
+
+    def add_flags(self, messages, flags, silent):
+        assert flags == [b"\\Seen"] and silent
+        self.seen.update(messages)
 
 
-def _service(
-    connection: _FakeImap,
-    *,
-    signature: EmailSignature | None = None,
-) -> ProtonBridgeEmailService:
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
+def settings(**overrides):
+    return ProtonBridgeSettings.model_validate(
+        dict(
+            imap_host="127.0.0.1",
+            imap_port=1143,
+            tls_mode="starttls",
+            account_address="me@example.com",
+            username="bridge-user",
+            password="bridge-password",
+            **overrides,
+        )
     )
+
+
+@pytest.fixture
+def client():
+    return FakeClient()
+
+
+def service(client, signature=None):
     return ProtonBridgeEmailService(
-        settings,
-        signature=signature or _signature(),
-        imap_factory=lambda settings, context: connection,
+        settings(), signature=signature, client_factory=lambda settings, context: client
     )
 
 
-def _signature(*, warnings: tuple[str, ...] = ()) -> EmailSignature:
+def draft(**overrides):
+    return replace(
+        EmailDraftRequest(
+            to=("person@example.com",),
+            cc=("copy@example.com",),
+            bcc=("hidden@example.com",),
+            subject="Draft subject",
+            body_text="Draft body",
+            from_address=None,
+            reply_to="reply@example.com",
+            client_request_id="request-1",
+        ),
+        **overrides,
+    )
+
+
+def reference(mailbox="INBOX", uid=42):
+    return encode_source_reference(mailbox, 77, uid)
+
+
+def reply(**overrides):
+    return replace(
+        EmailReplyDraftRequest(reference(), "Reply <safe> & sound", None, None),
+        **overrides,
+    )
+
+
+def source_message(
+    *, body="Original first line.\nSecond line.", html=False, attachment=False
+):
+    message = EmailMessage()
+    for key, value in {
+        "From": "Alice <alice@example.com>",
+        "Reply-To": "reply@example.com",
+        "To": "me@example.com, bob@example.com",
+        "Cc": "carol@example.com, BOB@example.com",
+        "Bcc": "hidden@example.com",
+        "Subject": "Project update",
+        "Message-ID": "<parent@example.com>",
+        "References": "<root@example.com>",
+        "Date": "Fri, 24 Jul 2026 11:20:30 +0300",
+    }.items():
+        message[key] = value
+    message.set_content(body, subtype="html" if html else "plain")
+    if attachment:
+        message.add_attachment(
+            b"payload",
+            maintype="application",
+            subtype="octet-stream",
+            filename="file.bin",
+        )
+    return message.as_bytes(policy=policy.SMTP)
+
+
+def signature():
     return EmailSignature(
-        plain_text="Jane Example\nCTO\nExample Co",
-        html=(
-            "<strong>Jane Example</strong><br>CTO<br>"
-            '<img src="cid:roboz-signature-image" alt="Example Co">'
-        ),
-        inline_image=EmailInlineImage(
-            data=b"signature image",
-            filename="example-wordmark.png",
-            content_type="image/png",
-            content_id="roboz-signature-image",
-        ),
-        warnings=warnings,
+        "Jane Example",
+        '<b>Jane Example</b><img src="cid:logo">',
+        EmailInlineImage(b"image", "logo.png", "image/png", "logo"),
+        ("Signature notice",),
     )
 
 
-def _request(
-    *, attachments: tuple[EmailDraftAttachment, ...] = ()
-) -> EmailDraftRequest:
-    return EmailDraftRequest(
-        to=("person@example.com",),
-        cc=("copy@example.com",),
-        bcc=("hidden@example.com",),
-        subject="Draft subject",
-        body_text="Draft body",
-        from_address=None,
-        reply_to=None,
-        client_request_id="request-1",
-        attachments=attachments,
+def parsed_draft(client):
+    return BytesParser(policy=policy.default).parsebytes(client.appended[-1][1])
+
+
+def test_settings_require_explicit_decrypted_credentials(monkeypatch):
+    monkeypatch.setenv("PROTON_BRIDGE_PASSWORD_SECRET", "unused")
+    configured = settings(certificate_sha256="a2:" * 31 + "a2")
+    assert configured.password.get_secret_value() == "bridge-password"
+    assert configured.certificate_sha256 == "a2" * 32
+    assert all(
+        value not in repr(configured) for value in ("bridge-user", "bridge-password")
     )
+    for values in (
+        configured.model_dump(exclude={"password"}),
+        configured.model_dump() | {"password": "roboz:v1:opaque"},
+    ):
+        with pytest.raises(ValidationError) as error:
+            ProtonBridgeSettings.model_validate(values)
+        assert "roboz:v1:opaque" not in str(error.value)
 
 
-def test_proton_bridge_requires_explicit_decrypted_settings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from pydantic import ValidationError
-
-    monkeypatch.setenv("PROTON_BRIDGE_PASSWORD_SECRET", "environment-secret")
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-        certificate_sha256="a2:" * 31 + "a2",
+@pytest.mark.parametrize("signed", [False, True])
+def test_draft_headers_signature_and_attachments(client, tmp_path, signed):
+    path = tmp_path / "notes.txt"
+    path.write_text("attached notes")
+    result = service(client, signature() if signed else None).create_draft(
+        draft(attachments=(EmailDraftAttachment(str(path), path.name),)),
+        is_cancelled=active,
     )
-    assert settings.password.get_secret_value() == "bridge-password"
-    assert settings.username.get_secret_value() == "bridge-user"
-    assert settings.certificate_sha256 == "a2" * 32
-    assert "bridge-password" not in repr(settings)
-    assert "bridge-user" not in repr(settings)
-
-    with pytest.raises(ValidationError, match="decrypt the credential") as error:
-        ProtonBridgeSettings.model_validate(
-            {**settings.model_dump(), "password": "roboz:v1:opaque"}
-        )
-    assert "roboz:v1:opaque" not in str(error.value)
-    with pytest.raises(ValidationError, match="password"):
-        ProtonBridgeSettings.model_validate(
-            settings.model_dump(exclude={"password"})
-        )
-
-
-def test_proton_bridge_provider_creates_a_complete_sender_side_draft() -> None:
-    connection = _FakeImap()
-
-    result = _service(connection).create_draft(_request(), is_cancelled=lambda: False)
-
-    assert result.draft_id == "imap-uid:42"
-    assert result.account_address == "me@example.com"
-    assert connection.logged_out
-    mailbox, flags, _, raw_message = connection.append_calls[0]
-    assert mailbox == "Drafts"
-    assert flags == r"(\Draft)"
-    message = raw_message.decode("utf-8")
-    assert "To: person@example.com" in message
-    assert "Cc: copy@example.com" in message
-    assert "Bcc: hidden@example.com" in message
-    assert "X-Roboz-Request-Id: request-1" in message
-
-
-def test_proton_bridge_embeds_signature_in_plain_and_html_draft() -> None:
-    connection = _FakeImap()
-
-    _service(connection).create_draft(_request(), is_cancelled=lambda: False)
-
-    message = BytesParser(policy=policy.default).parsebytes(
-        connection.append_calls[0][3]
+    message = parsed_draft(client)
+    assert (
+        result.draft_id == "imap-uid:99" and result.account_address == "me@example.com"
     )
-    plain_body = message.get_body(preferencelist=("plain",))
-    html_body = message.get_body(preferencelist=("html",))
-    assert plain_body is not None
-    assert plain_body.get_content() == ("Draft body\n\nJane Example\nCTO\nExample Co\n")
-    assert html_body is not None
-    html = html_body.get_content()
-    assert "Draft body" in html
-    assert "Jane Example" in html
-    assert 'src="cid:roboz-signature-image"' in html
-    (image,) = [part for part in message.walk() if part["Content-ID"] is not None]
-    assert image.get_content_type() == "image/png"
-    assert image["Content-ID"] == "<roboz-signature-image>"
-    assert image.get_content_disposition() == "inline"
-    assert image.get_filename() == "example-wordmark.png"
-    assert image.get_payload(decode=True) == b"signature image"
-
-
-def test_proton_bridge_creates_unsigned_draft_when_signature_is_absent() -> None:
-    connection = _FakeImap()
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-    )
-    service = ProtonBridgeEmailService(
-        settings, imap_factory=lambda settings, context: connection
-    )
-
-    result = service.create_draft(_request(), is_cancelled=lambda: False)
-
-    assert result.warnings == ()
-    message = BytesParser(policy=policy.default).parsebytes(connection.append_calls[0][3])
-    assert message.get_body(preferencelist=("plain",)).get_content().strip() == "Draft body"
-
-
-def test_proton_bridge_reports_signature_fallback_warning() -> None:
-    connection = _FakeImap()
-    warning = "Rich signature unavailable; used text fallback."
-
-    result = _service(
-        connection,
-        signature=_signature(warnings=(warning,)),
-    ).create_draft(_request(), is_cancelled=lambda: False)
-
-    assert result.warnings == (warning,)
-
-
-def test_proton_bridge_probe_is_read_only() -> None:
-    connection = _FakeImap()
-
-    result = _service(connection).probe()
-
-    assert result["drafts_mailbox"] == "Drafts"
-    assert connection.append_calls == []
-    assert connection.logged_out
-
-
-def test_proton_bridge_bundle_owns_the_final_tool_dependency(tmp_path: Path) -> None:
-    connection = _FakeImap()
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-    )
-    service = ProtonBridgeEmailService(
-        settings,
-        imap_factory=lambda settings, context: connection,
-    )
-    tools = get_work_with_email(
-        service=service,
-        base=tmp_path,
-        default_verdict=ActionVerdict.allow,
-        email_skill_name="email_tools",
-    )
-
-    dependencies = {
-        dependency.dependency_id
-        for tool in tools
-        for dependency in tool.external_dependencies()
-    }
-    assert dependencies == {"network:proton_bridge"}
-    assert {tool.name for tool in tools if tool.chained_to is None} == {
-        CREATE_EMAIL_DRAFT_TOOL_NAME,
-        SEARCH_EMAIL_TOOL_NAME,
-        READ_EMAIL_TOOL_NAME,
-        DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
-        CREATE_REPLY_DRAFT_TOOL_NAME,
-    }
-    assert connection.append_calls == []
-
-
-def test_proton_bridge_reuses_draft_with_same_request_id() -> None:
-    connection = _FakeImap()
-    connection.existing_uids = b"12 27"
-
-    result = _service(connection).create_draft(_request(), is_cancelled=lambda: False)
-
-    assert result.draft_id == "imap-uid:27"
-    assert connection.append_calls == []
-    assert "existing draft" in result.warnings[0]
-
-
-def _source_headers(*, message_id: str = "<parent-42@example.com>") -> bytes:
-    return (
-        b'From: "Alice Example" <alice@example.com>\r\n'
-        b'Reply-To: "Alice Replies" <reply@example.com>\r\n'
-        b"To: me@example.com\r\n"
-        b"Date: Fri, 24 Jul 2026 11:20:30 +0300\r\n"
-        b"Subject: Project update\r\n"
-        + f"Message-ID: {message_id}\r\n".encode("ascii")
-        + b"References: <root@example.com>\r\n"
-        + b"\r\n"
-    )
-
-
-def _source_message(*, message_id: str = "<parent-42@example.com>") -> bytes:
-    return (
-        _source_headers(message_id=message_id)
-        + b"Original message first line.\r\n"
-        + b"Original message second line.\r\n"
-    )
-
-
-def test_proton_bridge_searches_inbox_without_marking_messages_read() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"41 42"
-    connection.fetched_headers = {
-        b"41": _source_headers(message_id="<parent-41@example.com>"),
-        b"42": _source_headers(),
-    }
-
-    results = _service(connection).search_messages(
-        EmailSearchRequest(
-            from_address="alice@example.com",
-            subject_contains="Project",
-            limit=1,
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert len(results) == 1
-    assert results[0].sender == "Alice Example <alice@example.com>"
-    assert results[0].subject == "Project update"
-    assert results[0].replyable
-    assert results[0].timestamp is not None
-    assert connection.selected[0] == ("INBOX", True)
-    assert connection.search_calls == [
-        (
-            "CHARSET",
-            "UTF-8",
-            "FROM",
-            b'"alice@example.com"',
-            "SUBJECT",
-            b'"Project"',
-        )
+    assert result.warnings == (("Signature notice",) if signed else ())
+    assert client.appended[0][0] == "My Drafts" and client.appended[0][2] == [
+        b"\\Draft"
     ]
-    assert connection.fetch_calls[0] == (b"41,42", "(UID INTERNALDATE FLAGS)")
-    assert connection.fetch_calls[1][0] == b"42"
-    assert "BODY.PEEK[HEADER.FIELDS" in str(connection.fetch_calls[1][1])
-    assert connection.append_calls == []
+    for header, value in {
+        "From": "me@example.com",
+        "To": "person@example.com",
+        "Cc": "copy@example.com",
+        "Bcc": "hidden@example.com",
+        "Reply-To": "reply@example.com",
+        "X-Roboz-Request-Id": "request-1",
+    }.items():
+        assert message[header] == value
+    assert "Draft body" in message.get_body(("plain",)).get_content()
+    assert ("Jane Example" in message.get_body(("plain",)).get_content()) is signed
+    assert (message.get_body(("html",)) is not None) is signed
+    if signed:
+        assert any(part["Content-ID"] == "<logo>" for part in message.walk())
+    attached = list(message.iter_attachments())
+    assert attached[-1].get_payload(decode=True) == b"attached notes"
+    assert client.closed
+
+
+def test_unreadable_attachment_never_appends(client, tmp_path):
+    with pytest.raises(EmailProviderError, match="Unable to read attachment"):
+        service(client).create_draft(
+            draft(
+                attachments=(
+                    EmailDraftAttachment(str(tmp_path / "missing"), "missing"),
+                )
+            ),
+            is_cancelled=active,
+        )
+    assert not client.appended and client.closed
 
 
 @pytest.mark.parametrize(
-    ("mailbox", "physical_mailbox"),
+    "existing, reused",
+    [("request-1", True), ("request-10", False), ("REQUEST-1", False)],
+)
+def test_deduplication_requires_exact_header_match(client, existing, reused):
+    client.messages[42] = f"X-Roboz-Request-Id: {existing}\r\n\r\n".encode()
+    result = service(client).create_draft(draft(), is_cancelled=active)
+    assert result.draft_id == ("imap-uid:42" if reused else "imap-uid:99")
+    assert bool(client.appended) is not reused
+
+
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_uncertain_append_outcome_is_never_retried(client, lost_response):
+    client.append_response = b"APPEND completed"
+    if lost_response:
+        client.append_error = IMAP4.abort("socket closed")
+        with pytest.raises(EmailProviderError, match="outcome is unknown"):
+            service(client).create_draft(draft(), is_cancelled=active)
+    else:
+        result = service(client).create_draft(draft(), is_cancelled=active)
+        assert "verify the Drafts folder before retrying" in result.warnings[0]
+    assert len(client.appended) == 1 and client.closed
+
+
+def test_cancellation_during_duplicate_check_prevents_append(client):
+    cancelled = Event()
+    client.after_search = cancelled.set
+    with pytest.raises(EmailProviderError, match="cancelled"):
+        service(client).create_draft(draft(), is_cancelled=cancelled.is_set)
+    assert not client.appended and client.closed
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_abandoned_call_prevents_late_worker_append(client, cancel):
+    release, done = Event(), Event()
+    pipe = EventPipe()
+
+    def block_search():
+        if cancel:
+            pipe.cancel()
+        assert release.wait(3)
+
+    client.after_search = block_search
+    provider = service(client)
+
+    def operation(is_cancelled):
+        try:
+            return provider.create_draft(draft(), is_cancelled=is_cancelled)
+        finally:
+            done.set()
+
+    try:
+        with pytest.raises(
+            ExternalCallCancelledError if cancel else ExternalCallTimeoutError
+        ):
+            run_email_call(
+                EmailContext(
+                    service=provider,
+                    timeout_s=3 if cancel else 0.05,
+                    is_cancelled=active,
+                    pipe=pipe,
+                ),
+                label="test-draft-timeout",
+                cancelled_message="cancelled",
+                operation=operation,
+            )
+    finally:
+        release.set()
+    assert done.wait(3) and not client.appended and client.closed
+
+
+@pytest.mark.parametrize("failure", ["login", "logout"])
+def test_failures_close_connection_and_hide_credentials(client, failure):
+    setattr(client, failure + "_error", IMAP4.abort("bridge-password"))
+    if failure == "login":
+        with pytest.raises(EmailProviderError) as error:
+            service(client).probe()
+        assert "bridge-password" not in str(error.value)
+    else:
+        assert service(client).probe()["drafts_mailbox"] == "My Drafts"
+    assert client.closed and not client.appended
+
+
+def test_search_orders_by_received_date_then_uid_and_bounds_preview(client):
+    client.messages = {uid: source_message(body="x" * 400) for uid in (1, 2, 99)}
+    client.dates = {1: NOW, 2: NOW, 99: NOW - timedelta(days=1)}
+    client.uids = [99, 1, 2, 100]  # A vanished message is skipped.
+    client.seen = {2}
+    results = service(client).search_messages(
+        EmailSearchRequest(subject_contains='héllo "world"', since=date(2026, 1, 1)),
+        is_cancelled=active,
+    )
+    assert [result.source_message_ref for result in results] == [
+        reference(uid=uid) for uid in (2, 1, 99)
+    ]
+    assert results[0].is_read and not results[1].is_read
+    assert all(
+        result.replyable and len(result.preview_text) == 160 for result in results
+    )
+    assert client.searches == [
+        (["SUBJECT", 'héllo "world"', "SINCE", date(2026, 1, 1)], "UTF-8")
+    ]
+    assert client.seen == {2} and client.selected == [("INBOX", True)]
+
+
+def test_search_batches_metadata_and_rejects_excessive_matches(client):
+    client.uids = list(range(1, 502))
+    service(client).search_messages(EmailSearchRequest(), is_cancelled=active)
+    batches = [
+        uids for uids, fields in client.fetches if fields == ("INTERNALDATE", "FLAGS")
+    ]
+    assert [len(batch) for batch in batches] == [500, 1]
+    client.uids = list(range(1, 10002))
+    with pytest.raises(EmailProviderError, match="Too many"):
+        service(client).search_messages(EmailSearchRequest(), is_cancelled=active)
+
+
+@pytest.mark.parametrize("failure", ["provider", "date", "headers"])
+def test_search_does_not_hide_provider_or_metadata_failures(client, failure):
+    if failure == "provider":
+        client.fetch_error = IMAP4.error("rejected")
+    elif failure == "date":
+        client.dates.clear()
+    else:
+        client.messages[42] = b"Subject: " + b"x" * 65536 + b"\r\n\r\n"
+    with pytest.raises(EmailProviderError):
+        service(client).search_messages(EmailSearchRequest(), is_cancelled=active)
+
+
+@pytest.mark.parametrize(
+    "mailbox, physical",
     [
-        (EmailMailbox.DRAFTS, "Drafts"),
+        (EmailMailbox.INBOX, "INBOX"),
+        (EmailMailbox.DRAFTS, "My Drafts"),
         (EmailMailbox.SENT, "Sent"),
     ],
 )
-def test_proton_bridge_searches_and_reads_user_authored_mailboxes_read_only(
-    mailbox: EmailMailbox,
-    physical_mailbox: str,
-) -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = (
-        b"From: me@example.com\r\n"
-        b"To: alice@example.com\r\n"
-        b"Bcc: archive@example.com\r\n"
-        b"Subject: Authored message\r\n\r\n"
+def test_reads_and_attachment_download_respect_mailbox_state(client, mailbox, physical):
+    client.messages[42] = source_message(attachment=True)
+    provider = service(client)
+    result = provider.read_message(mailbox, reference(physical), is_cancelled=active)
+    assert result.body_text == "Original first line.\nSecond line."
+    assert result.timestamp == NOW
+    assert bool(client.seen) is (mailbox is EmailMailbox.INBOX)
+    assert client.selected == [(physical, mailbox is not EmailMailbox.INBOX)]
+    attachment = provider.download_attachment(
+        result.attachments[0].attachment_ref, is_cancelled=active
     )
-    connection.fetched_messages[b"42"] = (
-        connection.fetched_headers[b"42"] + b"Safe authored body.\r\n"
-    )
-    service = _service(connection)
-
-    (summary,) = service.search_messages(
-        EmailSearchRequest(
-            mailbox=mailbox,
-            to_address="alice@example.com",
-            limit=1,
-        ),
-        is_cancelled=lambda: False,
-    )
-    message = service.read_message(
-        mailbox,
-        summary.source_message_ref,
-        is_cancelled=lambda: False,
-    )
-
-    assert summary.mailbox is mailbox
-    assert not summary.replyable
-    assert message.mailbox is mailbox
-    assert message.bcc == ("archive@example.com",)
-    assert message.body_text == "Safe authored body."
-    assert connection.search_calls == [
-        ("CHARSET", "UTF-8", "TO", b'"alice@example.com"')
-    ]
-    assert connection.selected == [
-        (physical_mailbox, True),
-        (physical_mailbox, True),
-    ]
-    assert connection.store_calls == []
+    assert attachment.data == b"payload" and attachment.filename == "file.bin"
+    assert client.selected[-1] == (physical, True)
 
 
-def test_proton_bridge_rejects_mailbox_reference_mismatch() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = _source_headers()
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(mailbox=EmailMailbox.INBOX, limit=1),
-        is_cancelled=lambda: False,
-    )
+@pytest.mark.parametrize(
+    "ref, validity",
+    [("invalid", 77), (reference("my drafts"), 77), (reference("My Drafts"), 78)],
+)
+def test_invalid_cross_mailbox_or_stale_references_are_rejected(client, ref, validity):
+    client.validity = validity
+    with pytest.raises(EmailProviderError):
+        service(client).read_message(EmailMailbox.DRAFTS, ref, is_cancelled=active)
+    assert not client.seen
 
-    with pytest.raises(EmailProviderError, match="requested mailbox"):
-        service.read_message(
-            EmailMailbox.DRAFTS,
-            summary.source_message_ref,
-            is_cancelled=lambda: False,
+
+def test_cancelled_read_does_not_mark_seen(client):
+    cancelled = Event()
+    client.after_fetch = cancelled.set
+    with pytest.raises(EmailProviderError, match="cancelled"):
+        service(client).read_message(
+            EmailMailbox.INBOX, reference(), is_cancelled=cancelled.is_set
         )
-
-    assert connection.store_calls == []
-
-
-def test_proton_bridge_search_returns_seen_status_and_bounded_preview() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.seen_uids.add(b"42")
-    connection.fetched_headers[b"42"] = _source_headers()
-    connection.fetched_messages[b"42"] = _source_headers() + (b"Preview content " * 30)
-
-    (result,) = _service(connection).search_messages(
-        EmailSearchRequest(limit=1),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.is_read
-    assert result.preview_text is not None
-    assert result.preview_text.startswith("Preview content")
-    assert 150 <= len(result.preview_text) <= 160
-    assert connection.store_calls == []
-    assert connection.selected == [("INBOX", True)]
+    assert not client.seen
 
 
-def test_proton_bridge_full_read_marks_seen_and_downloads_selected_attachment() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = _source_headers()
-    message = EmailMessage()
-    message["From"] = "Alice <alice@example.com>"
-    message["To"] = "me@example.com"
-    message["Subject"] = "Project update"
-    message["Message-ID"] = "<parent-42@example.com>"
-    message.set_content("The complete message body.")
-    message.add_attachment(
-        b"attachment bytes",
-        maintype="application",
-        subtype="octet-stream",
-        filename="../unsafe-name.bin",
-    )
-    connection.fetched_messages[b"42"] = message.as_bytes(policy=policy.default)
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-
-    result = service.read_message(
-        EmailMailbox.INBOX,
-        summary.source_message_ref,
-        is_cancelled=lambda: False,
-    )
-
-    assert result.body_text == "The complete message body."
-    assert result.attachments[0].filename == "../unsafe-name.bin"
-    assert result.attachments[0].size == len(b"attachment bytes")
-    assert connection.store_calls == [(b"42", "+FLAGS.SILENT", r"(\Seen)")]
-    assert connection.selected[-1] == ("INBOX", False)
-
-    downloaded = service.download_attachment(
-        result.attachments[0].attachment_ref,
-        is_cancelled=lambda: False,
-    )
-
-    assert downloaded.data == b"attachment bytes"
-    assert downloaded.filename == "../unsafe-name.bin"
-    assert connection.selected[-1] == ("INBOX", True)
-    assert len(connection.store_calls) == 1
-
-
-def test_proton_bridge_orders_search_by_internaldate_not_uid() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"13 14 31 71"
-    connection.internal_dates = {
-        b"13": b"10-Jul-2026 09:34:42 +0000",
-        b"14": b"10-Jul-2026 08:48:04 +0000",
-        b"31": b"02-Jul-2026 09:50:17 +0000",
-        b"71": b"12-Jun-2026 12:49:22 +0000",
-    }
-    connection.fetched_headers = {
-        uid: _source_headers(message_id=f"<parent-{uid.decode()}@example.com>")
-        for uid in (b"13", b"14", b"31", b"71")
-    }
-
-    results = _service(connection).search_messages(
-        EmailSearchRequest(limit=3),
-        is_cancelled=lambda: False,
-    )
-
-    assert [item.timestamp.isoformat() for item in results if item.timestamp] == [
-        "2026-07-10T09:34:42+00:00",
-        "2026-07-10T08:48:04+00:00",
-        "2026-07-02T09:50:17+00:00",
-    ]
-    assert [
-        call[0]
-        for call in connection.fetch_calls[1:]
-        if "HEADER.FIELDS" in str(call[1])
-    ] == [
-        b"13",
-        b"14",
-        b"31",
-    ]
-
-
-def test_proton_bridge_search_uses_uid_tie_break_and_skips_bad_headers() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"40 41 42"
-    connection.internal_dates = {
-        uid: b"24-Jul-2026 11:20:30 +0300" for uid in (b"40", b"41", b"42")
-    }
-    connection.fetched_headers = {
-        b"40": _source_headers(message_id="<parent-40@example.com>"),
-        b"41": _source_headers(message_id="<parent-41@example.com>"),
-    }
-
-    results = _service(connection).search_messages(
-        EmailSearchRequest(limit=2),
-        is_cancelled=lambda: False,
-    )
-
-    assert [item.source_message_ref.rsplit(":", 1)[-1] for item in results]
-    assert [
-        call[0]
-        for call in connection.fetch_calls[1:]
-        if "HEADER.FIELDS" in str(call[1])
-    ] == [
-        b"42",
-        b"41",
-        b"40",
-    ]
-    assert len(results) == 2
-
-
-def test_proton_bridge_search_rejects_excessive_metadata_candidates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"1 2 3"
-    monkeypatch.setattr(
-        search_module,
-        "MAX_SEARCH_METADATA_CANDIDATES",
-        2,
-    )
-
-    with pytest.raises(EmailProviderError, match="Too many emails"):
-        _service(connection).search_messages(
-            EmailSearchRequest(limit=1),
-            is_cancelled=lambda: False,
+def test_oversize_read_does_not_mark_seen(client):
+    client.messages[42] = b"x" * 25_000_001
+    with pytest.raises(EmailProviderError, match="25 MB"):
+        service(client).read_message(
+            EmailMailbox.INBOX, reference(), is_cancelled=active
         )
+    assert not client.seen
 
-    assert connection.fetch_calls == []
 
-
-def test_proton_bridge_search_batches_metadata_and_skips_missing_dates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"1 2 3"
-    connection.internal_dates = {
-        b"1": b"01-Jul-2026 10:00:00 +0000",
-        b"2": None,
-        b"3": b"03-Jul-2026 10:00:00 +0000",
-    }
-    connection.fetched_headers = {
-        b"1": _source_headers(message_id="<parent-1@example.com>"),
-        b"3": _source_headers(message_id="<parent-3@example.com>"),
-    }
-    monkeypatch.setattr(search_module, "SEARCH_METADATA_BATCH_SIZE", 2)
-
-    results = _service(connection).search_messages(
-        EmailSearchRequest(limit=2),
-        is_cancelled=lambda: False,
+@pytest.mark.parametrize(
+    "signed, reply_all, quote",
+    [(False, True, True), (True, True, True), (False, False, False)],
+)
+def test_threaded_replies_preserve_recipients_and_quote_options(
+    client, signed, reply_all, quote
+):
+    result = service(client, signature() if signed else None).create_reply_draft(
+        reply(reply_all=reply_all, include_quoted_original=quote), is_cancelled=active
     )
-
-    assert connection.fetch_calls[:2] == [
-        (b"1,2", "(UID INTERNALDATE FLAGS)"),
-        (b"3", "(UID INTERNALDATE FLAGS)"),
-    ]
-    assert [
-        call[0]
-        for call in connection.fetch_calls[2:]
-        if "HEADER.FIELDS" in str(call[1])
-    ] == [b"3", b"1"]
-    assert len(results) == 2
-
-
-def test_proton_bridge_search_rejects_matches_without_received_dates() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"1 2"
-    connection.internal_dates = {b"1": None, b"2": None}
-
-    with pytest.raises(EmailProviderError, match="did not return dates"):
-        _service(connection).search_messages(
-            EmailSearchRequest(limit=1),
-            is_cancelled=lambda: False,
-        )
-
-    assert connection.fetch_calls == [(b"1,2", "(UID INTERNALDATE FLAGS)")]
-
-
-def test_proton_bridge_search_checks_cancellation_between_metadata_batches(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"1 2 3"
-    monkeypatch.setattr(search_module, "SEARCH_METADATA_BATCH_SIZE", 2)
-    checks = 0
-
-    def is_cancelled() -> bool:
-        nonlocal checks
-        checks += 1
-        return checks >= 3
-
-    with pytest.raises(EmailProviderError, match="email operation was cancelled"):
-        _service(connection).search_messages(
-            EmailSearchRequest(limit=1),
-            is_cancelled=is_cancelled,
-        )
-
-    assert connection.fetch_calls == [(b"1,2", "(UID INTERNALDATE FLAGS)")]
-
-
-def test_proton_bridge_reports_protocol_rejection() -> None:
-    class _RejectingImap(_FakeImap):
-        def select(
-            self, mailbox: str, readonly: bool = False
-        ) -> tuple[str, list[bytes]]:
-            del mailbox, readonly
-            raise imaplib.IMAP4.error("UID command error: BAD")
-
-    with pytest.raises(EmailProviderError, match="rejected the IMAP operation"):
-        _service(_RejectingImap()).search_messages(
-            EmailSearchRequest(limit=1),
-            is_cancelled=lambda: False,
-        )
-
-
-def test_proton_bridge_creates_threaded_reply_draft_from_search_reference() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = _source_headers()
-    connection.fetched_messages[b"42"] = _source_message()
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
+    message = parsed_draft(client)
+    assert result.to == (
+        ("reply@example.com", "bob@example.com")
+        if reply_all
+        else ("reply@example.com",)
     )
-
-    result = service.create_reply_draft(
-        EmailReplyDraftRequest(
-            source_message_ref=summary.source_message_ref,
-            body_text="Thanks, this works for me.",
-            from_address=None,
-            client_request_id="reply-request-1",
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.to == ("reply@example.com",)
-    assert result.cc == ()
-    assert result.subject == "Re: Project update"
-    raw_message = connection.append_calls[0][3]
-    message = BytesParser(policy=policy.default).parsebytes(raw_message)
-    assert str(message["To"]) == "reply@example.com"
-    assert str(message["Subject"]) == "Re: Project update"
-    assert str(message["In-Reply-To"]) == "<parent-42@example.com>"
-    assert str(message["References"]) == ("<root@example.com> <parent-42@example.com>")
-    body = message.get_body(preferencelist=("plain",))
-    assert body is not None
-    assert body.get_content() == (
-        "Thanks, this works for me.\n\n"
-        "Jane Example\nCTO\nExample Co\n\n"
-        "On Fri, 24 Jul 2026 11:20:30 +0300, "
-        "Alice Example <alice@example.com> wrote:\n"
-        "> Original message first line.\n"
-        "> Original message second line.\n"
-    )
-    html_body = message.get_body(preferencelist=("html",))
-    assert html_body is not None
-    html = html_body.get_content()
-    assert '<div class="protonmail_quote">' in html
-    assert '<blockquote class="protonmail_quote" type="cite">' in html
-    assert "Original message first line.<br>" in html
-    assert result.quoted_original_included
-    assert any(
-        "BODY.PEEK[]<0.1000001>" in str(call[1]) for call in connection.fetch_calls
-    )
+    assert result.cc == (("carol@example.com",) if reply_all else ())
+    assert message["Bcc"] is None and result.subject == "Re: Project update"
+    assert message["In-Reply-To"] == "<parent@example.com>"
+    assert message["References"] == "<root@example.com> <parent@example.com>"
+    plain = message.get_body(("plain",)).get_content()
+    assert ("> Original first line." in plain) is quote
+    assert result.quoted_original_included is quote
+    if signed:
+        html = message.get_body(("html",)).get_content()
+        assert "Reply &lt;safe&gt; &amp; sound" in html and "protonmail_quote" in html
+    assert not client.seen
 
 
-def test_proton_bridge_reply_all_preserves_to_and_cc_without_self_or_bcc() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = (
-        b'From: "Alice Example" <alice@example.com>\r\n'
-        b'Reply-To: "Alice Replies" <reply@example.com>\r\n'
-        b"To: me@example.com, Bob <bob@example.com>, REPLY@example.com\r\n"
-        b"Cc: Carol <carol@example.com>, BOB@example.com, ME@example.com\r\n"
-        b"Bcc: hidden@example.com\r\n"
-        b"Subject: Project update\r\n"
-        b"Message-ID: <parent-42@example.com>\r\n"
-        b"\r\n"
-    )
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-
-    result = service.create_reply_draft(
-        EmailReplyDraftRequest(
-            source_message_ref=summary.source_message_ref,
-            body_text="Reply all.",
-            from_address=None,
-            client_request_id=None,
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.to == ("reply@example.com", "bob@example.com")
-    assert result.cc == ("carol@example.com",)
-    message = BytesParser(policy=policy.default).parsebytes(
-        connection.append_calls[0][3]
-    )
-    assert tuple(address.addr_spec for address in message["To"].addresses) == (
-        "reply@example.com",
-        "bob@example.com",
-    )
-    assert tuple(address.addr_spec for address in message["Cc"].addresses) == (
-        "carol@example.com",
-    )
-    assert message["Bcc"] is None
-    header_fetch = str(connection.fetch_calls[1][1])
-    assert "To" in header_fetch
-    assert "Cc" in header_fetch
-    assert "Bcc" in header_fetch
-
-
-def test_proton_bridge_can_create_sender_only_reply() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = (
-        b"From: alice@example.com\r\n"
-        b"To: me@example.com, bob@example.com\r\n"
-        b"Cc: carol@example.com\r\n"
-        b"Subject: Project update\r\n"
-        b"Message-ID: <parent-42@example.com>\r\n"
-        b"\r\n"
-    )
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-
-    result = service.create_reply_draft(
-        EmailReplyDraftRequest(
-            source_message_ref=summary.source_message_ref,
-            body_text="Private reply.",
-            from_address=None,
-            client_request_id=None,
-            reply_all=False,
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.to == ("alice@example.com",)
-    assert result.cc == ()
-    message = BytesParser(policy=policy.default).parsebytes(
-        connection.append_calls[0][3]
-    )
-    assert str(message["To"]) == "alice@example.com"
-    assert message["Cc"] is None
-
-
-def test_proton_bridge_reply_can_explicitly_omit_quoted_original() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = _source_headers()
-    connection.fetched_messages[b"42"] = _source_message()
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-    fetch_count_after_search = len(connection.fetch_calls)
-
-    result = service.create_reply_draft(
-        EmailReplyDraftRequest(
-            source_message_ref=summary.source_message_ref,
-            body_text="A clean reply.",
-            from_address=None,
-            client_request_id=None,
-            include_quoted_original=False,
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    message = BytesParser(policy=policy.default).parsebytes(
-        connection.append_calls[0][3]
-    )
-    body = message.get_body(preferencelist=("plain",))
-    assert body is not None
-    assert body.get_content() == ("A clean reply.\n\nJane Example\nCTO\nExample Co\n")
-    assert message.get_body(preferencelist=("html",)) is not None
-    assert not result.quoted_original_included
-    assert all(
-        "BODY.PEEK[]" not in str(call[1])
-        for call in connection.fetch_calls[fetch_count_after_search:]
-    )
-
-
-def test_message_body_extraction_falls_back_to_html_without_active_content() -> None:
-    extracted = extract_message_body(
+@pytest.mark.parametrize(
+    "body, html, expected",
+    [
         (
-            b"Content-Type: text/html; charset=utf-8\r\n"
-            b"\r\n"
-            b"<html><head><style>.hidden { display: none; }</style></head>"
-            b"<body><p>Hello <strong>world</strong>.</p>"
-            b"<script>doSomethingDangerous()</script><div>Second line</div></body></html>"
+            "<head><style>hidden</style></head><p>Hello <b>world</b></p><script>bad()</script>",
+            True,
+            "Hello world",
         ),
-        source_truncated=True,
+        ("x" * 100_001, False, "x" * 100_000),
+        ("", False, None),
+    ],
+)
+def test_body_extraction_and_reply_quote_warnings(client, body, html, expected):
+    client.messages[42] = source_message(body=body, html=html)
+    result = service(client).read_message(
+        EmailMailbox.DRAFTS, reference("My Drafts"), is_cancelled=active
     )
+    assert result.body_text == expected
+    receipt = service(client).create_reply_draft(reply(), is_cancelled=active)
+    assert bool(receipt.warnings) is (expected is None or len(body) > 100_000)
 
-    assert extracted.text == "Hello world.\nSecond line"
-    assert extracted.truncated
 
-
-def test_reply_html_escapes_new_and_quoted_message_content() -> None:
-    raw = build_reply_draft_message(
-        EmailReplyDraftRequest(
-            source_message_ref="source",
-            body_text="<b>Reply & safe</b>",
-            from_address=None,
-            client_request_id=None,
-        ),
-        ReplySourceHeaders(
-            to=("alice@example.com",),
-            cc=(),
-            subject="Subject",
-            message_id="<parent@example.com>",
-            references=("<parent@example.com>",),
-            sender="Alice <alice@example.com>",
-            sent_at=None,
-            quoted_body="<script>alert('no')</script> & quoted",
-        ),
-        default_from_address="me@example.com",
-        signature=_signature(),
+def test_reply_requires_threadable_source_and_uses_from_fallback(client):
+    client.messages[42] = (
+        b"From: alice@example.com\r\nSubject: Re: Already\r\nMessage-ID: invalid\r\n\r\n"
     )
-
-    message = BytesParser(policy=policy.default).parsebytes(raw)
-    html_body = message.get_body(preferencelist=("html",))
-    assert html_body is not None
-    html = html_body.get_content()
-    assert "&lt;b&gt;Reply &amp; safe&lt;/b&gt;" in html
-    assert "&lt;script&gt;alert(&#x27;no&#x27;)&lt;/script&gt; &amp; quoted" in html
-    assert "<script>" not in html
-
-
-def test_proton_bridge_rejects_stale_or_unthreadable_reply_sources() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = _source_headers()
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-
-    connection.uid_validity = 78
-    with pytest.raises(EmailProviderError, match="stale"):
-        service.create_reply_draft(
-            EmailReplyDraftRequest(
-                source_message_ref=summary.source_message_ref,
-                body_text="Reply",
-                from_address=None,
-                client_request_id=None,
-            ),
-            is_cancelled=lambda: False,
-        )
-
-    connection.uid_validity = 77
-    connection.fetched_headers[b"42"] = _source_headers(message_id="invalid")
     with pytest.raises(EmailProviderError, match="no valid Message-ID"):
-        service.create_reply_draft(
-            EmailReplyDraftRequest(
-                source_message_ref=summary.source_message_ref,
-                body_text="Reply",
-                from_address=None,
-                client_request_id=None,
-            ),
-            is_cancelled=lambda: False,
-        )
-
-
-def test_proton_bridge_reply_falls_back_to_from_and_preserves_re_subject() -> None:
-    connection = _FakeImap()
-    connection.search_uids = b"42"
-    connection.fetched_headers[b"42"] = (
-        b'From: "Alice Example" <alice@example.com>\r\n'
-        b"To: me@example.com\r\n"
-        b"Subject: Re: Project update\r\n"
-        b"Message-ID: <parent-42@example.com>\r\n"
-        b"\r\n"
+        service(client).create_reply_draft(reply(), is_cancelled=active)
+    client.messages[42] = client.messages[42].replace(
+        b"Message-ID: invalid", b"Message-ID: <parent@example.com>"
     )
-    service = _service(connection)
-    (summary,) = service.search_messages(
-        EmailSearchRequest(limit=1), is_cancelled=lambda: False
-    )
-
-    result = service.create_reply_draft(
-        EmailReplyDraftRequest(
-            source_message_ref=summary.source_message_ref,
-            body_text="Reply",
-            from_address=None,
-            client_request_id=None,
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.to == ("alice@example.com",)
-    assert result.subject == "Re: Project update"
-    message = BytesParser(policy=policy.default).parsebytes(
-        connection.append_calls[0][3]
-    )
-    assert str(message["References"]) == "<parent-42@example.com>"
-    assert not result.quoted_original_included
-    assert result.warnings == ("The original message body could not be quoted.",)
+    result = service(client).create_reply_draft(reply(), is_cancelled=active)
+    assert result.to == ("alice@example.com",) and result.subject == "Re: Already"
 
 
-def test_proton_bridge_rejects_malformed_reply_source_reference() -> None:
-    with pytest.raises(EmailProviderError, match="reference is invalid"):
-        _service(_FakeImap()).create_reply_draft(
-            EmailReplyDraftRequest(
-                source_message_ref="not-a-source-reference",
-                body_text="Reply",
-                from_address=None,
-                client_request_id=None,
-            ),
-            is_cancelled=lambda: False,
-        )
-
-
-def test_build_draft_message_includes_attachment_parts(tmp_path: Path) -> None:
-    pdf = tmp_path / "CV.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
-    tex = tmp_path / "CV.tex"
-    tex.write_text("\\documentclass{article}", encoding="utf-8")
-    raw = build_draft_message(
-        _request(
-            attachments=(
-                EmailDraftAttachment(path=str(pdf), filename="CV.pdf"),
-                EmailDraftAttachment(path=str(tex), filename="CV.tex"),
-            )
-        ),
-        default_from_address="me@example.com",
-        signature=_signature(),
-    )
-    message = BytesParser(policy=policy.default).parsebytes(raw)
-
-    assert message.get_content_maintype() == "multipart"
-    attachments = list(message.iter_attachments())
-    assert [part.get_filename() for part in attachments] == ["CV.pdf", "CV.tex"]
-    assert attachments[0].get_content_type() == "application/pdf"
-    assert attachments[0].get_content() == b"%PDF-1.4 fake"
-    assert attachments[1].get_payload(decode=True) == b"\\documentclass{article}"
-    body = message.get_body(preferencelist=("plain",))
-    assert body is not None
-    assert "Draft body" in body.get_content()
-
-
-def test_build_draft_message_rejects_unreadable_attachment(tmp_path: Path) -> None:
-    missing = tmp_path / "gone.pdf"
-    with pytest.raises(EmailProviderError, match="Unable to read attachment"):
-        build_draft_message(
-            _request(
-                attachments=(
-                    EmailDraftAttachment(path=str(missing), filename="gone.pdf"),
-                )
-            ),
-            default_from_address="me@example.com",
-            signature=_signature(),
-        )
-
-
-def test_proton_bridge_provider_appends_multipart_with_attachments(
-    tmp_path: Path,
-) -> None:
-    notes = tmp_path / "notes.txt"
-    notes.write_text("attached notes", encoding="utf-8")
-    other = tmp_path / "extra.bin"
-    other.write_bytes(b"\x00\x01")
-    connection = _FakeImap()
-
-    result = _service(connection).create_draft(
-        _request(
-            attachments=(
-                EmailDraftAttachment(path=str(notes), filename="notes.txt"),
-                EmailDraftAttachment(path=str(other), filename="extra.bin"),
-            )
-        ),
-        is_cancelled=lambda: False,
-    )
-
-    assert result.draft_id == "imap-uid:42"
-    raw_message = connection.append_calls[0][3]
-    message = BytesParser(policy=policy.default).parsebytes(raw_message)
-    attachments = list(message.iter_attachments())
-    assert len(attachments) == 2
-    assert attachments[0].get_filename() == "notes.txt"
-    assert attachments[0].get_payload(decode=True) == b"attached notes"
-    assert attachments[1].get_filename() == "extra.bin"
-    assert attachments[1].get_payload(decode=True) == b"\x00\x01"
-
-
-def test_decrypted_credentials_bind_through_email_factory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_decrypted_credentials_and_factory_dependency(tmp_path, monkeypatch, client):
     import os
-
     from roboz.endpoints import encrypt_env, load_secrets
 
+    for name in ("PROTON_BRIDGE_USERNAME_SECRET", "PROTON_BRIDGE_PASSWORD_SECRET"):
+        monkeypatch.delenv(name, raising=False)
     source = tmp_path / ".env"
     source.write_text(
-        "PROTON_BRIDGE_USERNAME_SECRET=bridge-user\n"
-        "PROTON_BRIDGE_PASSWORD_SECRET=bridge-password\n"
+        "PROTON_BRIDGE_USERNAME_SECRET=bridge-user\nPROTON_BRIDGE_PASSWORD_SECRET=bridge-password\n"
     )
-    encrypted = encrypt_env(source, password="correct")
-    monkeypatch.delenv("PROTON_BRIDGE_USERNAME_SECRET", raising=False)
-    monkeypatch.delenv("PROTON_BRIDGE_PASSWORD_SECRET", raising=False)
-    load_secrets(encrypted, password="correct")
-    connection = _FakeImap()
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username=os.environ["PROTON_BRIDGE_USERNAME_SECRET"],
-        password=os.environ["PROTON_BRIDGE_PASSWORD_SECRET"],
+    load_secrets(encrypt_env(source, password="test"), password="test")
+    configured = settings()
+    configured = ProtonBridgeSettings.model_validate(
+        configured.model_dump()
+        | {
+            "username": os.environ["PROTON_BRIDGE_USERNAME_SECRET"],
+            "password": os.environ["PROTON_BRIDGE_PASSWORD_SECRET"],
+        }
     )
-    service = ProtonBridgeEmailService(
-        settings, imap_factory=lambda settings, context: connection
+    provider = ProtonBridgeEmailService(
+        configured, client_factory=lambda settings, context: client
     )
     tools = get_work_with_email(
-        service=service, base=tmp_path, default_verdict=ActionVerdict.deny
+        service=provider, base=tmp_path, default_verdict=ActionVerdict.deny
     )
+    assert not client.selected and not client.closed
     assert any(
-        resource.dependency_id == "network:proton_bridge"
+        resource is provider
         for tool in tools
         for resource in tool.external_dependencies()
     )
-    assert service.check()
-    assert connection.logged_out
-    assert "bridge-password" not in str(service.redacted_metadata())
-
-
-def test_fingerprint_rejection_closes_connection_before_authentication() -> None:
-    import hashlib
-    from types import SimpleNamespace
-
-    connection = _FakeImap()
-    connection.sock = SimpleNamespace(getpeercert=lambda binary_form: b"other-cert")
-    connection.login = lambda user, password: pytest.fail("credentials were sent")
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-        certificate_sha256=hashlib.sha256(b"expected-cert").hexdigest(),
-    )
-    service = ProtonBridgeEmailService(
-        settings, imap_factory=lambda settings, context: connection
-    )
-    with pytest.raises(EmailProviderError, match="fingerprint did not match"):
-        service.check()
-    assert connection.logged_out
-
-
-def test_starttls_failure_closes_connection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import ssl
-
-    from roboz.shed.tools.email.proton_bridge import imap_session
-
-    class FailingStarttls(_FakeImap):
-        shutdown_called = False
-
-        def __init__(self, host: str, port: int, timeout: float) -> None:
-            super().__init__()
-            assert (host, port, timeout) == ("127.0.0.1", 1143, 3.5)
-
-        def starttls(self, ssl_context: ssl.SSLContext) -> None:
-            raise ssl.SSLError("handshake failed")
-
-        def shutdown(self) -> None:
-            self.shutdown_called = True
-
-    created: list[FailingStarttls] = []
-
-    def factory(host: str, port: int, timeout: float) -> FailingStarttls:
-        instance = FailingStarttls(host, port, timeout)
-        created.append(instance)
-        return instance
-
-    monkeypatch.setattr(imap_session.imaplib, "IMAP4", factory)
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-        timeout_s=3.5,
-    )
-    with pytest.raises(ssl.SSLError):
-        imap_session.default_imap_factory(settings, ssl.create_default_context())
-    assert created[0].shutdown_called
-
-
-def test_ssl_mode_passes_explicit_connection_settings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import ssl
-
-    from roboz.shed.tools.email.proton_bridge import imap_session
-
-    connection = _FakeImap()
-    captured: list[tuple[str, int, float]] = []
-
-    def factory(
-        host: str, port: int, *, ssl_context: ssl.SSLContext, timeout: float
-    ) -> _FakeImap:
-        captured.append((host, port, timeout))
-        assert ssl_context.verify_mode == ssl.CERT_REQUIRED
-        return connection
-
-    monkeypatch.setattr(imap_session.imaplib, "IMAP4_SSL", factory)
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1993,
-        tls_mode=ProtonBridgeTlsMode.SSL,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-        timeout_s=4.0,
-    )
-    assert imap_session.default_imap_factory(settings, ssl.create_default_context()) is connection
-    assert captured == [("127.0.0.1", 1993, 4.0)]
-
-
-def test_matching_fingerprint_allows_authentication_and_probe() -> None:
-    import hashlib
-    from types import SimpleNamespace
-
-    certificate = b"Bridge certificate"
-    connection = _FakeImap()
-    connection.sock = SimpleNamespace(getpeercert=lambda binary_form: certificate)
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-        certificate_sha256=hashlib.sha256(certificate).hexdigest(),
-    )
-    service = ProtonBridgeEmailService(
-        settings, imap_factory=lambda settings, context: connection
-    )
-    assert service.check()
-    assert connection.logged_out
-
-
-def test_authentication_failure_closes_connection() -> None:
-    connection = _FakeImap()
-    def reject_login(user: str, password: str) -> tuple[str, list[bytes]]:
-        raise imaplib.IMAP4.error("authentication rejected")
-
-    connection.login = reject_login
-    settings = ProtonBridgeSettings(
-        imap_host="127.0.0.1",
-        imap_port=1143,
-        tls_mode=ProtonBridgeTlsMode.STARTTLS,
-        account_address="me@example.com",
-        username="bridge-user",
-        password="bridge-password",
-    )
-    service = ProtonBridgeEmailService(
-        settings, imap_factory=lambda settings, context: connection
-    )
-    with pytest.raises(EmailProviderError, match="rejected the IMAP operation"):
-        service.check()
-    assert connection.logged_out
+    assert provider.check() and client.closed
+    assert "bridge-password" not in str(provider.redacted_metadata())

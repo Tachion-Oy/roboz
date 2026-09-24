@@ -40,8 +40,8 @@ def search_email(
             ctx,
             label="email-search",
             cancelled_message="Email search was cancelled",
-            operation=lambda: ctx.service.search_messages(
-                request, is_cancelled=ctx.is_cancelled
+            operation=lambda is_cancelled: ctx.service.search_messages(
+                request, is_cancelled=is_cancelled
             ),
         )
         return Str(value=_format_search_results(results))
@@ -119,10 +119,10 @@ def read_email(
             ctx,
             label="email-read",
             cancelled_message="Email read was cancelled",
-            operation=lambda: ctx.service.read_message(
+            operation=lambda is_cancelled: ctx.service.read_message(
                 mailbox,
                 input.source_message_ref,
-                is_cancelled=ctx.is_cancelled,
+                is_cancelled=is_cancelled,
             ),
         )
         timestamp = (
@@ -214,8 +214,8 @@ def execute_attachment_download(
             ctx,
             label="email-download-attachment",
             cancelled_message="Email attachment download was cancelled",
-            operation=lambda: ctx.service.download_attachment(
-                payload.attachment_ref, is_cancelled=ctx.is_cancelled
+            operation=lambda is_cancelled: ctx.service.download_attachment(
+                payload.attachment_ref, is_cancelled=is_cancelled
             ),
         )
         _write_attachment(item.location, result.data)

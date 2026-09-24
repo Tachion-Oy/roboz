@@ -307,8 +307,8 @@ def execute_email_operation(
             ctx,
             label="email-create-draft",
             cancelled_message="Email draft creation was cancelled",
-            operation=lambda: ctx.service.create_draft(
-                request, is_cancelled=ctx.is_cancelled
+            operation=lambda is_cancelled: ctx.service.create_draft(
+                request, is_cancelled=is_cancelled
             ),
         )
         recipients = ", ".join(request.to)
@@ -341,7 +341,7 @@ def execute_email_operation(
             value="[error] Email draft creation timed out; check the Drafts folder before retrying."
         )
     except (ExternalCallCancelledError, ExternalCallInterruptedError):
-        return Str(value="[error] Email draft creation was cancelled.")
+        return Str(value="[error] Email draft creation was cancelled; check the Drafts folder before retrying.")
     except Exception:  # noqa: BLE001
         return Str(
             value="[error] Unable to create email draft due to an email provider failure."
@@ -367,8 +367,8 @@ def execute_reply_draft(
             ctx,
             label="email-create-reply-draft",
             cancelled_message="Email reply draft creation was cancelled",
-            operation=lambda: ctx.service.create_reply_draft(
-                request, is_cancelled=ctx.is_cancelled
+            operation=lambda is_cancelled: ctx.service.create_reply_draft(
+                request, is_cancelled=is_cancelled
             ),
         )
         account = f"; from: {result.account_address}" if result.account_address else ""
@@ -407,7 +407,7 @@ def execute_reply_draft(
             value="[error] Email reply draft creation timed out; check the Drafts folder before retrying."
         )
     except (ExternalCallCancelledError, ExternalCallInterruptedError):
-        return Str(value="[error] Email reply draft creation was cancelled.")
+        return Str(value="[error] Email reply draft creation was cancelled; check the Drafts folder before retrying.")
     except Exception:  # noqa: BLE001
         return Str(
             value="[error] Unable to create email reply draft due to an email provider failure."

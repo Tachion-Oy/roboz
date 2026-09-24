@@ -18,7 +18,6 @@ from ..contracts import (
     EmailSignature,
 )
 from .models import ReplySourceHeaders
-from .protocol import EmailHeader
 
 MAX_REFERENCES_CHARS = 8_000
 
@@ -30,26 +29,36 @@ def build_draft_message(
     signature: EmailSignature | None,
 ) -> bytes:
     """Serialize a draft, optionally with signature and file attachments."""
+    return _draft_message(request, default_from_address, signature).as_bytes()
+
+
+def _draft_message(
+    request: EmailDraftRequest,
+    default_from_address: str,
+    signature: EmailSignature | None,
+    *,
+    source: ReplySourceHeaders | None = None,
+) -> EmailMessage:
     from_address = request.from_address or default_from_address
     if not from_address:
         raise EmailProviderError("A sender address is required to create a draft")
 
     message = EmailMessage()
-    message[EmailHeader.FROM] = from_address
-    message[EmailHeader.TO] = ", ".join(request.to)
+    message["From"] = from_address
+    message["To"] = ", ".join(request.to)
     if request.cc:
-        message[EmailHeader.CC] = ", ".join(request.cc)
+        message["Cc"] = ", ".join(request.cc)
     if request.bcc:
-        message[EmailHeader.BCC] = ", ".join(request.bcc)
-    message[EmailHeader.SUBJECT] = request.subject
+        message["Bcc"] = ", ".join(request.bcc)
+    message["Subject"] = request.subject
     if request.reply_to:
-        message[EmailHeader.REPLY_TO] = request.reply_to
+        message["Reply-To"] = request.reply_to
     if request.client_request_id:
-        message[EmailHeader.REQUEST_ID] = request.client_request_id
-    _set_signed_content(message, request.body_text, signature)
+        message["X-Roboz-Request-Id"] = request.client_request_id
+    _set_signed_content(message, request.body_text, signature, source)
     for attachment in request.attachments:
         _attach_file(message, attachment)
-    return message.as_bytes()
+    return message
 
 
 def build_reply_draft_message(
@@ -60,85 +69,52 @@ def build_reply_draft_message(
     signature: EmailSignature | None,
 ) -> bytes:
     """Serialize a threaded reply draft with optional signature."""
-    from_address = request.from_address or default_from_address
-    if not from_address:
-        raise EmailProviderError("A sender address is required to create a draft")
-
-    message = EmailMessage()
-    message[EmailHeader.FROM] = from_address
-    message[EmailHeader.TO] = ", ".join(source.to)
-    if source.cc:
-        message[EmailHeader.CC] = ", ".join(source.cc)
-    message[EmailHeader.SUBJECT] = reply_subject(source.subject)
-    message[EmailHeader.IN_REPLY_TO] = source.message_id
-    message[EmailHeader.REFERENCES] = _bounded_references(source.references)
-    if request.client_request_id:
-        message[EmailHeader.REQUEST_ID] = request.client_request_id
-    message.set_content(_reply_body(request, source, signature), charset="utf-8")
-    if signature is not None:
-        message.add_alternative(
-            _reply_html(request, source, signature), subtype="html", charset="utf-8"
-        )
-        _add_inline_image(message, signature.inline_image, signature.html)
-    for attachment in request.attachments:
-        _attach_file(message, attachment)
+    draft = EmailDraftRequest(
+        to=source.to,
+        cc=source.cc,
+        bcc=(),
+        subject=reply_subject(source.subject),
+        body_text=request.body_text,
+        from_address=request.from_address,
+        reply_to=None,
+        client_request_id=request.client_request_id,
+        attachments=request.attachments,
+    )
+    message = _draft_message(draft, default_from_address, signature, source=source)
+    message["In-Reply-To"] = source.message_id
+    message["References"] = _bounded_references(source.references)
     return message.as_bytes()
-
-
-def _reply_body(
-    request: EmailReplyDraftRequest,
-    source: ReplySourceHeaders,
-    signature: EmailSignature | None,
-) -> str:
-    reply = _signed_plain_text(request.body_text, signature) if signature else request.body_text
-    if not request.include_quoted_original or source.quoted_body is None:
-        return reply
-    if source.sent_at:
-        attribution = f"On {source.sent_at}, {source.sender} wrote:"
-    else:
-        attribution = f"{source.sender} wrote:"
-    quoted = "\n".join(
-        f"> {line}" if line else ">" for line in source.quoted_body.splitlines()
-    )
-    return f"{reply.rstrip()}\n\n{attribution}\n{quoted}"
-
-
-def _reply_html(
-    request: EmailReplyDraftRequest,
-    source: ReplySourceHeaders,
-    signature: EmailSignature | None,
-) -> str:
-    reply = _signed_html(request.body_text, signature) if signature else f"<div>{_html_lines(request.body_text)}</div>"
-    if not request.include_quoted_original or source.quoted_body is None:
-        return reply
-    if source.sent_at:
-        attribution = f"On {source.sent_at}, {source.sender} wrote:"
-    else:
-        attribution = f"{source.sender} wrote:"
-    quoted = _html_lines(source.quoted_body)
-    return (
-        f"{reply}\n"
-        '<div class="protonmail_quote">\n'
-        f"{escape(attribution)}<br>\n"
-        '<blockquote class="protonmail_quote" type="cite">'
-        f"{quoted}</blockquote>\n"
-        "</div>"
-    )
 
 
 def _set_signed_content(
     message: EmailMessage,
     body_text: str,
     signature: EmailSignature | None,
+    source: ReplySourceHeaders | None,
 ) -> None:
-    if signature is None:
-        message.set_content(body_text, charset="utf-8")
-        return
-    message.set_content(_signed_plain_text(body_text, signature), charset="utf-8")
-    message.add_alternative(
-        _signed_html(body_text, signature), subtype="html", charset="utf-8"
-    )
-    _add_inline_image(message, signature.inline_image, signature.html)
+    plain = _signed_plain_text(body_text, signature) if signature else body_text
+    html = _signed_html(body_text, signature) if signature else None
+    if source is not None and source.quoted_body is not None:
+        attribution = (
+            f"On {source.sent_at}, {source.sender} wrote:"
+            if source.sent_at
+            else f"{source.sender} wrote:"
+        )
+        quoted = "\n".join(
+            f"> {line}" if line else ">" for line in source.quoted_body.splitlines()
+        )
+        plain = f"{plain.rstrip()}\n\n{attribution}\n{quoted}"
+        if html is not None:
+            html += (
+                '<div class="protonmail_quote">' + escape(attribution) + "<br>"
+                '<blockquote class="protonmail_quote" type="cite">'
+                + _html_lines(source.quoted_body)
+                + "</blockquote></div>"
+            )
+    message.set_content(plain, charset="utf-8")
+    if html is not None and signature is not None:
+        message.add_alternative(html, subtype="html", charset="utf-8")
+        _add_inline_image(message, signature.inline_image, signature.html)
 
 
 def _signed_plain_text(body_text: str, signature: EmailSignature) -> str:

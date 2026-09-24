@@ -5,6 +5,9 @@
 - Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
   tool discovers protected `.sh` entrypoints and runs them with bounded output,
   deadlines, cancellation, and script output events.
+- Breaking: Proton Bridge now uses IMAPClient and accepts `client_factory`
+  instead of `imap_factory`. Simplify the email implementation and fix draft
+  deduplication, cancellation before writes, and connection cleanup.
 - Add an explicitly configured Proton Mail Bridge provider to Shed's guarded
   email tools, supporting search, reads, attachments, and unsigned or signed
   draft creation with verified TLS.

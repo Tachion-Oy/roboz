@@ -24,6 +24,7 @@ def test_all_modules_and_required_dependencies_are_installed():
     assert find_spec("roboz_openai") is None
     dependencies = {
         "openai": True,
+        "imapclient": True,
         "pydantic_settings": False,
         "fastapi": False,
     }

@@ -106,3 +106,22 @@ draft addressed to yourself and verify it appears in Drafts without being
 sent. Create a reply draft from the search reference and verify its recipients,
 subject, and thread. After a draft timeout, inspect Drafts before retrying:
 the server may have completed the append after the caller stopped waiting.
+
+## Transport and operation boundaries
+
+The provider uses IMAPClient 4.1 or newer. Tests or applications that inject a
+transport use `client_factory(settings, ssl_context)`, returning an IMAPClient
+with TLS already established. This replaces `imap_factory`; there is no alias.
+The service verifies the configured fingerprint before login, uses UIDs and
+timezone-aware reception dates, and closes each operation's connection.
+
+Cancellation and timeout stop subsequent commands, including draft appends and
+read-status changes. An IMAP command already in flight can still complete;
+a cancelled or timed-out draft operation therefore requires checking Drafts
+before retrying. The service never automatically retries an append.
+
+`client_request_id` reuses a draft only when its stored header matches exactly.
+This helps with retries but is not atomic: concurrent requests with the same ID
+can both append a draft. References identify a mailbox, UIDVALIDITY, and UID;
+mailbox names other than INBOX are case-sensitive. Provider failures propagate
+instead of being reported as empty search results.

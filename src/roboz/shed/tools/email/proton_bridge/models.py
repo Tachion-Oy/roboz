@@ -7,7 +7,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StringConstraints,
+    field_validator,
+)
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -24,7 +31,6 @@ class ReplySourceHeaders:
     sender: str
     sent_at: str | None
     quoted_body: str | None = None
-    quote_warnings: tuple[str, ...] = ()
 
 
 class ProtonBridgeTlsMode(StrEnum):

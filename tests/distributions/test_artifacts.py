@@ -58,6 +58,7 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert metadata.get_all("Provides-Extra") is None
         requirements = metadata.get_all("Requires-Dist", [])
         assert any(requirement.startswith("openai<3,>=2.8.1") for requirement in requirements)
+        assert any(requirement.startswith("imapclient<5,>=4.1") for requirement in requirements)
         assert not any(name.endswith("/entry_points.txt") for name in names)
     with tarfile.open(sdist) as archive:
         paths = [Path(name).parts[1:] for name in archive.getnames()]
