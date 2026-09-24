@@ -38,7 +38,11 @@ from roboz.shed.tools.contexts import (
 )
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
-from roboz.shed.tools.safe_scripts import SafeScriptContext, run_shell_script
+from roboz.shed.tools.safe_scripts import (
+    ReservedScriptEnv,
+    SafeScriptContext,
+    run_shell_script,
+)
 from roboz.shed.tools.stop_when_watched_agents_inactive import (
     stop_when_watched_agents_inactive,
 )
@@ -85,12 +89,8 @@ class SafeScripts(AgentCapability):
             or self.max_output_bytes <= 0
         ):
             raise ValueError("max_output_bytes must be positive")
-        forbidden = {
-            "PATH", "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
-            "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH",
-        }
         if any(
-            not name or "=" in name or "\x00" in name or name in forbidden
+            not name or "=" in name or "\x00" in name or name in ReservedScriptEnv
             for name in self.env_allowlist
         ):
             raise ValueError("env_allowlist contains an invalid or reserved name")
