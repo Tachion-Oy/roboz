@@ -1,6 +1,7 @@
 """Verified IMAPClient sessions and bounded mailbox access."""
 
 import hashlib
+import re
 import ssl
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -8,6 +9,7 @@ from datetime import date, datetime
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
+from itertools import batched
 from types import TracebackType
 from typing import Protocol, Self, cast
 
@@ -50,6 +52,7 @@ type ClientFactory = Callable[[ProtonBridgeSettings, ssl.SSLContext], _Client]
 HEADER_LIMIT = 65_536
 MESSAGE_LIMIT = 25_000_000
 SEARCH_LIMIT = 10_000
+REQUEST_ID_HEADER = "X-Roboz-Request-Id"
 
 
 class MessageMissing(EmailProviderError):
@@ -129,7 +132,7 @@ class Session:
 
     def __init__(self, client: _Client, is_cancelled: Callable[[], bool]) -> None:
         """Keep operation state local so concurrent calls share no selected mailbox."""
-        self.client = client
+        self._client = client
         self.is_cancelled = is_cancelled
         self._folders: list[tuple[tuple[bytes, ...], bytes, str]] | None = None
 
@@ -144,7 +147,7 @@ class Session:
             return "INBOX"
         if self._folders is None:
             self.check()
-            self._folders = self.client.list_folders()
+            self._folders = self._client.list_folders()
         flag = b"\\Drafts" if logical is EmailMailbox.DRAFTS else b"\\Sent"
         matches = [
             name
@@ -160,7 +163,7 @@ class Session:
     def select(self, mailbox: str, *, readonly: bool = True) -> int:
         """Select a canonical mailbox and validate its UIDVALIDITY."""
         self.check()
-        validity = self.client.select_folder(mailbox, readonly=readonly).get(
+        validity = self._client.select_folder(mailbox, readonly=readonly).get(
             b"UIDVALIDITY"
         )
         if not isinstance(validity, int) or validity <= 0:
@@ -197,15 +200,70 @@ class Session:
             for term in criteria
         ):
             raise EmailProviderError("email search contains invalid control characters")
-        uids: list[int] = self.client.search(criteria, charset="UTF-8")
+        uids: list[int] = self._client.search(criteria, charset="UTF-8")
         if len(uids) > SEARCH_LIMIT:
             raise EmailProviderError("Too many emails matched; add more search filters")
         return uids
 
-    def data(self, uids: Sequence[int], fields: Sequence[str]) -> FetchData:
+    def store_draft(
+        self, message: bytes, request_id: str | None
+    ) -> tuple[str, tuple[str, ...]]:
+        """Reuse an exact request ID or append once, reporting uncertain outcomes."""
+        mailbox = self.mailbox(EmailMailbox.DRAFTS)
+        if request_id:
+            self.select(mailbox)
+            for uid in reversed(self.search(["HEADER", REQUEST_ID_HEADER, request_id])):
+                try:
+                    headers = self.headers(uid)
+                except MessageMissing:
+                    continue
+                if headers.get_all(REQUEST_ID_HEADER, []) == [request_id]:
+                    return f"imap-uid:{uid}", (
+                        "Reused an existing draft for this request id.",
+                    )
+        self.check()  # The duplicate search may have outlived the caller.
+        try:
+            response: bytes = self._client.append(mailbox, message, flags=[b"\\Draft"])
+        except (OSError, IMAPClient.AbortError) as exc:
+            raise EmailProviderError(
+                "Draft creation outcome is unknown; inspect Drafts before retrying"
+            ) from exc
+        match = re.search(rb"\bAPPENDUID [1-9][0-9]* ([1-9][0-9]*)\b", response)
+        if match:
+            return f"imap-uid:{int(match[1])}", ()
+        return f"imap:{mailbox}:unknown", (
+            "The provider did not return a draft UID; verify the Drafts folder before retrying.",
+        )
+
+    def search_newest(
+        self, criteria: Sequence[str | date]
+    ) -> list[tuple[datetime, int, bool]]:
+        """Order matching UIDs by reception date, using UID to break ties."""
+        uids = self.search(criteria)
+        ordered: list[tuple[datetime, int, bool]] = []
+        for batch in batched(uids, 500):
+            for uid, fields in self._fetch(batch, ["INTERNALDATE", "FLAGS"]).items():
+                timestamp, flags = fields.get(b"INTERNALDATE"), fields.get(b"FLAGS")
+                if not isinstance(timestamp, datetime) or not isinstance(flags, tuple):
+                    raise EmailProviderError(
+                        "Email provider returned invalid search metadata"
+                    )
+                ordered.append((timestamp, uid, b"\\Seen" in flags))
+        return sorted(ordered, reverse=True)
+
+    def mark_seen(self, uid: int) -> None:
+        """Mark a successfully parsed Inbox message read unless the caller cancelled."""
+        self.check()
+        self._client.add_flags([uid], [b"\\Seen"], silent=True)
+
+    def headers(self, uid: int) -> EmailMessage:
+        """Fetch bounded headers without opening the message body."""
+        return self.message(uid, section="HEADER", limit=HEADER_LIMIT)[0]
+
+    def _fetch(self, uids: Sequence[int], fields: Sequence[str]) -> FetchData:
         """Confine the library's heterogeneous response values to this boundary."""
         self.check()
-        return self.client.fetch(uids, fields)
+        return self._client.fetch(uids, fields)
 
     def message(
         self,
@@ -216,7 +274,7 @@ class Session:
         truncate: bool = False,
     ) -> tuple[EmailMessage, datetime | None, bool]:
         """Fetch at most limit+1 bytes; reject oversize input unless truncation is requested."""
-        fields = self.data(
+        fields = self._fetch(
             [uid], ["INTERNALDATE", f"BODY.PEEK[{section}]<0.{limit + 1}>"]
         ).get(uid, {})
         raw = fields.get(f"BODY[{section}]<0>".encode())
