@@ -5,6 +5,9 @@
 - Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
   tool discovers protected `.sh` entrypoints and runs them with bounded output,
   deadlines, cancellation, and script output events.
+- Add an explicitly configured Proton Mail Bridge provider to Shed's guarded
+  email tools, supporting search, reads, attachments, and unsigned or signed
+  draft creation with verified TLS.
 - Breaking: dotenv encryption now selects only names ending in `_SECRET`, and
   `load_api_keys` is replaced by `load_secrets`. Rename API credentials such as
   `OPENAI_API_KEY` to `OPENAI_API_KEY_SECRET` and recreate `.env.encrypt`.

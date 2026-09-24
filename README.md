@@ -243,6 +243,12 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
+The concrete `ProtonBridgeEmailService` lives in
+`roboz.shed.tools.email.proton_bridge`. Configure it with explicit IMAP settings
+and decrypted `*_SECRET` credentials, then pass it to
+`get_work_with_email(service=..., ...)`. See the [Proton Bridge guide](https://github.com/Tachion-Oy/roboz/blob/main/docs/proton-bridge.md)
+for TLS trust, a complete example, and a live smoke test.
+
 ## Endpoints and model catalogues
 
 `roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`
