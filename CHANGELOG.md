@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0a1 - 2026-09-25
+
 - Add an `Email` capability for configured email services, including Proton
   Bridge. Compose it with `SafeScripts` through Robozium's additional capabilities.
 - Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
@@ -16,6 +18,8 @@
 - Breaking: dotenv encryption now selects only names ending in `_SECRET`, and
   `load_api_keys` is replaced by `load_secrets`. Rename API credentials such as
   `OPENAI_API_KEY` to `OPENAI_API_KEY_SECRET` and recreate `.env.encrypt`.
+- Proton Bridge's automated tests cover fake IMAP and scripted TLS; live Bridge
+  validation remains outstanding.
 
 ## 0.1.2a2 - 2026-09-23
 
