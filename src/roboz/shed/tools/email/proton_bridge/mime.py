@@ -7,7 +7,6 @@ import re
 from email.message import EmailMessage
 from html import escape
 from pathlib import Path
-from typing import cast
 
 from ..contracts import (
     EmailDraftAttachment,
@@ -157,10 +156,9 @@ def _add_inline_image(
         raise EmailProviderError(
             "The configured email signature HTML does not reference its image"
         )
-    payload = message.get_payload()
-    if not isinstance(payload, list) or not payload:
+    html_part = message.get_body(preferencelist=("html",))
+    if html_part is None:
         raise EmailProviderError("Unable to construct the email signature image")
-    html_part = cast(EmailMessage, payload[-1])
     html_part.add_related(
         image.data,
         maintype=maintype,

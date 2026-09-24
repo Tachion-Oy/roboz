@@ -518,6 +518,21 @@ def test_body_extraction_and_reply_quote_warnings(client, body, html, expected):
     assert bool(receipt.warnings) is (expected is None or len(body) > 100_000)
 
 
+def test_body_excludes_text_from_an_attached_email(client):
+    message = BytesParser(_class=EmailMessage, policy=policy.default).parsebytes(
+        source_message(body="<p>Main message</p>", html=True)
+    )
+    forwarded = EmailMessage()
+    forwarded.set_content("Attached email body")
+    message.add_attachment(forwarded)
+    client.messages[42] = message.as_bytes(policy=policy.SMTP)
+
+    result = service(client).read_message(
+        EmailMailbox.DRAFTS, reference("My Drafts"), is_cancelled=active
+    )
+    assert result.body_text == "Main message"
+
+
 def test_reply_requires_threadable_source_and_uses_from_fallback(client):
     client.messages[42] = (
         b"From: alice@example.com\r\nSubject: Re: Already\r\nMessage-ID: invalid\r\n\r\n"

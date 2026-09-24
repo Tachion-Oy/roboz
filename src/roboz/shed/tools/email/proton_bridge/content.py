@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from email.message import Message
+from email.message import EmailMessage, Message
 from html.parser import HTMLParser
 
 from ..contracts import (
@@ -124,51 +124,36 @@ class ExtractedMessageBody:
 
 
 def extract_message_body(
-    message: Message,
+    message: EmailMessage,
     *,
     source_truncated: bool,
     max_chars: int = MAX_QUOTED_BODY_CHARS,
 ) -> ExtractedMessageBody:
     """Prefer plain text, with a conservative HTML-to-text fallback."""
-    plain = _first_text_part(message, "text/plain")
-    text = plain
-    if text is None:
-        html = _first_text_part(message, "text/html")
-        text = _html_to_text(html) if html is not None else None
-    if text is None:
+    part = message.get_body(preferencelist=("plain", "html"))
+    if part is None:
         return ExtractedMessageBody(text=None, truncated=source_truncated)
+    try:
+        text = part.get_content(errors="replace")
+    except LookupError:
+        payload = part.get_payload(decode=True)
+        text = (
+            payload.decode("utf-8", errors="replace")
+            if isinstance(payload, bytes)
+            else None
+        )
+    if not isinstance(text, str):
+        return ExtractedMessageBody(text=None, truncated=source_truncated)
+    if part.get_content_type() == "text/html":
+        text = _html_to_text(text)
 
     normalized = _normalize(text)
     if not normalized:
         return ExtractedMessageBody(text=None, truncated=source_truncated)
-    body_truncated = len(normalized) > max_chars
-    if body_truncated:
-        normalized = normalized[:max_chars].rstrip()
     return ExtractedMessageBody(
-        text=normalized,
-        truncated=source_truncated or body_truncated,
+        text=normalized[:max_chars].rstrip(),
+        truncated=source_truncated or len(normalized) > max_chars,
     )
-
-
-def _first_text_part(message: Message, content_type: str) -> str | None:
-    for part in message.walk():
-        if (
-            part.is_multipart()
-            or part.get_content_disposition() == "attachment"
-            or part.get_content_type() != content_type
-        ):
-            continue
-        payload = part.get_payload(decode=True)
-        if isinstance(payload, bytes):
-            charset = part.get_content_charset() or "utf-8"
-            try:
-                return payload.decode(charset, errors="replace")
-            except LookupError:
-                return payload.decode("utf-8", errors="replace")
-        raw_payload = part.get_payload()
-        if isinstance(raw_payload, str):
-            return raw_payload
-    return None
 
 
 def _normalize(text: str) -> str:

@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date, datetime
 from email import policy
-from email.message import Message
+from email.message import EmailMessage
 from email.parser import BytesParser
 from types import TracebackType
 from typing import Protocol, Self, cast
@@ -214,7 +214,7 @@ class Session:
         section: str = "",
         limit: int = MESSAGE_LIMIT,
         truncate: bool = False,
-    ) -> tuple[Message, datetime | None, bool]:
+    ) -> tuple[EmailMessage, datetime | None, bool]:
         """Fetch at most limit+1 bytes; reject oversize input unless truncation is requested."""
         fields = self.data(
             [uid], ["INTERNALDATE", f"BODY.PEEK[{section}]<0.{limit + 1}>"]
@@ -233,7 +233,7 @@ class Session:
             )
         timestamp = fields.get(b"INTERNALDATE")
         return (
-            BytesParser(policy=policy.default).parsebytes(
+            BytesParser(_class=EmailMessage, policy=policy.default).parsebytes(
                 raw[:limit], headersonly=bool(section)
             ),
             timestamp if isinstance(timestamp, datetime) else None,
