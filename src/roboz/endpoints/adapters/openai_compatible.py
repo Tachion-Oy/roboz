@@ -7,7 +7,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Self
 from urllib.parse import urlsplit
 
-from roboz.endpoints.env import _has_usable_key, load_api_keys
+from roboz.endpoints.env import _has_usable_key, load_secrets
 from roboz.llm import (
     LLMEndpoint,
     RequestOptions,
@@ -79,7 +79,7 @@ class OpenAICompatibleAdapter:
         api_name: str = "openai",
         base_url: str = "https://api.openai.com/v1",
         api_key: str | None = None,
-        api_key_env: str = "OPENAI_API_KEY",
+        api_key_env: str = "OPENAI_API_KEY_SECRET",
         timeout_s: float = 60.0,
     ) -> None:
         """Store service settings without validation, SDK imports, or I/O.
@@ -139,13 +139,13 @@ class OpenAICompatibleAdapter:
         if self._api_key is None:
             configured = os.environ.get(self._api_key_env)
             if not _has_usable_key(configured):
-                load_api_keys()
+                load_secrets()
         key = (
             self._api_key
             if self._api_key is not None
             else os.environ.get(self._api_key_env)
         )
-        if key is None or not key.strip():
+        if not _has_usable_key(key):
             raise ValueError(f"Set {self._api_key_env} or pass api_key explicitly")
         # Roboz owns retries and cancellation; avoid stacking SDK retries.
         return OpenAI(
@@ -206,7 +206,7 @@ def chat_endpoint(
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
-    api_key_env: str = "OPENAI_API_KEY",
+    api_key_env: str = "OPENAI_API_KEY_SECRET",
     timeout_s: float = 60.0,
     stream: bool = True,
     extra_body: RequestOptions | None = None,
@@ -236,7 +236,7 @@ def transcription_endpoint(
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
-    api_key_env: str = "OPENAI_API_KEY",
+    api_key_env: str = "OPENAI_API_KEY_SECRET",
     timeout_s: float = 60.0,
 ) -> TranscriptionEndpoint:
     """Describe an endpoint through a configured ``OpenAICompatibleAdapter``.

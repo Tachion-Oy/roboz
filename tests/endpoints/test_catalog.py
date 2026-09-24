@@ -135,7 +135,7 @@ def test_discovery_does_not_import_sdk_or_read_credentials():
                 return original_import(name, *args, **kwargs)
 
             def get_environment(key, *args):
-                if key in {'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'GROQ_API_KEY'}:
+                if key in {'OPENROUTER_API_KEY_SECRET', 'CEREBRAS_API_KEY_SECRET', 'GROQ_API_KEY_SECRET'}:
                     raise AssertionError('Credentials read during discovery')
                 return original_get(key, *args)
 

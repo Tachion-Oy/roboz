@@ -5,6 +5,9 @@
 - Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
   tool discovers protected `.sh` entrypoints and runs them with bounded output,
   deadlines, cancellation, and script output events.
+- Breaking: dotenv encryption now selects only names ending in `_SECRET`, and
+  `load_api_keys` is replaced by `load_secrets`. Rename API credentials such as
+  `OPENAI_API_KEY` to `OPENAI_API_KEY_SECRET` and recreate `.env.encrypt`.
 
 ## 0.1.2a2 - 2026-09-23
 

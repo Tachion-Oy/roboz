@@ -286,10 +286,10 @@ routes; it never stores the credential itself. See the dedicated
 [endpoint catalogue README](src/roboz/endpoints/README.md) for the complete
 workflow, custom paths, and the inventory format.
 
-Run `python -m roboz.endpoints env encrypt` to create `.env.encrypt` from
-`.env` with a hidden password. The source stays untouched; remove it when
-you no longer need it. Import
-`load_api_keys` from `roboz.endpoints` to decrypt before starting an agent, or
+Run `python -m roboz.endpoints env encrypt` to encrypt all nonempty values
+whose names end in `_SECRET` into `.env.encrypt` from `.env`. The source
+stays untouched; remove it when you no longer need it. Import
+`load_secrets` from `roboz.endpoints` to decrypt before starting an agent, or
 let an endpoint load its missing key when first used. Loading prefers
 `.env.encrypt` and falls back to plaintext `.env`.
 
