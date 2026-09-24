@@ -1,5 +1,6 @@
 """Shed capabilities compose with concrete endpoints and the core build contract."""
 
+from pathlib import Path
 from typing import assert_type
 
 from roboz.shed.agents import librarian, orchestrator
@@ -11,6 +12,7 @@ from roboz.shed.capabilities import (
     FileEditing,
     MaintenanceCadence,
     MemoryConsolidation,
+    SafeScripts,
 )
 from roboz.shed.sandbox import Sandbox
 from roboz import Agent
@@ -29,6 +31,7 @@ def compose(sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe) -> None:
         MemoryConsolidation(endpoint=endpoint),
         ArtifactRetention(),
         MaintenanceCadence(seconds=0),
+        SafeScripts(Path("/opt/trusted-scripts")),
     )
     definition = orchestrator(sandbox, agent_endpoint=endpoint)
     definition.set_attributes(sandbox=sandbox, watched_agent_names={"orchestrator"})
