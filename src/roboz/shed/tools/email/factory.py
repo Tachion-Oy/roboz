@@ -62,37 +62,61 @@ def get_work_with_email(
         pipe=pipe,
         prompt_before_inbox_read=prompt_before_inbox_read,
     )
-    search_description = (
-        "Search Inbox, Drafts, or Sent and return newest-first bounded metadata, "
-        "160-character previews, and opaque source references. Input requires "
-        "mailbox and supports from_address?, to_address?, subject_contains?, "
-        "text_contains?, since?, before?, and limit? (1-20, default 10). "
-        f"Load `{email_skill_name}` for privacy and source-safety guidance."
+    resolved_base = resolve_tool_base(base)
+    guard_ctx = GuardContext(
+        base=resolved_base,
+        default_verdict=default_verdict,
+        takes_precedence=takes_precedence or ActionVerdict.deny,
+        allow=list(allow_rules or []),
+        deny=list(deny_rules or []),
+        ask=list(ask_rules or []),
+        pipe=pipe,
+    )
+    draft = resolve_email_input(resolved_base).copy(
+        name=CREATE_EMAIL_DRAFT_TOOL_NAME,
+        description=(
+            "Create a server-side draft without sending it. Attach local files with "
+            "attachment_paths (relative to the tool base or absolute; no globs; max 10). "
+            "Every attachment requires READ permission. "
+            f"Load `{email_skill_name}` for usage guidance."
+        ),
+    )
+    download = resolve_attachment_download(resolved_base).copy(
+        name=DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
+        description=(
+            "Download one email attachment to destination_path. Relative paths use "
+            "the tool base; absolute paths remain absolute. The destination requires "
+            "filesystem CREATE/overwrite permission."
+        ),
+    )
+    reply = resolve_reply_draft_input(resolved_base).copy(
+        name=CREATE_REPLY_DRAFT_TOOL_NAME,
+        description=(
+            "Create a reply draft from an Inbox source_message_ref. Recipients, subject, "
+            "and threading come from the source. Reply to all visible recipients except "
+            "the configured sender by default; set reply_all=false for a sender-only reply. "
+            "Set include_quoted_original=false to omit the original body. Every local "
+            "attachment requires READ permission. The draft is not sent. "
+            f"Load `{email_skill_name}` for usage guidance."
+        ),
     )
     return [
-        *_get_create_email_draft_tools(
-            service=service,
-            base=base,
-            default_verdict=default_verdict,
-            deny_rules=deny_rules,
-            allow_rules=allow_rules,
-            ask_rules=ask_rules,
-            takes_precedence=takes_precedence,
-            is_cancelled=is_cancelled,
-            pipe=pipe,
-            timeout_s=timeout_s,
-            email_skill_name=email_skill_name,
+        *build_guarded_tool_chain(
+            entry=draft, guard_ctx=guard_ctx, execute=execute_email_operation(runtime)
         ),
         search_email(runtime).copy(
             name=SEARCH_EMAIL_TOOL_NAME,
-            description=search_description,
+            description=(
+                "Search Inbox, Drafts, or Sent with structured filters. Return newest-first "
+                "metadata, 160-character previews, and opaque source references. "
+                f"Load `{email_skill_name}` for privacy and source-safety guidance."
+            ),
         ),
         read_email(runtime).copy(
             name=READ_EMAIL_TOOL_NAME,
             description=(
-                "Open one bounded message from Inbox, Drafts, or Sent. Successful "
-                "Inbox reads mark the message read. Drafts and Sent are user-authored "
-                "and read-only."
+                "Open one bounded message from Inbox, Drafts, or Sent. Successful Inbox "
+                "reads mark the message read. Drafts and Sent remain read-only."
                 + (
                     " Inbox reads prompt before fetching."
                     if prompt_before_inbox_read
@@ -100,167 +124,12 @@ def get_work_with_email(
                 )
             ),
         ),
-        *_get_download_attachment_tools(
-            ctx=runtime,
-            base=base,
-            default_verdict=default_verdict,
-            deny_rules=deny_rules,
-            allow_rules=allow_rules,
-            ask_rules=ask_rules,
-            takes_precedence=takes_precedence,
-            pipe=pipe,
+        *build_guarded_tool_chain(
+            entry=download,
+            guard_ctx=guard_ctx,
+            execute=execute_attachment_download(runtime),
         ),
-        *_get_create_reply_draft_tools(
-            ctx=runtime,
-            base=base,
-            default_verdict=default_verdict,
-            deny_rules=deny_rules,
-            allow_rules=allow_rules,
-            ask_rules=ask_rules,
-            takes_precedence=takes_precedence,
-            pipe=pipe,
-            email_skill_name=email_skill_name,
+        *build_guarded_tool_chain(
+            entry=reply, guard_ctx=guard_ctx, execute=execute_reply_draft(runtime)
         ),
     ]
-
-
-def _get_download_attachment_tools(
-    *,
-    ctx: EmailContext,
-    base: Path,
-    default_verdict: ActionVerdict,
-    deny_rules: list[PermissionRule] | None,
-    allow_rules: list[PermissionRule] | None,
-    ask_rules: list[PermissionRule] | None,
-    takes_precedence: ActionVerdict | None,
-    pipe: EventPipe | None,
-) -> list[Tool]:
-    resolved_base = resolve_tool_base(base)
-    guard_ctx = GuardContext(
-        base=resolved_base,
-        takes_precedence=takes_precedence or ActionVerdict.deny,
-        default_verdict=default_verdict,
-        allow=list(allow_rules or []),
-        deny=list(deny_rules or []),
-        ask=list(ask_rules or []),
-        pipe=pipe,
-    )
-    entry = resolve_attachment_download(resolved_base).copy(
-        name=DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
-        description=(
-            "Download one email attachment to a specific local path. "
-            "Input is `{attachment_ref, destination_path}`. Relative paths use "
-            "the configured tool base; absolute paths remain absolute. The "
-            "destination is protected by filesystem CREATE/overwrite permissions."
-        ),
-    )
-    return build_guarded_tool_chain(
-        entry=entry,
-        guard_ctx=guard_ctx,
-        execute=execute_attachment_download(ctx),
-    )
-
-
-def _get_create_email_draft_tools(
-    *,
-    service: EmailService,
-    base: Path,
-    default_verdict: ActionVerdict,
-    deny_rules: list[PermissionRule] | None = None,
-    allow_rules: list[PermissionRule] | None = None,
-    ask_rules: list[PermissionRule] | None = None,
-    takes_precedence: ActionVerdict | None = None,
-    is_cancelled: Callable[[], bool] = lambda: False,
-    pipe: EventPipe | None = None,
-    timeout_s: float = DEFAULT_EMAIL_OPERATION_TIMEOUT_S,
-    email_skill_name: str = EMAIL_TOOLS_SKILL_NAME,
-) -> list[Tool]:
-    """Create the draft-only email tool chain with path guards for attachments.
-
-    Sending is deliberately absent: the service can only persist a draft and
-    the public input model exposes only ``create_draft``. Optional
-    ``attachment_paths`` are resolved like other structured file tools and gated
-    by READ permission only.
-    """
-    allow = list(allow_rules if allow_rules else [])
-    deny = list(deny_rules if deny_rules else [])
-    ask = list(ask_rules if ask_rules else [])
-    precedence = takes_precedence if takes_precedence else ActionVerdict.deny
-    resolved_base = resolve_tool_base(base)
-
-    guard_ctx = GuardContext(
-        base=resolved_base,
-        takes_precedence=precedence,
-        default_verdict=default_verdict,
-        allow=allow,
-        deny=deny,
-        ask=ask,
-        pipe=pipe,
-    )
-
-    description = (
-        "Create a real server-side email draft using semantic fields. This tool "
-        "can only create drafts; it cannot send, read, search, delete, or alter "
-        "mailbox state otherwise. Input is `{to, cc, bcc, subject, body_text, "
-        "from_address?, reply_to?, client_request_id?, "
-        "attachment_paths?}`. Optional `attachment_paths` is a list of file paths "
-        "(relative to the tool base or absolute; no globs; max 10). Each path "
-        "requires READ permission. "
-        f"The possibly available `{email_skill_name}` skill has usage guidance."
-    )
-    execute_ctx = EmailContext(
-        service=service, is_cancelled=is_cancelled, timeout_s=timeout_s, pipe=pipe
-    )
-    entry = resolve_email_input(resolved_base).copy(
-        name=CREATE_EMAIL_DRAFT_TOOL_NAME, description=description
-    )
-    return build_guarded_tool_chain(
-        entry=entry,
-        guard_ctx=guard_ctx,
-        execute=execute_email_operation(execute_ctx),
-    )
-
-
-def _get_create_reply_draft_tools(
-    *,
-    ctx: EmailContext,
-    base: Path,
-    default_verdict: ActionVerdict,
-    deny_rules: list[PermissionRule] | None,
-    allow_rules: list[PermissionRule] | None,
-    ask_rules: list[PermissionRule] | None,
-    takes_precedence: ActionVerdict | None,
-    pipe: EventPipe | None,
-    email_skill_name: str,
-) -> list[Tool]:
-    resolved_base = resolve_tool_base(base)
-    guard_ctx = GuardContext(
-        base=resolved_base,
-        takes_precedence=takes_precedence or ActionVerdict.deny,
-        default_verdict=default_verdict,
-        allow=list(allow_rules or []),
-        deny=list(deny_rules or []),
-        ask=list(ask_rules or []),
-        pipe=pipe,
-    )
-    description = (
-        "Create a real server-side reply draft from a source_message_ref returned "
-        f"by `{SEARCH_EMAIL_TOOL_NAME}` from Inbox. To/Cc recipients, subject, and thread "
-        "headers are derived from the source and cannot be supplied by the caller. "
-        "The operation replies to all visible source recipients by default, excluding "
-        "the configured sender; set `reply_all` to false for a sender-only reply. "
-        "The source message is quoted beneath the reply by default; set "
-        "`include_quoted_original` to false to omit it. Input is "
-        "`{source_message_ref, body_text, include_quoted_original?, reply_all?, "
-        "from_address?, client_request_id?, attachment_paths?}`. The draft is not sent. "
-        f"Load `{email_skill_name}` for usage guidance."
-    )
-    entry = resolve_reply_draft_input(resolved_base).copy(
-        name=CREATE_REPLY_DRAFT_TOOL_NAME,
-        description=description,
-    )
-    return build_guarded_tool_chain(
-        entry=entry,
-        guard_ctx=guard_ctx,
-        execute=execute_reply_draft(ctx),
-    )
