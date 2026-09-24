@@ -3,9 +3,16 @@
 from pathlib import Path
 from typing import assert_type
 
+from pydantic import SecretStr
+
 from roboz.shed.models import GuardFilesResult, ParseError
 from roboz.shed.tools.contexts import EmailContext
 from roboz.shed.tools.email import EmailService, get_work_with_email
+from roboz.shed.tools.email.proton_bridge import (
+    ProtonBridgeEmailService,
+    ProtonBridgeSettings,
+    ProtonBridgeTlsMode,
+)
 from roboz.shed.tools.email.drafts import (
     execute_email_operation,
     execute_reply_draft,
@@ -58,6 +65,25 @@ def bind(service: EmailService, base: Path) -> None:
     assert_type(context.service.check(), bool)
     assert_type(context.external_dependencies(), tuple[ExternalDependency, ...])
     assert_type(search_email(context), Tool[SearchEmail, Str])
+    assert_type(
+        get_work_with_email(
+            service=service, base=base, default_verdict=ActionVerdict.deny
+        ),
+        list[Tool],
+    )
+
+
+def bind_proton_bridge(base: Path, username: str, password: str) -> None:
+    settings = ProtonBridgeSettings(
+        imap_host="127.0.0.1",
+        imap_port=1143,
+        tls_mode=ProtonBridgeTlsMode.STARTTLS,
+        account_address="me@example.com",
+        username=SecretStr(username),
+        password=SecretStr(password),
+    )
+    service = ProtonBridgeEmailService(settings)
+    assert_type(service, ProtonBridgeEmailService)
     assert_type(
         get_work_with_email(
             service=service, base=base, default_verdict=ActionVerdict.deny

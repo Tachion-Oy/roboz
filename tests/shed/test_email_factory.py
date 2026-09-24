@@ -7,9 +7,13 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 from roboz.agent import AgentMode
+from roboz.deployment import DeployableAgent
+from roboz.llm import MockLLMEndpoint
+from roboz.shed.capabilities import Email
 from roboz.shed.identifiers import (
     DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME,
     READ_EMAIL_TOOL_NAME,
+    SEARCH_EMAIL_TOOL_NAME,
 )
 from roboz.shed.models import (
     ActionVerdict,
@@ -20,6 +24,7 @@ from roboz.shed.models import (
     PermissionRule,
 )
 from roboz.shed.skills.email_tools.prompts import INSTRUCTIONS as EMAIL_INSTRUCTIONS
+from roboz.shed.sandbox import PermissionPolicy
 from roboz.shed.tools.email import (
     DownloadedEmailAttachment,
     EmailDraftAttachment,
@@ -256,6 +261,38 @@ def _run_chain(tools, payload):
     if guarded.status != GuardStatus.ALLOWED:
         return resolved, guarded, None
     return resolved, guarded, execute(guarded, messages=[])
+
+
+def test_email_capability_binds_permissions_and_fresh_cancellation(tmp_path):
+    source = tmp_path / "secret.txt"
+    source.write_text("private")
+    provider = _FakeMailboxService()
+    definition = DeployableAgent(
+        name="email",
+        system_prompt="Use the configured email tools.",
+        default_capabilities=(Email(provider),),
+    )
+    definition.set_agent_endpoint(MockLLMEndpoint([]))
+    definition.set_attributes(permissions=PermissionPolicy(base=tmp_path))
+    first, _ = definition.build()
+    second, _ = definition.build()
+    first_tools = {tool.name: tool for tool in first.tools}
+    second_tools = {tool.name: tool for tool in second.tools}
+
+    _, guarded, result = _run_chain(first.tools, _input(attachment_paths=[source.name]))
+    assert guarded.status == GuardStatus.DENIED and result is None
+    assert not provider.draft_requests
+
+    first.pipe.cancel()
+    cancelled = first_tools[SEARCH_EMAIL_TOOL_NAME](
+        SearchEmail(mailbox="inbox"), []
+    )
+    assert "cancelled" in cancelled.value and not provider.search_requests
+    fresh = second_tools[SEARCH_EMAIL_TOOL_NAME](
+        SearchEmail(mailbox="inbox"), []
+    )
+    assert "Project update" in fresh.value
+    assert len(provider.search_requests) == 1
 
 
 def test_work_with_email_creates_normalized_draft_without_sending(

@@ -3,7 +3,7 @@
   "providers": {
     "groq": {
       "base_url": "https://api.groq.com/openai/v1",
-      "api_key_env": "GROQ_API_KEY",
+      "api_key_env": "GROQ_API_KEY_SECRET",
       "models": {
         "whisper_large_v3_turbo": {"model_id": "whisper-large-v3-turbo", "endpoint_type": "transcription"},
         "new_chat": {"model_id": "new-chat", "endpoint_type": "llm", "max_context_tokens": 256}
@@ -11,7 +11,7 @@
     },
     "custom": {
       "base_url": "https://models.example.com/v1",
-      "api_key_env": "CUSTOM_API_KEY",
+      "api_key_env": "CUSTOM_API_KEY_SECRET",
       "timeout_s": 12.0,
       "stream": false,
       "models": {

@@ -84,6 +84,21 @@ class EmailSearchRequest:
     before: date | None = None
     limit: int = 10
 
+    def to_imap_criteria(self) -> list[str | date]:
+        """Build IMAP search terms; an unfiltered request matches all messages."""
+        criteria: list[str | date] = []
+        for key, value in (
+            ("FROM", self.from_address),
+            ("TO", self.to_address),
+            ("SUBJECT", self.subject_contains),
+            ("TEXT", self.text_contains),
+            ("SINCE", self.since),
+            ("BEFORE", self.before),
+        ):
+            if value:
+                criteria.extend((key, value))
+        return criteria or ["ALL"]
+
 
 @dataclass(frozen=True)
 class EmailSummary:

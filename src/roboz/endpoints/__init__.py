@@ -1,5 +1,5 @@
-"""Typed model catalogues, endpoint adapters, and dotenv API keys."""
+"""Typed model catalogues, endpoint adapters, and dotenv secrets."""
 
-from roboz.endpoints.env import encrypt_env, load_api_keys
+from roboz.endpoints.env import encrypt_env, load_secrets
 
-__all__ = ["encrypt_env", "load_api_keys"]
+__all__ = ["encrypt_env", "load_secrets"]

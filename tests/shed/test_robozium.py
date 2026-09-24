@@ -1,9 +1,16 @@
 from types import SimpleNamespace
 import importlib
 
+from roboz.shed.capabilities import Email, SafeScripts
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.deployments import robozium as exported_robozium
 from roboz.shed.skills import robozium as robozium_skill
+from roboz.shed.skills import email_skill
+from roboz.shed.tools.email.proton_bridge import (
+    ProtonBridgeEmailService,
+    ProtonBridgeSettings,
+)
+from roboz.shed.tools.safe_scripts import RunShellScriptInput
 import pytest
 
 from roboz.models import Empty
@@ -119,10 +126,56 @@ def _build_recipe(sandbox, **choices):
         sandbox,
         endpoint_getter=choices.pop("endpoint_getter", lambda: _endpoint("selected")),
         memory_endpoint=choices.pop("memory_endpoint", _endpoint("memory")),
-        additional_capabilities=(),
+        additional_capabilities=choices.pop("additional_capabilities", ()),
         specialists=choices.pop("specialists", ()),
         event_sinks=choices.pop("event_sinks", ()),
     )
+
+
+def test_recipe_composes_proton_bridge_and_safe_scripts_without_connecting(tmp_path):
+    def forbidden(settings, context):
+        pytest.fail("Building and inspecting must not connect to Bridge")
+
+    service = ProtonBridgeEmailService(
+        ProtonBridgeSettings.model_validate(
+            {
+                "imap_host": "127.0.0.1",
+                "imap_port": 1143,
+                "tls_mode": "starttls",
+                "account_address": "me@example.com",
+                "username": "bridge-user",
+                "password": "bridge-password",
+            }
+        ),
+        client_factory=forbidden,
+    )
+    scripts = tmp_path / "trusted-scripts"
+    scripts.mkdir()
+    (scripts / "hello.sh").write_text("#!/bin/bash\n# Print a greeting.\necho hello\n")
+    sandbox = Sandbox(tmp_path / "data").for_project("project")
+    root, (librarian,) = _build_recipe(
+        sandbox,
+        additional_capabilities=(Email(service), SafeScripts(scripts)),
+    )
+
+    names = {
+        "create_email_draft",
+        "search_email",
+        "read_email",
+        "download_email_attachment",
+        "create_reply_draft",
+        "run_shell_script",
+    }
+    tools = {tool.name: tool for tool in root.active_tools.values()}
+    assert names <= tools.keys()
+    assert not names.intersection(tool.name for tool in librarian.active_tools.values())
+    assert service in root.external_dependencies()
+    assert email_skill in root.auto_loaded_skills
+    listed = tools["run_shell_script"](RunShellScriptInput(), [])
+    assert [(entry.script, entry.description) for entry in listed.scripts] == [
+        ("hello.sh", "Print a greeting.")
+    ]
+    assert not sandbox.resolved_root.exists()
 
 
 def test_build_requires_a_valid_scoped_sandbox(tmp_path):

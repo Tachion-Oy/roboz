@@ -33,7 +33,7 @@ def test_committed_catalogue_types_are_current_without_sdk_or_credentials():
                 return original_import(name, *args, **kwargs)
 
             def get_environment(key, *args):
-                if key in {'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'GROQ_API_KEY'}:
+                if key in {'OPENROUTER_API_KEY_SECRET', 'CEREBRAS_API_KEY_SECRET', 'GROQ_API_KEY_SECRET'}:
                     raise AssertionError('Credentials read during generation')
                 return original_get(key, *args)
 

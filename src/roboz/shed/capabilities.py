@@ -17,7 +17,7 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import cli_skill, file_editing
+from roboz.shed.skills import cli_skill, email_skill, file_editing
 from roboz.shed.tools import (
     get_apply_patch,
     get_compactify_messages_when_needed_tool,
@@ -36,9 +36,15 @@ from roboz.shed.tools.contexts import (
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
 )
+from roboz.shed.tools.email import EmailService, get_work_with_email
+from roboz.shed.tools.email.factory import DEFAULT_EMAIL_OPERATION_TIMEOUT_S
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
-from roboz.shed.tools.safe_scripts import SafeScriptContext, run_shell_script
+from roboz.shed.tools.safe_scripts import (
+    ReservedScriptEnv,
+    SafeScriptContext,
+    run_shell_script,
+)
 from roboz.shed.tools.stop_when_watched_agents_inactive import (
     stop_when_watched_agents_inactive,
 )
@@ -85,12 +91,8 @@ class SafeScripts(AgentCapability):
             or self.max_output_bytes <= 0
         ):
             raise ValueError("max_output_bytes must be positive")
-        forbidden = {
-            "PATH", "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
-            "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH",
-        }
         if any(
-            not name or "=" in name or "\x00" in name or name in forbidden
+            not name or "=" in name or "\x00" in name or name in ReservedScriptEnv
             for name in self.env_allowlist
         ):
             raise ValueError("env_allowlist contains an invalid or reserved name")
@@ -124,6 +126,40 @@ _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
 _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
     "agent_endpoint": _ENDPOINT_TYPES,
 }
+
+
+@dataclass(frozen=True)
+class Email(AgentCapability):
+    """Bind email tools and guidance to the agent's file permissions and runtime.
+
+    Supply a configured service, such as ProtonBridgeEmailService. Credential
+    loading belongs to the application; building does not contact the provider.
+    """
+
+    service: EmailService
+    timeout_s: float = DEFAULT_EMAIL_OPERATION_TIMEOUT_S
+    prompt_before_inbox_read: bool = False
+
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require file permissions for draft attachments and downloaded files."""
+        return {"permissions": PermissionPolicy}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
+        """Bind the existing email factory and its guidance to this agent's pipe."""
+        permissions = cast(PermissionPolicy, agent.permissions)
+        return Capability(
+            tools=tuple(
+                get_work_with_email(
+                    service=self.service,
+                    **permissions.tool_options(pipe),
+                    is_cancelled=lambda: pipe.cancelled,
+                    timeout_s=self.timeout_s,
+                    prompt_before_inbox_read=self.prompt_before_inbox_read,
+                )
+            ),
+            auto_loaded_skills=(email_skill,),
+        )
 
 
 @dataclass(frozen=True)

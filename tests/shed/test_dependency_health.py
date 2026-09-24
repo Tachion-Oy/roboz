@@ -167,7 +167,7 @@ def test_model_checker_uses_only_discovery_and_recognizes_route_suffix() -> None
 
 def test_model_checker_maps_resource_errors_and_missing_models() -> None:
     dependency, _ = _endpoint(
-        error=ValueError("PROVIDER_API_KEY not found in environment variables")
+        error=ValueError("PROVIDER_API_KEY_SECRET not found in environment variables")
     )
     assert (
         check_dependency(dependency).reason_code

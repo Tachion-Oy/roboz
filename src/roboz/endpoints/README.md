@@ -58,7 +58,7 @@ For example, a provider entry can contain:
 ```json
 "my_service": {
   "base_url": "https://models.example.com/v1",
-  "api_key_env": "MY_SERVICE_API_KEY",
+  "api_key_env": "MY_SERVICE_API_KEY_SECRET",
   "models": {
     "my_chat_model": {
       "model_id": "my-chat-model",
@@ -110,11 +110,12 @@ when it carries the RoboZ generated-file marker.
 
 Run `python -m roboz.endpoints inventory <command> --help` for command options.
 
-## API keys in `.env`
+## Secrets in `.env`
 
 Keep using an ordinary `.env` file with entries such as
-`MY_SERVICE_API_KEY=...`. Encrypt its nonempty `_API_KEY` values from the
-project directory:
+`MY_SERVICE_API_KEY_SECRET=...` or
+`PROTON_BRIDGE_PASSWORD_SECRET=...`. Encrypt its nonempty `_SECRET` values from
+the project directory:
 
 ```bash
 uv run python -m roboz.endpoints env encrypt
@@ -124,27 +125,27 @@ uv run python -m roboz.endpoints env encrypt
 The command asks for a hidden password twice, or consumes
 `ROBOZ_ENV_PASSWORD` from its process environment. It writes `.env.encrypt`
 beside the untouched `.env` source (or adds `.encrypt` to a custom path).
-The new file contains the parsed assignments with nonempty `_API_KEY` values
+The new file contains the parsed assignments with nonempty `_SECRET` values
 encrypted; comments and original formatting stay only in the source. You may
 delete the plaintext source after checking the result. Both files use dotenv
 syntax, so `python-dotenv` can parse the ciphertext but cannot decrypt it.
 Plaintext `.env` files continue to load without a password.
 
-An application can load keys before starting an agent:
+An application can load secrets before starting an agent:
 
 ```python
 from getpass import getpass
-from roboz.endpoints import load_api_keys
+from roboz.endpoints import load_secrets
 
-load_api_keys(password=getpass("API key password: "))
+load_secrets(password=getpass("Secret password: "))
 ```
 
-With no path argument, `load_api_keys()` prefers `.env.encrypt` and falls back
+With no path argument, `load_secrets()` prefers `.env.encrypt` and falls back
 to `.env`. Pass `path=` to choose a file explicitly. Endpoints also load missing
 keys when first used. For deferred loading, set
 `ROBOZ_ENV_PASSWORD` in the application's process environment. The loader
-consumes it only when encrypted keys need decrypting; an explicit `api_key=`
-on the adapter takes precedence. All pending keys are validated before any
+consumes it only when encrypted secrets need decrypting; an explicit `api_key=`
+on the adapter takes precedence. All pending secrets are validated before any
 are added to `os.environ`. Existing usable environment keys take precedence
 over file values.
 
@@ -152,7 +153,7 @@ Re-running encryption recreates `.env.encrypt` from the plaintext source. A
 wrong password or damaged ciphertext fails during loading without injecting
 pending keys. The command writes no password or private-key file. Keep the
 password outside the repository and retain it for future decryption. Loaded
-API keys remain available in the application's process environment. Consuming
+secrets remain available in the application's process environment. Consuming
 a password removes only this process's environment entry; it cannot erase a
 parent-shell copy or guarantee memory wiping.
 

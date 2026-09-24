@@ -1,4 +1,4 @@
-"""Load and encrypt API keys in ordinary dotenv files."""
+"""Load and encrypt explicitly marked secrets in ordinary dotenv files."""
 
 import base64
 import binascii
@@ -12,7 +12,7 @@ from dotenv import dotenv_values
 
 
 _LOCK = Lock()
-_API_KEY_SUFFIX = "_API_KEY"
+_SECRET_SUFFIX = "_SECRET"
 _ENCRYPTED_NAMESPACE = "roboz:"
 _ENCRYPTED_PREFIX = f"{_ENCRYPTED_NAMESPACE}v1:"
 _PASSWORD_ENV = "ROBOZ_ENV_PASSWORD"
@@ -25,12 +25,12 @@ _DEFAULT_SOURCE = Path(".env")
 _DEFAULT_ENCRYPTED = Path(".env.encrypt")
 
 
-def _is_api_key(name: str | None) -> bool:
-    return bool(name and name.endswith(_API_KEY_SUFFIX))
+def _is_secret(name: str | None) -> bool:
+    return bool(name and name.endswith(_SECRET_SUFFIX))
 
 
 def _is_encrypted(value: str) -> bool:
-    # Recognize unsupported versions too, so they fail instead of loading as keys.
+    # Recognize unsupported versions too, so they fail instead of loading as credentials.
     return value.startswith(_ENCRYPTED_NAMESPACE)
 
 
@@ -41,7 +41,7 @@ def _has_usable_key(value: str | None) -> bool:
 def _password(explicit: str | None) -> str:
     password = explicit if explicit is not None else os.environ.pop(_PASSWORD_ENV, None)
     if not password:
-        raise ValueError("An API key password is required")
+        raise ValueError("A secret password is required")
     return password
 
 
@@ -66,11 +66,11 @@ def _decrypt(value: str, password: str) -> str:
             raise ValueError
         return _fernet(password, salt).decrypt(token.encode("ascii")).decode("utf-8")
     except (ValueError, InvalidToken, UnicodeError, binascii.Error) as error:
-        raise ValueError("Invalid encrypted API key or password") from error
+        raise ValueError("Invalid encrypted secret or password") from error
 
 
-def load_api_keys(path: str | Path | None = None, *, password: str | None = None) -> None:
-    """Load missing ``*_API_KEY`` values; decrypt only when needed.
+def load_secrets(path: str | Path | None = None, *, password: str | None = None) -> None:
+    """Load missing ``*_SECRET`` values; decrypt only when needed.
 
     By default, prefer ``.env.encrypt`` and fall back to plaintext ``.env``.
     An environment password is consumed only when pending ciphertext exists.
@@ -83,10 +83,10 @@ def load_api_keys(path: str | Path | None = None, *, password: str | None = None
         pending = {
             name: value
             for name, value in os.environ.items()
-            if _is_api_key(name) and _is_encrypted(value)
+            if _is_secret(name) and _is_encrypted(value)
         }
         for name, value in dotenv_values(dotenv_path, interpolate=False).items():
-            if not _is_api_key(name) or not value or not value.strip():
+            if not _is_secret(name) or not value or not value.strip():
                 continue
             if name in pending or _has_usable_key(os.environ.get(name)):
                 continue
@@ -99,7 +99,7 @@ def load_api_keys(path: str | Path | None = None, *, password: str | None = None
             for name, value in encrypted.items():
                 resolved[name] = _decrypt(value, secret)
         if any(not value.strip() for value in resolved.values()):
-            raise ValueError("An encrypted API key is empty")
+            raise ValueError("An encrypted secret is empty")
         os.environ.update(resolved)
 
 
@@ -113,12 +113,16 @@ def encrypt_env(path: str | Path = ".env", *, password: str | None = None) -> Pa
     if dotenv_path.is_symlink() or not dotenv_path.is_file():
         raise ValueError("The dotenv path must be an existing regular file")
     values = dotenv_values(dotenv_path, interpolate=False)
-    keys = {name: value for name, value in values.items() if _is_api_key(name) and value and value.strip()}
-    if any(_is_encrypted(value) for value in keys.values()):
-        raise ValueError("The source dotenv file must contain plaintext API keys")
-    if keys:
+    secrets = {
+        name: value
+        for name, value in values.items()
+        if _is_secret(name) and value and value.strip()
+    }
+    if any(_is_encrypted(value) for value in secrets.values()):
+        raise ValueError("The source dotenv file must contain plaintext secrets")
+    if secrets:
         secret = _password(password)
-        for name, value in keys.items():
+        for name, value in secrets.items():
             salt = os.urandom(_SALT_BYTES)
             token = _fernet(secret, salt).encrypt(value.encode("utf-8")).decode("ascii")
             values[name] = f"{_ENCRYPTED_PREFIX}{base64.urlsafe_b64encode(salt).decode('ascii')}:{token}"

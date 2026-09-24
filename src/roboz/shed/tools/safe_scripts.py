@@ -11,6 +11,7 @@ from _thread import LockType
 from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path, PureWindowsPath
 from typing import Literal
 
@@ -21,6 +22,19 @@ from roboz.models import Empty, Message
 from roboz.runtime import EventPipe
 from roboz.tooling.context import HasExternalDependencies
 from roboz.tooling.decorators import factory
+
+
+class ReservedScriptEnv(StrEnum):
+    """Process-control variables excluded from the script environment allowlist."""
+
+    PATH = "PATH"
+    BASH_ENV = "BASH_ENV"
+    ENV = "ENV"
+    SHELLOPTS = "SHELLOPTS"
+    BASHOPTS = "BASHOPTS"
+    LD_PRELOAD = "LD_PRELOAD"
+    LD_LIBRARY_PATH = "LD_LIBRARY_PATH"
+    PYTHONPATH = "PYTHONPATH"
 
 
 class RunShellScriptInput(Empty):
@@ -194,7 +208,9 @@ def _monitor_script(
 def _run_script(path: Path, ctx: SafeScriptContext) -> ShellScriptResult:
     """Own the process lifetime, including cleanup on cancellation or failure."""
     environment = {
-        "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
+        ReservedScriptEnv.PATH: os.pathsep.join(
+            (str(Path(sys.executable).parent), os.defpath)
+        ),
         "LANG": "C.UTF-8",
         **{name: os.environ[name] for name in ctx.env_allowlist if name in os.environ},
     }

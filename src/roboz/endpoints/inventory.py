@@ -20,7 +20,7 @@ CATALOGS = {
             adapter=OpenAICompatibleAdapter(
                 api_name="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                api_key_env="OPENROUTER_API_KEY",
+                api_key_env="OPENROUTER_API_KEY_SECRET",
             ),
             models={
                 "z_ai__glm_5_3": ChatModelSpec("z-ai/glm-5.3", 1_310_720),
@@ -31,7 +31,7 @@ CATALOGS = {
             adapter=OpenAICompatibleAdapter(
                 api_name="cerebras",
                 base_url="https://api.cerebras.ai/v1",
-                api_key_env="CEREBRAS_API_KEY",
+                api_key_env="CEREBRAS_API_KEY_SECRET",
             ),
             models={
                 "gpt_oss_120b": ChatModelSpec("gpt-oss-120b", 131_072),
@@ -41,7 +41,7 @@ CATALOGS = {
             adapter=OpenAICompatibleAdapter(
                 api_name="groq",
                 base_url="https://api.groq.com/openai/v1",
-                api_key_env="GROQ_API_KEY",
+                api_key_env="GROQ_API_KEY_SECRET",
             ),
             models={
                 "whisper_large_v3_turbo": TranscriptionModelSpec("whisper-large-v3-turbo"),

@@ -401,7 +401,7 @@ def test_commands_and_generated_inspection_need_no_sdk_or_credentials(tmp_path):
                 raise AssertionError('SDK imported')
             return original_import(name, *args, **kwargs)
         def guarded_get(name, *args):
-            if name.endswith('_API_KEY'):
+            if name.endswith('_API_KEY_SECRET'):
                 raise AssertionError('credential read')
             return original_get(name, *args)
         builtins.__import__, os.environ.get = guarded_import, guarded_get

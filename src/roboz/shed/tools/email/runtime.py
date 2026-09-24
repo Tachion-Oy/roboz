@@ -1,31 +1,45 @@
-"""Shared runtime state and cancellable provider execution."""
+"""Shared cancellation and deadlines for email-provider operations."""
 
 from collections.abc import Callable
-from typing import TypeVar
+from threading import Event
+from time import monotonic
 
 from roboz.shed.tools.contexts import EmailContext
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.runtime import run_cancellable_external_call
 
-T = TypeVar("T")
 
-
-def run_email_call(
+def run_email_call[T](
     ctx: EmailContext,
     *,
     label: str,
     cancelled_message: str,
-    operation: Callable[[], T],
+    operation: Callable[[Callable[[], bool]], T],
 ) -> T:
-    """Run one email-provider operation behind shared cancellation and timeout."""
-    if ctx.is_cancelled():
+    """Stop waiting promptly and let abandoned workers stop before later writes."""
+    abandoned = Event()
+    deadline = monotonic() + ctx.timeout_s
+    signals = ctx.pipe.control_signals if ctx.pipe is not None else ()
+
+    def is_cancelled() -> bool:
+        return (
+            abandoned.is_set()
+            or ctx.is_cancelled()
+            or monotonic() >= deadline
+            or any(signal.is_set for signal in signals)
+        )
+
+    if is_cancelled():
         raise ExternalCallCancelledError(cancelled_message)
-    result = run_cancellable_external_call(
-        operation,
-        control_signals=(ctx.pipe.control_signals if ctx.pipe is not None else None),
-        timeout_s=ctx.timeout_s,
-        label=label,
-    )
-    if ctx.is_cancelled():
-        raise ExternalCallCancelledError(cancelled_message)
-    return result
+    try:
+        result = run_cancellable_external_call(
+            lambda: operation(is_cancelled),
+            control_signals=signals,
+            timeout_s=ctx.timeout_s,
+            label=label,
+        )
+        if is_cancelled():
+            raise ExternalCallCancelledError(cancelled_message)
+        return result
+    finally:
+        abandoned.set()

@@ -174,14 +174,14 @@ def _parser() -> argparse.ArgumentParser:
         prog="python -m roboz.endpoints",
         description=(
             "Create typed project endpoint catalogues from editable JSON "
-            "and manage encrypted dotenv API keys."
+            "and manage encrypted dotenv secrets."
         ),
     )
     groups = parser.add_subparsers(dest="group", required=True)
-    environment = groups.add_parser("env", help="Manage encrypted dotenv API keys")
+    environment = groups.add_parser("env", help="Manage encrypted dotenv secrets")
     env_commands = environment.add_subparsers(dest="command", required=True)
     encrypt_command = env_commands.add_parser(
-        "encrypt", help="Encrypt API keys in a dotenv file"
+        "encrypt", help="Encrypt *_SECRET values in a dotenv file"
     )
     encrypt_command.add_argument(
         "--path", type=Path, default=Path(".env"),
@@ -244,7 +244,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             if password != getpass("Confirm password: "):
                 raise ValueError("Passwords do not match")
         output = encrypt_env(args.path, password=password)
-        print(f"Encrypted API keys: {output}")
+        print(f"Encrypted secrets: {output}")
         return 0
     path = args.path or _default_inventory_path()
     if args.command == "init":
