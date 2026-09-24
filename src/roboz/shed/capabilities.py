@@ -1,8 +1,11 @@
 """Configured tool and skill capabilities for Shed agent definitions."""
 
 import math
+from _thread import LockType
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Lock
 from typing import cast
 
 from roboz.shed.identifiers import (
@@ -35,6 +38,7 @@ from roboz.shed.tools.contexts import (
 )
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
+from roboz.shed.tools.safe_scripts import SafeScriptContext, run_shell_script
 from roboz.shed.tools.stop_when_watched_agents_inactive import (
     stop_when_watched_agents_inactive,
 )
@@ -49,6 +53,71 @@ from roboz.deployment import (
 )
 from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute, MockLLMEndpoint
 from roboz.runtime import EventPipe
+
+
+@dataclass(frozen=True)
+class SafeScripts(AgentCapability):
+    """Bind one trusted Bash-script tool to an agent and its filesystem base.
+
+    The deployment must protect the script directory and its helper files from
+    agent writes. Scripts themselves run with the host process's privileges.
+    """
+
+    scripts_dir: Path
+    timeout_s: float = 300.0
+    max_output_bytes: int = 65_536
+    env_allowlist: tuple[str, ...] = ()
+    _execution_lock: LockType = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        """Reject unbounded execution settings and unsafe shell environment keys."""
+        if (
+            isinstance(self.timeout_s, bool)
+            or not math.isfinite(self.timeout_s)
+            or self.timeout_s <= 0
+        ):
+            raise ValueError("timeout_s must be finite and positive")
+        if (
+            not isinstance(self.max_output_bytes, int)
+            or isinstance(self.max_output_bytes, bool)
+            or self.max_output_bytes <= 0
+        ):
+            raise ValueError("max_output_bytes must be positive")
+        forbidden = {
+            "PATH", "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
+            "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH",
+        }
+        if any(
+            not name or "=" in name or "\x00" in name or name in forbidden
+            for name in self.env_allowlist
+        ):
+            raise ValueError("env_allowlist contains an invalid or reserved name")
+
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Use the agent's existing file-policy base as the script working directory."""
+        return {"permissions": PermissionPolicy}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
+        """Create a fresh tool bound to this run's events and shared execution gate."""
+        permissions = cast(PermissionPolicy, agent.permissions)
+        return Capability(
+            tools=(
+                run_shell_script(
+                    SafeScriptContext(
+                        scripts_dir=self.scripts_dir,
+                        cwd=permissions.base,
+                        pipe=pipe,
+                        timeout_s=self.timeout_s,
+                        max_output_bytes=self.max_output_bytes,
+                        env_allowlist=self.env_allowlist,
+                        execution_lock=self._execution_lock,
+                    )
+                ).copy(),
+            )
+        )
 
 
 _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)

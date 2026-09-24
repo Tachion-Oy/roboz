@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the opt-in Shed `SafeScripts` capability. Its single `run_shell_script`
+  tool discovers protected `.sh` entrypoints and runs them with bounded output,
+  deadlines, cancellation, and script output events.
+
 ## 0.1.2a2 - 2026-09-23
 
 - Breaking: rename the RoboSprawl Shed deployment recipe and orientation skill
