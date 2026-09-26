@@ -33,6 +33,7 @@ QUOTES: Final[list[str]] = [
     "Care to join me in a belt of scotch?",
     "I'm all hopped up on goofballs.",
     "D'oh!",
+    "Everything's coming up Milhouse!",
     "Yoink!",
     "Ha-ha!",
     "Smell ya later!",

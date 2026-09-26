@@ -8,7 +8,7 @@
   <p><strong>Chain tools. Skip calls.</strong></p>
 </div>
 
-RoboZ is a framework for building llm powered agents. The core ingredient is that every tool may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
+RoboZ is a framework for building llm powered agents. The main idea is that every tool may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
@@ -18,21 +18,37 @@ RoboZ is a framework for building llm powered agents. The core ingredient is tha
 > RoboZ is pre-release software requiring Python 3.13 or newer. APIs may change
 > before 1.0.
 
+## Table of contents
+
+- [Basic idea](#basic-idea)
+- [Start here: Agent with a tool](#start-here-agent-with-a-tool)
+- [The central abstraction](#the-central-abstraction)
+- [Why is this framework useful?](#why-is-this-framework-useful)
+- [Chains, factories, truncation and many endpoints](#chains-factories-truncation-and-many-endpoints)
+- [Try it out](#try-it-out)
+- [Shed](#shed)
+- [Endpoints and model catalogues](#endpoints-and-model-catalogues)
+- [API key encryption](#api-key-encryption)
+- [Module map](#module-map)
+- [Robozium](#robozium)
+- [Development](#development)
+- [License](#license)
+
 ## Basic idea
 
 ![Tool-chaining workflow](https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/tool-chaining.svg)
 
 ### Problems to solve: Context bloat and too many llm calls
-Suppose the task we want to achieve is ask our buddy Bob out to lunch and then book a table. For the sake of argument assume that our agent has access to the following MCP servers (Note: this is an example, RoboZ has native Tool primitives):
+Suppose the task we want to achieve is ask our buddy Bob out to lunch and then book a table. For the sake of argument assume that our agent has access to the following tools presented as MCP servers (Note: this is an example, RoboZ has native Tool primitives):
 
 - Ask Bob what they want
 - Find a restaurant
 - Book a table.
 
-In the usual approach an agent is presented each MCP server separately in their system prompt and it must call them one-by-one to complete the task. When the agent is completing the task, at every turn it must choose the correct tool, formulate its output accordingly and absorb the reply into its context, which already must contain the specific instructions on how to use each tool. In addition, at each turn one has to wait for the llm to reply, each reply costs tokens and each reply risks a mistake from the llm.
+In the usual approach an agent is presented each tool separately in their system prompt and it must call them one-by-one to complete the task. When the agent is completing the task, at every turn it must choose the correct tool, formulate its output accordingly and absorb the reply into its context, which already must contain the specific instructions on how to use each tool. In addition, at each turn one has to wait for the llm to reply, each reply costs tokens and each reply risks a mistake from the llm.
 
 ### Deterministic chains
-The philosophy in RoboZ is that a workflow is (mostly) deterministic and only on occasion does one need to call an llm. For example in RoboZ an agent would trigger the "ask Bob if they want to have lunch" tool and all subsequent steps come by chaining: each tool can be chained to other tools upstream where their outputs are passed down the chain. Each link/edge may introduce a True/False condition, in our case for example if Bob is interested in having lunch (with us). If he is not, RoboZ allows for the chain to break and returns back to the default tool, which for an agentic process is usually "ask the llm what to do next". The default mode is that chained tools are not presented to the agent, they are thus *passive* or in other words their role is strictly in forming deterministic workflows and they cannot be invoked.
+The philosophy in RoboZ is that often workflows are mostly deterministic and only on occasion does one need to call an llm. For example in RoboZ an agent would trigger the "ask Bob if they want to have lunch" tool and all subsequent steps come by way of chaining: each tool can be chained to other tools upstream where their outputs are passed down the chain. Each link/edge may introduce a True/False condition, in our case the condition is if Bob is interested in having lunch with us at all. If he is not, RoboZ allows for the chain to break and returns back to the default tool, which for an agentic process is usually "ask the llm what to do next". The default mode is that chained tools are not presented to the agent, they are thus *passive* or in other words their role is strictly in forming deterministic workflows and they cannot be invoked.
 
 Chaining not only reduces the llm calls, but it also provides a useful way of introducing a fine-grained guard layer for tool calls. This is in fact precisely how the cli tools and their access policies work in Roboz. For a cli command a chained passive tool evaluates the intent and breaks the chain if policies are violated.
 
@@ -81,9 +97,9 @@ Simpsons quote. **The docstring in the tool is the instruction that the agent se
 The main contracts of RoboZ are already visible:
 
 - `@tool` creates an instance of a usable tool for the agent
--  A tool's input and output are typed. Tools also receive the entire message stack
+-  A tool's input and output are typed. Tools also receive the entire message stack as arguments. These are a fixed contract.
 - Callable endpoints are single instances, as a hard rule
-- Different output types impact the dynamics, importantly `Stop` breaks out of the agentic loop
+- Different output types impact the behavior, importantly `Stop` breaks out of the agentic loop
 - `agent.invoke()` runs the agent and returns its output `Stop` and messages.
 
 The above does not show the main idea of tool chaining, for that read the following sections.
@@ -94,9 +110,9 @@ An agent is a loop that calls tools. Everything is defined as a tool: Skills,  b
 **A tool can be triggered in three ways:**
 - **Invoked by an agent**: The `prompt_agent` tool asks an LLM what to do next and its `Invoke` output always calls another tool. It is constructed internally for `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` agents, but it is still just a tool.
 - **By chaining**. After an invoked tool has fired RoboZ checks if a chained tool with a *true* chain condition exists (for more than one *true* condition for a fork you get a runtime error). If yes, the output is passed on and the process repeats until the first broken chain or all chained tools are exhausted
-- **As default tools**. Defaults are ordered chain roots owned by the scheduler. When no chained successor exists, they run in configuration order; a default may feed downstream tools, and the sequence resumes with the next default after that branch ends. A default cannot itself be downstream, so it cannot declare `chained_to`.
+- **As default tools**. Defaults are called in order when no tools in a chain are left. A default cannot itself be chained to, so it cannot declare `chained_to`. The `prompt_agent` is then typically the last default tool for agentic processes.
 
-RoboZ then collapses to the traditional agentic approach as a special case if one just has the `prompt_agent` as the default with no chaining. An `AgentMode.DETERMINISTIC` agent has no `prompt_agent`; its default tools perform tasks directly, allowing deterministic branching through chaining. This is useful for a background agent that performs periodic maintenance work. `AgentMode.STEERABLE` agents may ask the user for input, while `AgentMode.AUTONOMOUS` agents cannot.
+The traditional agentic approach is then a special case of a RoboZ agent if one just has the `prompt_agent` as the default with no chaining. An `AgentMode.DETERMINISTIC` agent has no `prompt_agent`; its default tools perform tasks directly, allowing deterministic branching through chaining. This is useful for a background agent that performs periodic maintenance work. `AgentMode.STEERABLE` agents may ask the user for input, while `AgentMode.AUTONOMOUS` agents cannot.
 
 ## Why is this framework useful?
 ### Tool Chaining
@@ -117,13 +133,13 @@ To see the above in practice see the [complex example](https://github.com/Tachio
 
 In the code example below we illustrate some of the features that make RoboZ different from other frameworks.
 
-**Tool chaining** is usually introduced via the decorator argument `chained_to`, which points from a downstream tool to the upstream tool whose output becomes its input (tools also possess a `.chain` method). The input/output contract must be Liskov compatible, i.e. the upstream output must be a subclass of the downstream input. A possible `chain_condition` can be passed in, which by definition has access to the tool's input argument and returns a boolean. The chain condition must evaluate to at most one true condition, but it can evaluate to `false` on all links, in which case scheduling resumes with the next configured default. Defaults may be referenced as upstream parents without also appearing in `tools`, but cannot declare `chained_to` themselves. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` construct a `prompt_agent` tool backed by the agent endpoint; `AgentMode.DETERMINISTIC` uses the configured default tools.
+**Tool chaining** is usually introduced via the decorator argument `chained_to`, which points from a downstream tool to the upstream tool whose output becomes its input (tools also possess a `.chain` method). The input/output contract must respect the class inheritance structure, so the upstream output must be a subclass of the downstream input. A possible `chain_condition` can be passed in, which by definition has access to the tool's input argument and returns a boolean. The chain condition must evaluate to at most one `true` condition, but it can evaluate to `false` on all links, in which case scheduling resumes with the next configured default. Defaults may be referenced as upstream parents without also appearing in `tools`, but cannot declare `chained_to` themselves. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` construct a `prompt_agent` tool backed by the agent endpoint; `AgentMode.DETERMINISTIC` uses the configured default tools.
 
-The `escalate` is an example of a **tool factory**, which is a simple concept. It accepts a context parameter which is added to the tool's closure and calling the factory with a context argument returns a tool. A very common use case is a tool with an endpoint as a context. In RoboZ all llm **endpoints are instances**, so it is easy to have a specific endpoint for a tool, that is different from that of the agent, below we construct deterministic mock endpoints so that no API keys are required for the examples. Factories have precisely the same chaining arguments in their decorator as a tool.
+The `escalate` is an example of a **tool factory**, which accepts context parameter `ctx` which is added to the tool's closure and calling the factory with a context argument returns a tool. A very common use case is a tool with an endpoint as a context. In RoboZ all llm **endpoints are instances**, so it is easy to have a specific endpoint for a tool, that is different from that of the agent, below we construct deterministic mock endpoints so that no API keys are required for the examples. Factories have precisely the same chaining arguments in their decorator as a tool.
 
-Also demonstrated in the `escalate` factory is the **message truncation** feature. This parameter is present in all output types and allows the tool to decide if the output should be visible in the conversation passed on to the agent. A message can be truncated partially (show only n chars or just a caller stub) or completely. Importantly, we can choose to start applying the truncation only after the complete message has been shown to the agent n times. Below, we choose to show the message once and then truncate it completely, a useful pattern for example for long tracebacks etc.
+Also demonstrated in the `escalate` factory is **message truncation**. This parameter is present in all `Tool` output types and allows the tool to decide if the output should be visible in the conversation passed on to the agent. A message can be truncated partially (show only n chars or just a caller stub) or completely. Importantly, we can choose to start applying the truncation only after the complete message has been shown to the agent n times. Below, we choose to show the message once and then truncate it completely, a useful pattern for example for long tracebacks etc.
 
-All RoboZ tools by definition include the full **conversation messages** as input. These are not intended to be altered in place (although they can be and this is how e.g. *conversation compactification* works), but can be used to alter the behavior of tools in a non-trivial way. For example, a start up hook intended to show the agent some information at the start or performing some initial maintenance can simply be one of the default tools that checks if it has already been called and if it has, does nothing.
+All RoboZ tools by definition include the full **conversation messages** as input. These are not intended to be altered in place (although they can be and this is how e.g. *conversation compactification* works), but can be used to alter the behavior of tools in a non-trivial way. For example, a start up hook intended to show the agent some information at the start or performing some initial maintenance can simply be one of the default tools that in its body checks if it has already been called and if it has, does nothing.
 
 **The tool instruction is its docstring**. In addition, the system prompt includes a *technical prompt* by default that gives the specific tool calling instructions. This can of course be switched off. When in doubt, you can always use the method `.show_agent_info()` to check the complete agent configuration including the system prompt, tools, dependencies, persistence locations etc.
 
@@ -296,9 +312,11 @@ routes; it never stores the credential itself. See the dedicated
 [endpoint catalogue README](src/roboz/endpoints/README.md) for the complete
 workflow, custom paths, and the inventory format.
 
+## API key encryption
+
 Run `python -m roboz.endpoints env encrypt` to encrypt all nonempty values
-whose names end in `_SECRET` into `.env.encrypt` from `.env`. The source
-stays untouched; remove it when you no longer need it. Import
+whose names end in `_SECRET` into `.env.encrypt` from `.env`, using a hidden
+password. The source stays untouched; remove it when you no longer need it. Import
 `load_secrets` from `roboz.endpoints` to decrypt before starting an agent, or
 let an endpoint load its missing key when first used. Loading prefers
 `.env.encrypt` and falls back to plaintext `.env`.
@@ -315,6 +333,18 @@ let an endpoint load its missing key when first used. Loading prefers
 | `roboz.runtime` | Events, pipes, sinks, persistence, and observability. |
 | `roboz.shed` | Reusable capabilities, guarded tools, agents, and recipes. |
 | `roboz.endpoints` | OpenAI-compatible adapters and typed model catalogues. |
+
+## Robozium
+
+[Robozium](https://github.com/Tachion-Oy/robozium), a multi-agent app built on
+RoboZ, is now published as open source. See the
+[Robozium README](https://github.com/Tachion-Oy/robozium#readme) for more
+information and instructions for running it locally.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/robozium-project-chat.png" alt="Robozium project chat" width="49%" align="top">
+  <img src="https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/robozium-runs-overview.png" alt="Robozium runs overview" width="49.43%" align="top">
+</p>
 
 ## Development
 

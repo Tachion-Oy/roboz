@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.1a1 - 2026-09-26
+
+- Add README navigation, a dedicated API key encryption section, and
+  Robozium links and screenshots.
+
 ## 0.2.0a1 - 2026-09-25
 
 - Add an `Email` capability for configured email services, including Proton
