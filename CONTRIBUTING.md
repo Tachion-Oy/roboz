@@ -67,6 +67,11 @@ runs portable core checks. The
 the complete gate. All applicable automated checks, including linting and type
 checking, and the aggregate **CI** check must pass before merging.
 
+## Simpsons quote
+
+Each PR should add one more Simpsons quote to the
+[example quote module](src/roboz/examples/simpsons_quotes.py), no exceptions :)
+
 ## Opening a pull request
 
 Each PR should solve one problem. Substantive PRs must stay within the approved
