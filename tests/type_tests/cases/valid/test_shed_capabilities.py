@@ -32,6 +32,7 @@ def compose(sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe) -> None:
         ArtifactRetention(),
         MaintenanceCadence(seconds=0),
         SafeScripts(Path("/opt/trusted-scripts")),
+        SafeScripts(socket_path=Path("/run/scripts/service.sock")),
     )
     definition = orchestrator(sandbox, agent_endpoint=endpoint)
     definition.set_attributes(sandbox=sandbox, watched_agent_names={"orchestrator"})
@@ -43,3 +44,9 @@ def compose(sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe) -> None:
         assert_type(capability.build(definition, pipe), Capability)
     assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])
     assert_type(definition.external_dependencies(), tuple[ExternalDependency, ...])
+
+
+def host_entrypoint(socket: Path, scripts: Path, cwd: Path) -> None:
+    from roboz.shed.tools.safe_scripts import serve_scripts
+
+    assert_type(serve_scripts(socket_path=socket, scripts_dir=scripts, cwd=cwd), None)

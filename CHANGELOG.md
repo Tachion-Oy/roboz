@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Extend `SafeScripts` with Linux execution through a private Unix socket and
+  `serve_scripts`, preserving the tool schema and output events. Host settings
+  control remote execution; health checks use a bounded handshake.
+- Stream SafeScripts catalogues entry by entry and retain partial output with
+  terminal diagnostics. The private socket protocol is now version 2; upgrade
+  clients and helpers together (package versions need not match).
+- Breaking: local `SafeScripts` requires the agent's `Sandbox` for its working directory
+  instead of `PermissionPolicy`. Scripts do not enforce file-tool permission rules.
+
 ## 0.2.1a2 - 2026-09-27
 
 - Export `SECRET_SUFFIX`, `ENCRYPTED_NAMESPACE`, and

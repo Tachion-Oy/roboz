@@ -42,6 +42,16 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/endpoints/inventory.py",
             "roboz/endpoints/inventory.pyi",
         } <= names
+        for module in (
+            "__init__",
+            "protocol",
+            "client",
+            "server",
+        ):
+            assert f"roboz/shed/tools/safe_scripts/{module}.py" in names
+        assert "roboz/shed/tools/safe_scripts.py" not in names
+        assert "roboz/shed/tools/safe_scripts/execution.py" not in names
+        assert "roboz/shed/tools/safe_scripts/contracts.py" not in names
         assert "roboz/shed/py.typed" not in names
         assert "roboz/endpoints/py.typed" not in names
         assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
@@ -57,8 +67,12 @@ def test_package_contents_and_metadata(pytestconfig, package):
         )
         assert metadata.get_all("Provides-Extra") is None
         requirements = metadata.get_all("Requires-Dist", [])
-        assert any(requirement.startswith("openai<3,>=2.8.1") for requirement in requirements)
-        assert any(requirement.startswith("imapclient<5,>=4.1") for requirement in requirements)
+        assert any(
+            requirement.startswith("openai<3,>=2.8.1") for requirement in requirements
+        )
+        assert any(
+            requirement.startswith("imapclient<5,>=4.1") for requirement in requirements
+        )
         assert not any(name.endswith("/entry_points.txt") for name in names)
     with tarfile.open(sdist) as archive:
         paths = [Path(name).parts[1:] for name in archive.getnames()]
@@ -67,7 +81,29 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert ("src", namespace, "__init__.pyi") in paths
         assert ("src", namespace, "examples", "simple.py") in paths
         assert ("src", namespace, "shed", "capabilities.py") in paths
-        assert ("src", namespace, "shed", "tools", "email", "proton_bridge", "service.py") in paths
+        for module in (
+            "__init__",
+            "protocol",
+            "client",
+            "server",
+        ):
+            assert (
+                "src",
+                namespace,
+                "shed",
+                "tools",
+                "safe_scripts",
+                f"{module}.py",
+            ) in paths
+        assert (
+            "src",
+            namespace,
+            "shed",
+            "tools",
+            "email",
+            "proton_bridge",
+            "service.py",
+        ) in paths
         assert ("src", namespace, "endpoints", "inventory.pyi") in paths
         assert ("src", namespace, "endpoints", "README.md") in paths
         assert all(not path or path[0] != "packages" for path in paths)

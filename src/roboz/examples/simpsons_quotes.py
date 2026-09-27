@@ -43,4 +43,5 @@ QUOTES: Final[list[str]] = [
     "The goggles! They do nothing!",
     "If you don't like your job, you don't go on strike; you go in every day and do it really half assed",
     "I don't want to look like a weirdo, I'll just wear a muumuu.",
+    "Release the hounds!",
 ]

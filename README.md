@@ -269,6 +269,9 @@ For Robozium, pass `Email(service)` and `SafeScripts(scripts_dir=...)` from
 `roboz.shed.capabilities` through `additional_capabilities`. Keep the trusted
 script directory outside agent-writable paths.
 
+For Linux host execution, use `SafeScripts(socket_path=...)`. See the
+[SafeScripts guide](docs/safe-scripts.md) for helper setup and execution policy.
+
 ## Endpoints and model catalogues
 
 `roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`

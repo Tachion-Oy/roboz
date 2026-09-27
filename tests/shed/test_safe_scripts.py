@@ -1,4 +1,4 @@
-"""The trusted-script capability's real subprocess and agent contracts."""
+"""Local execution and the public trusted-script capability contracts."""
 
 import os
 import shutil
@@ -9,7 +9,7 @@ from threading import Event
 
 import pytest
 
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import DeployableAgent
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Stop
@@ -17,33 +17,12 @@ from roboz.runtime.events import ScriptOutputEvent
 from roboz.shed.capabilities import SafeScripts
 from roboz.shed.sandbox import PermissionPolicy
 from roboz.shed.tools.safe_scripts import RunShellScriptInput
-from roboz.tools import stop
-
+from safe_scripts_support import _agent, _script
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or shutil.which("bash") is None,
     reason="trusted Bash scripts require POSIX and Bash",
 )
-
-
-def _script(root: Path, name: str, body: str) -> Path:
-    target = root / name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
-    return target
-
-
-def _agent(workspace: Path, capability: SafeScripts, *, sink=None):
-    definition = DeployableAgent(
-        name="script_test",
-        system_prompt="Use installed scripts.",
-        default_capabilities=(Capability(tools=(stop,)), capability),
-    )
-    definition.set_attributes(permissions=PermissionPolicy.local(workspace))
-    definition.set_agent_endpoint(MockLLMEndpoint([]))
-    agent, _ = definition.build(event_sinks=(sink,) if sink else ())
-    tool = next(tool for tool in agent.tools if tool.name == "run_shell_script")
-    return definition, agent, tool
 
 
 def test_discovery_and_success_share_one_tool_without_construction_side_effects(
@@ -65,9 +44,7 @@ def test_discovery_and_success_share_one_tool_without_construction_side_effects(
         ("nested/hello world.sh", "Print a greeting.")
     ]
     result = tool(RunShellScriptInput(script="nested/hello world.sh"), [])
-    assert (result.status, result.exit_code, result.output) == (
-        "success", 0, "hello"
-    )
+    assert (result.status, result.exit_code, result.output) == ("success", 0, "hello")
     assert agent.pipe is not None
 
 
@@ -79,9 +56,30 @@ def test_each_build_copies_the_script_tool_identity(tmp_path: Path) -> None:
     assert first_tool.id != second_tool.id
 
 
+def test_local_execution_requires_sandbox_instead_of_file_permissions(
+    tmp_path: Path,
+) -> None:
+    definition = DeployableAgent(
+        name="script_test",
+        system_prompt="Use installed scripts.",
+        default_capabilities=(SafeScripts(tmp_path / "installed"),),
+    )
+    definition.set_attributes(permissions=PermissionPolicy.local(tmp_path))
+    definition.set_agent_endpoint(MockLLMEndpoint([]))
+    with pytest.raises(ValueError, match="sandbox.*Sandbox"):
+        definition.build()
+
+
 @pytest.mark.parametrize(
     "name",
-    ["", "/etc/passwd", "../outside.sh", "nested/../okay.sh", "not-shell.py", "C:\\outside.sh"],
+    [
+        "",
+        "/etc/passwd",
+        "../outside.sh",
+        "nested/../okay.sh",
+        "not-shell.py",
+        "C:\\outside.sh",
+    ],
 )
 def test_untrusted_paths_are_refused(tmp_path: Path, name: str) -> None:
     workspace, scripts = tmp_path / "workspace", tmp_path / "installed"
@@ -115,8 +113,8 @@ def test_output_streaming_exit_failure_and_environment_filtering(
     _script(
         scripts,
         "report.sh",
-        "printf '%s|%s|%s' \"$PWD\" \"${SAFE_SCRIPT_TEST_ALLOWED:-missing}\" "
-        "\"${SAFE_SCRIPT_TEST_HIDDEN:-missing}\"\nexit 7\n",
+        'printf \'%s|%s|%s\' "$PWD" "${SAFE_SCRIPT_TEST_ALLOWED:-missing}" '
+        '"${SAFE_SCRIPT_TEST_HIDDEN:-missing}"\nexit 7\n',
     )
     monkeypatch.setenv("SAFE_SCRIPT_TEST_HIDDEN", "secret")
     observed = []
@@ -129,9 +127,12 @@ def test_output_streaming_exit_failure_and_environment_filtering(
     result = tool(RunShellScriptInput(script="report.sh"), [])
     assert (result.status, result.exit_code) == ("failed", 7)
     assert result.output == f"{workspace}|visible|missing"
-    assert "".join(
-        event.content for event in observed if isinstance(event, ScriptOutputEvent)
-    ) == result.output
+    assert (
+        "".join(
+            event.content for event in observed if isinstance(event, ScriptOutputEvent)
+        )
+        == result.output
+    )
 
 
 def test_silent_timeout_and_output_limit(tmp_path: Path) -> None:
@@ -163,9 +164,12 @@ def test_utf8_output_at_byte_limit(tmp_path: Path, limit: int) -> None:
 
     assert result.status == ("success" if limit == 4098 else "output_limit")
     assert result.output == content.encode()[:limit].decode(errors="replace")
-    assert "".join(
-        event.content for event in events if isinstance(event, ScriptOutputEvent)
-    ) == result.output
+    assert (
+        "".join(
+            event.content for event in events if isinstance(event, ScriptOutputEvent)
+        )
+        == result.output
+    )
 
 
 def test_startup_failure_releases_execution_gate(tmp_path: Path) -> None:
@@ -262,7 +266,11 @@ def test_script_tool_runs_in_real_agent_with_mock_endpoint(tmp_path: Path) -> No
         MockLLMEndpoint(
             [
                 {"action": "run_shell_script", "rationale": "discover scripts"},
-                {"action": "run_shell_script", "rationale": "run greeting", "script": "greet.sh"},
+                {
+                    "action": "run_shell_script",
+                    "rationale": "run greeting",
+                    "script": "greet.sh",
+                },
                 {"action": "stop", "rationale": "finished", "value": "done"},
             ]
         )
@@ -274,3 +282,103 @@ def test_script_tool_runs_in_real_agent_with_mock_endpoint(tmp_path: Path) -> No
         isinstance(event, ScriptOutputEvent) and "hello-from-script" in event.content
         for event in events
     )
+
+
+@pytest.mark.parametrize("during_description", [False, True])
+def test_discovery_checks_cancellation_during_traversal_and_description(
+    tmp_path, during_description
+):
+    from threading import Lock
+    from roboz.dependencies import ExecutableDependency
+    from roboz.shed.tools.safe_scripts.protocol import ExecutionPolicy
+    from roboz.shed.tools.safe_scripts.server import Scripts
+
+    _script(
+        tmp_path,
+        "first.sh",
+        ("#" + "x" * 10000 + "\n") if during_description else "echo done\n",
+    )
+    if during_description:
+        # A very long shebang requires several bounded reads before comments.
+        (tmp_path / "first.sh").write_text("#!" + "x" * 10000 + "\n# description\n")
+    else:
+        _script(tmp_path, "second.sh", "echo done\n")
+    runner = Scripts(
+        tmp_path, tmp_path, ExecutionPolicy(), Lock(), ExecutableDependency("bash")
+    )
+    entries = []
+    checks = 0
+
+    def check():
+        nonlocal checks
+        checks += 1
+        if (during_description and checks == 5) or (not during_description and entries):
+            raise ExternalCallCancelledError("discovery cancelled")
+
+    with pytest.raises(ExternalCallCancelledError):
+        for event in runner.events(RunShellScriptInput(), check):
+            entries.append(event)
+    assert len(entries) == (0 if during_description else 1)
+
+
+def test_discovery_deadline_preserves_already_discovered_entries(tmp_path):
+    from threading import Lock
+    from roboz.dependencies import ExecutableDependency
+    from roboz.shed.tools.safe_scripts.protocol import ExecutionPolicy
+    from roboz.shed.tools.safe_scripts.server import Scripts
+
+    for index in range(2):
+        _script(tmp_path, f"{index}.sh", "echo done\n")
+    runner = Scripts(
+        tmp_path,
+        tmp_path,
+        ExecutionPolicy(timeout_s=0.1),
+        Lock(),
+        ExecutableDependency("bash"),
+    )
+    entries = []
+
+    from roboz.shed.tools.safe_scripts.protocol import Completed
+
+    for event in runner.events(RunShellScriptInput(), lambda: None):
+        if isinstance(event, Completed):
+            assert event.status == "timeout" and len(entries) == 1
+        else:
+            entries.append(event)
+            time.sleep(0.15)
+
+
+@pytest.mark.parametrize("error_type", [ValueError, OSError, TimeoutError])
+def test_local_sink_failure_cleans_up_before_releasing_the_execution_gate(
+    tmp_path, error_type
+):
+    _script(tmp_path, "ready.sh", "echo ready\nsleep 10\n")
+    _script(tmp_path, "done.sh", "echo done\n")
+    capability = SafeScripts(tmp_path)
+
+    def sink(event):
+        if isinstance(event, ScriptOutputEvent):
+            raise error_type("sink failed")
+
+    tool = _agent(tmp_path, capability, sink=sink)[2]
+    with pytest.raises(error_type, match="sink failed"):
+        tool(RunShellScriptInput(script="ready.sh"), [])
+    result = _agent(tmp_path, capability)[2](RunShellScriptInput(script="done.sh"), [])
+    assert result.status == "success"
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        ("#" + " " * 2000 + "Description\n", "Description"),
+        ("#" + " " * 2000 + "\n# Description\n", "Description"),
+        ("# " + "x" * 510 + " " * 2000 + "\n", "x" * 510),
+        ("# " + "x" * 510 + " " * 2000 + "last\n", "x" * 510 + "  "),
+    ],
+)
+def test_long_description_lines_keep_the_existing_strip_and_truncate_behavior(
+    tmp_path, body, expected
+):
+    _script(tmp_path, "description.sh", body)
+    listed = _agent(tmp_path, SafeScripts(tmp_path))[2](RunShellScriptInput(), [])
+    assert listed.scripts[0].description == expected
