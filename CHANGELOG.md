@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: Email, FileCommands, and FileEditing capabilities now require
+  `set_attributes(sandbox=...)` with a configured project scope instead of
+  `permissions=...`. The orchestrator binds only this sandbox.
+
 - Extend `SafeScripts` with Linux execution through a private Unix socket and
   `serve_scripts`, preserving the tool schema and output events. Host settings
   control remote execution; health checks use a bounded handshake.

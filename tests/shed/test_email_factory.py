@@ -24,7 +24,7 @@ from roboz.shed.models import (
     PermissionRule,
 )
 from roboz.shed.skills.email_tools.prompts import INSTRUCTIONS as EMAIL_INSTRUCTIONS
-from roboz.shed.sandbox import PermissionPolicy
+from roboz.shed.sandbox import Sandbox
 from roboz.shed.tools.email import (
     DownloadedEmailAttachment,
     EmailDraftAttachment,
@@ -273,26 +273,70 @@ def test_email_capability_binds_permissions_and_fresh_cancellation(tmp_path):
         default_capabilities=(Email(provider),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
-    definition.set_attributes(permissions=PermissionPolicy(base=tmp_path))
+    sandbox = Sandbox(tmp_path / "sandbox", scope="one")
+    definition.set_attributes(sandbox=sandbox)
     first, _ = definition.build()
+    sandbox.configure_scope("two")
     second, _ = definition.build()
     first_tools = {tool.name: tool for tool in first.tools}
     second_tools = {tool.name: tool for tool in second.tools}
 
-    _, guarded, result = _run_chain(first.tools, _input(attachment_paths=[source.name]))
+    _, guarded, result = _run_chain(first.tools, _input(attachment_paths=[str(source)]))
     assert guarded.status == GuardStatus.DENIED and result is None
     assert not provider.draft_requests
 
     first.pipe.cancel()
-    cancelled = first_tools[SEARCH_EMAIL_TOOL_NAME](
-        SearchEmail(mailbox="inbox"), []
-    )
+    cancelled = first_tools[SEARCH_EMAIL_TOOL_NAME](SearchEmail(mailbox="inbox"), [])
     assert "cancelled" in cancelled.value and not provider.search_requests
-    fresh = second_tools[SEARCH_EMAIL_TOOL_NAME](
-        SearchEmail(mailbox="inbox"), []
-    )
+    fresh = second_tools[SEARCH_EMAIL_TOOL_NAME](SearchEmail(mailbox="inbox"), [])
     assert "Project update" in fresh.value
     assert len(provider.search_requests) == 1
+
+
+def test_email_rebuild_binds_downloads_to_each_selected_project(tmp_path):
+    provider = _FakeMailboxService()
+    definition = DeployableAgent(
+        name="email", system_prompt="Download attachments.",
+        default_capabilities=(Email(provider),),
+    )
+    definition.set_agent_endpoint(MockLLMEndpoint([]))
+    sandbox = Sandbox(tmp_path / "sandbox", scope="one")
+    definition.set_attributes(sandbox=sandbox)
+    first, _ = definition.build()
+    sandbox.configure_scope("two")
+    second, _ = definition.build()
+    for project in ("one", "two"):
+        (sandbox.projects_dir / project).mkdir(parents=True)
+    for agent, own, other in ((first, "one", "two"), (second, "two", "one")):
+        index = next(
+            index
+            for index, tool in enumerate(agent.tools)
+            if tool.name == DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME
+        )
+        chain = agent.tools[index : index + 3]
+        destination = sandbox.projects_dir / own / "notes.txt"
+        _, guarded, result = _run_chain(
+            chain,
+            DownloadEmailAttachment(
+                attachment_ref="opaque-attachment",
+                destination_path=f"projects/{own}/notes.txt",
+            ),
+        )
+        assert guarded.status == GuardStatus.ALLOWED and result is not None
+        assert destination.read_bytes() == b"notes"
+        for denied_path in (
+            f"projects/{other}/denied.txt",
+            str(tmp_path / "outside.txt"),
+        ):
+            _, guarded, result = _run_chain(
+                chain,
+                DownloadEmailAttachment(
+                    attachment_ref="opaque-attachment",
+                    destination_path=denied_path,
+                ),
+            )
+            assert guarded.status == GuardStatus.DENIED and result is None
+    assert provider.download_requests == ["opaque-attachment", "opaque-attachment"]
 
 
 def test_work_with_email_creates_normalized_draft_without_sending(

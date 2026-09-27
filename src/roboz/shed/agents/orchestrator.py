@@ -28,6 +28,7 @@ def orchestrator(
     initial_messages: Sequence[Path | str] = (),
 ) -> DeployableAgent:
     """Configure the orchestrator for an already-configured sandbox."""
+    sandbox.project_dir()
     agent = DeployableAgent(
         name="orchestrator",
         description="Coordinates ongoing user goals and specialist agents.",
@@ -42,7 +43,7 @@ def orchestrator(
     )
     agent.set_agent_endpoint(agent_endpoint)
     agent.set_initial_messages(initial_messages)
-    agent.set_attributes(sandbox=sandbox, permissions=sandbox.permissions())
+    agent.set_attributes(sandbox=sandbox)
     return agent
 
 

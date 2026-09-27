@@ -8,6 +8,7 @@ from roboz.shed.capabilities import (
     ArtifactRetention,
     Compactification,
     ConversationSnapshots,
+    Email,
     FileCommands,
     FileEditing,
     MaintenanceCadence,
@@ -15,6 +16,7 @@ from roboz.shed.capabilities import (
     SafeScripts,
 )
 from roboz.shed.sandbox import Sandbox
+from roboz.shed.tools.email import EmailService
 from roboz import Agent
 from roboz.dependencies import ExternalDependency
 from roboz.deployment import AgentCapability, Capability, DeployableAgent
@@ -22,8 +24,11 @@ from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe
 
 
-def compose(sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe) -> None:
+def compose(
+    sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe, service: EmailService
+) -> None:
     capabilities: tuple[AgentCapability, ...] = (
+        Email(service),
         FileCommands(),
         FileEditing(),
         Compactification(endpoint=endpoint),
@@ -34,6 +39,7 @@ def compose(sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe) -> None:
         SafeScripts(Path("/opt/trusted-scripts")),
         SafeScripts(socket_path=Path("/run/scripts/service.sock")),
     )
+    sandbox.configure_scope("project")
     definition = orchestrator(sandbox, agent_endpoint=endpoint)
     definition.set_attributes(sandbox=sandbox, watched_agent_names={"orchestrator"})
     assert_type(definition, DeployableAgent)

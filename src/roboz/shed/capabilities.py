@@ -56,7 +56,7 @@ from roboz.shed.tools.stop_when_watched_agents_inactive import (
     stop_when_watched_agents_inactive,
 )
 from roboz.shed.tools.snapshot_conversations import snapshot_conversations
-from roboz.shed.sandbox import PermissionPolicy, Sandbox
+from roboz.shed.sandbox import Sandbox
 from roboz.deployment import (
     AgentCapability,
     Capability,
@@ -147,17 +147,17 @@ class Email(AgentCapability):
 
     @property
     def required_attributes(self) -> RequiredAttributes:
-        """Require file permissions for draft attachments and downloaded files."""
-        return {"permissions": PermissionPolicy}
+        """Require the sandbox for draft attachments and downloaded files."""
+        return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Bind the existing email factory and its guidance to this agent's pipe."""
-        permissions = cast(PermissionPolicy, agent.permissions)
+        sandbox = cast(Sandbox, agent.sandbox)
         return Capability(
             tools=tuple(
                 get_work_with_email(
                     service=self.service,
-                    **permissions.tool_options(pipe),
+                    **sandbox.permissions().tool_options(pipe),
                     is_cancelled=lambda: pipe.cancelled,
                     timeout_s=self.timeout_s,
                     prompt_before_inbox_read=self.prompt_before_inbox_read,
@@ -175,16 +175,16 @@ class FileCommands(AgentCapability):
 
     @property
     def required_attributes(self) -> RequiredAttributes:
-        """Require a file permission policy from the owning agent."""
-        return {"permissions": PermissionPolicy}
+        """Require the owning agent's configured sandbox."""
+        return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Build a read-tool chain using this agent's pipe and selected policy."""
-        permissions = cast(PermissionPolicy, agent.permissions)
+        sandbox = cast(Sandbox, agent.sandbox)
         return Capability(
             tools=(
                 get_run_file_command(
-                    **permissions.tool_options(pipe),
+                    **sandbox.permissions().tool_options(pipe),
                     command_specs=FILE_COMMANDS_READ,
                 ),
             ),
@@ -194,20 +194,20 @@ class FileCommands(AgentCapability):
 
 @dataclass(frozen=True)
 class FileEditing(AgentCapability):
-    """Literal patch editing with caller-selected file permissions."""
+    """Literal patch editing with permissions derived from the sandbox."""
 
     auto_load_skill: bool = True
 
     @property
     def required_attributes(self) -> RequiredAttributes:
-        """Require a file permission policy from the owning agent."""
-        return {"permissions": PermissionPolicy}
+        """Require the owning agent's configured sandbox."""
+        return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
         """Build patch editing and optional orientation against the owning pipe."""
-        permissions = cast(PermissionPolicy, agent.permissions)
+        sandbox = cast(Sandbox, agent.sandbox)
         return Capability(
-            tools=(get_apply_patch(**permissions.tool_options(pipe)),),
+            tools=(get_apply_patch(**sandbox.permissions().tool_options(pipe)),),
             auto_loaded_skills=(file_editing,) if self.auto_load_skill else (),
         )
 
