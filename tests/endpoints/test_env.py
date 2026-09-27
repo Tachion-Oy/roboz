@@ -10,6 +10,19 @@ from roboz.endpoints import cli
 from roboz.endpoints.adapters.openai_compatible import chat_endpoint
 
 
+def test_public_credential_constants():
+    from roboz.endpoints import (
+        DEFAULT_ENCRYPTED_ENV_PATH,
+        ENCRYPTED_NAMESPACE,
+        SECRET_SUFFIX,
+    )
+    from roboz.endpoints import env
+
+    assert SECRET_SUFFIX == env.SECRET_SUFFIX == "_SECRET"
+    assert ENCRYPTED_NAMESPACE == env.ENCRYPTED_NAMESPACE == "roboz:"
+    assert DEFAULT_ENCRYPTED_ENV_PATH == env.DEFAULT_ENCRYPTED_ENV_PATH == Path(".env.encrypt")
+
+
 @pytest.fixture(autouse=True)
 def clear_keys(monkeypatch):
     for name in ("RBZ_FIRST_API_KEY_SECRET", "RBZ_SECOND_API_KEY_SECRET", "PROTON_BRIDGE_USERNAME_SECRET", "PROTON_BRIDGE_PASSWORD_SECRET", "OLD_API_KEY", "ROBOZ_ENV_PASSWORD"):

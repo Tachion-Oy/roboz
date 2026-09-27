@@ -82,6 +82,19 @@ def test_core_dependency_and_agent_contracts():
         assert find_spec(name) is None
 
 
+def test_public_credential_constants():
+    from roboz.endpoints import (
+        DEFAULT_ENCRYPTED_ENV_PATH,
+        ENCRYPTED_NAMESPACE,
+        SECRET_SUFFIX,
+    )
+    from roboz.endpoints import env
+
+    assert SECRET_SUFFIX == env.SECRET_SUFFIX == "_SECRET"
+    assert ENCRYPTED_NAMESPACE == env.ENCRYPTED_NAMESPACE == "roboz:"
+    assert DEFAULT_ENCRYPTED_ENV_PATH == env.DEFAULT_ENCRYPTED_ENV_PATH == Path(".env.encrypt")
+
+
 def test_endpoint_inventory_is_lazy():
     from roboz.llm import LLMEndpoint, TranscriptionEndpoint
     from roboz.endpoints.inventory import CATALOGS

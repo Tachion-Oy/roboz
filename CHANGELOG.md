@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.1a2 - 2026-09-27
+
+- Export `SECRET_SUFFIX`, `ENCRYPTED_NAMESPACE`, and
+  `DEFAULT_ENCRYPTED_ENV_PATH` from `roboz.endpoints` and `roboz.endpoints.env`
+  for credential integrations, preserving encryption and loading behavior.
+
 ## 0.2.1a1 - 2026-09-26
 
 - Add README navigation, a dedicated API key encryption section, and

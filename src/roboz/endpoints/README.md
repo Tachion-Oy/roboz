@@ -112,6 +112,23 @@ Run `python -m roboz.endpoints inventory <command> --help` for command options.
 
 ## Secrets in `.env`
 
+Credential integrations can import these public constants from
+`roboz.endpoints` or `roboz.endpoints.env`:
+
+```python
+from roboz.endpoints import (
+    DEFAULT_ENCRYPTED_ENV_PATH,  # Final[Path]: Path(".env.encrypt")
+    ENCRYPTED_NAMESPACE,  # Final[str]: "roboz:"
+    SECRET_SUFFIX,  # Final[str]: "_SECRET"
+)
+```
+
+`SECRET_SUFFIX` identifies secret variable names. `ENCRYPTED_NAMESPACE`
+identifies RoboZ ciphertext, including unsupported versions; the current
+format starts with `roboz:v1:`. `DEFAULT_ENCRYPTED_ENV_PATH` is the relative
+encrypted file path used by default loading. These constants describe the
+supported format and defaults; they are not configuration settings.
+
 Keep using an ordinary `.env` file with entries such as
 `MY_SERVICE_API_KEY_SECRET=...` or
 `PROTON_BRIDGE_PASSWORD_SECRET=...`. Encrypt its nonempty `_SECRET` values from
@@ -156,4 +173,3 @@ password outside the repository and retain it for future decryption. Loaded
 secrets remain available in the application's process environment. Consuming
 a password removes only this process's environment entry; it cannot erase a
 parent-shell copy or guarantee memory wiping.
-
