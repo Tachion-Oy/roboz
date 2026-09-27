@@ -321,6 +321,12 @@ password. The source stays untouched; remove it when you no longer need it. Impo
 let an endpoint load its missing key when first used. Loading prefers
 `.env.encrypt` and falls back to plaintext `.env`.
 
+Credential integrations can import `SECRET_SUFFIX` (`"_SECRET"`),
+`ENCRYPTED_NAMESPACE` (`"roboz:"`), and `DEFAULT_ENCRYPTED_ENV_PATH`
+(`Path(".env.encrypt")`) from either `roboz.endpoints` or `roboz.endpoints.env`.
+See the [credential documentation](src/roboz/endpoints/README.md#secrets-in-env)
+for supported imports and password handling.
+
 ## Module map
 
 | Module | Provides |

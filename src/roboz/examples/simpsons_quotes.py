@@ -6,6 +6,7 @@ Sources are fan recollections; punctuation and capitalization are normalized.
 from typing import Final
 
 QUOTES: Final[list[str]] = [
+    "Me fail English? That’s unpossible.",
     "Little bit of column A, little bit of column B.",
     "At first I was just full of vinegar!",
     "Haha, nobody ever says Italy.",

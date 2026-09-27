@@ -5,16 +5,27 @@ import binascii
 import os
 from pathlib import Path
 from threading import Lock
+from typing import Final
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from dotenv import dotenv_values
 
 
+SECRET_SUFFIX: Final[str] = "_SECRET"
+ENCRYPTED_NAMESPACE: Final[str] = "roboz:"
+DEFAULT_ENCRYPTED_ENV_PATH: Final[Path] = Path(".env.encrypt")
+
+__all__ = [
+    "DEFAULT_ENCRYPTED_ENV_PATH",
+    "ENCRYPTED_NAMESPACE",
+    "SECRET_SUFFIX",
+    "encrypt_env",
+    "load_secrets",
+]
+
 _LOCK = Lock()
-_SECRET_SUFFIX = "_SECRET"
-_ENCRYPTED_NAMESPACE = "roboz:"
-_ENCRYPTED_PREFIX = f"{_ENCRYPTED_NAMESPACE}v1:"
+_ENCRYPTED_PREFIX = f"{ENCRYPTED_NAMESPACE}v1:"
 _PASSWORD_ENV = "ROBOZ_ENV_PASSWORD"
 _SALT_BYTES = 16
 _KEY_BYTES = 32
@@ -22,16 +33,15 @@ _KDF_ITERATIONS = 3
 _KDF_LANES = 4
 _KDF_MEMORY_KIB = 65536
 _DEFAULT_SOURCE = Path(".env")
-_DEFAULT_ENCRYPTED = Path(".env.encrypt")
 
 
 def _is_secret(name: str | None) -> bool:
-    return bool(name and name.endswith(_SECRET_SUFFIX))
+    return bool(name and name.endswith(SECRET_SUFFIX))
 
 
 def _is_encrypted(value: str) -> bool:
     # Recognize unsupported versions too, so they fail instead of loading as credentials.
-    return value.startswith(_ENCRYPTED_NAMESPACE)
+    return value.startswith(ENCRYPTED_NAMESPACE)
 
 
 def _has_usable_key(value: str | None) -> bool:
@@ -77,7 +87,7 @@ def load_secrets(path: str | Path | None = None, *, password: str | None = None)
     All pending values are validated before any are added to the environment.
     """
     with _LOCK:
-        dotenv_path = Path(path) if path is not None else _DEFAULT_ENCRYPTED
+        dotenv_path = Path(path) if path is not None else DEFAULT_ENCRYPTED_ENV_PATH
         if path is None and not dotenv_path.exists():
             dotenv_path = _DEFAULT_SOURCE
         pending = {
