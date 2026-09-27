@@ -41,9 +41,16 @@ from roboz.shed.tools.email.factory import DEFAULT_EMAIL_OPERATION_TIMEOUT_S
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
 from roboz.shed.tools.safe_scripts import (
-    ReservedScriptEnv,
+    RemoteScriptContext,
+    ScriptSocketDependency,
     SafeScriptContext,
     run_shell_script,
+)
+from roboz.shed.tools.safe_scripts.protocol import (
+    DEFAULT_TIMEOUT_S,
+    DEFAULT_MAX_OUTPUT_BYTES,
+    ExecutionPolicy,
+    require_linux_transport,
 )
 from roboz.shed.tools.stop_when_watched_agents_inactive import (
     stop_when_watched_agents_inactive,
@@ -63,63 +70,61 @@ from roboz.runtime import EventPipe
 
 @dataclass(frozen=True)
 class SafeScripts(AgentCapability):
-    """Bind one trusted Bash-script tool to an agent and its filesystem base.
+    """Bind trusted Bash scripts locally or through a private Linux host socket.
 
     The deployment must protect the script directory and its helper files from
-    agent writes. Scripts themselves run with the host process's privileges.
+    agent writes. Scripts run with the local or serving process's privileges.
+    Remote execution settings and working directories belong to the host.
     """
 
-    scripts_dir: Path
-    timeout_s: float = 300.0
-    max_output_bytes: int = 65_536
+    scripts_dir: Path | None = None
+    timeout_s: float = DEFAULT_TIMEOUT_S
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES
     env_allowlist: tuple[str, ...] = ()
+    socket_path: Path | None = field(default=None, kw_only=True)
     _execution_lock: LockType = field(
         default_factory=Lock, init=False, repr=False, compare=False
     )
 
     def __post_init__(self) -> None:
         """Reject unbounded execution settings and unsafe shell environment keys."""
-        if (
-            isinstance(self.timeout_s, bool)
-            or not math.isfinite(self.timeout_s)
-            or self.timeout_s <= 0
-        ):
-            raise ValueError("timeout_s must be finite and positive")
-        if (
-            not isinstance(self.max_output_bytes, int)
-            or isinstance(self.max_output_bytes, bool)
-            or self.max_output_bytes <= 0
-        ):
-            raise ValueError("max_output_bytes must be positive")
-        if any(
-            not name or "=" in name or "\x00" in name or name in ReservedScriptEnv
-            for name in self.env_allowlist
-        ):
-            raise ValueError("env_allowlist contains an invalid or reserved name")
+        if (self.scripts_dir is None) == (self.socket_path is None):
+            raise ValueError("supply exactly one of scripts_dir or socket_path")
+        ExecutionPolicy(
+            self.timeout_s, self.max_output_bytes, self.env_allowlist
+        )
+        if self.socket_path is not None:
+            require_linux_transport()
+            if (self.timeout_s, self.max_output_bytes, self.env_allowlist) != (
+                DEFAULT_TIMEOUT_S,
+                DEFAULT_MAX_OUTPUT_BYTES,
+                (),
+            ):
+                raise ValueError("remote execution settings belong to the host service")
 
     @property
     def required_attributes(self) -> RequiredAttributes:
-        """Use the agent's existing file-policy base as the script working directory."""
-        return {"permissions": PermissionPolicy}
+        """Require the sandbox layout only for local execution."""
+        return {"sandbox": Sandbox} if self.socket_path is None else {}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
-        """Create a fresh tool bound to this run's events and shared execution gate."""
-        permissions = cast(PermissionPolicy, agent.permissions)
-        return Capability(
-            tools=(
-                run_shell_script(
-                    SafeScriptContext(
-                        scripts_dir=self.scripts_dir,
-                        cwd=permissions.base,
-                        pipe=pipe,
-                        timeout_s=self.timeout_s,
-                        max_output_bytes=self.max_output_bytes,
-                        env_allowlist=self.env_allowlist,
-                        execution_lock=self._execution_lock,
-                    )
-                ).copy(),
+        """Bind a fresh script tool to this run's events and execution target."""
+        ctx: SafeScriptContext | RemoteScriptContext
+        if self.socket_path is not None:
+            ctx = RemoteScriptContext(ScriptSocketDependency(self.socket_path), pipe)
+        else:
+            assert self.scripts_dir is not None
+            sandbox = cast(Sandbox, agent.sandbox)
+            ctx = SafeScriptContext(
+                scripts_dir=self.scripts_dir,
+                cwd=sandbox.resolved_root,
+                pipe=pipe,
+                timeout_s=self.timeout_s,
+                max_output_bytes=self.max_output_bytes,
+                env_allowlist=self.env_allowlist,
+                execution_lock=self._execution_lock,
             )
-        )
+        return Capability(tools=(run_shell_script(ctx).copy(),))
 
 
 _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)

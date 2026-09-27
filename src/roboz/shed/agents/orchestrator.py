@@ -42,7 +42,7 @@ def orchestrator(
     )
     agent.set_agent_endpoint(agent_endpoint)
     agent.set_initial_messages(initial_messages)
-    agent.set_attributes(permissions=sandbox.permissions())
+    agent.set_attributes(sandbox=sandbox, permissions=sandbox.permissions())
     return agent
 
 
