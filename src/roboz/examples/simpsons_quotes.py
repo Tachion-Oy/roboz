@@ -45,4 +45,5 @@ QUOTES: Final[list[str]] = [
     "I don't want to look like a weirdo, I'll just wear a muumuu.",
     "Release the hounds!",
     "Don't have a cow, man!",
+    "Excellent!",
 ]

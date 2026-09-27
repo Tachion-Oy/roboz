@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0a1 - 2026-09-28
+
 - Breaking: Email, FileCommands, and FileEditing capabilities now require
   `set_attributes(sandbox=...)` with a configured project scope instead of
   `permissions=...`. The orchestrator binds only this sandbox.
