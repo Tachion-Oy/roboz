@@ -23,6 +23,8 @@ def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
     endpoint = MockLLMEndpoint([])
     orchestrator_definition = orchestrator(sandbox, agent_endpoint=endpoint)
     librarian_definition = librarian(sandbox, {"orchestrator"}, agent_endpoint=endpoint)
+    assert orchestrator_definition.sandbox is sandbox
+    assert not hasattr(orchestrator_definition, "permissions")
 
     assert [
         type(capability) for capability in orchestrator_definition.capabilities

@@ -15,7 +15,7 @@ from roboz.shed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboz.shed.sandbox import PermissionPolicy, Sandbox
+from roboz.shed.sandbox import Sandbox
 
 from roboz import Agent
 from roboz.agent import AgentMode
@@ -40,13 +40,13 @@ def _build_with_persistence(
 
 
 def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
-    sandbox = tmp_path / "sandbox"
-    sandbox.mkdir()
-    note = sandbox / "note.txt"
+    sandbox = Sandbox(tmp_path / "sandbox", scope="project")
+    sandbox.project_dir().mkdir(parents=True)
+    note = sandbox.project_dir() / "note.txt"
     note.write_text("before-marker")
     outside = tmp_path / "private.txt"
     outside.write_text("private-marker")
-    (sandbox / "escape.txt").symlink_to(outside)
+    (sandbox.resolved_root / "escape.txt").symlink_to(outside)
 
     def read(path: str) -> dict:
         return {
@@ -56,7 +56,6 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
             "file_commands": [{"command": "cat", "argv": [path]}],
         }
 
-    permissions = PermissionPolicy.local(sandbox)
     definition = DeployableAgent(
         name="file_worker",
         system_prompt="Complete the file task and stop.",
@@ -66,19 +65,19 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
             FileEditing(),
         ),
     )
-    definition.set_attributes(permissions=permissions)
+    definition.set_attributes(sandbox=sandbox)
     definition.set_agent_endpoint(
         MockLLMEndpoint(
             [
-                read("note.txt"),
+                read("projects/project/note.txt"),
                 {
                     "action": "apply_patch",
                     "rationale": "edit",
-                    "path": "note.txt",
+                    "path": "projects/project/note.txt",
                     "old_string": "before-marker",
                     "new_string": "after-marker",
                 },
-                read("note.txt"),
+                read("projects/project/note.txt"),
                 read("../private.txt"),
                 read("escape.txt"),
                 {
