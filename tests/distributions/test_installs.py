@@ -144,6 +144,7 @@ def test_installed_inventory_workflow(consumer, layout):
         module_name = "custom_catalogue.selected"
     editable = catalogue / "models.json"
     module = catalogue / ("selected.py" if layout == "custom" else "providers.py")
+
     def run(*args, expected=0):
         if layout == "custom" and "--path" not in args:
             args = (*args, "--path", str(editable))
@@ -266,6 +267,36 @@ def test_installed_inventory_workflow(consumer, layout):
             "assert not hasattr(models.groq, 'new_chat')\n"
             "assert models.groq.whisper_large_v3_turbo.dependency_id\n"
             "assert 'openai' not in sys.modules\n",
+        ],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="host transport requires Linux")
+def test_installed_safe_scripts(consumer):
+    _, python, root, env = consumer
+    targets = []
+    for name in (
+        "safe_scripts_support.py",
+        "test_safe_scripts.py",
+        "test_safe_scripts_transport.py",
+        "test_safe_scripts_protocol.py",
+    ):
+        target = root / name
+        shutil.copyfile(ROOT / "tests/shed" / name, target)
+        if name.startswith("test_"):
+            targets.append(str(target))
+    subprocess.run(
+        [
+            str(python),
+            "-I",
+            "-m",
+            "pytest",
+            "-c",
+            str(root / "pytest.ini"),
+            *targets,
         ],
         cwd=root,
         env=env,
