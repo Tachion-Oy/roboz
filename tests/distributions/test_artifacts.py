@@ -44,6 +44,8 @@ def test_package_contents_and_metadata(pytestconfig, package):
         } <= names
         for module in (
             "__init__",
+            "__main__",
+            "cli",
             "protocol",
             "client",
             "server",

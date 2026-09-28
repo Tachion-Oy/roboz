@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.3.0a1"
+version = "0.3.1a1"
 description = "Typed agents, reusable capabilities, and model catalogues"
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
@@ -45,7 +45,7 @@ include = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Tachion-Oy/roboz"
+Homepage = "https://tachion.fi/"
 Repository = "https://github.com/Tachion-Oy/roboz"
 Issues = "https://github.com/Tachion-Oy/roboz/issues"
 Documentation = "https://github.com/Tachion-Oy/roboz#readme"
