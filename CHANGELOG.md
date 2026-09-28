@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.1a1 - 2026-09-28
+
+- Add a Linux host service command for SafeScripts, with `serve` and
+  greeting-only `check` subcommands using the existing socket transport.
+
 ## 0.3.0a1 - 2026-09-28
 
 - Breaking: Email, FileCommands, and FileEditing capabilities now require

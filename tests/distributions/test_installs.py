@@ -36,6 +36,16 @@ def test_installed_contracts(consumer):
         subprocess.run([*command, str(contract)], cwd=root, env=env, check=True)
 
 
+def test_installed_script_service_command(consumer):
+    _, python, root, env = consumer
+    command = [str(python), "-I", "-m", "roboz.shed.tools.safe_scripts"]
+    result = subprocess.run(
+        [*command, "--help"], cwd=root, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert "serve" in result.stdout and "check" in result.stdout
+
+
 def test_installed_endpoint_types(consumer):
     _, python, root, env = consumer
     config = root / "pyrightconfig.json"
