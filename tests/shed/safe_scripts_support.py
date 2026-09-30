@@ -67,7 +67,7 @@ def host(tmp_path):
     workspace.mkdir()
 
     @contextmanager
-    def start(**settings):
+    def start(*, env=None, **settings):
         with TemporaryDirectory(prefix="roboz-socket-") as directory:
             path = Path(directory) / "private" / "scripts.sock"
             code = (
@@ -82,6 +82,7 @@ def host(tmp_path):
                 [sys.executable, "-c", code],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
             )
             try:
                 _wait_until(lambda: path.exists() or process.poll() is not None)

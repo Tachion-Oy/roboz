@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Document and verify that host `SafeScripts` depends only on a compatible
+  helper at its configured Unix socket. Manually started helpers work without
+  Process Compose; supervisor requirements belong to the application launcher.
+  The private protocol remains version 2.
+
 ## 0.3.0a1 - 2026-09-28
 
 - Breaking: Email, FileCommands, and FileEditing capabilities now require

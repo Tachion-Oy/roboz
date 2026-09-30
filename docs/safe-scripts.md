@@ -41,6 +41,12 @@ capability construction remain portable; the socket transport requires Linux.
 
 ## Host setup
 
+The helper provides the Python server and Unix socket. Its availability is
+independent of the program that starts it: run it manually in another terminal,
+or manage it with a supervisor. Robozium's normal launcher uses Process Compose
+to start and supervise the helper; Process Compose is a launcher requirement,
+not a SafeScripts dependency.
+
 Run the helper in its own Linux process, with Bash installed and a working
 directory that already exists:
 
@@ -75,6 +81,13 @@ are interpreted on the host.
 `ScriptSocketDependency.check()` connects, validates the greeting, and closes.
 It does not list or run scripts. Deployments report this dependency as
 `script_socket:<absolute socket path>`.
+
+Host registrations declare only this helper dependency; local registrations
+declare Bash. Construction, binding, copying, and dependency inspection perform
+no checks. A compatible running helper is sufficient even when Process Compose
+is absent from both host and client PATH. Missing or incompatible helpers report
+unavailable health without blocking registration or application readiness; tool
+calls return the existing transport failure diagnostic.
 
 ## Ownership and cancellation
 

@@ -1,8 +1,10 @@
 """Real host sessions, remote results, cancellation, and portable imports."""
 
+import asyncio
 import json
 import os
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -19,6 +21,11 @@ from safe_scripts_support import host as host
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.runtime.events import ScriptOutputEvent
 from roboz.shed.capabilities import SafeScripts
+from roboz.shed.dependency_health import (
+    DependencyHealthMonitor,
+    DependencyReasonCode,
+    DependencyStatus,
+)
 from roboz.shed.tools.safe_scripts import (
     RunShellScriptInput,
     ScriptSocketDependency,
@@ -180,10 +187,15 @@ def test_host_disconnect_and_shutdown_stop_process_group(host, action):
 def test_helper_disappearance_returns_transport_failure(host):
     _, _, start = host
     with start() as (path, process):
-        _, _, tool = _remote_tool(path)
+        definition, _, tool = _remote_tool(path)
         process.terminate()
         process.wait(timeout=4)
         assert not ScriptSocketDependency(path).check()
+        monitor = DependencyHealthMonitor(definition.external_dependencies())
+        asyncio.run(monitor.run_once())
+        (record,) = monitor.records()
+        assert record.status is DependencyStatus.UNAVAILABLE
+        assert record.reason_code is DependencyReasonCode.NOT_FOUND
         result = tool(RunShellScriptInput(), [])
         assert result.status == "failed" and "transport failure" in result.output
 
@@ -196,6 +208,66 @@ def test_health_handshake_runs_no_scripts_or_discovery(host):
         (scripts / "not-readable.sh").chmod(0)
         assert ScriptSocketDependency(path).check()
         assert not (workspace / "invoked").exists()
+
+
+def test_host_binding_copying_and_inspection_perform_no_external_work(
+    tmp_path, monkeypatch
+):
+    if sys.platform != "linux":
+        pytest.skip("host transport requires Linux")
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("unexpected external work")
+
+    monkeypatch.setattr(socket, "socket", unexpected)
+    monkeypatch.setattr(shutil, "which", unexpected)
+    path = tmp_path / "absent.sock"
+    definition, _, tool = _remote_tool(path)
+    dependencies = definition.external_dependencies()
+    assert dependencies == (ScriptSocketDependency(path),)
+    assert tool.copy().external_dependencies() == dependencies
+    assert not path.exists()
+
+
+def test_manually_started_host_helper_works_without_process_compose(
+    host, tmp_path, monkeypatch
+):
+    scripts, _, start = host
+    _script(scripts, "report.sh", "# Host report.\nprintf 'host report\\n'\n")
+    host_bin = tmp_path / "host-bin"
+    host_bin.mkdir()
+    (host_bin / "bash").symlink_to(shutil.which("bash"))
+    host_env = {**os.environ, "PATH": str(host_bin)}
+    assert shutil.which("process-compose", path=host_env["PATH"]) is None
+    monkeypatch.setenv("PATH", "")
+    assert shutil.which("process-compose") is None
+
+    with start(env=host_env) as (path, _):
+        events = []
+        definition, _, tool = _remote_tool(path, events.append)
+        dependencies = definition.external_dependencies()
+        assert dependencies == (ScriptSocketDependency(path),)
+        monitor = DependencyHealthMonitor(dependencies)
+        (record,) = monitor.records()
+        assert record.status is DependencyStatus.PENDING
+        asyncio.run(monitor.run_once())
+        (record,) = monitor.records()
+        assert record.status is DependencyStatus.AVAILABLE
+        assert record.reason_code is None
+        assert not events
+        listed = tool(RunShellScriptInput(), [])
+        assert [(entry.script, entry.description) for entry in listed.scripts] == [
+            ("report.sh", "Host report.")
+        ]
+        result = tool(RunShellScriptInput(script="report.sh"), [])
+        assert (result.status, result.exit_code, result.output) == (
+            "success",
+            0,
+            "host report\n",
+        )
+        assert [
+            event.content for event in events if isinstance(event, ScriptOutputEvent)
+        ] == ["host report\n"]
 
 
 @pytest.mark.parametrize(
@@ -279,6 +351,7 @@ def test_stalled_reader_cancels_native_execution_and_releases_gate(host):
     "override",
     [
         {"protocol": 1},
+        {"protocol": 3},
         {"protocol": 999},
         {"timeout_s": float("nan")},
     ],

@@ -46,4 +46,5 @@ QUOTES: Final[list[str]] = [
     "Release the hounds!",
     "Don't have a cow, man!",
     "Excellent!",
+    "Hi, everybody!",
 ]
