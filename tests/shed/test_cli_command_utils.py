@@ -113,10 +113,12 @@ def test_format_cli_commands_help_lists_all_commands() -> None:
 
 
 def test_format_cli_commands_help_includes_chaining_examples() -> None:
-    """format_cli_commands_help mentions pipe, and, or chaining examples."""
+    """The generated reference shows all supported chain operators."""
     out = format_cli_commands_help(FILE_COMMANDS)
-    assert "pipe" in out
-    assert "and" in out
+    assert "'|'" in out
+    assert "'&&'" in out
+    assert "'||'" in out
+    assert "';'" in out
     assert "chain" in out
     assert "file_commands" in out
     assert '"argv": [".", "-name", "*.py"]' in out
@@ -342,7 +344,7 @@ def test_run_file_command_uses_configured_base_not_process_cwd(
 
     parsed = run_cli(
         input=RunFileCommands(
-            chain="pipe",
+            chain="|",
             file_commands=[RunFileCommand(command="cat", argv=["target.txt"])],
         ),
         messages=[],
@@ -374,7 +376,7 @@ def test_help_command_returns_help_output(tmp_path: Path) -> None:
 
     # Run the chain: run_file_command -> operation_guard -> execute_file_command
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="help",
@@ -405,7 +407,7 @@ def test_help_command_rejected_with_args(tmp_path: Path) -> None:
     run_cli = tools[0]
 
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="help", argv=["-x"])],
     )
     result = run_cli(input=input_cmd, messages=[])
@@ -428,7 +430,7 @@ def test_cli_parse_error_includes_help_summary(tmp_path: Path) -> None:
     run_cli = tools[0]
 
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="unknown_cmd", argv=[])],
     )
     result = run_cli(input=input_cmd, messages=[])
@@ -449,7 +451,7 @@ def test_cli_parse_error_includes_help_summary(tmp_path: Path) -> None:
 def test_validate_input_valid_grep() -> None:
     """Valid grep: flags, pattern, and path in ``argv`` order."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="grep",
@@ -463,7 +465,7 @@ def test_validate_input_valid_grep() -> None:
 def test_validate_input_valid_rg() -> None:
     """Valid rg: flags, pattern, and search path in ``argv``."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="rg",
@@ -477,7 +479,7 @@ def test_validate_input_valid_rg() -> None:
 def test_validate_input_valid_cat() -> None:
     """Valid cat: path operand in ``argv``."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["file.txt"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -486,7 +488,7 @@ def test_validate_input_valid_cat() -> None:
 def test_validate_input_command_not_allowed() -> None:
     """Disallowed command returns error with help hint."""
     input = RunFileCommands(
-        chain="pipe", file_commands=[RunFileCommand(command="curl", argv=["x"])]
+        chain="|", file_commands=[RunFileCommand(command="curl", argv=["x"])]
     )
     err = _validate_input(input, FILE_COMMANDS)
     assert err is not None
@@ -500,7 +502,7 @@ def test_validate_input_command_not_allowed() -> None:
 def test_validate_input_forbidden_pattern() -> None:
     """Forbidden ``argv`` token: find rejects -exec, -ok, -delete."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="find",
@@ -519,7 +521,7 @@ def test_validate_input_forbidden_pattern() -> None:
 def test_validate_input_invalid_path_forbidden_char() -> None:
     """Path-like tokens are no longer globally blocked by character filters."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["foo;bar"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -528,7 +530,7 @@ def test_validate_input_invalid_path_forbidden_char() -> None:
 def test_validate_input_invalid_arg_forbidden_char() -> None:
     """Arg metacharacters are governed by command regex rules, not global filters."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["foo;bar", "file.txt"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -537,7 +539,7 @@ def test_validate_input_invalid_arg_forbidden_char() -> None:
 def test_validate_input_arg_allows_pipe_for_regex() -> None:
     """``|`` is allowed in args (e.g. ripgrep regex alternation); subprocess uses argv, not a shell."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="rg",
@@ -551,7 +553,7 @@ def test_validate_input_arg_allows_pipe_for_regex() -> None:
 def test_validate_input_invalid_path_leading_hyphen() -> None:
     """Leading-hyphen path tokens are allowed unless command rules reject them."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["-bad"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -560,7 +562,7 @@ def test_validate_input_invalid_path_leading_hyphen() -> None:
 def test_validate_input_allows_gio_trash_with_path() -> None:
     """gio accepts only trash subcommand when at least one path is provided."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="gio", argv=["trash", "file.txt"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -569,7 +571,7 @@ def test_validate_input_allows_gio_trash_with_path() -> None:
 def test_validate_input_rejects_gio_non_trash_subcommand() -> None:
     """gio subcommands other than trash are rejected."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="gio", argv=["list", "."])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -581,7 +583,7 @@ def test_validate_input_rejects_gio_non_trash_subcommand() -> None:
 def test_validate_input_allows_gio_trash_without_paths() -> None:
     """gio trash without explicit paths remains valid for base-guard behavior."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="gio", argv=["trash"])],
     )
     assert _validate_input(input, FILE_COMMANDS) is None
@@ -589,7 +591,7 @@ def test_validate_input_allows_gio_trash_without_paths() -> None:
 
 def test_validate_input_allows_mv_supported_flags() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="mv",
@@ -608,7 +610,7 @@ def test_validate_input_allows_mv_supported_flags() -> None:
 @pytest.mark.parametrize("flag", ["-f", "--force", "-n", "--no-clobber"])
 def test_validate_input_rejects_mv_clobber_flags(flag: str) -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mv", argv=[flag, "src.txt", "dst.txt"])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -620,7 +622,7 @@ def test_validate_input_rejects_mv_clobber_flags(flag: str) -> None:
 
 def test_validate_input_allows_cp_supported_flags() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="cp",
@@ -642,7 +644,7 @@ def test_validate_input_allows_cp_supported_flags() -> None:
 )
 def test_validate_input_rejects_unsupported_cp_flags(flag: str) -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cp", argv=[flag, "src", "dst"])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -654,7 +656,7 @@ def test_validate_input_rejects_unsupported_cp_flags(flag: str) -> None:
 
 def test_validate_input_rejects_cp_combined_short_flags() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cp", argv=["-Rv", "src", "dst"])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -665,7 +667,7 @@ def test_validate_input_rejects_cp_combined_short_flags() -> None:
 
 def test_validate_input_rejects_mv_interactive_flag() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mv", argv=["-i", "src.txt", "dst.txt"])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -677,7 +679,7 @@ def test_validate_input_rejects_mv_interactive_flag() -> None:
 
 def test_validate_input_rejects_mv_backup_flag() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mv", argv=["--backup", "a", "b"])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -689,7 +691,7 @@ def test_validate_input_rejects_mv_backup_flag() -> None:
 
 def test_validate_input_rejects_mv_target_directory_equals_form() -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="mv",
@@ -719,7 +721,7 @@ def test_validate_input_requires_source_and_destination_paths(
     command: str, argv: list[str]
 ) -> None:
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command=command, argv=argv)],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -732,7 +734,7 @@ def test_validate_input_requires_source_and_destination_paths(
 def test_validate_input_rejects_gio_trash_empty_flag() -> None:
     """gio trash --empty is rejected by the trash-only argv allowlist."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="gio", argv=["trash", "--empty", "."])],
     )
     err = _validate_input(input, FILE_COMMANDS)
@@ -745,12 +747,12 @@ def test_validate_input_custom_specs() -> None:
     """Validation uses provided specs, not just COMMAND_SPECS."""
     specs = (CmdSpec(name="only"),)
     input = RunFileCommands(
-        chain="pipe", file_commands=[RunFileCommand(command="only", argv=["x"])]
+        chain="|", file_commands=[RunFileCommand(command="only", argv=["x"])]
     )
     assert _validate_input(input, specs) is None
 
     input_bad = RunFileCommands(
-        chain="pipe", file_commands=[RunFileCommand(command="grep", argv=["x"])]
+        chain="|", file_commands=[RunFileCommand(command="grep", argv=["x"])]
     )
     err = _validate_input(input_bad, specs)
     assert err is not None
@@ -780,13 +782,13 @@ def test_validate_input_allowed_patterns_allows_only_listed_args() -> None:
         ),
     )
     ok_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="only", argv=["-n", "def"])],
     )
     assert _validate_input(ok_input, specs) is None
 
     bad_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="only", argv=["-n", "disallowed-token"])],
     )
     err = _validate_input(bad_input, specs)
@@ -805,7 +807,7 @@ def test_validate_input_allowed_patterns_rejects_empty_args() -> None:
         ),
     )
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="only", argv=[])],
     )
     err = _validate_input(input, specs)
@@ -823,12 +825,12 @@ def test_validate_input_allowed_patterns_exact_not_substring() -> None:
         ),
     )
     ok_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="only", argv=["def"])],
     )
     assert _validate_input(ok_input, specs) is None
     bad_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="only", argv=["define"])],
     )
     err = _validate_input(bad_input, specs)
@@ -846,13 +848,13 @@ def test_validate_input_forbidden_pattern_fullmatch() -> None:
         ),
     )
     ok_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="off", argv=["anything", "x"])],
     )
     assert _validate_input(ok_input, specs) is None
 
     blocked_input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="off", argv=["*", "x"])],
     )
     err = _validate_input(blocked_input, specs)
@@ -871,7 +873,7 @@ def test_resolve_paths_single_file(tmp_path: Path) -> None:
     """Single existing file, no glob."""
     (tmp_path / "hello.txt").write_text("hi")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["hello.txt"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -881,7 +883,7 @@ def test_resolve_paths_single_file(tmp_path: Path) -> None:
 def test_resolve_paths_single_file_nonexistent(tmp_path: Path) -> None:
     """Single nonexistent file, no glob - still returns path for guard to check."""
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["missing.txt"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -893,7 +895,7 @@ def test_resolve_paths_multiple_literal(tmp_path: Path) -> None:
     (tmp_path / "a").write_text("")
     (tmp_path / "b").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["a", "b"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -906,7 +908,7 @@ def test_resolve_paths_glob_star_matches_files(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("")
     (tmp_path / "c.py").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["*.py"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -921,7 +923,7 @@ def test_resolve_paths_glob_star_no_matches(tmp_path: Path) -> None:
     """Glob with no matches returns empty for that pattern."""
     (tmp_path / "a.txt").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["*.py"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -934,7 +936,7 @@ def test_resolve_paths_glob_star_mixed_with_literal(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("")
     (tmp_path / "readme.txt").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["*.py", "readme.txt"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -952,7 +954,7 @@ def test_resolve_paths_glob_in_subdir(tmp_path: Path) -> None:
     (src / "main.py").write_text("")
     (src / "util.py").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["src/*.py"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -968,7 +970,7 @@ def test_resolve_paths_recursive_glob_in_subdir(tmp_path: Path) -> None:
     (deep / "nested.py").write_text("")
     (deep / "notes.txt").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["src/**/*.py"])],
     )
 
@@ -987,7 +989,7 @@ def test_resolve_paths_absolute_recursive_glob(tmp_path: Path) -> None:
     (deep / "nested.py").write_text("")
     (deep / "notes.txt").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=[str(src / "**" / "*.py")])],
     )
 
@@ -1002,7 +1004,7 @@ def test_resolve_paths_glob_question_mark(tmp_path: Path) -> None:
     (tmp_path / "f2.txt").write_text("")
     (tmp_path / "f10.txt").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["f?.txt"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -1017,7 +1019,7 @@ def test_resolve_paths_glob_brackets(tmp_path: Path) -> None:
     (tmp_path / "b").write_text("")
     (tmp_path / "c").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["[ab]"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -1030,7 +1032,7 @@ def test_resolve_paths_resolves_relative(tmp_path: Path) -> None:
     sub.mkdir()
     (sub / "x").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["sub/x"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -1044,7 +1046,7 @@ def test_resolve_paths_absolute_ignores_base(tmp_path: Path) -> None:
     f = other / "abs.txt"
     f.write_text("x")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=[str(f)])],
     )
     result = _resolve_paths(input, tmp_path / "workspace")
@@ -1056,7 +1058,7 @@ def test_resolve_paths_glob_and_literal_same_file(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("")
     (tmp_path / "b.py").write_text("")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["*.py", "a.py"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -1071,7 +1073,7 @@ def test_resolve_paths_head_skips_value_after_n_flag(tmp_path: Path) -> None:
     """head -n 50 file: only file is treated as a path operand."""
     (tmp_path / "notes.txt").write_text("x")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="head", argv=["-n", "50", "notes.txt"])],
     )
     result = _resolve_paths(input, tmp_path)
@@ -1082,7 +1084,7 @@ def test_resolve_paths_tail_skips_value_after_bytes_flag(tmp_path: Path) -> None
     """tail --bytes 20 file: only file is treated as a path operand."""
     (tmp_path / "notes.txt").write_text("x")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="tail", argv=["--bytes", "20", "notes.txt"])
         ],
@@ -1096,7 +1098,7 @@ def test_guard_items_mv_uses_delete_for_source_and_create_for_destination(
 ) -> None:
     (tmp_path / "src.txt").write_text("x")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mv", argv=["src.txt", "dst.txt"])],
     )
     spec = MV
@@ -1118,7 +1120,7 @@ def test_guard_items_cp_uses_read_for_source_and_create_for_destination(
 ) -> None:
     (tmp_path / "src.txt").write_text("x")
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cp", argv=["src.txt", "dst.txt"])],
     )
     items = _guard_items(input, tmp_path, CP)
@@ -1142,7 +1144,7 @@ def test_guard_items_cp_target_directory_expands_per_source(tmp_path: Path) -> N
     src_b.write_text("b")
     target.mkdir()
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cp", argv=["-t", "copies", "a.txt", "b.txt"])
         ],
@@ -1170,7 +1172,7 @@ def test_guard_items_mv_directory_destination_expands_per_source(
     src_b.write_text("b")
     target.mkdir()
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="mv", argv=["a.txt", "b.txt", "archive"])
         ],
@@ -1199,7 +1201,7 @@ def test_guard_items_mv_target_directory_flag_expands_per_source(
     src_b.write_text("b")
     target.mkdir()
     input = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="mv", argv=["-t", "archive", "a.txt", "b.txt"])
         ],

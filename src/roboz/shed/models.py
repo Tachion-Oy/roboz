@@ -30,7 +30,7 @@ class RunFileCommand(BaseModel):
     )
     stdin: str | None = Field(
         default=None,
-        description="Optional stdin for commands like tee. When chain='pipe', stdin is set automatically from the previous command's output; manual stdin is for piping content into tools like tee. Framed pipe traces use placeholders for piped stdin/stdout on non-final steps to avoid echoing large intermediate output.",
+        description="Optional explicit stdin, for example content for tee. With chain='|', the previous command's stdout replaces stdin on subsequent steps, including empty stdout. Other operators preserve each command's explicit stdin.",
     )
     model_config = ConfigDict(extra="forbid")
 
@@ -39,19 +39,19 @@ class RunFileCommands(Empty):
     """Input model for the ``run_file_command`` tool.
 
     Pass one or more commands in file_commands and always provide chain explicitly:
-    pipe (stdout->stdin) or and (sequential, no passthrough).
+    Use |, &&, ||, or ; for buffered sequential execution.
     """
 
-    chain: Literal["pipe", "and"] = Field(
+    chain: Literal["|", "&&", "||", ";"] = Field(
         ...,
-        description="Required chain type for execution: 'pipe' (stdout->stdin) or 'and' (sequential, no passthrough)",
+        description="Required operator: '|' forwards stdout after normal exits; '&&' continues after success; '||' continues after failure; ';' continues after ordinary outcomes. One operator applies to every step.",
     )
     file_commands: list[RunFileCommand] = Field(
         ..., min_length=1, description="List of commands to execute sequentially"
     )
     accumulated_output: SkipJsonSchema[str] = Field(
         default="",
-        description="(Internal) Carries framed output across AND and pipe chain iterations.",
+        description="(Internal) Carries framed output across command iterations.",
     )
     model_config = ConfigDict(extra="forbid")
 

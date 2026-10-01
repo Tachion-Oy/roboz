@@ -52,7 +52,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         return {
             "action": "run_file_command",
             "rationale": "read",
-            "chain": "and",
+            "chain": "&&",
             "file_commands": [{"command": "cat", "argv": [path]}],
         }
 

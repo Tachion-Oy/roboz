@@ -60,7 +60,7 @@ def _guard_ctx() -> GuardContext:
 
 def _allowed_result() -> GuardFilesResult:
     original = RunFileCommands(
-        chain="and", file_commands=[RunFileCommand(command="ls", argv=[])]
+        chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
     )
     return GuardFilesResult(
         status=GuardStatus.ALLOWED, items=[], original_input=original
@@ -69,7 +69,7 @@ def _allowed_result() -> GuardFilesResult:
 
 def _denied_result() -> GuardFilesResult:
     original = RunFileCommands(
-        chain="and", file_commands=[RunFileCommand(command="ls", argv=[])]
+        chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
     )
     return GuardFilesResult(
         status=GuardStatus.DENIED, items=[], original_input=original
@@ -134,7 +134,7 @@ def test_guard_chain_breaks_for_parse_errors_and_help() -> None:
 
     resolved = ResolvedFileCommand(
         original_input=RunFileCommands(
-            chain="and", file_commands=[RunFileCommand(command="ls", argv=[])]
+            chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
         ),
         items=[],
     )

@@ -3,6 +3,7 @@
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 
@@ -14,7 +15,6 @@ from roboz.shed.models import (
 )
 from roboz.shed.tools.cli_commands.utilities.constants import (
     ERR_COMMAND_NOT_FOUND,
-    ERR_EXIT_NONZERO,
     ERR_EXIT_NONZERO_NO_OUTPUT,
     ERR_OUTPUT_TOO_LARGE,
     ERR_TIMEOUT,
@@ -36,11 +36,18 @@ from roboz.shed.tools.contexts import FileCommandExecutionContext
 from roboz.tooling.decorators import factory
 
 
+class _CommandOutcome(StrEnum):
+    """Overall outcomes reported by the command executor."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
 def run_cli_argv(
-    argv: list[str], cwd: Path, stdin: str | None, command_line: str
-) -> tuple[bool, str]:
-    """Run argv. Return (True, output) on success or (False, formatted error)."""
-    result = subprocess.run(
+    argv: list[str], cwd: Path, stdin: str | None
+) -> subprocess.CompletedProcess[str]:
+    """Run argv and preserve its exit status and separate output streams."""
+    return subprocess.run(
         argv,
         cwd=cwd,
         capture_output=True,
@@ -48,22 +55,6 @@ def run_cli_argv(
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
         input=stdin,
     )
-    out = (result.stdout or "") + (result.stderr or "")
-    return _format_run_result(result.returncode, out, command_line)
-
-
-def _format_run_result(
-    returncode: int, out: str, command_line: str
-) -> tuple[bool, str]:
-    """Shared (ok, output|formatted-error) shaping for argv runners."""
-    if returncode == 0:
-        return True, out
-    msg = (
-        ERR_EXIT_NONZERO.format(code=returncode, out=out).strip()
-        if out.strip()
-        else ERR_EXIT_NONZERO_NO_OUTPUT.format(code=returncode, command=command_line)
-    )
-    return False, msg
 
 
 def argv_from_guard_result(
@@ -87,39 +78,39 @@ def command_ready_from_guard_result(input: GuardFilesResult) -> CommandReady:
     return ready_value
 
 
-def _accumulate_error(
-    new_input: RunFileCommands,
-    command_line: str,
-    message: str,
-    truncation: TruncationSpec,
-) -> Str | RunFileCommands:
-    """Stop on pipe failures; accumulate and continue for AND chains."""
-    if new_input.chain != "and":
-        return Str(value=message, truncation=truncation)
-    framed = _framed_cli_output(command_line, message)
-    combined = (new_input.accumulated_output or "") + framed + "\n"
-    if len(new_input.file_commands) > 1:
-        new_input.file_commands = new_input.file_commands[1:]
-        new_input.accumulated_output = combined
-        new_input.truncation = Truncation(threshold=0, severity=Severity.REMOVE)
-        return new_input
-    return Str(value=combined.strip(), truncation=truncation)
-
-
-def _format_step_body(
-    *,
-    chain: str,
-    is_last_step: bool,
-    has_previous_step: bool,
-    body: str,
+def _append_frame(
+    input: RunFileCommands, command_line: str, body: str, stderr: str = ""
 ) -> str:
-    if chain != "pipe":
-        return body
+    """Add one command's output to the ordered execution trace."""
     parts: list[str] = []
-    if has_previous_step:
+    if input.chain == "|" and input.accumulated_output:
         parts.append(PIPE_STDIN_FROM_PREVIOUS_COMMAND)
-    parts.append(body if is_last_step else PIPE_OUTPUT_TO_NEXT_COMMAND)
-    return "\n".join(parts)
+    parts.append(body)
+    if stderr:
+        parts.append(f"stderr:\n{stderr}")
+    frame = _framed_cli_output(command_line, "\n".join(parts))
+    return input.accumulated_output + frame + "\n"
+
+
+def _should_continue(input: RunFileCommands, succeeded: bool) -> bool:
+    """Apply the requested operator after an ordinary command outcome."""
+    if len(input.file_commands) == 1:
+        return False
+    return (
+        input.chain in ("|", ";")
+        or (input.chain == "&&" and succeeded)
+        or (input.chain == "||" and not succeeded)
+    )
+
+
+def _final_result(
+    history: str, outcome: _CommandOutcome, detail: str, truncation: TruncationSpec
+) -> Str:
+    """Return the final status and the frames for commands that ran."""
+    return Str(
+        value=f"Overall: {outcome} ({detail})\n{history.rstrip()}",
+        truncation=truncation,
+    )
 
 
 def _continue_chain(
@@ -130,7 +121,7 @@ def _continue_chain(
 ) -> RunFileCommands:
     """Advance to the next file command in the chain."""
     new_input.file_commands = new_input.file_commands[1:]
-    if new_input.chain == "pipe":
+    if new_input.chain == "|":
         new_input.file_commands[0].stdin = out
     new_input.accumulated_output = combined
     new_input.truncation = Truncation(threshold=0, severity=Severity.REMOVE)
@@ -138,14 +129,86 @@ def _continue_chain(
 
 
 def _oversized_output_result(
-    *, command_line: str, actual_chars: int, truncation: TruncationSpec
+    *, command_line: str, actual_chars: int, status: int, truncation: TruncationSpec
 ) -> Str:
     """Fail closed when command output is too large for safe chaining/persistence."""
     message = ERR_OUTPUT_TOO_LARGE.format(
         actual_chars=actual_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
     )
     body = _framed_cli_output(command_line, message)
-    return Str(value=body.strip(), truncation=truncation)
+    return _final_result(
+        body, _CommandOutcome.FAILURE, f"output too large; exit {status}", truncation
+    )
+
+
+def _completed_body(
+    input: RunFileCommands,
+    command_line: str,
+    result: subprocess.CompletedProcess[str],
+) -> str:
+    """Format one process result, hiding stdout sent to a later pipe stage."""
+    stdout, stderr = result.stdout or "", result.stderr or ""
+    piped = input.chain == "|" and len(input.file_commands) > 1
+    shown_stdout = PIPE_OUTPUT_TO_NEXT_COMMAND if piped else stdout
+    if result.returncode == 0:
+        return shown_stdout or SUCCESS_NO_OUTPUT.format(command=command_line)
+    if not stdout and not stderr and not piped:
+        return ERR_EXIT_NONZERO_NO_OUTPUT.format(
+            code=result.returncode, command=command_line
+        )
+    failure = f"[error] Command failed (exit {result.returncode})"
+    return f"{failure}\n{shown_stdout}" if shown_stdout else failure
+
+
+def _completed_result(
+    input: RunFileCommands,
+    command_line: str,
+    result: subprocess.CompletedProcess[str],
+    truncation: TruncationSpec,
+) -> Str | RunFileCommands:
+    """Render a process result and follow its exit status."""
+    stdout, stderr = result.stdout or "", result.stderr or ""
+    history = _append_frame(
+        input, command_line, _completed_body(input, command_line, result), stderr
+    )
+    if _should_continue(input, result.returncode == 0):
+        return _continue_chain(new_input=input, combined=history, out=stdout)
+    outcome = (
+        _CommandOutcome.SUCCESS if result.returncode == 0 else _CommandOutcome.FAILURE
+    )
+    return _final_result(history, outcome, f"exit {result.returncode}", truncation)
+
+
+def _timeout_result(
+    input: RunFileCommands, command_line: str, truncation: TruncationSpec
+) -> Str | RunFileCommands:
+    """Discard partial timeout output and stop a pipeline immediately."""
+    message = ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+    history = _append_frame(input, command_line, message)
+    if input.chain != "|" and _should_continue(input, succeeded=False):
+        return _continue_chain(new_input=input, combined=history, out="")
+    return _final_result(history, _CommandOutcome.FAILURE, "timeout", truncation)
+
+
+def _terminal_error(
+    input: RunFileCommands,
+    command_line: str,
+    kind: str,
+    error: Exception,
+    truncation: TruncationSpec,
+) -> Str:
+    """Stop after an unexpected error, retaining reached command frames."""
+    history = _append_frame(input, command_line, str(error) or kind)
+    return _final_result(history, _CommandOutcome.FAILURE, kind, truncation)
+
+
+def _missing_executable_result(
+    argv: list[str], command_name: str
+) -> subprocess.CompletedProcess[str]:
+    """Represent a missing permitted executable with shell status 127."""
+    return subprocess.CompletedProcess(
+        argv, 127, "", ERR_COMMAND_NOT_FOUND.format(cmd=command_name)
+    )
 
 
 @dataclass(frozen=True)
@@ -215,37 +278,43 @@ def execute_file_command(
 
     try:
         executable = ctx.commands.binding_for(ready.command_name)
-        argv = [str(executable.require()), *argv[1:]]
-        ok, out = run_cli_argv(argv, cwd, stdin, command_line)
-        if len(out) > MAX_COMMAND_OUTPUT_CHARS:
-            return _oversized_output_result(
-                command_line=command_line, actual_chars=len(out), truncation=truncation
-            )
-        if not ok:
-            return _accumulate_error(new_input, command_line, out, truncation)
-
-        body = out if out.strip() else SUCCESS_NO_OUTPUT.format(command=command_line)
-        is_last_step = len(new_input.file_commands) == 1
-        has_previous_step = bool((new_input.accumulated_output or "").strip())
-        body = _format_step_body(
-            chain=new_input.chain,
-            is_last_step=is_last_step,
-            has_previous_step=has_previous_step,
-            body=body,
+    except Exception as error:
+        return _terminal_error(
+            new_input, command_line, "internal error", error, truncation
         )
-        framed = _framed_cli_output(command_line, body)
-        combined = (new_input.accumulated_output or "") + framed + "\n"
 
-        if is_last_step:
-            return Str(value=combined.strip(), truncation=truncation)
-        return _continue_chain(new_input=new_input, combined=combined, out=out)
+    try:
+        executable_path = executable.require()
+    except FileNotFoundError:
+        result = _missing_executable_result(argv, ready.command_name)
+    except Exception as error:
+        return _terminal_error(
+            new_input, command_line, "lookup error", error, truncation
+        )
+    else:
+        argv = [str(executable_path), *argv[1:]]
+        try:
+            result = run_cli_argv(argv, cwd, stdin)
+        except subprocess.TimeoutExpired:
+            return _timeout_result(new_input, command_line, truncation)
+        except FileNotFoundError as error:
+            if error.filename != argv[0] or not cwd.is_dir():
+                return _terminal_error(
+                    new_input, command_line, "launch error", error, truncation
+                )
+            result = _missing_executable_result(argv, ready.command_name)
+        except Exception as error:
+            return _terminal_error(
+                new_input, command_line, "execution error", error, truncation
+            )
 
-    except Exception as e:
-        match e:
-            case subprocess.TimeoutExpired():
-                msg = ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS)
-            case FileNotFoundError():
-                msg = ERR_COMMAND_NOT_FOUND.format(cmd=argv[0])
-            case _:
-                msg = str(e)
-        return _accumulate_error(new_input, command_line, msg, truncation)
+    stdout, stderr = result.stdout or "", result.stderr or ""
+    captured_chars = len(stdout) + len(stderr)
+    if captured_chars > MAX_COMMAND_OUTPUT_CHARS:
+        return _oversized_output_result(
+            command_line=command_line,
+            actual_chars=captured_chars,
+            status=result.returncode,
+            truncation=truncation,
+        )
+    return _completed_result(new_input, command_line, result, truncation)

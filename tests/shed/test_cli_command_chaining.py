@@ -1,12 +1,8 @@
-"""Tests for chained CLI commands (PIPE and AND).
-
-Supports multiple commands per call via chain=PIPE (output flows to next stdin)
-or chain=AND (commands run sequentially, each with fresh stdin).
-Cannot mix PIPE and AND in a single chain.
-"""
+"""Tests for guarded file commands chained with shell-style operators."""
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from roboz.agent import Agent
+from roboz.dependencies import ExecutableDependency
 from roboz.tools import stop
 from roboz.models import Message, Stop
 from roboz.llm import get_truncated_messages_for_context
@@ -28,15 +25,19 @@ from roboz.shed.models import (
     RunFileCommands,
 )
 from roboz.shed.tools import get_run_file_command
+from roboz.shed.tools import runner as command_runner
+from roboz.shed.tools import utils as command_utils
 from roboz.shed.tools.cli_commands.run_file_command.specs import (
     FILE_COMMANDS_READ,
     FILE_COMMANDS_WRITE,
 )
 from roboz.shed.tools.cli_commands.utilities.cmd_spec import CmdSpec
 from roboz.shed.tools.cli_commands.utilities.constants import (
+    MAX_COMMAND_OUTPUT_CHARS,
     PIPE_OUTPUT_TO_NEXT_COMMAND,
     PIPE_STDIN_FROM_PREVIOUS_COMMAND,
 )
+from roboz.runtime import EventPipe
 
 FILE_COMMANDS = FILE_COMMANDS_READ + FILE_COMMANDS_WRITE
 
@@ -147,7 +148,7 @@ def test_pipe_two_commands_cat_grep(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["data.txt"]),
             RunFileCommand(command="grep", argv=["alpha"]),
@@ -181,7 +182,7 @@ def test_pipe_echo_to_cat(tmp_path: Path) -> None:
         command_specs=SPECS_WITH_ECHO,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="echo", argv=["hello world"]),
             RunFileCommand(command="cat", argv=[]),
@@ -207,7 +208,7 @@ def test_pipe_three_commands_cat_grep_wc(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["log.txt"]),
             RunFileCommand(command="grep", argv=["info:"]),
@@ -243,7 +244,7 @@ def test_pipe_cat_to_tee(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["source.txt"]),
             RunFileCommand(command="tee", argv=["copy.txt"]),
@@ -270,7 +271,7 @@ def test_pipe_grep_no_matches_returns_error(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["f.txt"]),
             RunFileCommand(command="grep", argv=["NOMATCH"]),
@@ -293,7 +294,7 @@ def test_pipe_huge_output_stops_chain_with_explicit_error(tmp_path: Path) -> Non
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["huge.txt"]),
             RunFileCommand(command="grep", argv=["x"]),
@@ -330,7 +331,7 @@ def test_and_huge_output_stops_chain_before_followup_command(tmp_path: Path) -> 
         command_specs=SPECS_WITH_ECHO,
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cat", argv=["huge.txt"]),
             RunFileCommand(command="echo", argv=["second_step_ran"]),
@@ -361,7 +362,7 @@ def test_and_two_commands_touch_then_ls(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="touch", argv=["created.txt"]),
             RunFileCommand(command="ls", argv=["."]),
@@ -386,7 +387,7 @@ def test_and_mkdir_touch_ls(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="mkdir", argv=["sub"]),
             RunFileCommand(command="touch", argv=["sub/f"]),
@@ -417,7 +418,7 @@ def test_and_cp_copies_file(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cp", argv=["source.txt", "copy.txt"]),
             RunFileCommand(command="cat", argv=["copy.txt"]),
@@ -448,7 +449,7 @@ def test_cp_recursive_copies_directory(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cp", argv=["-r", "source", "copied"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -478,7 +479,7 @@ def test_cp_overwrite_requires_delete_on_destination(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cp", argv=["source.txt", "target.txt"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -504,7 +505,7 @@ def test_and_mv_moves_file(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="mv", argv=["source.txt", "moved.txt"]),
             RunFileCommand(command="cat", argv=["moved.txt"]),
@@ -539,7 +540,7 @@ def test_mv_overwrite_requires_delete_on_destination(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mv", argv=["source.txt", "target.txt"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -561,7 +562,7 @@ def test_and_second_command_does_not_receive_first_stdout(tmp_path: Path) -> Non
         command_specs=SPECS_WITH_ECHO,
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cat", argv=["secret.txt"]),
             RunFileCommand(command="echo", argv=["from_echo"]),
@@ -586,7 +587,7 @@ def test_and_accumulates_all_outputs(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cat", argv=["a.txt"]),
             RunFileCommand(command="cat", argv=["b.txt"]),
@@ -617,7 +618,7 @@ def test_and_touch_then_tee_allows_when_delete_unmatched_and_default_is_allow(
     )
     plan_path = tmp_path / "plans" / "plan_123.md"
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="touch", argv=["plans/plan_123.md"]),
             RunFileCommand(command="tee", argv=["plans/plan_123.md"], stdin="content"),
@@ -648,7 +649,7 @@ def test_and_touch_then_tee_succeeds_when_delete_allowed(tmp_path: Path) -> None
     )
     plan_path = tmp_path / "plans" / "plan_123.md"
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="touch", argv=["plans/plan_123.md"]),
             RunFileCommand(
@@ -676,7 +677,7 @@ def test_single_command_unchanged(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["x.txt"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -696,7 +697,7 @@ def test_run_file_command_default_uses_light_truncation(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["x.txt"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -723,7 +724,7 @@ def test_single_success_no_output_is_explicit(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="mkdir", argv=["subdir"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -757,7 +758,7 @@ def test_single_command_with_explicit_pipe_chain(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["data"]),
             RunFileCommand(command="grep", argv=["a"]),
@@ -788,7 +789,7 @@ def test_find_paths_then_predicates_succeeds(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="find", argv=[".", "-name", "needle.txt"])
         ],
@@ -814,7 +815,7 @@ def test_find_start_dir_first_with_maxdepth_succeeds(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(
                 command="find",
@@ -841,7 +842,7 @@ def test_non_find_ordering_unchanged(tmp_path: Path) -> None:
         takes_precedence=ActionVerdict.allow,
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="grep", argv=["print", "a.py"])],
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
@@ -856,8 +857,8 @@ def test_non_find_ordering_unchanged(tmp_path: Path) -> None:
 # -----------------------------------------------------------------------------
 
 
-def test_pipe_first_command_fails_stops_chain(tmp_path: Path) -> None:
-    """If first command fails (exit non-zero), return error, no second command runs."""
+def test_pipe_first_command_fails_but_later_stage_runs(tmp_path: Path) -> None:
+    """A nonzero upstream exit still feeds its stdout to the next stage."""
     (tmp_path / "f.txt").write_text("line1\nline2")
     tools = get_run_file_command(
         base=tmp_path,
@@ -866,7 +867,7 @@ def test_pipe_first_command_fails_stops_chain(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="grep", argv=["NOMATCH", "f.txt"]),
             RunFileCommand(command="cat", argv=[]),
@@ -874,11 +875,13 @@ def test_pipe_first_command_fails_stops_chain(tmp_path: Path) -> None:
     )
     _, messages = _invoke_cli_with_tools(tools, input_cmd)
     result = _last_execute_file_command_value(messages)
-    assert "exit" in result.lower() or "non-zero" in result.lower() or "1" in result
+    assert "Overall: success (exit 0)" in result
+    assert "[error] Command failed (exit 1)" in result
+    _assert_framed_output(result, sections=2)
 
 
-def test_and_first_command_fails_continues_chain(tmp_path: Path) -> None:
-    """If first command fails in AND chain, accumulate error and run the next command."""
+def test_sequence_first_command_fails_continues_chain(tmp_path: Path) -> None:
+    """A semicolon chain records failure and runs the next command."""
     (tmp_path / "f.txt").write_text("x")
     tools = get_run_file_command(
         base=tmp_path,
@@ -888,7 +891,7 @@ def test_and_first_command_fails_continues_chain(tmp_path: Path) -> None:
         command_specs=SPECS_WITH_ECHO,
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain=";",
         file_commands=[
             RunFileCommand(command="grep", argv=["NOMATCH", "f.txt"]),
             RunFileCommand(command="echo", argv=["second_step_ran"]),
@@ -911,7 +914,7 @@ def test_and_success_then_second_fails_returns_combined(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cat", argv=["f.txt"]),
             RunFileCommand(command="grep", argv=["NOMATCH", "f.txt"]),
@@ -933,7 +936,7 @@ def test_and_touch_then_tee_runs_through_agent_routing(tmp_path: Path) -> None:
             {
                 "action": "run_file_command",
                 "rationale": "Write plan file in two AND steps",
-                "chain": "and",
+                "chain": "&&",
                 "file_commands": [
                     {
                         "command": "touch",
@@ -999,7 +1002,7 @@ def test_pipe_three_commands_run_full_guard_cycle(tmp_path: Path) -> None:
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["log.txt"]),
             RunFileCommand(command="grep", argv=["info:"]),
@@ -1032,7 +1035,7 @@ def test_and_denied_later_command_breaks_before_execution(tmp_path: Path) -> Non
         deny_rules=[],
     )
     input_cmd = RunFileCommands(
-        chain="and",
+        chain="&&",
         file_commands=[
             RunFileCommand(command="cat", argv=["a.txt"]),
             RunFileCommand(command="cat", argv=["b.txt"]),
@@ -1048,3 +1051,444 @@ def test_and_denied_later_command_breaks_before_execution(tmp_path: Path) -> Non
     denied_entries = _caller_entries(messages, caller="operation_guard")
     _, last_guard_payload = denied_entries[-1]
     assert last_guard_payload.get("status") == "denied"
+
+
+@pytest.mark.parametrize(
+    ("operator", "pattern", "executed", "outcome"),
+    [
+        ("&&", "x", 2, "success (exit 0)"),
+        ("&&", "missing", 1, "failure (exit 1)"),
+        ("||", "x", 1, "success (exit 0)"),
+        ("||", "missing", 2, "success (exit 0)"),
+        (";", "missing", 2, "success (exit 0)"),
+    ],
+)
+def test_operator_routes_real_exit_status(
+    tmp_path: Path, operator: str, pattern: str, executed: int, outcome: str
+) -> None:
+    (tmp_path / "f.txt").write_text("x\n")
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        command_specs=SPECS_WITH_ECHO,
+    )
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [
+                {"command": "grep", "argv": [pattern, "f.txt"]},
+                {"command": "echo", "argv": ["recovery"]},
+            ],
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert result.startswith(f"Overall: {outcome}")
+    _assert_framed_output(result, sections=executed)
+    assert ("recovery" in result) is (executed == 2)
+
+
+@pytest.mark.parametrize("operator,pattern", [("&&", "missing"), ("||", "x")])
+def test_skipped_command_has_no_guard_lookup_or_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, pattern: str
+) -> None:
+    (tmp_path / "f.txt").write_text("x\n")
+    lookups: list[str] = []
+    executions: list[str] = []
+    original_resolve = ExecutableDependency.resolve
+    original_run = command_runner.run_cli_argv
+
+    def resolve(dependency: ExecutableDependency) -> Path | None:
+        lookups.append(dependency.executable)
+        return original_resolve(dependency)
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        executions.append(argv[0])
+        return original_run(argv, cwd, stdin)
+
+    monkeypatch.setattr(ExecutableDependency, "resolve", resolve)
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[PermissionRule(pattern="f.txt", operations={Operation.READ})],
+        ask_rules=[PermissionRule(pattern="skip.txt", operations={Operation.CREATE})],
+    )
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [
+                {"command": "grep", "argv": [pattern, "f.txt"]},
+                {"command": "touch", "argv": ["skip.txt"]},
+            ],
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    callers = _extract_callers(messages)
+    assert callers.count("run_file_command_passive") == 0
+    assert callers.count("operation_guard") == 1
+    assert callers.count("execute_file_command") == 1
+    assert lookups == ["grep"]
+    assert len(executions) == 1
+    assert not (tmp_path / "skip.txt").exists()
+
+
+@pytest.mark.parametrize("stdout", ["", " \n\t"])
+def test_pipe_forwards_stdout_exactly_and_separates_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    inputs: list[str | None] = []
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        inputs.append(stdin)
+        if len(inputs) == 1:
+            return subprocess.CompletedProcess(argv, 1, stdout, "warning\n")
+        return subprocess.CompletedProcess(argv, 0, "done\n", "")
+
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands(
+        chain="|",
+        file_commands=[
+            RunFileCommand(command="cat", argv=[], stdin="first"),
+            RunFileCommand(command="cat", argv=[], stdin="replaced"),
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert inputs == ["first", stdout]
+    assert result.startswith("Overall: success (exit 0)")
+    assert "[error] Command failed (exit 1)" in result
+    assert "stderr:\nwarning" in result
+    assert PIPE_OUTPUT_TO_NEXT_COMMAND in result
+
+
+@pytest.mark.parametrize("operator", ["&&", "||", ";"])
+def test_nonpipe_preserves_explicit_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str
+) -> None:
+    inputs: list[str | None] = []
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        inputs.append(stdin)
+        return subprocess.CompletedProcess(
+            argv, 1 if operator == "||" and len(inputs) == 1 else 0, "stdout", ""
+        )
+
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands(
+        chain=operator,
+        file_commands=[
+            RunFileCommand(command="cat", argv=[], stdin="first"),
+            RunFileCommand(command="cat", argv=[], stdin="second"),
+        ],
+    )
+    _invoke_cli_with_tools(tools, command)
+    assert inputs == ["first", "second"]
+
+
+@pytest.mark.parametrize(
+    "operator,executed", [("|", 2), ("&&", 1), ("||", 2), (";", 2)]
+)
+def test_missing_executable_has_status_127(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, executed: int
+) -> None:
+    original_resolve = ExecutableDependency.resolve
+
+    def resolve(dependency: ExecutableDependency) -> Path | None:
+        if dependency.executable == "echo":
+            return None
+        return original_resolve(dependency)
+
+    monkeypatch.setattr(ExecutableDependency, "resolve", resolve)
+    (tmp_path / "f.txt").write_text("recovered")
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        command_specs=SPECS_WITH_ECHO,
+    )
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [
+                {"command": "echo", "argv": ["missing"]},
+                {"command": "cat", "argv": ["f.txt"]},
+            ],
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    _assert_framed_output(result, sections=executed)
+    assert "Command 'echo' not found" in result
+    assert "exit 127" in result
+    assert result.startswith(
+        "Overall: success (exit 0)" if executed == 2 else "Overall: failure (exit 127)"
+    )
+
+
+def test_executable_disappearing_at_launch_has_status_127(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_require = ExecutableDependency.require
+
+    def require(dependency: ExecutableDependency) -> Path:
+        if dependency.executable == "echo":
+            return tmp_path / "vanished-executable"
+        return original_require(dependency)
+
+    monkeypatch.setattr(ExecutableDependency, "require", require)
+    (tmp_path / "f.txt").write_text("recovered")
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        command_specs=SPECS_WITH_ECHO,
+    )
+    command = RunFileCommands(
+        chain="||",
+        file_commands=[
+            RunFileCommand(command="echo", argv=["first"]),
+            RunFileCommand(command="cat", argv=["f.txt"]),
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert result.startswith("Overall: success (exit 0)")
+    assert "[error] Command failed (exit 127)" in result
+    _assert_framed_output(result, sections=2)
+
+
+@pytest.mark.parametrize(
+    "operator,executed", [("|", 1), ("&&", 1), ("||", 2), (";", 2)]
+)
+def test_timeout_discards_partial_output_and_routes_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, executed: int
+) -> None:
+    calls = 0
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise subprocess.TimeoutExpired(
+                argv, 60, output="partial", stderr="partial error"
+            )
+        return subprocess.CompletedProcess(argv, 0, "recovered", "")
+
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands(
+        chain=operator,
+        file_commands=[
+            RunFileCommand(command="cat", argv=[]),
+            RunFileCommand(command="cat", argv=[]),
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert calls == executed
+    _assert_framed_output(result, sections=executed)
+    assert "timed out" in result
+    assert "partial" not in result
+    assert result.startswith(
+        "Overall: failure (timeout)" if executed == 1 else "Overall: success (exit 0)"
+    )
+
+
+@pytest.mark.parametrize("recover", [True, False])
+def test_or_runs_until_success_or_exhaustion(tmp_path: Path, recover: bool) -> None:
+    (tmp_path / "f.txt").write_text("x\n")
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    last = (
+        RunFileCommand(command="cat", argv=["f.txt"])
+        if recover
+        else RunFileCommand(command="grep", argv=["absent", "f.txt"])
+    )
+    command = RunFileCommands(
+        chain="||",
+        file_commands=[
+            RunFileCommand(command="grep", argv=["first", "f.txt"]),
+            RunFileCommand(command="grep", argv=["second", "f.txt"]),
+            last,
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    _assert_framed_output(result, sections=3)
+    assert result.count("[error] Command failed (exit 1)") >= 2
+    assert result.startswith(
+        "Overall: success (exit 0)" if recover else "Overall: failure (exit 1)"
+    )
+
+
+def test_and_later_failure_skips_remaining_command(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("x\n")
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        command_specs=SPECS_WITH_ECHO,
+    )
+    command = RunFileCommands(
+        chain="&&",
+        file_commands=[
+            RunFileCommand(command="cat", argv=["f.txt"]),
+            RunFileCommand(command="grep", argv=["absent", "f.txt"]),
+            RunFileCommand(command="echo", argv=["skipped"]),
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    _assert_framed_output(result, sections=2)
+    assert result.startswith("Overall: failure (exit 1)")
+    assert "skipped" not in result
+    assert "x\n" in result
+
+
+def test_or_stops_after_empty_success(tmp_path: Path) -> None:
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands(
+        chain="||",
+        file_commands=[
+            RunFileCommand(command="touch", argv=["first.txt"]),
+            RunFileCommand(command="touch", argv=["skipped.txt"]),
+        ],
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert result.startswith("Overall: success (exit 0)")
+    _assert_framed_output(result, sections=1)
+    assert (tmp_path / "first.txt").exists()
+    assert not (tmp_path / "skipped.txt").exists()
+
+
+@pytest.mark.parametrize("operator", ["||", ";"])
+@pytest.mark.parametrize("failure", ["internal", "missing_workdir"])
+def test_unexpected_and_workdir_errors_are_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, failure: str
+) -> None:
+    calls = 0
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if failure == "internal":
+            raise RuntimeError("broken runner")
+        raise FileNotFoundError(2, "No such file or directory", str(cwd / "gone"))
+
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [
+                {"command": "cat", "argv": []},
+                {"command": "cat", "argv": []},
+            ],
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert calls == 1
+    _assert_framed_output(result, sections=1)
+    assert result.startswith(
+        "Overall: failure (execution error)"
+        if failure == "internal"
+        else "Overall: failure (launch error)"
+    )
+
+
+@pytest.mark.parametrize("operator", ["||", ";"])
+def test_combined_oversized_output_stops_without_history_or_partial_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str
+) -> None:
+    calls = 0
+
+    def run(
+        argv: list[str], cwd: Path, stdin: str | None
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(
+                argv, 1 if operator == "||" else 0, "previous", ""
+            )
+        return subprocess.CompletedProcess(
+            argv, 1, "secret-output", "x" * MAX_COMMAND_OUTPUT_CHARS
+        )
+
+    monkeypatch.setattr(command_runner, "run_cli_argv", run)
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [{"command": "cat", "argv": []}] * 3,
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    result = _last_execute_file_command_value(messages)
+    assert calls == 2
+    assert "Command output too large" in result
+    assert "previous" not in result
+    assert "secret-output" not in result
+    _assert_framed_output(result, sections=1)
+
+
+@pytest.mark.parametrize("operator", ["||", ";"])
+@pytest.mark.parametrize("first", ["help", "unknown", "denied", "declined"])
+def test_terminal_resolution_and_guard_outputs_stop_fallbacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, first: str
+) -> None:
+    prompts: list[str] = []
+
+    def decline(message: str, *, with_reply: bool) -> str:
+        assert with_reply
+        prompts.append(message)
+        return "no"
+
+    monkeypatch.setattr(command_utils, "interact_with_user", decline)
+    tools = get_run_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[
+            PermissionRule(pattern="later.txt", operations={Operation.CREATE}),
+            PermissionRule(pattern="declined.txt", operations={Operation.CREATE}),
+        ],
+        ask_rules=[
+            PermissionRule(pattern="declined.txt", operations={Operation.CREATE})
+        ],
+        pipe=EventPipe(),
+    )
+    first_command = {
+        "help": RunFileCommand(command="help", argv=[]),
+        "unknown": RunFileCommand(command="unknown", argv=[]),
+        "denied": RunFileCommand(command="touch", argv=["denied.txt"]),
+        "declined": RunFileCommand(command="touch", argv=["declined.txt"]),
+    }[first]
+    command = RunFileCommands.model_validate(
+        {
+            "chain": operator,
+            "file_commands": [
+                first_command.model_dump(),
+                {"command": "touch", "argv": ["later.txt"]},
+            ],
+        }
+    )
+    _, messages = _invoke_cli_with_tools(tools, command)
+    callers = _extract_callers(messages)
+    assert callers.count("run_file_command_passive") == 0
+    assert callers.count("execute_file_command") == 0
+    assert callers.count("operation_guard") == (
+        0 if first in {"help", "unknown"} else 1
+    )
+    assert len(prompts) == (1 if first == "declined" else 0)
+    assert not (tmp_path / "later.txt").exists()
