@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0a1 - 2026-10-02
+
 - Breaking: Shed `run_file_command` now requires shell-style `chain` values:
   `"|"`, `"&&"`, `"||"`, or `";"`. Replace `"pipe"` with `"|"`; replace legacy
   unconditional `"and"` with `";"`, use `"&&"` for dependent success-only steps,
