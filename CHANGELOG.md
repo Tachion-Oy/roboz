@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Breaking: Shed `run_file_command` now requires shell-style `chain` values:
+  `"|"`, `"&&"`, `"||"`, or `";"`. Replace `"pipe"` with `"|"`; replace legacy
+  unconditional `"and"` with `";"`, use `"&&"` for dependent success-only steps,
+  and `"||"` for fallback steps. Results now report the last executed status
+  and preserve stderr separately. Update Python callers and stored calls before
+  replaying them.
+
 ## 0.3.1a1 - 2026-09-28
 
 - Add a Linux host service command for SafeScripts, with `serve` and

@@ -259,6 +259,22 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
+Shed's `run_file_command` requires one `chain` operator per call, even for a
+single command: `"|"` forwards stdout to the next command, `"&&"` continues on
+success, `"||"` continues on failure, and `";"` always continues. Each call uses
+the same operator for every step. Pipelines buffer and run commands in order;
+they do not stream or reproduce backpressure, concurrent scheduling, or SIGPIPE.
+The reported status is the last command executed (the final pipeline stage for
+`"|"`). Pipeline timeouts stop the call. Earlier file changes are not rolled back.
+
+For existing Python callers and stored tool calls, replace `"pipe"` with `"|"`.
+Legacy `"and"` was unconditional, so replace it with `";"`; choose `"&&"` when
+later commands depend on success and `"||"` for a fallback after failure.
+Update stored calls before replaying them; no automatic persistence rewrite is
+performed. For example, use
+`{"chain":"&&","file_commands":[{"command":"mkdir","argv":["notes"]},{"command":"touch","argv":["notes/today.txt"]}]}`
+when the second step needs the directory created by the first.
+
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
 credentials, decrypted before construction. For a self-signed Bridge certificate,

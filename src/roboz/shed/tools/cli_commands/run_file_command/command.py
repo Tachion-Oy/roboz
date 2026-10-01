@@ -132,9 +132,12 @@ def get_run_file_command(
         "Allow/deny/ask permission patterns are evaluated relative to base. "
         "A separate default verdict applies when no rule matches. "
         "For find, place start directories before predicates/flags in argv. "
-        "chain is required on every call: use chain='pipe' or chain='and'. These map to normal shell behavior ('|' and '&&'). "
-        "Use 'pipe' only when the next command reads stdin; otherwise use 'and'. "
-        "No shell syntax (|, ;, &&) in command strings. "
+        "chain is required on every call: use '|', '&&', '||', or ';'. "
+        "'|' forwards stdout after normal exits; '&&' continues after success; "
+        "'||' continues after failure; ';' continues after ordinary outcomes. Success is exit status zero. "
+        "Pipelines run sequentially with buffered stdout; their overall status is the final stage's status. "
+        "A pipeline timeout stops the chain. Earlier side effects are not rolled back. "
+        "No mixed operators, grouping, redirection, or shell syntax in command strings. "
     )
 
     run_file_command_tool = resolve_input(cli_ctx).copy(
