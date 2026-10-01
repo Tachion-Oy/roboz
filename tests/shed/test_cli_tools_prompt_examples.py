@@ -10,6 +10,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 import pytest
+from pydantic import ValidationError
 from roboz.agent import Agent
 from roboz.tools import stop
 from roboz.models import Message, Stop
@@ -28,11 +29,49 @@ from roboz.shed.models import (
 from roboz.shed.skills.cli_tools.prompts import INSTRUCTIONS
 from roboz.shed.tools import get_run_file_command
 from roboz.shed.tools import runner as command_runner
+from roboz.shed.tools.cli_commands.run_file_command.specs import FILE_COMMANDS_READ
+from roboz.shed.tools.cli_commands.utilities.formatting import format_cli_commands_help
 
 
 def test_instructions_json_examples_are_argv_only() -> None:
     assert '"args":' not in INSTRUCTIONS
     assert '"paths":' not in INSTRUCTIONS
+
+
+def test_help_and_skill_json_examples_match_canonical_schema() -> None:
+    for document in (INSTRUCTIONS, format_cli_commands_help(FILE_COMMANDS_READ)):
+        examples = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().startswith('{"') and "..." not in line
+        ]
+        assert examples
+        chained_operators: set[str] = set()
+        for example in examples:
+            parsed = RunFileCommands.model_validate(json.loads(example))
+            if len(parsed.file_commands) > 1:
+                chained_operators.add(parsed.chain)
+        assert chained_operators == {"|", "&&", "||", ";"}
+
+    schema = RunFileCommands.model_json_schema()
+    assert schema["properties"]["chain"]["enum"] == ["|", "&&", "||", ";"]
+    assert {"chain", "file_commands"} <= set(schema["required"])
+    assert "accumulated_output" not in schema["properties"]
+    for alias in ("pipe", "and"):
+        with pytest.raises(ValidationError):
+            RunFileCommands.model_validate(
+                {"chain": alias, "file_commands": [{"command": "cat", "argv": []}]}
+            )
+    with pytest.raises(ValidationError):
+        RunFileCommands.model_validate({"chain": "|", "file_commands": []})
+    with pytest.raises(ValidationError):
+        RunFileCommands.model_validate(
+            {
+                "chain": "|",
+                "file_commands": [{"command": "cat", "argv": []}],
+                "unknown": True,
+            }
+        )
 
 
 def test_instructions_describe_fail_closed_large_output_behavior() -> None:
@@ -184,7 +223,7 @@ def prompt_workspace(tmp_path: Path) -> Path:
 
 def test_prompt_help_returns_cli_help(prompt_workspace: Path) -> None:
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="help", argv=[])],  # type: ignore
     )
     result = _tools(prompt_workspace)[0](input=cmd, messages=[])
@@ -197,7 +236,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
 ) -> None:
     calls = _install_subprocess_spy(monkeypatch)
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[
             RunFileCommand(command="cat", argv=["file.txt"]),
             RunFileCommand(command="grep", argv=["pattern"]),
@@ -217,7 +256,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
     [
         (
             RunFileCommands(
-                chain="and",
+                chain=";",
                 file_commands=[
                     RunFileCommand(command="wc", argv=["-l", "big_file.py"]),
                     RunFileCommand(command="head", argv=["-n", "80", "big_file.py"]),
@@ -232,7 +271,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="tail", argv=["-n", "+400", "big_file.py"])
                 ],
@@ -241,7 +280,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="head", argv=["-n", "520", "big_file.py"]),
                     RunFileCommand(command="tail", argv=["-n", "80"]),
@@ -251,7 +290,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(
                         command="rg", argv=["-n", "sample|site-packages", "."]
@@ -262,7 +301,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(
                         command="rg", argv=["-n", "-i", "todo|fixme|bug", "src/"]
@@ -273,7 +312,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(
                         command="rg",
@@ -285,7 +324,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(
                         command="rg",
@@ -308,7 +347,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="rg", argv=["-uu", "-n", "needle", "."])
                 ],
@@ -317,7 +356,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="rg", argv=["-n", "def main", "src/"])
                 ],
@@ -326,7 +365,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="and",
+                chain=";",
                 file_commands=[
                     RunFileCommand(
                         command="find", argv=[".", "-type", "d", "-name", "sample"]
@@ -344,7 +383,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="find", argv=[".", "-name", "*.py"])
                 ],
@@ -353,7 +392,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="and",
+                chain=";",
                 file_commands=[
                     RunFileCommand(command="find", argv=[".", "-name", "*.py"]),
                     RunFileCommand(command="find", argv=[".", "-type", "d"]),
@@ -363,14 +402,14 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[RunFileCommand(command="cat", argv=["src/main.py"])],
             ),
             [["cat", "{BASE}/src/main.py"]],
         ),
         (
             RunFileCommands(
-                chain="and",
+                chain="&&",
                 file_commands=[
                     RunFileCommand(command="mkdir", argv=["sub"]),
                     RunFileCommand(command="touch", argv=["sub/file"]),
@@ -380,7 +419,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(
                         command="tee", argv=["sub/file.txt"], stdin="line 1\nline 2\n"
@@ -391,7 +430,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
                 ],
@@ -400,7 +439,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="diff", argv=["old.py", "new.py"])
                 ],
@@ -409,7 +448,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="cp", argv=["file.txt", "copy.txt"])
                 ],
@@ -418,7 +457,7 @@ def test_pipe_passes_previous_stdout_to_next_stdin(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="cp", argv=["-r", "src", "src-copy"])
                 ],
@@ -453,14 +492,14 @@ def test_prompt_examples_real_subprocess_output_semantics(
     checks = [
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[RunFileCommand(command="cat", argv=["src/main.py"])],
             ),
             "def main",
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="cat", argv=["file.txt"]),
                     RunFileCommand(command="grep", argv=["pattern"]),
@@ -470,7 +509,7 @@ def test_prompt_examples_real_subprocess_output_semantics(
         ),
         (
             RunFileCommands(
-                chain="pipe",
+                chain="|",
                 file_commands=[
                     RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
                 ],
@@ -485,13 +524,28 @@ def test_prompt_examples_real_subprocess_output_semantics(
 
 def test_prompt_diff_output_semantics(prompt_workspace: Path) -> None:
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="diff", argv=["old.py", "new.py"])],
     )
     _, messages = _run_chain(prompt_workspace, cmd)
     out = _last_execute_value(messages)
+    assert out.startswith("Overall: failure (exit 1)")
     assert "[error]" in out
     assert "1c1" in out
+
+
+def test_prompt_fallback_example_recovers_with_backup(prompt_workspace: Path) -> None:
+    (prompt_workspace / "backup.txt").write_text("backup contents\n")
+    example = next(
+        json.loads(line)
+        for line in INSTRUCTIONS.splitlines()
+        if line.startswith('{"chain": "||"')
+    )
+    _, messages = _run_chain(prompt_workspace, RunFileCommands.model_validate(example))
+    result = _last_execute_value(messages)
+    assert result.startswith("Overall: success (exit 0)")
+    assert "primary.txt" in result
+    assert "backup contents" in result
 
 
 def test_negative_denies_relative_path_outside_allowed_scope(
@@ -505,7 +559,7 @@ def test_negative_denies_relative_path_outside_allowed_scope(
         takes_precedence=ActionVerdict.deny,
     )
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=["file.txt"])],
     )
     endpoint = MockLLMEndpoint(
@@ -542,7 +596,7 @@ def test_negative_denies_absolute_path_outside_allowed_scope(
         takes_precedence=ActionVerdict.deny,
     )
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="cat", argv=[str(outside)])],
     )
     endpoint = MockLLMEndpoint(
@@ -575,7 +629,7 @@ def test_negative_denies_write_when_rules_are_read_only(prompt_workspace: Path) 
         takes_precedence=ActionVerdict.deny,
     )
     cmd = RunFileCommands(
-        chain="pipe",
+        chain="|",
         file_commands=[RunFileCommand(command="touch", argv=["src/new_file.py"])],
     )
     endpoint = MockLLMEndpoint(
