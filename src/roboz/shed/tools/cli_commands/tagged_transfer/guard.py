@@ -3,6 +3,7 @@
 from pathlib import Path, PurePosixPath
 
 from roboz import runtime
+from roboz.exceptions import UserInputUnavailableError
 from roboz.models import Message
 from roboz.models.truncation import Severity, Truncation
 from roboz.shed.models import (
@@ -107,9 +108,9 @@ def _request_approvals(
                 f"Allow {item.operation} for {str(item.location)!r}? (yes/no)",
                 with_reply=True,
             )
-        except (RuntimeError, ValueError) as error:
+        except (UserInputUnavailableError, RuntimeError, ValueError) as error:
             return _denied(input, item, f"Approval unavailable: {error}")
-        if reply is None or not reply.strip().lower().startswith("y"):
+        if reply is None or reply.strip().lower() not in ("y", "yes"):
             return _denied(
                 input,
                 item,

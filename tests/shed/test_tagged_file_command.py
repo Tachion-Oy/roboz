@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from roboz import Agent, runtime
+from roboz.agent import AgentMode
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Role
 from roboz.runtime import EventPipe
@@ -43,9 +44,12 @@ def _resolve(tmp_path: Path, value: list[TaggedToken]):
     return resolve_tagged_command(tmp_path)(TaggedFileCommand(value=value), [])
 
 
-def _invoke(tools: list, calls: list[dict]) -> list[dict]:
+def _invoke(
+    tools: list, calls: list[dict], *, mode: AgentMode = AgentMode.STEERABLE
+) -> list[dict]:
     agent = Agent(
         name="tagged_transfer_test",
+        mode=mode,
         system_prompt="Perform the requested file transfer.",
         tools=[*tools, stop],
         agent_endpoint=MockLLMEndpoint(
@@ -420,11 +424,14 @@ def test_overwrite_permissions_are_explicit_and_preserve_input(tmp_path: Path) -
     assert execute.chain_condition(result)
 
 
+@pytest.mark.parametrize(
+    "reply", ["no", "yikes, don't do that", "yes, but don't execute", "", None]
+)
 def test_user_decline_stops_the_chain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reply: str | None
 ) -> None:
     (tmp_path / "source").write_text("keep")
-    monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: "no")
+    monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: reply)
     tools = get_run_tagged_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.allow,
@@ -535,7 +542,9 @@ def test_each_overwrite_approval_controls_execution(
 
     def approve(message: str, *, with_reply: bool) -> str:
         prompts.append(message)
-        return "yes" if accepted else "no"
+        if not accepted:
+            return "no"
+        return " YES\n" if command == "cp" else " y "
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     tools = get_run_tagged_file_command(
@@ -651,6 +660,29 @@ def test_policy_precedence_does_not_bypass_approval(
     assert len(prompts) == (1 if precedence == ActionVerdict.allow else 0)
     assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
     assert not (tmp_path / "target").exists()
+
+
+def test_missing_interaction_channel_denies_and_agent_continues(tmp_path: Path) -> None:
+    (tmp_path / "source").write_text("new")
+    (tmp_path / "target").write_text("old")
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        ask_rules=[PermissionRule(pattern="target", operations={Operation.DELETE})],
+        pipe=EventPipe(),
+    )
+    responses = _invoke(
+        tools,
+        [_call([("cp", "CMD"), ("source", "PTH"), ("target", "PTH")])],
+        mode=AgentMode.AUTONOMOUS,
+    )
+
+    assert responses[1]["status"] == GuardStatus.DENIED
+    assert "Approval unavailable" in responses[1]["message"]
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert responses[-1]["caller"] == "stop"
+    assert (tmp_path / "source").read_text() == "new"
+    assert (tmp_path / "target").read_text() == "old"
 
 
 @pytest.mark.parametrize("failure", ["no_context", "runtime_error", "value_error"])

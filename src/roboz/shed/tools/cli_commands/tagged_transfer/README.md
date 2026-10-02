@@ -55,6 +55,7 @@ This requires READ on each source and CREATE on `reports/a.txt` and
 DELETE. Ask rules apply independently to CREATE, READ, and DELETE, including
 overwrite requirements. A policy denial prevents all approval prompts; declined
 or unavailable approval prevents execution.
+Approval requires `y` or `yes`, ignoring case and surrounding whitespace.
 
 Permission patterns match literal POSIX names: spaces and backslashes are
 preserved. For example, a rule for `report` does not authorize `report `.
