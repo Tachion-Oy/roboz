@@ -30,8 +30,9 @@ For security vulnerabilities, use the private process in [SECURITY.md](SECURITY.
 ## Getting started
 
 Use Python 3.13 or 3.14 and
-[uv](https://docs.astral.sh/uv/getting-started/installation/). Fork and clone the
-repository, then install the development environment from its root:
+[uv 0.12.10](https://docs.astral.sh/uv/getting-started/installation/) to match CI.
+Fork and clone the repository, then install the development environment from
+its root:
 
 ```bash
 uv sync --locked --dev
@@ -56,10 +57,15 @@ uv run python -m roboz.examples.simple
 uv run ruff check
 uv run pyright
 bash scripts/run_type_tests.sh
+uv audit --locked --preview-features audit
 git diff --check
 ```
 
 For dependency changes, run `uv lock` and include the reviewed lockfile changes.
+The audit checks locked runtime and development dependencies across platforms
+against OSV. The preview flag enables uv's experimental audit command. CI runs
+this check on pull requests and weekly, and Dependabot checks Python and GitHub
+Actions dependencies weekly. Vulnerabilities and audit lookup errors fail CI.
 
 CI also builds and checks distributions, tests independent installations, and
 runs portable core checks. The

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Raise dependency minimums and update locked python-dotenv, Pygments, pytest,
+  and urllib3 versions to address known vulnerabilities. Add weekly dependency
+  updates and vulnerability auditing in CI.
+
 ## 0.4.0a1 - 2026-10-02
 
 - Breaking: Shed `run_file_command` now requires shell-style `chain` values:

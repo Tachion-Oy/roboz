@@ -73,7 +73,7 @@ def consumer(request, tmp_path_factory):
             "--index-url",
             "https://pypi.org/simple/",
             *requirements,
-            "pytest>=7",
+            "pytest>=9.0.3",
         ],
         cwd=root,
         env=env,

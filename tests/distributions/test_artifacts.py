@@ -3,6 +3,10 @@ from pathlib import Path
 import tarfile
 import zipfile
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+import pytest
+
 from scripts.release_package import artifacts, project_metadata
 
 
@@ -109,3 +113,29 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert ("src", namespace, "endpoints", "inventory.pyi") in paths
         assert ("src", namespace, "endpoints", "README.md") in paths
         assert all(not path or path[0] != "packages" for path in paths)
+
+
+@pytest.mark.parametrize(
+    ("dependency", "vulnerable", "patched"),
+    [
+        ("python-dotenv", "1.2.1", "1.2.2"),
+        ("pygments", "2.19.2", "2.20.0"),
+    ],
+)
+def test_runtime_security_requirements_exclude_vulnerable_versions(
+    pytestconfig, package, dependency, vulnerable, patched
+):
+    wheel, _ = artifacts(Path(pytestconfig.getoption("--dist")), package)
+    with zipfile.ZipFile(wheel) as archive:
+        metadata = email.message_from_bytes(
+            archive.read(
+                next(name for name in archive.namelist() if name.endswith("/METADATA"))
+            )
+        )
+    requirements = {
+        canonicalize_name(requirement.name): requirement
+        for requirement in map(Requirement, metadata.get_all("Requires-Dist", []))
+    }
+    specifier = requirements[dependency].specifier
+    assert vulnerable not in specifier
+    assert patched in specifier

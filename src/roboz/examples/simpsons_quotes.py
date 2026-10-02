@@ -49,4 +49,5 @@ QUOTES: Final[list[str]] = [
     "I, for one, welcome our new insect overlords.",
     "I am so smart! S-M-R-T!",
     "Hi, everybody!",
+    "Dental plan!",
 ]
