@@ -50,4 +50,5 @@ QUOTES: Final[list[str]] = [
     "I am so smart! S-M-R-T!",
     "Hi, everybody!",
     "Dental plan!",
+    "Lisa needs braces!",
 ]

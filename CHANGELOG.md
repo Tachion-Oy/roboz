@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an opt-in experimental tagged `cp`/`mv` tool for regular-file transfers,
+  using explicit token roles, command-specific effects, and the existing executor.
+  Its local guard applies overwrite approvals and literal filename matching;
+  transfers reject hard-linked files.
+
 - Raise dependency minimums and update locked python-dotenv, Pygments, pytest,
   and urllib3 versions to address known vulnerabilities. Add weekly dependency
   updates and vulnerability auditing in CI.
