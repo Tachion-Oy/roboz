@@ -79,17 +79,18 @@ def command_ready_from_guard_result(input: GuardFilesResult) -> CommandReady:
 
 
 def _append_frame(
-    input: RunFileCommands, command_line: str, body: str, stderr: str = ""
+    input: RunFileCommands | None, command_line: str, body: str, stderr: str = ""
 ) -> str:
     """Add one command's output to the ordered execution trace."""
     parts: list[str] = []
-    if input.chain == "|" and input.accumulated_output:
+    if input is not None and input.chain == "|" and input.accumulated_output:
         parts.append(PIPE_STDIN_FROM_PREVIOUS_COMMAND)
     parts.append(body)
     if stderr:
         parts.append(f"stderr:\n{stderr}")
     frame = _framed_cli_output(command_line, "\n".join(parts))
-    return input.accumulated_output + frame + "\n"
+    history = input.accumulated_output if input is not None else ""
+    return history + frame + "\n"
 
 
 def _should_continue(input: RunFileCommands, succeeded: bool) -> bool:
@@ -142,13 +143,13 @@ def _oversized_output_result(
 
 
 def _completed_body(
-    input: RunFileCommands,
+    input: RunFileCommands | None,
     command_line: str,
     result: subprocess.CompletedProcess[str],
 ) -> str:
     """Format one process result, hiding stdout sent to a later pipe stage."""
     stdout, stderr = result.stdout or "", result.stderr or ""
-    piped = input.chain == "|" and len(input.file_commands) > 1
+    piped = input is not None and input.chain == "|" and len(input.file_commands) > 1
     shown_stdout = PIPE_OUTPUT_TO_NEXT_COMMAND if piped else stdout
     if result.returncode == 0:
         return shown_stdout or SUCCESS_NO_OUTPUT.format(command=command_line)
@@ -161,7 +162,7 @@ def _completed_body(
 
 
 def _completed_result(
-    input: RunFileCommands,
+    input: RunFileCommands | None,
     command_line: str,
     result: subprocess.CompletedProcess[str],
     truncation: TruncationSpec,
@@ -171,7 +172,7 @@ def _completed_result(
     history = _append_frame(
         input, command_line, _completed_body(input, command_line, result), stderr
     )
-    if _should_continue(input, result.returncode == 0):
+    if input is not None and _should_continue(input, result.returncode == 0):
         return _continue_chain(new_input=input, combined=history, out=stdout)
     outcome = (
         _CommandOutcome.SUCCESS if result.returncode == 0 else _CommandOutcome.FAILURE
@@ -180,18 +181,22 @@ def _completed_result(
 
 
 def _timeout_result(
-    input: RunFileCommands, command_line: str, truncation: TruncationSpec
+    input: RunFileCommands | None, command_line: str, truncation: TruncationSpec
 ) -> Str | RunFileCommands:
     """Discard partial timeout output and stop a pipeline immediately."""
     message = ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS)
     history = _append_frame(input, command_line, message)
-    if input.chain != "|" and _should_continue(input, succeeded=False):
+    if (
+        input is not None
+        and input.chain != "|"
+        and _should_continue(input, succeeded=False)
+    ):
         return _continue_chain(new_input=input, combined=history, out="")
     return _final_result(history, _CommandOutcome.FAILURE, "timeout", truncation)
 
 
 def _terminal_error(
-    input: RunFileCommands,
+    input: RunFileCommands | None,
     command_line: str,
     kind: str,
     error: Exception,
@@ -258,7 +263,11 @@ def execute_file_command(
     messages: list[Message],
     ctx: FileCommandExecutionContext,
 ) -> Str | RunFileCommands:
-    """Run a permitted file command and return bounded output."""
+    """Execute a guarded CommandReady payload and return bounded output.
+
+    Continue CLI sequences when original_input carries RunFileCommands; other
+    guarded inputs execute once without a chaining context.
+    """
     truncation = ctx.truncation
     if input.status != GuardStatus.ALLOWED:
         return Str(
@@ -266,21 +275,19 @@ def execute_file_command(
             or f"internal error: unexpected guard status {input.status}",
             truncation=truncation,
         )
-    if not isinstance(input.original_input, RunFileCommands):
-        return Str(
-            value="internal error: expected RunFileCommands original_input",
-            truncation=truncation,
-        )
-
     ready = command_ready_from_guard_result(input)
     argv, cwd, stdin, command_line = argv_from_guard_result(input)
-    new_input = input.original_input
+    chain_input = (
+        input.original_input
+        if isinstance(input.original_input, RunFileCommands)
+        else None
+    )
 
     try:
         executable = ctx.commands.binding_for(ready.command_name)
     except Exception as error:
         return _terminal_error(
-            new_input, command_line, "internal error", error, truncation
+            chain_input, command_line, "internal error", error, truncation
         )
 
     try:
@@ -289,23 +296,23 @@ def execute_file_command(
         result = _missing_executable_result(argv, ready.command_name)
     except Exception as error:
         return _terminal_error(
-            new_input, command_line, "lookup error", error, truncation
+            chain_input, command_line, "lookup error", error, truncation
         )
     else:
         argv = [str(executable_path), *argv[1:]]
         try:
             result = run_cli_argv(argv, cwd, stdin)
         except subprocess.TimeoutExpired:
-            return _timeout_result(new_input, command_line, truncation)
+            return _timeout_result(chain_input, command_line, truncation)
         except FileNotFoundError as error:
             if error.filename != argv[0] or not cwd.is_dir():
                 return _terminal_error(
-                    new_input, command_line, "launch error", error, truncation
+                    chain_input, command_line, "launch error", error, truncation
                 )
             result = _missing_executable_result(argv, ready.command_name)
         except Exception as error:
             return _terminal_error(
-                new_input, command_line, "execution error", error, truncation
+                chain_input, command_line, "execution error", error, truncation
             )
 
     stdout, stderr = result.stdout or "", result.stderr or ""
@@ -317,4 +324,4 @@ def execute_file_command(
             status=result.returncode,
             truncation=truncation,
         )
-    return _completed_result(new_input, command_line, result, truncation)
+    return _completed_result(chain_input, command_line, result, truncation)
