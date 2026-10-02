@@ -50,5 +50,10 @@ Thumbs.db
 rbz_data/
 worktrees/
 
+# Local live agent policy lab: track the runner, ignore credentials and sessions
+/.policy-lab/*
+!/.policy-lab/run.py
+!/.policy-lab/.env.example
+
 # CI diagnostics
 reports/
