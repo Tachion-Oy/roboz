@@ -25,7 +25,6 @@ from roboz.shed.models import (
     PermissionRule,
 )
 from roboz.shed.tools import get_run_file_command
-from roboz.shed.tools import runner
 from roboz.shed.tools.cli_commands_v2 import (
     TaggedFileCommand,
     TaggedToken,
@@ -332,19 +331,19 @@ def test_single_command_execution_reports_failures(
     (tmp_path / "source").write_text("data")
 
     def run(
-        argv: list[str], cwd: Path, stdin: str | None, **kwargs
-    ) -> subprocess.CompletedProcess[str]:
+        argv: list[str], *, cwd: Path, input: bytes, **kwargs
+    ) -> subprocess.CompletedProcess[bytes]:
         if outcome == "timeout":
             raise subprocess.TimeoutExpired(argv, 1)
         if outcome == "error":
             raise OSError("Cannot execute command")
         if outcome == "oversized":
             return subprocess.CompletedProcess(
-                argv, 0, "x" * (MAX_COMMAND_OUTPUT_CHARS + 1), ""
+                argv, 0, b"x" * (MAX_COMMAND_OUTPUT_CHARS + 1), b""
             )
-        return subprocess.CompletedProcess(argv, 2, "", "Copy failed")
+        return subprocess.CompletedProcess(argv, 2, b"", b"Copy failed")
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
@@ -374,7 +373,7 @@ def test_chain_stops_before_execution_on_invalid_or_denied_call(
     def unexpected_execution(*args, **kwargs):
         pytest.fail("An invalid or denied call reached subprocess execution")
 
-    monkeypatch.setattr(runner, "run_cli_argv", unexpected_execution)
+    monkeypatch.setattr(subprocess, "run", unexpected_execution)
     allow_rules = []
     if failure != "source_denied":
         allow_rules.append(
@@ -486,7 +485,7 @@ def test_hard_linked_files_stop_before_execution(
     def unexpected_execution(*args, **kwargs):
         pytest.fail("A hard-linked file reached execution")
 
-    monkeypatch.setattr(runner, "run_cli_argv", unexpected_execution)
+    monkeypatch.setattr(subprocess, "run", unexpected_execution)
     tools = get_run_tagged_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.deny,

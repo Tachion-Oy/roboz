@@ -18,7 +18,6 @@ from roboz.models import Role
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
-from roboz.shed.tools import runner
 from roboz.shed.tools.cli_commands_v2 import (
     TaggedFileCommand,
     TaggedToken,
@@ -315,18 +314,18 @@ def test_denied_step_never_launches_and_fallback_is_guarded(
     (tmp_path / "protected").write_text("old")
     prompts: list[str] = []
     launched: list[str] = []
-    original_run = runner.run_cli_argv
+    original_run = subprocess.run
 
     def approve(message: str, **kwargs):
         prompts.append(message)
         return "no" if "protected" in message else "yes"
 
-    def run(argv, cwd, stdin, **kwargs):
+    def run(argv, *, cwd, input, **kwargs):
         launched.append(Path(argv[-1]).name)
-        return original_run(argv, cwd, stdin, **kwargs)
+        return original_run(argv, cwd=cwd, input=input, **kwargs)
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     protected = PermissionRule(pattern="protected", operations={Operation.DELETE})
     tools = get_run_tagged_file_command(
         base=tmp_path,
@@ -355,20 +354,20 @@ def test_denied_step_never_launches_and_fallback_is_guarded(
     assert len(prompts) == (1 if denial == "policy" else 3)
 
 
-@pytest.mark.parametrize("stdout", ["", "  data\n\n"])
+@pytest.mark.parametrize("stdout", [b"", b"  data\n\n"])
 def test_pipeline_preserves_exact_stdout_and_uses_last_status(
-    tmp_path: Path, monkeypatch, stdout: str
+    tmp_path: Path, monkeypatch, stdout: bytes
 ) -> None:
     (tmp_path / "source").write_text("data")
-    inputs: list[str | None] = []
+    inputs: list[bytes] = []
 
-    def run(argv, cwd, stdin, **kwargs):
-        inputs.append(stdin)
+    def run(argv, *, cwd, input, **kwargs):
+        inputs.append(input)
         return subprocess.CompletedProcess(
-            argv, 7 if len(inputs) == 1 else 0, stdout, "diagnostic"
+            argv, 7 if len(inputs) == 1 else 0, stdout, b"diagnostic"
         )
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
@@ -384,7 +383,7 @@ def test_pipeline_preserves_exact_stdout_and_uses_last_status(
             ],
         )
     )
-    assert inputs == [None, stdout, None]
+    assert inputs == [b"", stdout, b""]
     assert result.startswith("Overall: success (exit 0)")
     assert "exit 7" in result and "stderr:\ndiagnostic" in result
 
@@ -394,15 +393,15 @@ def test_failed_pipeline_stage_supplies_empty_input_to_next_guarded_stage(
     tmp_path: Path, monkeypatch, failure: str
 ) -> None:
     (tmp_path / "source").write_text("data")
-    inputs: list[str | None] = []
+    inputs: list[bytes] = []
 
-    def run(argv, cwd, stdin, **kwargs):
-        inputs.append(stdin)
+    def run(argv, *, cwd, input, **kwargs):
+        inputs.append(input)
         if Path(argv[-1]).name == "first":
             raise subprocess.TimeoutExpired(argv, 1, output="discard partial")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tools = get_run_tagged_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.allow,
@@ -419,7 +418,7 @@ def test_failed_pipeline_stage_supplies_empty_input_to_next_guarded_stage(
             *_copy("source", "last"),
         ],
     )
-    assert inputs == ([None, ""] if failure == "timeout" else [""])
+    assert inputs == ([b"", b""] if failure == "timeout" else [b""])
     assert sum(r["caller"] == "guard_tagged_file_command" for r in responses) == 2
     result = _result(responses)
     assert result.startswith("Overall: success (exit 0)")
@@ -449,7 +448,7 @@ def test_ordinary_process_failures_allow_fallback(
             raise FileNotFoundError("Missing cp")
         return original_require(binding)
 
-    def run(argv, cwd, stdin, **kwargs):
+    def run(argv, *, cwd, input, **kwargs):
         launched.append(Path(argv[0]).name)
         if launched[-1] == "cp":
             if failure == "disappeared":
@@ -462,11 +461,11 @@ def test_ordinary_process_failures_allow_fallback(
                 raise subprocess.TimeoutExpired(
                     argv, 1, output="discard partial", stderr="discard error"
                 )
-            return subprocess.CompletedProcess(argv, -15, "", "")
-        return subprocess.CompletedProcess(argv, 0, "fallback", "")
+            return subprocess.CompletedProcess(argv, -15, b"", b"")
+        return subprocess.CompletedProcess(argv, 0, b"fallback", b"")
 
     monkeypatch.setattr(ExecutableDependency, "require", require)
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
@@ -495,17 +494,17 @@ def test_terminal_failures_never_reach_fallback(
     (tmp_path / "source").write_text("data")
     launched: list[list[str]] = []
 
-    def run(argv, cwd, stdin, **kwargs):
+    def run(argv, *, cwd, input, **kwargs):
         launched.append(argv)
         if failure == "error":
             raise OSError("Unexpected process failure")
         if failure == "cancelled":
             raise asyncio.CancelledError()
         return subprocess.CompletedProcess(
-            argv, 0, "x" * (MAX_COMMAND_OUTPUT_CHARS + 1), ""
+            argv, 0, b"x" * (MAX_COMMAND_OUTPUT_CHARS + 1), b""
         )
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
@@ -525,17 +524,17 @@ def test_sequence_history_is_bounded_and_keeps_latest_diagnostics(
     (tmp_path / "source").write_text("data")
     calls = []
 
-    def run(argv, cwd, stdin, **kwargs):
+    def run(argv, *, cwd, input, **kwargs):
         step = len(calls)
         calls.append(argv)
         if terminal_error and step == 3:
             raise OSError("latest execution error")
         stdout = f"start-{step}\n" + "x" * (LIGHT_MAX_CHARS // 2) + f"\nend-{step}"
         return subprocess.CompletedProcess(
-            argv, 7 if step == 3 else 0, stdout, f"diagnostic-{step}"
+            argv, 7 if step == 3 else 0, stdout.encode(), f"diagnostic-{step}".encode()
         )
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     tokens: list[TaggedToken] = []
     for step in range(4):
         if tokens:
@@ -565,20 +564,20 @@ def test_bounding_history_preserves_full_piped_stdout(tmp_path: Path, monkeypatc
     stdout = "p" * (LIGHT_MAX_CHARS + 1)
     inputs = []
 
-    def run(argv, cwd, stdin, **kwargs):
-        inputs.append(stdin)
+    def run(argv, *, cwd, input, **kwargs):
+        inputs.append(input)
         if len(inputs) == 1:
             return subprocess.CompletedProcess(
-                argv, 0, stdout, "s" * (LIGHT_MAX_CHARS + 1)
+                argv, 0, stdout.encode(), b"s" * (LIGHT_MAX_CHARS + 1)
             )
-        return subprocess.CompletedProcess(argv, 0, "latest pipeline output", "")
+        return subprocess.CompletedProcess(argv, 0, b"latest pipeline output", b"")
 
-    monkeypatch.setattr(runner, "run_cli_argv", run)
+    monkeypatch.setattr(subprocess, "run", run)
     responses = _invoke(
         get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
         [*_copy("source", "first"), ("|", "CTL"), *_copy("source", "last")],
     )
-    assert inputs == [None, stdout]
+    assert inputs == [b"", stdout.encode()]
     history = next(r["accumulated_output"] for r in responses if "remaining" in r)
     assert len(history) <= LIGHT_MAX_CHARS
     result = _result(responses)

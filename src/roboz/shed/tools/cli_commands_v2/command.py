@@ -130,8 +130,6 @@ def _prepare_step(
         input.failure = str(error)
         return ResolvedFileCommand(original_input=input, items=[])
 
-    if input.stdin is not None:
-        prepared.ready.stdin = input.stdin
     input.ready = prepared.ready
     return ResolvedFileCommand(
         original_input=input,

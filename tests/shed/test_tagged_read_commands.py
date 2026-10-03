@@ -12,7 +12,7 @@ from roboz.llm import MockLLMEndpoint
 from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, GuardStatus, Operation, PermissionRule
-from roboz.shed.tools import get_run_file_command, runner
+from roboz.shed.tools import get_run_file_command
 from roboz.shed.tools.cli_commands import tagged_transfer
 from roboz.shed.tools import cli_commands_v2
 from roboz.shed.tools.cli_commands_v2 import (
@@ -179,7 +179,7 @@ def test_unsafe_reader_paths_reject_the_entire_command(
     def unexpected_run(*args, **kwargs):
         pytest.fail("Unsafe reader reached native execution")
 
-    monkeypatch.setattr(runner, "run_cli_argv", unexpected_run)
+    monkeypatch.setattr(subprocess, "run", unexpected_run)
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
@@ -356,13 +356,13 @@ def test_failed_read_does_not_reuse_payload_and_fallback_runs(
     (tmp_path / "safe").write_text("safe\n")
     (tmp_path / "secret").write_text("secret\n")
     launched = []
-    run = runner.run_cli_argv
+    run = subprocess.run
 
-    def record(argv, cwd, stdin, **kwargs):
+    def record(argv, *, cwd, input, **kwargs):
         launched.append(argv[1:])
-        return run(argv, cwd, stdin, **kwargs)
+        return run(argv, cwd=cwd, input=input, **kwargs)
 
-    monkeypatch.setattr(runner, "run_cli_argv", record)
+    monkeypatch.setattr(subprocess, "run", record)
     monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: "no")
     rule = PermissionRule(pattern="secret", operations={Operation.READ})
     tools = get_run_tagged_file_command(

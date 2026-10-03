@@ -67,11 +67,12 @@ class CommandExecution(Empty):
 
     request: TaggedFileCommand
     remaining: list[TaggedToken]
-    # Latin-1 maps raw pipe bytes to JSON-safe characters without losing bytes.
-    stdin: str | None = None
+    stdin: bytes | None = None
     accumulated_output: str = ""
     failure: str | None = None
     ready: CommandReady | None = None
+
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
 
 
 @dataclass(frozen=True)

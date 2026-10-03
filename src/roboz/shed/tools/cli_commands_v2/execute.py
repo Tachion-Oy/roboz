@@ -7,7 +7,6 @@ import subprocess
 from roboz.models import Message, Str
 from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation, TruncationSpec
 from roboz.shed.models import CommandReady, GuardFilesResult, GuardStatus
-from roboz.shed.tools import runner
 from roboz.shed.tools.cli_commands.utilities.constants import (
     ERR_COMMAND_NOT_FOUND,
     ERR_OUTPUT_TOO_LARGE,
@@ -37,65 +36,62 @@ def _bounded_history(history: str, max_chars: int = LIGHT_MAX_CHARS) -> str:
 
 
 def _run_command(
-    ready: CommandReady, ctx: FileCommandExecutionContext
-) -> subprocess.CompletedProcess[str]:
+    ready: CommandReady, ctx: FileCommandExecutionContext, stdin: bytes | None
+) -> subprocess.CompletedProcess[bytes]:
     """Map expected lookup and launch failures to shell exit statuses."""
     binding = ctx.commands.binding_for(ready.command_name)
     try:
         executable = binding.require()
     except FileNotFoundError:
         return subprocess.CompletedProcess(
-            ready.argv, 127, "", ERR_COMMAND_NOT_FOUND.format(cmd=ready.command_name)
+            ready.argv, 127, b"", ERR_COMMAND_NOT_FOUND.format(cmd=ready.command_name).encode()
         )
     except PermissionError as error:
-        return subprocess.CompletedProcess(ready.argv, 126, "", str(error))
+        return subprocess.CompletedProcess(ready.argv, 126, b"", str(error).encode())
     argv = [str(executable), *ready.argv[1:]]
     try:
-        result = runner.run_cli_argv(
-            argv, ready.base_workdir, ready.stdin, preserve_bytes=True
+        return subprocess.run(
+            argv,
+            cwd=ready.base_workdir,
+            input=stdin or b"",
+            capture_output=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
         )
-        if result.stderr:
-            result.stderr = result.stderr.encode("latin-1").decode(
-                "utf-8", "backslashreplace"
-            )
-        return result
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(
-            argv, 124, "", ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            argv, 124, b"", ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS).encode()
         )
     except FileNotFoundError as error:
         if error.filename != argv[0] or not ready.base_workdir.is_dir():
             raise
-        return subprocess.CompletedProcess(argv, 127, "", str(error))
+        return subprocess.CompletedProcess(argv, 127, b"", str(error).encode())
     except PermissionError as error:
-        return subprocess.CompletedProcess(argv, 126, "", str(error))
+        return subprocess.CompletedProcess(argv, 126, b"", str(error).encode())
     except OSError as error:
         if error.errno != errno.ENOEXEC:
             raise
-        return subprocess.CompletedProcess(argv, 126, "", str(error))
+        return subprocess.CompletedProcess(argv, 126, b"", str(error).encode())
 
 
 def _append_result(
     execution: CommandExecution,
     command: str,
-    result: subprocess.CompletedProcess[str],
+    result: subprocess.CompletedProcess[bytes],
 ) -> None:
     """Accumulate reached command frames while keeping piped stdout out of history."""
     _, tail = split_command(execution.remaining)
     piped = bool(tail and tail[0] == ("|", "CTL"))
-    body = (
-        PIPE_OUTPUT_TO_NEXT_COMMAND
-        if piped
-        else (result.stdout or "").encode("latin-1").decode("utf-8", "backslashreplace")
-    )
+    stdout = (result.stdout or b"").decode("utf-8", "backslashreplace")
+    stderr = (result.stderr or b"").decode("utf-8", "backslashreplace")
+    body = PIPE_OUTPUT_TO_NEXT_COMMAND if piped else stdout
     if result.returncode != 0:
         body = f"[error] Command failed (exit {result.returncode})\n{body}"
     elif not body:
         body = SUCCESS_NO_OUTPUT.format(command=command)
     if execution.stdin is not None:
         body = f"{PIPE_STDIN_FROM_PREVIOUS_COMMAND}\n{body}"
-    if result.stderr:
-        body += f"\nstderr:\n{result.stderr}"
+    if stderr:
+        body += f"\nstderr:\n{stderr}"
     execution.accumulated_output = _bounded_history(
         execution.accumulated_output + _framed_cli_output(command, body) + "\n"
     )
@@ -113,7 +109,7 @@ def _final_result(history: str, summary: str, truncation: TruncationSpec) -> Str
 def _execute_step(
     input: GuardFilesResult[CommandExecution, CommandReady],
     ctx: FileCommandExecutionContext,
-) -> tuple[str, subprocess.CompletedProcess[str]] | Str:
+) -> tuple[str, subprocess.CompletedProcess[bytes]] | Str:
     """Produce a guarded step's outcome, stopping on unexpected execution errors."""
     execution = input.original_input
     tokens, _ = split_command(execution.remaining)
@@ -123,12 +119,12 @@ def _execute_step(
         if input.status != GuardStatus.ALLOWED:
             failure = input.message or "Permission denied"
         if failure is not None:
-            return command, subprocess.CompletedProcess([], 1, "", failure)
+            return command, subprocess.CompletedProcess([], 1, b"", failure.encode())
         ready = execution.ready
         if ready is None:
             raise ValueError("Missing prepared command")
         command = ready.display_command
-        return command, _run_command(ready, ctx)
+        return command, _run_command(ready, ctx, execution.stdin)
     except Exception as error:
         return _final_result(
             execution.accumulated_output + _framed_cli_output(command, str(error)),
@@ -140,11 +136,13 @@ def _execute_step(
 def _completed_result(
     execution: CommandExecution,
     command: str,
-    result: subprocess.CompletedProcess[str],
+    result: subprocess.CompletedProcess[bytes],
     truncation: TruncationSpec,
 ) -> Str | CommandExecution:
     """Bound captured output and record the normalized outcome before continuing."""
-    captured_chars = len(result.stdout or "") + len(result.stderr or "")
+    captured_chars = len((result.stdout or b"").decode("utf-8", "backslashreplace")) + len(
+        (result.stderr or b"").decode("utf-8", "backslashreplace")
+    )
     if captured_chars > MAX_COMMAND_OUTPUT_CHARS:
         return _final_result(
             ERR_OUTPUT_TOO_LARGE.format(
@@ -162,13 +160,13 @@ def _completed_result(
 
 def _continue_or_finish(
     execution: CommandExecution,
-    result: subprocess.CompletedProcess[str],
+    result: subprocess.CompletedProcess[bytes],
     truncation: TruncationSpec,
 ) -> Str | CommandExecution:
     """Select the next guarded step and its stdin, or report the final status."""
     execution.remaining, piped = next_command(execution.remaining, result.returncode)
     if execution.remaining:
-        execution.stdin = (result.stdout or "") if piped else None
+        execution.stdin = (result.stdout or b"") if piped else None
         execution.truncation = Truncation(threshold=0, severity=Severity.REMOVE)
         return execution
     status = "success" if result.returncode == 0 else "failure"
