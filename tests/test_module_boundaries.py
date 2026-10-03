@@ -47,7 +47,7 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
         "python-dotenv",
         "rich",
     }
-    assert "openai>=2.8.1,<3" in project["dependencies"]
+    assert "openai>=2.8.1,<4" in project["dependencies"]
     assert "optional-dependencies" not in project
     assert "workspace" not in document.get("tool", {}).get("uv", {})
     assert not (ROOT / "packages").exists()

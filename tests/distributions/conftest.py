@@ -74,6 +74,8 @@ def consumer(request, tmp_path_factory):
             "https://pypi.org/simple/",
             *requirements,
             "pytest>=9.0.3",
+            # Endpoint tests inject an httpx transport into the SDK client.
+            "httpx>=0.27.0",
         ],
         cwd=root,
         env=env,
