@@ -52,5 +52,6 @@ QUOTES: Final[list[str]] = [
     "Dental plan!",
     "Lisa needs braces!",
     "I bent my Wookiee.",
+    "My cat's breath smells like cat food.",
     "Okily-dokily!",
 ]
