@@ -25,6 +25,7 @@ QUOTES: Final[list[str]] = [
     "You don't get rich by writing a lot of checks.",
     "Good evening, sir. Would you please leave without a fuss right now?",
     "Save me Jebus!",
+    "Eat my shorts!",
     "To alcohol, the cause of, and solution to, all of life's problems.",
     "Purple's a fruit.",
     "That's a paddlin'.",
