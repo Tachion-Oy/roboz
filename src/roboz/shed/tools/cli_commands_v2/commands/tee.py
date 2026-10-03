@@ -27,9 +27,9 @@ def prepare_tee(parsed: ParsedCommand, base: Path) -> PreparedCommand:
             continue
         if "*" in value:
             raise ValueError("tee destination PTH must be literal; '*' is unsupported")
-        spelling = os.path.join(str(base), value)
-        operations.extend(write_operations(spelling, base))
-        argv.append(spelling)
+        path_arg = os.path.join(str(base), value)
+        operations.extend(write_operations(path_arg, base))
+        argv.append(path_arg)
     return PreparedCommand(
         ready=CommandReady(
             command_name="tee",

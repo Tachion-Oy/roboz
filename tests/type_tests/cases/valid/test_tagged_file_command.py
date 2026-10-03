@@ -82,6 +82,16 @@ searches = TaggedFileCommand(
 assert_type(searches.value, list[TaggedToken])
 
 
+discovery = TaggedFileCommand(
+    value=[
+        ("ls", "CMD"), ("-lah", "FLG"), ("src", "PTH"), (";", "CTL"),
+        ("find", "CMD"), (".", "PTH"), ("-name", "FLG"), ("*.py", "ARG"),
+        ("-print0", "FLG"),
+    ]
+)
+assert_type(discovery.value, list[TaggedToken])
+
+
 def check_token_value(token: TaggedToken) -> None:
     if token[1] == "CMD":
         assert_type(token[0], CommandName)

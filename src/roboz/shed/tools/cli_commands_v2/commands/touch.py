@@ -40,16 +40,16 @@ def prepare_touch(parsed: ParsedCommand, base: Path) -> PreparedCommand:
             raise ValueError(f"Reference must exist: {reference}")
         operations.append((Operation.READ, reference))
     for index in parsed.operands:
-        for spelling in expand_source_path(parsed.tokens[index][0], base):
+        for path_arg in expand_source_path(parsed.tokens[index][0], base):
             operations.extend(
                 write_operations(
-                    spelling,
+                    path_arg,
                     base,
                     allow_directory=True,
                     no_create="-c" in parsed.options,
                 )
             )
-            argv.append(spelling)
+            argv.append(path_arg)
     return PreparedCommand(
         ready=CommandReady(
             command_name="touch",

@@ -82,12 +82,12 @@ def search_ready(argv: list[str], base: Path) -> CommandReady:
     )
 
 
-def search_path(spelling: str, base: Path) -> tuple[Path, bool]:
+def search_path(path_arg: str, base: Path) -> tuple[Path, bool]:
     """Require an existing directory or an unaliased regular file."""
-    path, entry = inspect_file_path(spelling, base)
+    resolved_path, entry = inspect_file_path(path_arg, base)
     if entry is None:
-        raise ValueError(f"Search path must exist: {path}")
-    return path, stat.S_ISDIR(entry.st_mode)
+        raise ValueError(f"Search path must exist: {resolved_path}")
+    return resolved_path, stat.S_ISDIR(entry.st_mode)
 
 
 def search_deadline() -> float:

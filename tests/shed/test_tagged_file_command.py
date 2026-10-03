@@ -143,7 +143,7 @@ def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
             "cannot be used together",
         ),
         ([("source", "PTH"), ("-v", "FLG"), ("target", "PTH")], "Place flags before"),
-        ([("**/*.txt/**", "PTH"), ("out", "PTH")], "Only one recursive"),
+        ([("**/*.txt/**/", "PTH"), ("out", "PTH")], "Only one recursive"),
     ],
 )
 def test_unsupported_tokens_stop_preparation(
@@ -1243,7 +1243,7 @@ def test_expansion_preserves_operand_order_flags_and_original_input(
         (["*.py", "out*"], "Destination PTH must be literal"),
         (["-t", "out*", "*.py"], "Destination PTH must be literal"),
         (["src/**/file", "out"], "no matches"),
-        (["src/**/*.py/**", "out"], "Only one recursive"),
+        (["src/**/*.py/**/", "out"], "Only one recursive"),
         (["**/**/file.py", "out"], "src/**/*.py"),
         (["**/*.missing", "out"], "no matches"),
         (["missing/../**", "out"], "no matches"),
@@ -1251,7 +1251,7 @@ def test_expansion_preserves_operand_order_flags_and_original_input(
         (["-T", "**/*.py", "out"], "exactly one source"),
         (["**/*.py", "new"], "Multiple sources"),
         (["**/*.py", "src/file.py", "out"], "Duplicate source"),
-        (["src/**", "out"], "Directory copies require"),
+        (["src/**/", "out"], "Directory copies require"),
         (["?*.py", "out"], "Unsupported PTH"),
         (["[ab]*.py", "out"], "Unsupported PTH"),
         (["*.py", "target**"], "Destination PTH must be literal"),
@@ -1478,13 +1478,13 @@ def test_pattern_force_transfer_requires_overwrite_approval(
             "cp",
             ["-R"],
             "projects/a/src/**",
-            ["projects/a/src/", "projects/a/src/a.py", "projects/a/src/nested"],
+            ["projects/a/src/a.py", "projects/a/src/nested"],
         ),
         (
             "mv",
             [],
             "projects/a/src/**",
-            ["projects/a/src/", "projects/a/src/a.py", "projects/a/src/nested"],
+            ["projects/a/src/a.py", "projects/a/src/nested"],
         ),
         (
             "cp",
@@ -1586,7 +1586,35 @@ def test_matched_directory_descendant_denial_blocks_the_call(tmp_path: Path) -> 
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.skipif(not shutil.which("bash"), reason="Requires Bash")
+@pytest.mark.parametrize(
+    "pattern, expected",
+    [
+        ("src/**", ["src/file", "src/sub"]),
+        ("src/**/*", ["src/file", "src/sub", "src/sub/deep"]),
+        ("src/**/", ["src/", "src/sub/"]),
+        ("**", ["empty", "src"]),
+        ("**/", ["empty/", "src/", "src/sub/"]),
+        ("**/**", ["empty", "src", "src/file", "src/sub", "src/sub/deep"]),
+    ],
+)
+def test_zsh_globstar_requires_a_following_slash(tmp_path: Path, pattern, expected) -> None:
+    (tmp_path / "src/sub").mkdir(parents=True)
+    (tmp_path / "src/file").touch()
+    (tmp_path / "src/sub/deep").touch()
+    (tmp_path / "src/.hidden").touch()
+    (tmp_path / "empty").mkdir()
+    assert expand_source_path(pattern, tmp_path) == [f"{tmp_path}/{name}" for name in expected]
+
+
+def test_empty_final_globstar_fails_and_following_symlinks_is_unsupported(tmp_path: Path) -> None:
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(ValueError, match="no matches"):
+        expand_source_path("empty/**", tmp_path)
+    with pytest.raises(ValueError, match="Symlink-following"):
+        expand_source_path("***/file", tmp_path)
+
+
+@pytest.mark.skipif(not shutil.which("zsh"), reason="Requires zsh")
 @pytest.mark.parametrize(
     "pattern",
     [
@@ -1610,11 +1638,11 @@ def test_matched_directory_descendant_denial_blocks_the_call(tmp_path: Path) -> 
         "empty/**",
         "empty/**/",
         "src/report**.py",
-        "src/***/file.py",
+        "**/**",
         "**/*.py",
     ],
 )
-def test_recursive_patterns_match_controlled_bash(tmp_path: Path, pattern: str) -> None:
+def test_recursive_patterns_match_controlled_zsh(tmp_path: Path, pattern: str) -> None:
     for name in [
         "src/file.py",
         "src/sub/nested.py",
@@ -1639,29 +1667,20 @@ def test_recursive_patterns_match_controlled_bash(tmp_path: Path, pattern: str) 
     (tmp_path / "empty").mkdir()
     (tmp_path / "src/sub/missing").mkdir()
     (tmp_path / "src/sub/file.py").write_text("nested file")
-    bash = subprocess.run(
-        [
-            "bash",
-            "--noprofile",
-            "--norc",
-            "-c",
-            "unset GLOBIGNORE; shopt -u dotglob nullglob failglob nocaseglob; "
-            'shopt -s globstar; IFS=; printf "%s\\0" $1',
-            "matching-test",
-            pattern,
-        ],
+    native = subprocess.run(
+        ["zsh", "-f", "-c", 'printf "%s\\0" ${~1}', "matching-test", pattern],
         cwd=tmp_path,
         env={**os.environ, "LC_ALL": "C"},
         capture_output=True,
-        check=True,
     )
-    expected = bash.stdout.split(b"\0")[:-1]
-    assert expected != [os.fsencode(pattern)]  # Every fixture pattern must match.
+    if native.returncode:
+        assert b"no matches found" in native.stderr
+        with pytest.raises(ValueError, match="no matches"):
+            expand_source_path(pattern, tmp_path)
+        return
+    expected = native.stdout.split(b"\0")[:-1]
     matches = expand_source_path(pattern, tmp_path)
     actual = [name.removeprefix(f"{tmp_path}/") for name in matches]
-    # Retain lexical suffix separators even where Bash collapses them.
-    if pattern.endswith("/"):
-        actual = [name.rstrip("/") + "/" for name in actual]
     assert [os.fsencode(name) for name in actual] == expected
 
 

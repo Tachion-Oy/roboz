@@ -23,23 +23,23 @@ def _read_operations(
     """Collect distinct READ requirements in operand and traversal order."""
     deadline = search_deadline()
     operations: list[tuple[Operation, Path]] = []
-    pending = [spelling for spelling in reversed(paths) if spelling != "-"]
+    pending = [path_arg for path_arg in reversed(paths) if path_arg != "-"]
     seen: set[Path] = set()
     while pending:
         check_search_deadline(deadline)
-        spelling = pending.pop()
-        path, directory = search_path(spelling, base)
-        if path in seen:
+        path_arg = pending.pop()
+        resolved_path, directory = search_path(path_arg, base)
+        if resolved_path in seen:
             continue
-        seen.add(path)
-        operations.append((Operation.READ, path))
+        seen.add(resolved_path)
+        operations.append((Operation.READ, resolved_path))
         if not directory:
             continue
         if not recursive:
             raise ValueError("grep directory inputs require -r/--recursive or -R")
         pending.extend(
             str(child)
-            for child in recursive_children(Path(spelling), deadline, follow=follow)
+            for child in recursive_children(Path(path_arg), deadline, follow=follow)
         )
     check_search_deadline(deadline)
     return operations

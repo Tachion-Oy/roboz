@@ -67,7 +67,7 @@ def test_public_contract_accepts_only_tokens_and_rejects_progress() -> None:
     assert "sequence" not in schema["properties"]
     assert "CommandSequence" not in schema.get("$defs", {})
     assert schema["$defs"]["CommandName"]["enum"] == [
-        "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg",
+        "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg", "ls", "find",
     ]
     assert schema["$defs"]["ControlOperator"]["enum"] == ["&&", "||", ";", "|"]
     with pytest.raises(ValidationError):
@@ -172,7 +172,7 @@ def test_one_continuation_reuses_guard_and_resolves_after_prior_writes(
 
 
 @pytest.mark.parametrize("name", ["&&", "||", ";", "|"])
-def test_operator_spelling_in_pth_is_literal(tmp_path: Path, name: str) -> None:
+def test_operator_text_in_pth_is_literal(tmp_path: Path, name: str) -> None:
     (tmp_path / name).write_text("data")
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow
@@ -214,6 +214,7 @@ def test_recursive_partial_move_status_controls_continuation(
     )
     tokens: list[TaggedToken] = [
         ("mv", "CMD"),
+        ("src/", "PTH"),
         ("src/**", "PTH"),
         ("out", "PTH"),
         (operator, "CTL"),

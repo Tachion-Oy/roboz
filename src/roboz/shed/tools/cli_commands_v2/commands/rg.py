@@ -24,18 +24,18 @@ _IGNORE_NAMES = (".gitignore", ".ignore", ".rgignore")
 _RG_OPTIONS = ("--no-config", "--no-ignore-global", "--no-ignore-exclude")
 
 
-def _input_paths(spellings: list[str], base: Path) -> tuple[list[Path], list[Path]]:
+def _input_paths(path_args: list[str], base: Path) -> tuple[list[Path], list[Path]]:
     """Validate explicit operands and separate files from directory roots."""
     files: list[Path] = []
     roots: list[Path] = []
-    for spelling in spellings:
-        if spelling == "-":
+    for path_arg in path_args:
+        if path_arg == "-":
             continue
-        path, directory = search_path(spelling, base)
+        resolved_path, directory = search_path(path_arg, base)
         if directory:
-            roots.append(path)
+            roots.append(resolved_path)
         else:
-            files.append(path)
+            files.append(resolved_path)
     return files, roots
 
 

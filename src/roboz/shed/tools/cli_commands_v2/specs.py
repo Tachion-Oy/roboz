@@ -2,8 +2,10 @@
 
 from .commands.cat import CAT
 from .commands.cp import CP
-from .commands.head import HEAD
+from .commands.find import FIND
 from .commands.grep import GREP
+from .commands.head import HEAD
+from .commands.ls import LS
 from .commands.mkdir import MKDIR
 from .commands.mv import MV
 from .commands.pwd import PWD
@@ -14,5 +16,6 @@ from .commands.touch import TOUCH
 from .commands.wc import WC
 
 COMMANDS = {
-    spec.name: spec for spec in (CP, MV, PWD, CAT, HEAD, TAIL, WC, TEE, TOUCH, MKDIR, GREP, RG)
+    spec.name: spec
+    for spec in (CP, MV, PWD, CAT, HEAD, TAIL, WC, TEE, TOUCH, MKDIR, GREP, RG, LS, FIND)
 }

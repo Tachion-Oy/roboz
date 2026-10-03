@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add tagged `ls` and `find` with native listings, common read-only expressions,
+  relative root text, and v1-style READ checks on explicit roots. Support
+  bundled `ls` flags, `find` pruning and boolean expressions, and raw `-print0`
+  pipelines. Directory authorization covers native discovery below the root.
+- Correct shared tagged path expansion to match default zsh: a final `**` acts
+  like `*`, selecting immediate children; use `**/*` for descendants or `**/`
+  for recursive directory matches. Existing calls relying on Bash globstar's
+  final `**` must update their patterns. Permission-rule patterns are unchanged.
+
 - Add tagged `grep` and `rg` with native matching, recursive searches,
   count/context options, and stdin pipelines. Guard the entire recursive candidate
   tree and ripgrep's potential local/ancestor ignore files before one native run;
