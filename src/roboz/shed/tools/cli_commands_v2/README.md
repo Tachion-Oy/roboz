@@ -194,9 +194,12 @@ Preparation only inspects filesystem entries; it does not read ignore-file or
 search-file contents. The existing guard checks all required permissions before
 requesting approvals, deduplicated across operands. After authorization, one
 native invocation applies ignore rules and searches. The shared preparation and
-execution contracts are unchanged. Recursive preflight traversal can take time
-and memory proportional to the candidate tree; the subprocess timeout begins
-after that traversal completes. Choose a narrower input directory for large trees.
+execution contracts are unchanged. Recursive preparation has a separate 60-second
+deadline covering tree traversal and ignore-file checks. Expiry fails preparation
+before approval or execution, with status `1`. The deadline is checked between
+filesystem operations; it cannot interrupt a blocked filesystem call. Memory use
+remains proportional to the candidate tree. Native execution then has its own
+60-second subprocess timeout.
 
 Native stdout, stderr, and status determine command chaining. Status `0` means
 a match, `1` means no matches, and `2` reports native search errors. For example,

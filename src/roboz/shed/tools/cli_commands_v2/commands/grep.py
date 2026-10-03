@@ -8,8 +8,10 @@ from roboz.shed.models import Operation
 from ..contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
 from .search import (
     SEARCH_TOKENS,
+    check_search_deadline,
     recursive_children,
     search_arguments,
+    search_deadline,
     search_path,
     search_ready,
 )
@@ -19,10 +21,12 @@ def _read_operations(
     paths: list[str], base: Path, *, recursive: bool, follow: bool
 ) -> list[tuple[Operation, Path]]:
     """Collect distinct READ requirements in operand and traversal order."""
+    deadline = search_deadline()
     operations: list[tuple[Operation, Path]] = []
     pending = [spelling for spelling in reversed(paths) if spelling != "-"]
     seen: set[Path] = set()
     while pending:
+        check_search_deadline(deadline)
         spelling = pending.pop()
         path, directory = search_path(spelling, base)
         if path in seen:
@@ -34,8 +38,10 @@ def _read_operations(
         if not recursive:
             raise ValueError("grep directory inputs require -r/--recursive or -R")
         pending.extend(
-            str(child) for child in recursive_children(Path(spelling), follow=follow)
+            str(child)
+            for child in recursive_children(Path(spelling), deadline, follow=follow)
         )
+    check_search_deadline(deadline)
     return operations
 
 

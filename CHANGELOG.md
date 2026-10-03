@@ -6,7 +6,8 @@
   count/context options, and stdin pipelines. Guard the entire recursive candidate
   tree and ripgrep's potential local/ancestor ignore files before one native run;
   denied hidden or ignored files block execution. Reuse the existing preparation,
-  permission, and execution contracts. Preserve native results and exit codes.
+  permission, and execution contracts. Bound recursive preparation with a
+  60-second deadline. Preserve native results and exit codes.
 
 - Add guarded tagged `mkdir` with `-p` / `--parents`, `-v` / `--verbose`, and
   literal directory targets. Check CREATE on every target and missing parent

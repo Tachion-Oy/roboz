@@ -3,9 +3,12 @@
 import re
 import shlex
 import stat
+from os import scandir
 from pathlib import Path
+from time import monotonic
 
 from roboz.shed.models import CommandReady
+from roboz.shed.tools.cli_commands.utilities.constants import SUBPROCESS_TIMEOUT_SECONDS
 
 from ..contracts import ParsedCommand, TokenRule
 from ..paths import expand_source_path
@@ -87,15 +90,35 @@ def search_path(spelling: str, base: Path) -> tuple[Path, bool]:
     return path, stat.S_ISDIR(entry.st_mode)
 
 
-def recursive_children(directory: Path, *, follow: bool = False) -> list[Path]:
+def search_deadline() -> float:
+    """Give recursive preparation the same time allowance as native execution."""
+    return monotonic() + SUBPROCESS_TIMEOUT_SECONDS
+
+
+def check_search_deadline(deadline: float) -> None:
+    """Fail preparation when its shared traversal and ignore-check budget expires."""
+    if monotonic() >= deadline:
+        raise ValueError(
+            f"Search preparation timed out after {SUBPROCESS_TIMEOUT_SECONDS} seconds"
+        )
+
+
+def recursive_children(
+    directory: Path, deadline: float, *, follow: bool = False
+) -> list[Path]:
     """Select direct children in reverse order for stack-based traversal.
 
     Following mode includes links and special entries so callers can reject them
     during path validation. Otherwise native search skips those entries.
     """
     children: list[Path] = []
-    for child in sorted(directory.iterdir(), reverse=True):
-        mode = child.lstat().st_mode
-        if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
-            children.append(child)
+    with scandir(directory) as entries:
+        for entry in entries:
+            check_search_deadline(deadline)
+            mode = entry.stat(follow_symlinks=False).st_mode
+            if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
+                children.append(directory / entry.name)
+    check_search_deadline(deadline)
+    children.sort(reverse=True)
+    check_search_deadline(deadline)
     return children

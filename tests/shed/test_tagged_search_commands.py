@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from roboz.shed.tools.cli_commands_v2 import (
     get_run_tagged_file_command,
 )
 from roboz.shed.tools.cli_commands_v2.command import resolve_tagged_command
+from roboz.shed.tools.cli_commands_v2.commands import search
 from roboz.shed.tools.cli_commands_v2.contracts import CommandExecution
 from roboz.tools import stop
 
@@ -121,6 +123,78 @@ def test_recursive_search_matches_native(tmp_path: Path, command, flags) -> None
     )
     body = result.split("\n", 2)[2].rsplit("\n--- end:", 1)[0]
     assert sorted(body.splitlines()) == sorted(native.stdout.decode().splitlines())
+
+
+@pytest.mark.parametrize("command, flags", [("grep", ["-r"]), ("rg", [])])
+def test_recursive_search_timeout_stops_directory_enumeration(
+    tmp_path: Path, monkeypatch, command, flags
+) -> None:
+    for name in ("a", "b", "c"):
+        (tmp_path / name).write_text("needle\n")
+    elapsed = 0
+    enumerated = []
+    native_scandir = os.scandir
+
+    def slow_entries(entries):
+        nonlocal elapsed
+        for entry in entries:
+            elapsed += 30
+            enumerated.append(entry.name)
+            yield entry
+
+    @contextmanager
+    def slow_scandir(path):
+        with native_scandir(path) as entries:
+            yield slow_entries(entries)
+
+    monkeypatch.setattr(search, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(search, "scandir", slow_scandir)
+    resolved = resolve_tagged_command(tmp_path)(
+        TaggedFileCommand(
+            value=[
+                (command, "CMD"),
+                *((flag, "FLG") for flag in flags),
+                ("needle", "ARG"),
+                (".", "PTH"),
+            ]
+        ),
+        [],
+    )
+    assert resolved.original_input.failure == (
+        "Search preparation timed out after 60 seconds"
+    )
+    assert resolved.original_input.ready is None
+    assert resolved.items == []
+    assert len(enumerated) < 3
+
+
+def test_rg_ignore_checks_share_the_tree_traversal_deadline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "src/source"
+    source.parent.mkdir()
+    source.write_text("needle\n")
+    ignore = tmp_path / ".ignore"
+    elapsed = 0
+    native_stat = os.stat
+
+    def slow_stat(path, *args, **kwargs):
+        nonlocal elapsed
+        if path in (str(source), str(ignore)):
+            elapsed += 30
+        return native_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(search, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(os, "stat", slow_stat)
+    resolved = resolve_tagged_command(tmp_path)(
+        TaggedFileCommand(value=[("rg", "CMD"), ("needle", "ARG"), ("src", "PTH")]),
+        [],
+    )
+    assert resolved.original_input.failure == (
+        "Search preparation timed out after 60 seconds"
+    )
+    assert resolved.original_input.ready is None
+    assert resolved.items == []
 
 
 def test_rg_honors_ancestor_and_nested_ignores_in_native_search(
