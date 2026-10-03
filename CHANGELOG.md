@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Support inline `CTL` operators (`&&`, `||`, `;`, `|`) in tagged `cp`/`mv` calls,
+  with mixed Bash-style control flow and a fresh resolve/guard/execute cycle for
+  every reached command. Preparation errors and denials now report failed steps,
+  allowing independently guarded fallback commands; invalid sequence syntax
+  still rejects the whole call. Pipes buffer stdout sequentially. Sequence history
+  retains the newest output within 40,000 characters and marks omitted output.
+
+- Support single-star source patterns in the experimental tagged `cp`/`mv` tool,
+  including intermediate path components. Expand matches before guarding every
+  transfer; unmatched patterns fail the command and destinations remain literal.
+
 - Support OpenAI SDK 3.x alongside 2.x and update the locked SDK to 3.22.1.
 
 - Extend the experimental tagged `cp`/`mv` tool with recursive copies and directory

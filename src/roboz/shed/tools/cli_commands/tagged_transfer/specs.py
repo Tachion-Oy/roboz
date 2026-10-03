@@ -8,7 +8,12 @@ from pathlib import Path
 from roboz.shed.models import CommandReady, Operation
 
 from .contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
-from .helpers import expand_transfers, resolve_literal_path, resolve_transfers
+from .helpers import (
+    expand_source_path,
+    expand_transfers,
+    resolve_literal_path,
+    resolve_transfers,
+)
 
 
 def _transfer_arguments(
@@ -24,15 +29,26 @@ def _transfer_arguments(
         *source_indices, destination_index = parsed.operands
     if not source_indices:
         raise ValueError("Provide at least one source PTH")
-    if "-T" in parsed.options and len(source_indices) != 1:
+    destination_value = parsed.argv[destination_index]
+    if "*" in destination_value:
+        raise ValueError("Destination PTH must be literal; '*' is unsupported")
+    source_arguments = {
+        index: expand_source_path(parsed.argv[index], base) for index in source_indices
+    }
+    source_values = [value for values in source_arguments.values() for value in values]
+    if "-T" in parsed.options and len(source_values) != 1:
         raise ValueError("-T requires exactly one source")
 
-    argv = list(parsed.argv)
-    for index in [*source_indices, destination_index]:
-        # Path normalization would erase meaningful suffixes such as 'src/.'.
-        argv[index] = os.path.join(str(base), argv[index])
-    sources = [resolve_literal_path(argv[index], base) for index in source_indices]
-    destination = resolve_literal_path(argv[destination_index], base)
+    # Path normalization would erase meaningful suffixes such as 'src/.'.
+    destination_value = os.path.join(str(base), destination_value)
+    argv: list[str] = []
+    for index, value in enumerate(parsed.argv):
+        if index in source_arguments:
+            argv.extend(source_arguments[index])
+        else:
+            argv.append(destination_value if index == destination_index else value)
+    sources = [resolve_literal_path(value, base) for value in source_values]
+    destination = resolve_literal_path(destination_value, base)
     if "-t" in parsed.options and not destination.is_dir():
         raise ValueError("-t requires an existing destination directory")
     if len(sources) > 1 and not destination.is_dir():
@@ -41,9 +57,7 @@ def _transfer_arguments(
         sources,
         destination,
         into_directory=destination.is_dir() and "-T" not in parsed.options,
-        source_names=[
-            os.path.basename(argv[index].rstrip("/")) for index in source_indices
-        ],
+        source_names=[os.path.basename(value.rstrip("/")) for value in source_values],
     )
     return argv, transfers
 
@@ -109,7 +123,7 @@ _TRANSFER_TOKENS = (
         option="--strip-trailing-slashes",
     ),
     TokenRule(tag="FLG", pattern=re.compile(r"--"), option="--", ends_options=True),
-    TokenRule(tag="PTH", pattern=re.compile(r"[^*?\[\]\x00]+")),
+    TokenRule(tag="PTH", pattern=re.compile(r"(?!.*\*\*)[^?\[\]\x00]+", re.DOTALL)),
 )
 
 CP = TaggedCommandSpec(
