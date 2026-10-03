@@ -13,7 +13,8 @@ from roboz.shed.models import CommandReady, Operation
 
 type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
 type CommandName = Literal[
-    "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg", "ls", "find"
+    "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg", "ls", "find",
+    "diff", "gio", "rm"
 ]
 type ControlOperator = Literal["&&", "||", ";", "|"]
 type TaggedToken = (
@@ -31,7 +32,7 @@ class TaggedFileCommand(Empty):
         min_length=1,
         description=(
             "Ordered [value, tag] pairs. Start each command with cp, mv, pwd, cat, "
-            "head, tail, wc, tee, touch, mkdir, grep, rg, ls, or find tagged CMD; separate commands with "
+            "head, tail, wc, tee, touch, mkdir, grep, rg, ls, find, diff, gio, or rm tagged CMD; separate commands with "
             "['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
             "Tag flags FLG and paths PTH. Sources allow '*' within components and "
@@ -49,7 +50,12 @@ class TaggedFileCommand(Empty):
             "their count/context options take unsigned decimal ARG values. "
             "ls accepts bundled flags such as -lah. find takes roots tagged PTH before "
             "predicates/operators tagged FLG and their values tagged ARG; predicate patterns "
-            "are passed literally. ls/find require READ on roots only, defaulting to base."
+            "are passed literally. ls/find require READ on roots only, defaulting to base. "
+            "diff requires exactly two regular-file PTHs after expansion and READ on each. "
+            "gio requires trash tagged ARG then target PTHs; rm accepts separate "
+            "-r/-R/--recursive, -f/--force, and -- flags. Deletion requires DELETE "
+            "on targets and recursive contents, including hidden entries; terminal "
+            "symlinks are deleted without following them. Unmatched patterns fail."
         ),
     )
     model_config = ConfigDict(extra="forbid")

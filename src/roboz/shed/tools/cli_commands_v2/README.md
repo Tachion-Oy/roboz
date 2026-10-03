@@ -1,7 +1,8 @@
 # Tagged CLI v2
 
 This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`,
-`touch`, `mkdir`, `grep`, `rg`, `ls`, and `find` through an ordered, tagged command contract.
+`touch`, `mkdir`, `grep`, `rg`, `ls`, `find`, `diff`, `gio trash`, and `rm`
+through an ordered, tagged command contract.
 The existing v1 CLI and default capabilities remain available. Public imports
 from `cli_commands.tagged_transfer` are compatibility re-exports of this package.
 It uses the existing **resolve → permission guard → execute** tool chain. The
@@ -271,6 +272,70 @@ delete files, write output files, read indirect root lists, follow symlinks, or
 use predicates that access additional reference paths. The supported flags above
 are an allowlist, not a complete implementation of every GNU option.
 
+### Compare files
+
+`diff` requires exactly two regular-file PTH operands **after expansion** and
+READ on each. Operand order and repetitions are preserved; permission checks
+and approvals are deduplicated. It uses the readers' regular-file validation,
+rejecting symlinks, hard links, directories, and special entries. Stdin is not
+supported; `["-", "PTH"]` names the literal file `-`.
+
+Supported separate FLG tokens are `-u` / `--unified`, `-q` / `--brief`,
+`-s` / `--report-identical-files`, `-i` / `--ignore-case`,
+`-w` / `--ignore-all-space`, and `--`. Flags precede operands; bundled,
+attached, repeated, and unknown options are rejected. Native output and exit
+status are preserved: 0 for equal files, 1 for differences, and 2 for errors.
+For example, the second command runs only when the files differ or diff fails:
+
+```json
+{
+  "value": [
+    ["diff", "CMD"], ["-u", "FLG"], ["old.txt", "PTH"], ["new.txt", "PTH"],
+    ["||", "CTL"], ["cat", "CMD"], ["new.txt", "PTH"]
+  ]
+}
+```
+
+### Delete entries
+
+`gio` supports only `trash` tagged ARG followed by target PTHs. Other subcommands
+and all options are unsupported. `rm` accepts separate `-r` / `-R` /
+`--recursive`, `-f` / `--force`, and `--` FLG tokens before target PTHs.
+Unknown, repeated, bundled, and attached flags are rejected; write `-r` and `-f`
+as separate tokens.
+
+```json
+{
+  "value": [["gio", "CMD"], ["trash", "ARG"], ["old-report.txt", "PTH"]]
+}
+```
+
+Both require DELETE on each selected entry. `gio trash` and recursive `rm`
+require DELETE on every descendant, including hidden entries and empty
+directories. All checks and approvals finish before one native invocation;
+a denied descendant or a preparation timeout prevents every deletion in that
+command. Expansion and recursive scans share one cooperative 60-second deadline
+across operands. Traversal errors also stop preparation.
+
+Terminal symlinks, including dangling links and glob matches, are authorized
+at the link's own pathname and removed without following their targets.
+Recursive expansion and deletion never traverse symlink directories. Hard links
+and special entries can be removed without reading their contents. Paths through
+symlink parents are rejected, including `link/`, `link/.`, and `link/..`;
+use the bare link pathname to remove it.
+
+Expanded arguments keep their order, repeats, trailing separators, and dot
+components. Canonical paths are used only for permission checks, which are
+deduplicated. For example, `rm -r directory/.` keeps the suffix so native GNU rm
+refuses it instead of deleting `directory`. `["-", "PTH"]` names a literal `-`.
+
+Missing named targets still require DELETE. Native `rm` missing-file and
+no-operand behavior is preserved, including successful `rm -f` with no operands.
+Force never bypasses permissions or approvals. An unmatched wildcard fails
+preparation even with `-f`. With no paths, `gio trash` requires DELETE on the
+base, then lets native gio report its error. Native status and partial effects
+are retained; earlier deletions are not rolled back on a later native error.
+
 ### Create and update files
 
 `tee` writes stdin to each destination and to stdout. It creates missing files
@@ -479,8 +544,8 @@ C-locale filesystem byte order. If any pattern has no matches, that command
 fails before execution. This matches zsh's default or Bash with `failglob`,
 not default Bash's treatment of an unmatched pattern as a literal filename.
 Missing or non-directory branches contribute no
-matches; symlinks, permission errors, and other traversal errors reject the
-command. Matched filenames are literal executable arguments, including spaces,
+matches; symlinks (except terminal deletion targets), permission errors, and
+other traversal errors reject the command. Matched filenames are literal executable arguments, including spaces,
 leading dashes, and wildcard characters; they are never expanded again.
 
 Destinations, both the last positional PTH and `-t` values, remain literal and

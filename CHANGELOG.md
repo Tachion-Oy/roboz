@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add tagged `diff`, `gio trash`, and `rm`. Compare exactly two expanded regular
+  files with READ checks; require DELETE on removal targets and all recursive
+  contents before execution. Support terminal symlinks, including dangling glob
+  matches, without following targets. Preserve native argument suffixes, output,
+  and status; bound deletion preparation with one 60-second deadline.
+
 - Add tagged `ls` and `find` with native listings, common read-only expressions,
   relative root text, and v1-style READ checks on explicit roots. Support
   bundled `ls` flags, `find` pruning and boolean expressions, and raw `-print0`

@@ -18,6 +18,7 @@ from roboz.shed.tools.cli_commands_v2 import (
     get_run_tagged_file_command,
 )
 from roboz.shed.tools.cli_commands_v2.command import resolve_tagged_command
+from roboz.shed.tools.cli_commands_v2 import paths
 from roboz.shed.tools.cli_commands_v2.commands import search
 from roboz.shed.tools.cli_commands_v2.contracts import CommandExecution
 from roboz.tools import stop
@@ -148,7 +149,7 @@ def test_recursive_search_timeout_stops_directory_enumeration(
             yield slow_entries(entries)
 
     monkeypatch.setattr(search, "monotonic", lambda: elapsed)
-    monkeypatch.setattr(search, "scandir", slow_scandir)
+    monkeypatch.setattr(paths, "scandir", slow_scandir)
     resolved = resolve_tagged_command(tmp_path)(
         TaggedFileCommand(
             value=[
