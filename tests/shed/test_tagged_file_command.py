@@ -26,18 +26,16 @@ from roboz.shed.models import (
 )
 from roboz.shed.tools import get_run_file_command
 from roboz.shed.tools import runner
-from roboz.shed.tools.cli_commands.tagged_transfer import (
+from roboz.shed.tools.cli_commands_v2 import (
     TaggedFileCommand,
     TaggedToken,
     get_run_tagged_file_command,
 )
-from roboz.shed.tools.cli_commands.tagged_transfer.command import resolve_tagged_command
-from roboz.shed.tools.cli_commands.tagged_transfer.contracts import TokenRule
-from roboz.shed.tools.cli_commands.tagged_transfer.helpers import (
-    expand_source_path,
-    validate_tokens,
-)
-from roboz.shed.tools.cli_commands.tagged_transfer.specs import CP
+from roboz.shed.tools.cli_commands_v2.command import resolve_tagged_command
+from roboz.shed.tools.cli_commands_v2.contracts import TokenRule
+from roboz.shed.tools.cli_commands_v2.paths import expand_source_path
+from roboz.shed.tools.cli_commands_v2.tokens import validate_tokens
+from roboz.shed.tools.cli_commands_v2.specs import CP
 from roboz.shed.tools.cli_commands.utilities.constants import MAX_COMMAND_OUTPUT_CHARS
 from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.tools import stop

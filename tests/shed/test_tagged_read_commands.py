@@ -13,12 +13,14 @@ from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, GuardStatus, Operation, PermissionRule
 from roboz.shed.tools import get_run_file_command, runner
-from roboz.shed.tools.cli_commands.tagged_transfer import (
+from roboz.shed.tools.cli_commands import tagged_transfer
+from roboz.shed.tools import cli_commands_v2
+from roboz.shed.tools.cli_commands_v2 import (
     TaggedFileCommand,
     TaggedToken,
     get_run_tagged_file_command,
 )
-from roboz.shed.tools.cli_commands.tagged_transfer.command import resolve_tagged_command
+from roboz.shed.tools.cli_commands_v2.command import resolve_tagged_command
 from roboz.tools import stop
 
 
@@ -438,3 +440,8 @@ def test_absolute_reader_paths_use_absolute_permission_rules(tmp_path: Path) -> 
         allow_rules=[PermissionRule(pattern=str(outside), operations={Operation.READ})],
     )
     assert "\noutside\n--- end:" in _result(_invoke(allowed, tokens))
+
+
+def test_old_package_reexports_v2_public_contract() -> None:
+    for name in cli_commands_v2.__all__:
+        assert getattr(tagged_transfer, name) is getattr(cli_commands_v2, name)

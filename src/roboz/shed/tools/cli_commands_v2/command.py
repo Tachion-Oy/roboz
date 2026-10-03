@@ -23,7 +23,7 @@ from roboz.tooling.decorators import factory
 from .contracts import CommandExecution, TaggedFileCommand
 from .execute import execute_tagged_command
 from .guard import guard_tagged_file_command
-from .helpers import validate_tokens
+from .tokens import validate_tokens
 from .sequence import split_command
 from .specs import COMMANDS
 
@@ -153,7 +153,7 @@ def get_run_tagged_file_command(
     execute_cli_truncation: TruncationSpec = default_cli_truncation(),
     pipe: EventPipe | None = None,
 ) -> list[Tool]:
-    """Build the opt-in tagged CLI resolve -> guard -> execute chain.
+    """Build the opt-in v2 CLI resolve -> guard -> execute chain.
 
     Supply an absolute base and allow/deny/ask rules. Patterns match literal POSIX
     names, preserving spaces and backslashes. Only the entry tool is exposed to

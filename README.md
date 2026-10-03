@@ -259,10 +259,10 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
-The opt-in [tagged CLI](src/roboz/shed/tools/cli_commands/tagged_transfer/README.md) supports
+The opt-in [tagged CLI v2](src/roboz/shed/tools/cli_commands_v2/README.md) supports
 `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, and `wc` with explicit token roles and
 mixed control operators. Import `get_run_tagged_file_command` from
-`roboz.shed.tools.cli_commands.tagged_transfer` to use it alongside the default CLI below.
+`roboz.shed.tools.cli_commands_v2` to use it alongside the default CLI below.
 
 Shed's `run_file_command` requires one `chain` operator per call, even for a
 single command: `"|"` forwards stdout to the next command, `"&&"` continues on

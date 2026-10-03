@@ -19,7 +19,7 @@ from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools import runner
-from roboz.shed.tools.cli_commands.tagged_transfer import (
+from roboz.shed.tools.cli_commands_v2 import (
     TaggedFileCommand,
     TaggedToken,
     get_run_tagged_file_command,
