@@ -23,7 +23,9 @@ class TaggedFileCommand(Empty):
         min_length=1,
         description=(
             "Ordered [value, tag] pairs. Start with ['cp', 'CMD'] or ['mv', 'CMD']; "
-            "tag flags FLG and literal paths PTH. ARG is unsupported for these commands."
+            "tag flags FLG and paths PTH. Sources allow single '*' patterns in any "
+            "component; destinations must be literal. '**', '?', and bracket patterns "
+            "are unsupported. ARG is unsupported for these commands."
         ),
     )
     model_config = ConfigDict(extra="forbid")

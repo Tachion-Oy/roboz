@@ -34,18 +34,25 @@ def resolve_tagged_command(
 ) -> ResolvedFileCommand[TaggedFileCommand, CommandReady] | ParseError:
     """Copy or move files and directories using ordered [value, tag] pairs in value.
 
-    Start with ['cp', 'CMD'] or ['mv', 'CMD']. Tag flags FLG and literal paths PTH;
+    Start with ['cp', 'CMD'] or ['mv', 'CMD']. Tag flags FLG and paths PTH;
     ARG is unsupported. Example: value=[['cp', 'CMD'], ['source.txt', 'PTH'],
     ['copy.txt', 'PTH']]. To copy a directory use -r/-R/--recursive, e.g.
     value=[['cp', 'CMD'], ['-R', 'FLG'], ['src', 'PTH'], ['backup', 'PTH']].
     mv moves directories without a recursive flag. Both commands allow
     -v/--verbose, -f/--force, --strip-trailing-slashes, -t/--target-directory
     followed by a PTH directory, -T/--no-target-directory, and -- to end options.
-    Without -t, the last PTH is the destination; multiple sources need a directory.
-    Place flags before operands. -T requires one source and an exact destination;
-    -t and -T conflict. cp merges directory contents; src/. copies the contents
-    directly into the destination. mv can replace an empty directory, but cannot
-    merge directories. Repeated flags, bundled flags, attached flag values, globs,
+    Sources allow '*' in any component, e.g. projects/*/src/*.py. Each star matches
+    zero or more characters within one component; hidden names require a leading
+    dot in that component. Matches are sorted in filesystem byte order per operand;
+    zero matches reject the call. Destinations, including -t values, must be
+    literal and reject '*'. '**', '?', and bracket patterns are unsupported.
+    Trailing '/' selects directories;
+    '/.' and '/..' suffixes retain their native meaning. No shell expansion is used.
+    Without -t, the last PTH is the destination; multiple expanded sources need a
+    directory. Place flags before operands. -T requires one expanded source and an
+    exact destination; -t and -T conflict. cp merges directory contents; src/.
+    copies the contents directly into the destination. mv can replace an empty
+    directory, but cannot merge directories. Repeated flags, bundled flags, attached flag values,
     symlinks, hard-linked files, special files, overlapping transfers, and
     cross-filesystem moves are unsupported.
     Paths may be absolute or relative to the configured base. cp requires READ
