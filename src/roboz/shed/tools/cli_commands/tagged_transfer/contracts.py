@@ -31,9 +31,10 @@ class TaggedFileCommand(Empty):
             "Ordered [value, tag] pairs. Each command starts with ['cp', 'CMD'] or "
             "['mv', 'CMD']; separate commands with ['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
-            "Tag flags FLG and paths PTH. Sources allow single '*' patterns in any "
-            "component; destinations must be literal. '**', '?', and bracket patterns "
-            "are unsupported. ARG is unsupported for these commands."
+            "Tag flags FLG and paths PTH. Sources allow '*' within components and "
+            "one standalone recursive '**' component, e.g. 'src/**/*.py'; "
+            "destinations must be literal. '?' and bracket patterns are "
+            "unsupported. ARG is unsupported for these commands."
         ),
     )
     model_config = ConfigDict(extra="forbid")

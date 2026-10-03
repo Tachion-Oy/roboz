@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Support one recursive `**` component in tagged `cp`/`mv` source patterns,
+  including zero-depth and directory-only matches. Allow ancestor/descendant
+  sources with separate destination mappings, retaining native operand order,
+  partial effects, and exit status. Duplicate sources and conflicting outputs
+  still fail before execution; permissions cover all selected tree entries.
+
 - Support inline `CTL` operators (`&&`, `||`, `;`, `|`) in tagged `cp`/`mv` calls,
   with mixed Bash-style control flow and a fresh resolve/guard/execute cycle for
   every reached command. Preparation errors and denials now report failed steps,

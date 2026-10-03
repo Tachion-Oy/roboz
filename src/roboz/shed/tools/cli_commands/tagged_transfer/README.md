@@ -134,7 +134,7 @@ The last pipeline stage determines its status (no `pipefail`). The current
 
 ### Source patterns
 
-Use single stars in any source-path component:
+Use `*` within source-path components and one standalone recursive `**` component:
 
 ```json
 {
@@ -149,10 +149,22 @@ Use single stars in any source-path component:
 ```
 
 `*` matches zero or more characters within one component. Patterns such as
-`src/*`, `src/*.py`, and `report-*-final.*` are supported. Hidden names require
-an explicitly leading dot in each component: `src/*` excludes them and `src/.*`
-includes them. Wildcards never select the special `.` or `..` directory entries.
+`src/*`, `src/*.py`, and `report-*-final.*` are supported. Repeated stars inside
+ordinary components, such as `report**.py`, also stay within one component.
+Hidden names require an explicitly leading dot in each component: `src/*`
+excludes them and `src/.*` includes them. Wildcards never select the special `.`
+or `..` directory entries.
 These follow the [Bash filename-matching rules](https://www.gnu.org/s/bash/manual/html_node/Filename-Expansion.html).
+
+A standalone `**` follows Bash with `globstar` enabled. It matches zero or more
+directory levels, so `src/**/*.py` includes direct children of `src` and
+`**/file.py` includes `file.py` in the current directory. A final `**` also selects
+files: `sdf/**` includes `sdf/` and its visible descendants, while `sdf/**/`
+selects only directories, including `sdf/`. Bare `**` and `**/` exclude the
+implicit current directory. Recursive traversal skips hidden names; an explicit
+component such as `src/.hidden/**/*.py` can select files within a hidden directory.
+Only one standalone `**` component is supported per source pattern. For example,
+use `src/**/*.py` instead of `src/**/**/*.py`.
 
 Source operands retain their order; each pattern's matches are sorted in
 C-locale filesystem byte order. If any pattern has no matches, that command
@@ -162,11 +174,22 @@ command. Matched filenames are literal executable arguments, including spaces,
 leading dashes, and wildcard characters; they are never expanded again.
 
 Destinations, both the last positional PTH and `-t` values, remain literal and
-reject `*`. `**`, `?`, and bracket patterns are unsupported in all input paths.
+reject `*`. `?` and bracket patterns are unsupported in all input paths.
 There is no shell quoting, variable expansion, or command substitution.
 Multiple-source and `-T` constraints apply to the expanded source count.
-Duplicate sources, overlaps, colliding outputs, and unsupported matched entries
-reject the entire command. Every match receives the existing permission checks.
+Duplicate sources, conflicting destinations, source/destination overlap, and
+unsupported matched entries reject the entire command. Every match receives
+the existing permission checks. Selected directories require checks for every
+descendant, including hidden entries that the pattern itself does not select.
+
+Ancestor/descendant sources are allowed for literal and patterned operands when
+their destination mappings are separate. For example, `cp -R sdf/** out` can
+copy `sdf/` and each visible descendant to distinct locations in an existing
+`out` directory. Repeated basenames can still cause destination conflicts.
+The approved argv executes in its original order: `mv sdf/** out` may move
+`sdf/` first, then fail because its descendant operands no longer exist. These
+partial effects are preserved, and the native failure status controls `&&` and
+`||` continuations.
 
 A trailing slash selects directories. Suffixes such as `/.` and `/..` retain
 their native meaning. For a single match, `cp -R project/s*/. backup` copies the
@@ -249,11 +272,11 @@ Examples rejected before execution:
 | `-v --verbose`, `-vt`, `--target-directory=reports` | Repeated, bundled, or attached option forms |
 | Directory copies without a recursive flag, or `mv -r` | Native commands require recursion only for directory copies |
 | A special file anywhere in the source tree or at a mapped destination | Only regular files and directories are supported |
-| `**`, `?.txt`, `[ab].txt`, or a destination containing `*` | Unsupported input patterns or a nonliteral destination |
+| `src/**/**/*.py`, `?.txt`, `[ab].txt`, or a destination containing `*` | Multiple recursive components, unsupported input patterns, or a nonliteral destination |
 | A source pattern with no matches | All operands must resolve before execution |
 | A symlink in a source, destination, or path component | Symlinks are unsupported |
 | A source or existing destination file with more than one hard link | Hard-linked files are unsupported for both cp and mv |
-| Overlapping sources or outputs, a source/destination overlap, or a destination aliasing a source | Conflicting transfers |
+| Duplicate sources, overlapping outputs, a source/destination overlap, or a destination aliasing a source | Conflicting transfers |
 | Moving a directory onto a populated effective destination directory | Native `mv` does not merge directories |
 | A move across filesystems | Copy-and-delete fallback is outside this prototype |
 

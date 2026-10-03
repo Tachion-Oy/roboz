@@ -3,7 +3,7 @@
 import os
 import stat
 from fnmatch import fnmatchcase
-from itertools import chain, combinations, product
+from itertools import combinations, product
 from pathlib import Path
 
 from .contracts import ParsedCommand, TaggedCommandSpec, TaggedToken, TokenRule
@@ -103,8 +103,44 @@ def _expand_source_component(prefix: str, component: str, base: Path) -> list[st
     ]
 
 
+def _expand_globstar(
+    prefix: str, base: Path, *, directory_only: bool, include_root: bool
+) -> list[str]:
+    """Expand one recursive component, retaining directory prefixes for suffixes."""
+    root_stat = _source_path_stat(prefix.rstrip("/") or "/", base)
+    if root_stat is None or not stat.S_ISDIR(root_stat.st_mode):
+        return []
+    matches = [prefix] if include_root else []
+    pending = [prefix]
+    while pending:
+        for child in _expand_source_component(pending.pop(), "*", base):
+            child_stat = _source_path_stat(child, base)
+            if child_stat is None:
+                continue
+            if stat.S_ISDIR(child_stat.st_mode):
+                child_prefix = child + "/"
+                pending.append(child_prefix)
+                matches.append(child_prefix if directory_only else child)
+            elif not directory_only:
+                matches.append(child)
+    return matches
+
+
+def _expand_globstar_matches(
+    prefixes: list[str], base: Path, *, directory_only: bool, include_root: bool
+) -> list[str]:
+    """Collect recursive matches beneath each source prefix."""
+    return [
+        match
+        for prefix in prefixes
+        for match in _expand_globstar(
+            prefix, base, directory_only=directory_only, include_root=include_root
+        )
+    ]
+
+
 def expand_source_path(value: str, base: Path) -> list[str]:
-    """Expand single stars component by component, retaining literal path suffixes.
+    """Expand stars and one recursive ** component, retaining literal path suffixes.
 
     Hidden names require a leading dot in their pattern component. Missing or
     non-directory branches do not match; symlinks and traversal errors reject
@@ -114,10 +150,24 @@ def expand_source_path(value: str, base: Path) -> list[str]:
     if "*" not in value:
         return [spelling]
     parts = value.split("/")
+    if parts.count("**") > 1:
+        raise ValueError(
+            f"Only one recursive '**' component is supported per source: {value!r}. "
+            "Use a pattern such as 'src/**/*.py'."
+        )
     first_pattern = next(index for index, part in enumerate(parts) if "*" in part)
     literal_prefix = "/".join(parts[:first_pattern]) + "/" if first_pattern else ""
     prefixes = [os.path.join(str(base), literal_prefix)]
     for index, part in enumerate(parts[first_pattern:], start=first_pattern):
+        if part == "**":
+            prefixes = _expand_globstar_matches(
+                prefixes,
+                base,
+                directory_only=index < len(parts) - 1,
+                # Bare ** and **/ omit the implicit current directory.
+                include_root=index > 0 or any(parts[index + 1 :]),
+            )
+            continue
         matches = [
             match
             for prefix in prefixes
@@ -166,17 +216,24 @@ def _validate_transfer_target(
 
 
 def _validate_transfer_overlap(transfers: list[tuple[Path, Path]]) -> None:
-    """Reject transfers whose roots could change another transfer's meaning."""
+    """Allow nested sources while rejecting duplicate sources and output conflicts."""
     sources = [source for source, _ in transfers]
     targets = [target for _, target in transfers]
-    pairs = chain(
-        combinations(sources, 2), combinations(targets, 2), product(sources, targets)
-    )
-    for left, right in pairs:
-        if left.is_relative_to(right) or right.is_relative_to(left):
+    seen: set[Path] = set()
+    for source in sources:
+        if source in seen:
             raise ValueError(
-                f"Overlapping transfer paths are unsupported: {left}, {right}"
+                f"Duplicate source: {source}. Remove repeated operands or narrow "
+                "the source patterns."
             )
+        seen.add(source)
+    for pairs, explanation in (
+        (combinations(targets, 2), "Conflicting destinations; use distinct output paths"),
+        (product(sources, targets), "Source/destination overlap; choose separate paths"),
+    ):
+        for left, right in pairs:
+            if left.is_relative_to(right) or right.is_relative_to(left):
+                raise ValueError(f"{explanation}: {left}, {right}")
 
 
 def resolve_transfers(
@@ -206,22 +263,25 @@ def resolve_transfers(
 
 
 def expand_transfers(transfers: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
-    """Map every tree entry before guarding, including hidden and empty directories."""
+    """Map every tree entry, caching source scans across overlapping operands."""
     expanded: list[tuple[Path, Path]] = []
     source_ids: set[tuple[int, int]] = set()
+    source_entries: dict[Path, tuple[bool, list[Path]]] = {}
     pending = list(reversed(transfers))
     while pending:
         source, target = pending.pop()
-        _validate_transfer_source(source)
-        source_stat = source.stat()
-        source_ids.add((source_stat.st_dev, source_stat.st_ino))
+        if source not in source_entries:
+            _validate_transfer_source(source)
+            source_stat = source.stat()
+            source_ids.add((source_stat.st_dev, source_stat.st_ino))
+            is_directory = stat.S_ISDIR(source_stat.st_mode)
+            children = sorted(source.iterdir(), reverse=True) if is_directory else []
+            source_entries[source] = is_directory, children
+        _, children = source_entries[source]
         expanded.append((source, target))
-        if source.is_dir():
-            pending.extend(
-                (child, target / child.name)
-                for child in sorted(source.iterdir(), reverse=True)
-            )
+        pending.extend((child, target / child.name) for child in children)
     # Parents precede children: a missing parent is a directory planned above.
     for source, target in expanded:
-        _validate_transfer_target(target, source_ids, directory=source.is_dir())
+        is_directory, _ = source_entries[source]
+        _validate_transfer_target(target, source_ids, directory=is_directory)
     return expanded
