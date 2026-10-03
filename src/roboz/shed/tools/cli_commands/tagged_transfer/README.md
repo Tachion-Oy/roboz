@@ -80,6 +80,52 @@ Rename a regular file (`mv -T reports/a.txt reports/renamed.txt`):
 
 This requires DELETE on `reports/a.txt` and CREATE on `reports/renamed.txt`.
 
+### Directories
+
+Copy a tree (`cp -R src backup`):
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Copy the source tree into backup.",
+  "value": [
+    ["cp", "CMD"],
+    ["-R", "FLG"],
+    ["src", "PTH"],
+    ["backup", "PTH"]
+  ]
+}
+```
+
+The native GNU commands perform the transfers. Their directory behavior is:
+
+| Call | Destination behavior |
+| --- | --- |
+| `cp -R src new` | Create `new` with the source contents |
+| `cp -R src backup` (existing directory) | Copy into `backup/src`, merging if it exists |
+| `cp -R -T src backup` | Copy directly into `backup`, merging if it exists |
+| `cp -R src/. backup` | Copy contents directly into `backup` |
+| `mv src new` | Rename the directory, without a recursive flag |
+| `mv src backup` (existing directory) | Move to `backup/src`; replace an empty directory there, reject a populated one |
+
+Every source entry, including hidden files and empty directories, requires READ
+for a copy or DELETE for a move. Every mapped destination requires CREATE.
+Overwriting a file, or replacing an empty directory with `mv`, additionally
+requires READ and DELETE at that destination. A copy merge requires CREATE on
+existing directories without treating them as deleted. Unrelated destination
+contents are preserved and do not require permissions.
+
+All descendant checks and approvals complete before execution. Denying one
+entry prevents the entire command. `-f` follows native force behavior and does
+not bypass any policy or approval. Traversal errors and unsupported entries
+reject the command before execution.
+
+Executable paths retain meaningful spelling such as `src/.` and trailing
+slashes; canonical paths are used separately for permission checks. A directory
+can be transferred to a missing `new/`, while `new/.` still requires `new` to
+exist. See the [GNU cp manual](https://www.gnu.org/s/coreutils/manual/html_node/cp-invocation.html)
+and [GNU mv manual](https://www.gnu.org/s/coreutils/manual/html_node/mv-invocation.html).
+
 ## Supported subset
 
 - One command per call, beginning with `cp` or `mv` tagged CMD.
@@ -87,10 +133,14 @@ This requires DELETE on `reports/a.txt` and CREATE on `reports/renamed.txt`.
 - Flags precede positional operands. This avoids dependence on option
   permutation and settings such as `POSIXLY_CORRECT`.
 - `-t` / `--target-directory` consumes a following PTH naming an existing directory.
-- `-T` / `--no-target-directory` requires one source and an exact file destination.
+- `-T` / `--no-target-directory` requires one source and an exact destination.
+- `cp` accepts `-r` / `-R` / `--recursive` for directory copies. `mv` moves
+  directories without a recursive flag.
+- Both commands accept `-f` / `--force` and `--strip-trailing-slashes`.
+  No-clobber (`-n` / `--no-clobber`) is not supported in this iteration.
 - `-v` / `--verbose` and `--` are supported. After `--`, only PTH tokens are accepted.
 - Without `-t`, the last path is the destination. Multiple sources need a directory.
-- Paths are resolved relative to the configured base or supplied as absolute paths.
+- Paths are interpreted relative to the configured base or supplied as absolute paths.
   Tagged path values beginning with `-` become absolute paths before execution.
 
 Examples rejected before execution:
@@ -101,11 +151,13 @@ Examples rejected before execution:
 | `["-t", "FLG"], ["reports", "ARG"]` | `-t` requires a PTH value |
 | `-t reports -v --no-target-directory` | Conflicting options, even when separated |
 | `-v --verbose`, `-vt`, `--target-directory=reports` | Repeated, bundled, or attached option forms |
-| `-r`, directory sources, or special files | Regular-file transfers only |
+| Directory copies without a recursive flag, or `mv -r` | Native commands require recursion only for directory copies |
+| A special file anywhere in the source tree or at a mapped destination | Only regular files and directories are supported |
 | `*.txt` | Glob paths are unsupported |
 | A symlink in a source, destination, or path component | Symlinks are unsupported |
 | A source or existing destination file with more than one hard link | Hard-linked files are unsupported for both cp and mv |
-| Sources mapping to the same output, or a destination aliasing a source | Conflicting transfers |
+| Overlapping sources or outputs, a source/destination overlap, or a destination aliasing a source | Conflicting transfers |
+| Moving a directory onto a populated effective destination directory | Native `mv` does not merge directories |
 | A move across filesystems | Copy-and-delete fallback is outside this prototype |
 
 ## Boundaries and review

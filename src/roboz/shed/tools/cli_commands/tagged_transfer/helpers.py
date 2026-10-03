@@ -1,5 +1,6 @@
-"""Small validation and regular-file transfer helpers for tagged commands."""
+"""Small validation and filesystem transfer helpers for tagged commands."""
 
+from itertools import chain, combinations, product
 from pathlib import Path
 
 from .contracts import ParsedCommand, TaggedCommandSpec, TaggedToken, TokenRule
@@ -69,47 +70,101 @@ def resolve_literal_path(value: str, base: Path) -> Path:
         if current.is_symlink():
             raise ValueError(f"Symlinks are unsupported: {current}")
     resolved = path.resolve()
-    if value.endswith("/") and not resolved.is_dir():
+    if value.endswith("/") and resolved.exists() and not resolved.is_dir():
         raise ValueError(f"A trailing slash requires a directory: {value!r}")
     return resolved
 
 
-def _validate_transfer_target(target: Path, source_ids: set[tuple[int, int]]) -> None:
-    """Require a usable destination that does not alias any source file."""
+def _validate_transfer_source(source: Path) -> None:
+    """Accept directories and unaliased regular files without following links."""
+    if source.is_symlink():
+        raise ValueError(f"Symlinks are unsupported: {source}")
+    if source.is_dir():
+        return
+    if not source.is_file():
+        raise ValueError(
+            f"Source must be an existing regular file or directory: {source}"
+        )
+    if source.stat().st_nlink > 1:
+        raise ValueError(f"Hard-linked files are unsupported: {source}")
+
+
+def _validate_transfer_target(
+    target: Path, source_ids: set[tuple[int, int]], *, directory: bool
+) -> None:
+    """Require a usable destination that does not alias any source entry."""
     if target.is_symlink():
         raise ValueError(f"Symlinks are unsupported: {target}")
-    if not target.parent.is_dir():
-        raise ValueError(f"Destination parent must exist: {target.parent}")
     if not target.exists():
         return
-    if not target.is_file():
+    if directory and not target.is_dir():
+        raise ValueError(f"Destination must be a directory: {target}")
+    if not directory and not target.is_file():
         raise ValueError(f"Destination must be a regular file: {target}")
     target_stat = target.stat()
-    if target_stat.st_nlink > 1:
+    if not directory and target_stat.st_nlink > 1:
         raise ValueError(f"Hard-linked files are unsupported: {target}")
     if (target_stat.st_dev, target_stat.st_ino) in source_ids:
-        raise ValueError(f"Destination is also a source file: {target}")
+        raise ValueError(f"Destination is also a source: {target}")
+
+
+def _validate_transfer_overlap(transfers: list[tuple[Path, Path]]) -> None:
+    """Reject transfers whose roots could change another transfer's meaning."""
+    sources = [source for source, _ in transfers]
+    targets = [target for _, target in transfers]
+    pairs = chain(
+        combinations(sources, 2), combinations(targets, 2), product(sources, targets)
+    )
+    for left, right in pairs:
+        if left.is_relative_to(right) or right.is_relative_to(left):
+            raise ValueError(
+                f"Overlapping transfer paths are unsupported: {left}, {right}"
+            )
 
 
 def resolve_transfers(
-    sources: list[Path], destination: Path, *, into_directory: bool
+    sources: list[Path],
+    destination: Path,
+    *,
+    into_directory: bool,
+    source_names: list[str],
 ) -> list[tuple[Path, Path]]:
-    """Validate regular-file transfers between already resolved literal paths."""
+    """Validate transfer roots, retaining GNU's contents-copy operand spelling."""
     source_ids: set[tuple[int, int]] = set()
     for source in sources:
-        if not source.is_file():
-            raise ValueError(f"Source must be an existing regular file: {source}")
+        _validate_transfer_source(source)
         source_stat = source.stat()
-        if source_stat.st_nlink > 1:
-            raise ValueError(f"Hard-linked files are unsupported: {source}")
         source_ids.add((source_stat.st_dev, source_stat.st_ino))
-    destinations: set[Path] = set()
     transfers: list[tuple[Path, Path]] = []
-    for source in sources:
-        target = destination / source.name if into_directory else destination
-        _validate_transfer_target(target, source_ids)
-        if target in destinations:
-            raise ValueError(f"Multiple sources map to the same destination: {target}")
-        destinations.add(target)
+    for source, name in zip(sources, source_names, strict=True):
+        target = destination
+        if into_directory and name not in {".", ".."}:
+            target /= name
+        if not target.parent.is_dir():
+            raise ValueError(f"Destination parent must exist: {target.parent}")
+        _validate_transfer_target(target, source_ids, directory=source.is_dir())
         transfers.append((source, target))
+    _validate_transfer_overlap(transfers)
     return transfers
+
+
+def expand_transfers(transfers: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
+    """Map every tree entry before guarding, including hidden and empty directories."""
+    expanded: list[tuple[Path, Path]] = []
+    source_ids: set[tuple[int, int]] = set()
+    pending = list(reversed(transfers))
+    while pending:
+        source, target = pending.pop()
+        _validate_transfer_source(source)
+        source_stat = source.stat()
+        source_ids.add((source_stat.st_dev, source_stat.st_ino))
+        expanded.append((source, target))
+        if source.is_dir():
+            pending.extend(
+                (child, target / child.name)
+                for child in sorted(source.iterdir(), reverse=True)
+            )
+    # Parents precede children: a missing parent is a directory planned above.
+    for source, target in expanded:
+        _validate_transfer_target(target, source_ids, directory=source.is_dir())
+    return expanded

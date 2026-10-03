@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the experimental tagged `cp`/`mv` tool with recursive copies and directory
+  moves, checking permissions for every descendant. Support GNU directory merges
+  for `cp`, exact directory destinations, force, and source trailing-slash flags.
+
 - Add an opt-in experimental tagged `cp`/`mv` tool for regular-file transfers,
   using explicit token roles, command-specific effects, and the existing executor.
   Its local guard applies overwrite approvals and literal filename matching;

@@ -1,5 +1,6 @@
 """Explicit cp/mv token policies and command-specific filesystem effects."""
 
+import os
 import re
 import shlex
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from roboz.shed.models import CommandReady, Operation
 
 from .contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
-from .helpers import resolve_literal_path, resolve_transfers
+from .helpers import expand_transfers, resolve_literal_path, resolve_transfers
 
 
 def _transfer_arguments(
@@ -28,17 +29,22 @@ def _transfer_arguments(
 
     argv = list(parsed.argv)
     for index in [*source_indices, destination_index]:
-        argv[index] = str(resolve_literal_path(argv[index], base))
-    sources = [Path(argv[index]) for index in source_indices]
-    destination = Path(argv[destination_index])
-    into_directory = destination.is_dir()
-    if "-t" in parsed.options and not into_directory:
+        # Path normalization would erase meaningful suffixes such as 'src/.'.
+        argv[index] = os.path.join(str(base), argv[index])
+    sources = [resolve_literal_path(argv[index], base) for index in source_indices]
+    destination = resolve_literal_path(argv[destination_index], base)
+    if "-t" in parsed.options and not destination.is_dir():
         raise ValueError("-t requires an existing destination directory")
-    if "-T" in parsed.options and into_directory:
-        raise ValueError("-T requires a file destination")
-    if len(sources) > 1 and not into_directory:
+    if len(sources) > 1 and not destination.is_dir():
         raise ValueError("Multiple sources require an existing destination directory")
-    transfers = resolve_transfers(sources, destination, into_directory=into_directory)
+    transfers = resolve_transfers(
+        sources,
+        destination,
+        into_directory=destination.is_dir() and "-T" not in parsed.options,
+        source_names=[
+            os.path.basename(argv[index].rstrip("/")) for index in source_indices
+        ],
+    )
     return argv, transfers
 
 
@@ -52,7 +58,9 @@ def _prepared_transfer(
     for source, destination in transfers:
         operations.append((source_operation, source))
         operations.append((Operation.CREATE, destination))
-        if destination.exists():
+        if destination.exists() and (
+            not destination.is_dir() or source_operation == Operation.DELETE
+        ):
             operations.append((Operation.READ, destination))
             operations.append((Operation.DELETE, destination))
     return PreparedCommand(
@@ -67,18 +75,22 @@ def _prepared_transfer(
 
 
 def prepare_cp(parsed: ParsedCommand, base: Path) -> PreparedCommand:
-    """Require source READ and effective destination CREATE for file copies."""
+    """Require source READ and effective destination CREATE for files and trees."""
     argv, transfers = _transfer_arguments(parsed, base)
-    return _prepared_transfer(argv, transfers, base, Operation.READ)
+    if "-R" not in parsed.options and any(source.is_dir() for source, _ in transfers):
+        raise ValueError("Directory copies require -r, -R, or --recursive")
+    return _prepared_transfer(argv, expand_transfers(transfers), base, Operation.READ)
 
 
 def prepare_mv(parsed: ParsedCommand, base: Path) -> PreparedCommand:
-    """Require source DELETE and destination CREATE for same-filesystem moves."""
+    """Require DELETE/CREATE throughout a tree for same-filesystem moves."""
     argv, transfers = _transfer_arguments(parsed, base)
     for source, destination in transfers:
         if source.stat().st_dev != destination.parent.stat().st_dev:
             raise ValueError("Cross-filesystem moves are unsupported")
-    return _prepared_transfer(argv, transfers, base, Operation.DELETE)
+        if destination.is_dir() and any(destination.iterdir()):
+            raise ValueError(f"Move destination directory must be empty: {destination}")
+    return _prepared_transfer(argv, expand_transfers(transfers), base, Operation.DELETE)
 
 
 _TRANSFER_TOKENS = (
@@ -90,13 +102,22 @@ _TRANSFER_TOKENS = (
     ),
     TokenRule(tag="FLG", pattern=re.compile(r"-T|--no-target-directory"), option="-T"),
     TokenRule(tag="FLG", pattern=re.compile(r"-v|--verbose"), option="-v"),
+    TokenRule(tag="FLG", pattern=re.compile(r"-f|--force"), option="-f"),
+    TokenRule(
+        tag="FLG",
+        pattern=re.compile(r"--strip-trailing-slashes"),
+        option="--strip-trailing-slashes",
+    ),
     TokenRule(tag="FLG", pattern=re.compile(r"--"), option="--", ends_options=True),
     TokenRule(tag="PTH", pattern=re.compile(r"[^*?\[\]\x00]+")),
 )
 
 CP = TaggedCommandSpec(
     command=("cp", "CMD"),
-    allowed=_TRANSFER_TOKENS,
+    allowed=(
+        *_TRANSFER_TOKENS,
+        TokenRule(tag="FLG", pattern=re.compile(r"-r|-R|--recursive"), option="-R"),
+    ),
     forbidden_pairs=(("-t", "-T"),),
     prepare_command=prepare_cp,
 )
