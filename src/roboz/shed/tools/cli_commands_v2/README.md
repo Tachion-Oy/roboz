@@ -141,6 +141,8 @@ For example, count the first two lines of a file:
 stdin `["-", "ARG"]`. A pattern is passed literally to the native regex engine;
 shell characters and a leading dash have no shell or option meaning. File PTHs
 support the existing source patterns and preserve literal dash filenames.
+`rg` requires the ripgrep executable to be installed separately and available
+on `PATH`; a missing executable returns command-not-found status `127`.
 Without input operands they read stdin, except recursive `grep` searches the
 configured base. Stdin is empty without an incoming pipe and never waits for a
 terminal. Explicit stdin may be mixed with file operands.
@@ -192,7 +194,9 @@ Preparation only inspects filesystem entries; it does not read ignore-file or
 search-file contents. The existing guard checks all required permissions before
 requesting approvals, deduplicated across operands. After authorization, one
 native invocation applies ignore rules and searches. The shared preparation and
-execution contracts are unchanged.
+execution contracts are unchanged. Recursive preflight traversal can take time
+and memory proportional to the candidate tree; the subprocess timeout begins
+after that traversal completes. Choose a narrower input directory for large trees.
 
 Native stdout, stderr, and status determine command chaining. Status `0` means
 a match, `1` means no matches, and `2` reports native search errors. For example,

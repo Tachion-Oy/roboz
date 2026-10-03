@@ -142,6 +142,16 @@ def test_rg_honors_ancestor_and_nested_ignores_in_native_search(
     assert "hidden needle" not in result
 
 
+def test_rg_ignore_named_directory_does_not_block_search(tmp_path: Path) -> None:
+    (tmp_path / "src/.ignore").mkdir(parents=True)
+    (tmp_path / "src/.ignore/nested").write_text("hidden needle\n")
+    (tmp_path / "src/visible").write_text("needle\n")
+    result = _invoke(tmp_path, [("rg", "CMD"), ("needle", "ARG"), ("src", "PTH")])
+    assert result.startswith("Overall: success")
+    assert "visible:needle" in result
+    assert "hidden needle" not in result
+
+
 @pytest.mark.parametrize(
     "target, flags", [("src/ignored", []), ("src/*", []), ("src", ["-uu"])]
 )

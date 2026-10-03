@@ -65,7 +65,7 @@ def _ignore_files(roots: list[Path], directories: set[Path], base: Path) -> list
         if entry is None:
             continue
         if stat.S_ISDIR(entry.st_mode):
-            raise ValueError(f"Ignore input must be a regular file: {path}")
+            continue
         files.append(path)
     return files
 
