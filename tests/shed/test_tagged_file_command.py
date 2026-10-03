@@ -111,7 +111,8 @@ def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
     [
         ([("source", "ARG"), ("target", "PTH")], "Unsupported ARG"),
         ([("mv", "CMD")], "Unsupported CMD"),
-        ([("-r", "FLG")], "Unsupported FLG"),
+        ([("-n", "FLG")], "Unsupported FLG"),
+        ([("-r", "FLG"), ("--recursive", "FLG")], "Repeated option"),
         ([("-vt", "FLG")], "Unsupported FLG"),
         ([("--target-directory=out", "FLG")], "Unsupported FLG"),
         ([("-t", "FLG"), ("out", "ARG")], "following PTH"),
@@ -174,14 +175,14 @@ def test_destination_option_resolves_each_actual_output(
     ]
 
 
-def test_exact_destination_rejects_directory(tmp_path: Path) -> None:
+def test_exact_file_destination_rejects_directory(tmp_path: Path) -> None:
     (tmp_path / "source").write_text("data")
     (tmp_path / "out").mkdir()
     result = _resolve(
         tmp_path, [("cp", "CMD"), ("-T", "FLG"), ("source", "PTH"), ("out", "PTH")]
     )
     assert isinstance(result, ParseError)
-    assert "-T requires a file destination" in result.message
+    assert "Destination must be a regular file" in result.message
 
 
 @pytest.mark.parametrize(
@@ -220,10 +221,15 @@ def test_unsupported_filesystem_shapes_are_rejected(tmp_path: Path, kind: str) -
     assert source.read_text() == "data"
 
 
+@pytest.mark.parametrize("directory", [False, True])
 def test_cross_filesystem_move_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: bool
 ) -> None:
-    (tmp_path / "source").write_text("data")
+    if directory:
+        (tmp_path / "source/nested").mkdir(parents=True)
+        (tmp_path / "source/nested/file").write_text("data")
+    else:
+        (tmp_path / "source").write_text("data")
     target_dir = tmp_path / "out"
     target_dir.mkdir()
     original_stat = Path.stat
@@ -742,3 +748,303 @@ def test_only_absolute_rules_can_authorize_a_source_outside_base(
     result = guard(prepared, [])
     assert (result.status == GuardStatus.ALLOWED) is absolute
     assert execute.chain_condition(result) is absolute
+
+
+def _tree_contents(root: Path) -> dict[str, tuple[int, bytes | None]]:
+    return {
+        str(path.relative_to(root)): (
+            path.stat().st_mode & 0o777,
+            path.read_bytes() if path.is_file() else None,
+        )
+        for path in root.rglob("*")
+    }
+
+
+@pytest.mark.skipif(
+    not shutil.which("cp") or not shutil.which("mv"), reason="Requires cp and mv"
+)
+@pytest.mark.parametrize(
+    ("command", "arguments", "existing"),
+    [
+        ("cp", "-r src new/", None),
+        ("cp", "-R src out", "out/src"),
+        ("cp", "--recursive -T src out", "out"),
+        ("cp", "-R src/. out", "out"),
+        ("cp", "-R src/. new/", None),
+        ("cp", "-R src/nested/.. out", "out"),
+        ("cp", "-R --strip-trailing-slashes src/// out", None),
+        ("cp", "-R -t out src file", None),
+        ("cp", "-R src new/.", None),
+        ("cp", "-f file readonly", None),
+        ("mv", "src new/", None),
+        ("mv", "src/. out", None),
+        ("mv", "-v src out", None),
+        ("mv", "-T src out", None),
+        ("mv", "--force --strip-trailing-slashes src/// out", None),
+        ("mv", "-t out src file", None),
+        ("mv", "-f file readonly", None),
+    ],
+)
+def test_directory_transfers_match_native_commands(
+    tmp_path: Path, command: str, arguments: str, existing: str | None
+) -> None:
+    native = tmp_path / "native"
+    guarded = tmp_path / "guarded"
+    for root in (native, guarded):
+        (root / "src/nested/empty").mkdir(parents=True)
+        (root / "src/nested/file").write_text("nested")
+        (root / "src/.hidden").write_text("hidden")
+        (root / "out").mkdir()
+        (root / "file").write_text("replacement")
+        (root / "readonly").write_text("old")
+        (root / "readonly").chmod(0o444)
+        if existing is not None:
+            (root / existing / "nested").mkdir(parents=True, exist_ok=True)
+            (root / existing / "nested/file").write_text("old")
+            (root / existing / "unrelated").write_text("keep")
+    argv = arguments.split()
+    expected = subprocess.run([command, *argv], cwd=native, capture_output=True)
+    tools = get_run_tagged_file_command(
+        base=guarded, default_verdict=ActionVerdict.allow
+    )
+    tokens: list[TaggedToken] = [(command, "CMD")]
+    tokens.extend((value, "FLG" if value.startswith("-") else "PTH") for value in argv)
+    responses = _invoke(tools, [_call(tokens)])
+    execution = next(
+        response
+        for response in responses
+        if response.get("caller") == "execute_tagged_file_command"
+    )
+    status = "success" if expected.returncode == 0 else "failure"
+    assert execution["value"].startswith(
+        f"Overall: {status} (exit {expected.returncode})"
+    )
+    assert _tree_contents(guarded) == _tree_contents(native)
+
+
+def test_copy_merge_permissions_include_empty_directories_and_overwrites(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "src/empty").mkdir(parents=True)
+    (tmp_path / "src/.hidden").write_text("new")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out/.hidden").write_text("old")
+    # An unrelated destination link is not traversed or modified by a merge.
+    (tmp_path / "out/unrelated").symlink_to(tmp_path / "missing")
+    result = _resolve(
+        tmp_path,
+        [("cp", "CMD"), ("-R", "FLG"), ("src/.", "PTH"), ("out", "PTH")],
+    )
+    assert isinstance(result, ResolvedFileCommand)
+    assert {
+        (item.operation, item.location.relative_to(tmp_path).as_posix())
+        for item in result.items
+    } == {
+        (Operation.READ, "src"),
+        (Operation.READ, "src/empty"),
+        (Operation.READ, "src/.hidden"),
+        (Operation.CREATE, "out"),
+        (Operation.CREATE, "out/empty"),
+        (Operation.CREATE, "out/.hidden"),
+        (Operation.READ, "out/.hidden"),
+        (Operation.DELETE, "out/.hidden"),
+    }
+    assert result.items[0].value.argv[-2] == f"{tmp_path}/src/."
+
+
+@pytest.mark.parametrize(
+    ("command", "denied_path", "operation"),
+    [
+        ("cp", "src/nested/file", Operation.READ),
+        ("cp", "out/empty", Operation.CREATE),
+        ("cp", "out/nested/file", Operation.READ),
+        ("cp", "out/nested/file", Operation.DELETE),
+        ("mv", "src/nested/file", Operation.DELETE),
+        ("mv", "out/nested/file", Operation.CREATE),
+        ("mv", "out", Operation.DELETE),
+    ],
+)
+def test_recursive_policy_denial_prevents_every_write_and_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    denied_path: str,
+    operation: Operation,
+) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    (tmp_path / "src/empty").mkdir()
+    (tmp_path / "src/nested/file").write_text("new")
+    (tmp_path / "out").mkdir()
+    if command == "cp":
+        (tmp_path / "out/nested").mkdir()
+        (tmp_path / "out/nested/file").write_text("old")
+    before = _tree_contents(tmp_path)
+
+    def unexpected_prompt(*args, **kwargs):
+        pytest.fail("A denied recursive transfer requested approval")
+
+    monkeypatch.setattr(runtime, "interact_with_user", unexpected_prompt)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[PermissionRule(pattern=denied_path, operations={operation})],
+        ask_rules=[PermissionRule(pattern="src", operations=set(Operation))],
+        pipe=EventPipe(),
+    )
+    tokens: list[TaggedToken] = [(command, "CMD")]
+    if command == "cp":
+        tokens.append(("-R", "FLG"))
+    tokens.extend([("-f", "FLG"), ("-T", "FLG"), ("src", "PTH"), ("out", "PTH")])
+    responses = _invoke(tools, [_call(tokens)])
+    assert responses[1]["deny_reason"] == "policy_denied"
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _tree_contents(tmp_path) == before
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_recursive_force_copy_respects_nested_overwrite_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, accepted: bool
+) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    (tmp_path / "src/nested/file").write_text("new")
+    (tmp_path / "out/nested").mkdir(parents=True)
+    (tmp_path / "out/nested/file").write_text("old")
+    prompts: list[str] = []
+
+    def approve(message: str, *, with_reply: bool) -> str:
+        prompts.append(message)
+        return "yes" if accepted else "no"
+
+    monkeypatch.setattr(runtime, "interact_with_user", approve)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        ask_rules=[
+            PermissionRule(pattern="out/nested/file", operations={Operation.DELETE})
+        ],
+        pipe=EventPipe(),
+    )
+    responses = _invoke(
+        tools,
+        [
+            _call(
+                [
+                    ("cp", "CMD"),
+                    ("-R", "FLG"),
+                    ("--force", "FLG"),
+                    ("-T", "FLG"),
+                    ("src", "PTH"),
+                    ("out", "PTH"),
+                ]
+            )
+        ],
+    )
+    assert len(prompts) == 1 and str(tmp_path / "out/nested/file") in prompts[0]
+    assert (
+        "execute_tagged_file_command" in [r.get("caller") for r in responses]
+    ) is accepted
+    assert (tmp_path / "out/nested/file").read_text() == ("new" if accepted else "old")
+
+
+@pytest.mark.parametrize(
+    "kind", ["source_symlink", "destination_symlink", "hardlink", "fifo"]
+)
+def test_recursive_unsupported_entries_reject_the_whole_transfer(
+    tmp_path: Path, kind: str
+) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    (tmp_path / "src/nested/file").write_text("new")
+    (tmp_path / "out/src").mkdir(parents=True)
+    (tmp_path / "private").write_text("protected")
+    if kind == "source_symlink":
+        (tmp_path / "src/nested/link").symlink_to(tmp_path / "private")
+    elif kind == "destination_symlink":
+        (tmp_path / "out/src/nested").symlink_to(tmp_path, target_is_directory=True)
+    elif kind == "hardlink":
+        (tmp_path / "src/nested/link").hardlink_to(tmp_path / "private")
+    else:
+        os.mkfifo(tmp_path / "src/nested/pipe")
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    responses = _invoke(
+        tools,
+        [
+            _call(
+                [
+                    ("cp", "CMD"),
+                    ("-R", "FLG"),
+                    ("src", "PTH"),
+                    ("out", "PTH"),
+                ]
+            )
+        ],
+    )
+    assert responses[0]["kind"] == "parse_error"
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert (tmp_path / "private").read_text() == "protected"
+    assert not (tmp_path / "out/src/nested/file").exists()
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments"),
+    [
+        ("cp", "src new"),
+        ("mv", "-r src new"),
+        ("mv", "-T src out"),
+        ("cp", "-R -T src file"),
+        ("cp", "-R -T file out"),
+        ("cp", "-R src src/nested"),
+        ("cp", "-R src src/nested out"),
+        ("cp", "-R src other/src out"),
+        ("cp", "-R src/. other/src out"),
+    ],
+)
+def test_recursive_conflicts_fail_before_execution(
+    tmp_path: Path, command: str, arguments: str
+) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    (tmp_path / "src/nested/file").write_text("new")
+    (tmp_path / "other/src").mkdir(parents=True)
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out/keep").write_text("old")
+    (tmp_path / "file").write_text("file")
+    before = _tree_contents(tmp_path)
+    tokens: list[TaggedToken] = [(command, "CMD")]
+    tokens.extend(
+        (value, "FLG" if value.startswith("-") else "PTH")
+        for value in arguments.split()
+    )
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    responses = _invoke(tools, [_call(tokens)])
+    assert responses[0]["kind"] == "parse_error"
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _tree_contents(tmp_path) == before
+
+
+def test_recursive_traversal_error_stops_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    original_iterdir = Path.iterdir
+
+    def iterdir(path: Path):
+        if path == tmp_path / "src/nested":
+            raise PermissionError("Cannot list nested directory")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    result = _resolve(
+        tmp_path,
+        [
+            ("cp", "CMD"),
+            ("-R", "FLG"),
+            ("src", "PTH"),
+            ("out", "PTH"),
+        ],
+    )
+    assert isinstance(result, ParseError)
+    assert "Cannot list nested directory" in result.message
+    assert not (tmp_path / "out").exists()

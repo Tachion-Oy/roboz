@@ -32,24 +32,31 @@ from .specs import COMMANDS
 def resolve_tagged_command(
     input: TaggedFileCommand, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand[TaggedFileCommand, CommandReady] | ParseError:
-    """Copy or move regular files using ordered [value, tag] pairs in value.
+    """Copy or move files and directories using ordered [value, tag] pairs in value.
 
     Start with ['cp', 'CMD'] or ['mv', 'CMD']. Tag flags FLG and literal paths PTH;
     ARG is unsupported. Example: value=[['cp', 'CMD'], ['source.txt', 'PTH'],
-    ['copy.txt', 'PTH']]. Allowed flags: -v/--verbose, -t/--target-directory followed
-    by a PTH directory, -T/--no-target-directory, and -- to end options. Without
-    -t, the last PTH is the destination; multiple sources need a directory.
-    Place flags before operands. -T requires one source and an exact file
-    destination. -t and -T conflict.
-    Repeated flags, bundled flags, attached flag values, globs, directory sources,
-    symlinks, hard-linked files, special files, and cross-filesystem moves are
-    unsupported.
+    ['copy.txt', 'PTH']]. To copy a directory use -r/-R/--recursive, e.g.
+    value=[['cp', 'CMD'], ['-R', 'FLG'], ['src', 'PTH'], ['backup', 'PTH']].
+    mv moves directories without a recursive flag. Both commands allow
+    -v/--verbose, -f/--force, --strip-trailing-slashes, -t/--target-directory
+    followed by a PTH directory, -T/--no-target-directory, and -- to end options.
+    Without -t, the last PTH is the destination; multiple sources need a directory.
+    Place flags before operands. -T requires one source and an exact destination;
+    -t and -T conflict. cp merges directory contents; src/. copies the contents
+    directly into the destination. mv can replace an empty directory, but cannot
+    merge directories. Repeated flags, bundled flags, attached flag values, globs,
+    symlinks, hard-linked files, special files, overlapping transfers, and
+    cross-filesystem moves are unsupported.
     Paths may be absolute or relative to the configured base. cp requires READ
     on sources; mv requires DELETE. Destinations require CREATE; overwriting an
-    existing file also requires READ and DELETE there. Ask rules apply to every
-    required permission, including overwrites. All policy checks pass before any
-    approvals are requested. One command per call; earlier writes are not rolled
-    back if the executable fails partway through a multi-file transfer.
+    existing file or replacing an empty directory also requires READ and DELETE
+    there. Permissions cover every descendant, including empty directories; copy
+    merges require CREATE on existing directories without DELETE. -f does not
+    bypass policy or approval. Ask rules apply to every required permission.
+    All policy checks pass before any approvals are requested. One command per
+    call; earlier writes are not rolled back if the executable fails partway
+    through a multi-file transfer.
     """
     try:
         name = input.value[0][0]
