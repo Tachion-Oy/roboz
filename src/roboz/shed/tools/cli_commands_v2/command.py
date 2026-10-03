@@ -35,10 +35,10 @@ def resolve_tagged_command(
     r"""Read, create, update, copy, or move files using ordered [value, tag] pairs.
 
     Start each command with cp, mv, pwd, cat, head, tail, wc, tee, touch, mkdir,
-    grep, or rg tagged CMD.
+    grep, rg, ls, or find tagged CMD.
     Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
-    Place separate flags before operands; -- ends options. Unknown, repeated,
-    bundled, and attached options are unsupported.
+    Except for ls/find below, place separate flags before operands; -- ends
+    options. Unknown, repeated, bundled, and attached options are unsupported.
     pwd prints the physical base directory, accepts -P/--physical, and requires
     READ on the base. It takes no operands. cat accepts -n/--number,
     -b/--number-nonblank (overrides -n), -s/--squeeze-blank, -E/--show-ends,
@@ -84,6 +84,28 @@ def resolve_tagged_command(
     CTL continuations normally. Example: value=[['rg', 'CMD'], ['-n', 'FLG'],
     ['TODO|FIXME', 'ARG'], ['src', 'PTH']].
 
+    ls lists paths, defaulting to the base directory. It accepts -l, -a/--all,
+    -A/--almost-all, -h/--human-readable, -d/--directory, -R/--recursive, -1,
+    -r/--reverse, -t, -S, -U, -F/--classify, -p, -i/--inode, -s/--size,
+    -n/--numeric-uid-gid, and --. Native order and repeated/bundled flags such as
+    -lah are supported. After --, only PTH operands are accepted.
+    find takes starting PTH roots before its expression, defaulting to '.'.
+    Tag predicates and operators FLG, and predicate values ARG. It supports
+    -name, -iname, -path, -ipath, -type, -size, -mtime, -mmin, -maxdepth, -mindepth
+    with ARG values; -empty, -depth, -xdev, -print, -print0, -prune, and -quit;
+    implicit AND, -a/-and, -o/-or, !/-not, and parentheses tagged FLG.
+    An optional -P or -- may precede roots. Native find evaluates expressions,
+    including repeated predicates. ARG patterns are literal (no shell quoting
+    needed) and support native *, ?, and bracket matching. Preserve relative
+    roots so -path './src/*' works. Example: value=[['find', 'CMD'], ['.', 'PTH'],
+    ['-name', 'FLG'], ['*.py', 'ARG'], ['-print0', 'FLG']].
+    ls/find require READ only on explicit or expanded roots, or the base if omitted.
+    Allowing a directory permits discovery below it: descendant deny/ask rules
+    and descendant file-type restrictions are not applied. Explicit roots reject
+    symlinks, hard-linked files, and special files. Native traversal does not follow
+    symlinks. Both ignore stdin; output can be piped. No execution, deletion,
+    file-output actions, indirect root lists, or symlink-following options.
+
     tee writes stdin to each literal destination PTH and to stdout. It creates
     missing files and overwrites existing files; -a/--append appends instead.
     One optional content ARG after flags and before destination PTHs supplies
@@ -128,16 +150,17 @@ def resolve_tagged_command(
     -v/--verbose, -f/--force, --strip-trailing-slashes, -t/--target-directory
     followed by a PTH directory, -T/--no-target-directory, and -- to end options.
     Sources allow '*' in any component, e.g. projects/*/src/*.py. Each star matches
-    zero or more characters within one component. One standalone '**' component
+    zero or more characters within one component. One '**/' component
     recurses through zero or more directories, e.g. src/**/*.py or **/file.py.
-    A final '**' also selects files: sdf/** includes sdf/ and its visible tree;
-    sdf/**/ selects directories. Bare ** excludes the implicit current directory.
+    Following zsh, final '**' acts like '*': sdf/** selects immediate visible
+    children, while sdf/**/* selects visible descendants. sdf/**/ selects
+    directories including sdf/; bare **/ excludes the implicit current directory.
     Hidden names require a leading dot in their component; recursion skips them.
     Repeated stars within ordinary components, e.g. report**.py, are nonrecursive.
     Matches are sorted in filesystem byte order per operand;
     zero matches fail the command. Destinations, including -t values, must be
-    literal and reject '*'. Multiple recursive '**' components, '?', and bracket
-    patterns are unsupported.
+    literal and reject '*'. Multiple recursive '**/' components, symlink-following '***/', '?', and
+    bracket patterns are unsupported in PTH tokens.
     Trailing '/' selects directories;
     '/.' and '/..' suffixes retain their native meaning. No shell expansion is used.
     Without -t, the last PTH is the destination; multiple expanded sources need a

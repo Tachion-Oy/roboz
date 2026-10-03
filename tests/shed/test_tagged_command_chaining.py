@@ -67,7 +67,7 @@ def test_public_contract_accepts_only_tokens_and_rejects_progress() -> None:
     assert "sequence" not in schema["properties"]
     assert "CommandSequence" not in schema.get("$defs", {})
     assert schema["$defs"]["CommandName"]["enum"] == [
-        "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg",
+        "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg", "ls", "find",
     ]
     assert schema["$defs"]["ControlOperator"]["enum"] == ["&&", "||", ";", "|"]
     with pytest.raises(ValidationError):
@@ -214,6 +214,7 @@ def test_recursive_partial_move_status_controls_continuation(
     )
     tokens: list[TaggedToken] = [
         ("mv", "CMD"),
+        ("src/", "PTH"),
         ("src/**", "PTH"),
         ("out", "PTH"),
         (operator, "CTL"),

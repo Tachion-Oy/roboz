@@ -1,7 +1,7 @@
 # Tagged CLI v2
 
 This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`,
-`touch`, `mkdir`, `grep`, and `rg` through an ordered, tagged command contract.
+`touch`, `mkdir`, `grep`, `rg`, `ls`, and `find` through an ordered, tagged command contract.
 The existing v1 CLI and default capabilities remain available. Public imports
 from `cli_commands.tagged_transfer` are compatibility re-exports of this package.
 It uses the existing **resolve → permission guard → execute** tool chain. The
@@ -15,7 +15,8 @@ sequences of any length.
 
 Command specifications declare the command token, allowed tag/pattern pairs,
 option values, the option terminator, and conflicts. The shared validator reads
-those declarations without knowing tag names or flag spellings. The cp/mv
+those declarations without knowing tag names or flag spellings. Discovery
+commands validate their native argument ordering within their own modules. The cp/mv
 preparation functions interpret destination options; filesystem helpers receive
 explicit source and destination paths.
 
@@ -207,6 +208,69 @@ a match, `1` means no matches, and `2` reports native search errors. For example
 tee fallback` runs the fallback after no matches or another search failure.
 The existing timeout, output-size, and filesystem-race boundaries still apply.
 
+### Discover files and directories
+
+`ls` and `find` use native GNU output and expression behavior. Both default to
+the configured base, ignore stdin, and can pipe their output to another command.
+Relative operand spelling is retained, including `./`, trailing slashes, and
+`..`; this matters for `find . -path './src/*'` and for printed filenames.
+Tagged paths that could be mistaken for options or expressions receive a `./`
+prefix. Missing literal roots produce native errors; unmatched PTH patterns fail
+before execution, matching zsh's default.
+
+`ls` accepts the following flags, including native combinations such as `-lah`,
+repeated flags, and flags interspersed with paths. Native option precedence is
+preserved. After `--`, only PTH operands are accepted.
+
+| Purpose | Options |
+| --- | --- |
+| Details | `-l`, `-h` / `--human-readable`, `-n` / `--numeric-uid-gid`, `-i` / `--inode`, `-s` / `--size` |
+| Selection | `-a` / `--all`, `-A` / `--almost-all`, `-d` / `--directory`, `-R` / `--recursive` |
+| Ordering and display | `-1`, `-r` / `--reverse`, `-t`, `-S`, `-U`, `-F` / `--classify`, `-p` |
+
+For `find`, put PTH roots first, then the expression. Optional `-P` and `--` may
+precede roots. Predicates and operators use FLG, including `(`, `)`, and `!`;
+values use ARG. Only CTL tokens separate commands. Do not add shell quotes or
+backslashes around expression tokens.
+
+| Purpose | Predicates and operators |
+| --- | --- |
+| Matching, followed by ARG | `-name`, `-iname`, `-path`, `-ipath`, `-type`, `-size`, `-mtime`, `-mmin` |
+| Traversal | `-maxdepth` / `-mindepth` followed by ARG, `-depth`, `-xdev` |
+| Tests and output | `-empty`, `-print`, `-print0`, `-prune`, `-quit` |
+| Expressions | Implicit AND, `-a` / `-and`, `-o` / `-or`, `!` / `-not`, `(` and `)` |
+
+Native find evaluates precedence, short-circuiting, pruning, repeated predicates,
+numeric values, and malformed expressions. Its default action is printing matches.
+Predicate ARG patterns are passed literally and support native `*`, `?`, and
+bracket matching independently of PTH expansion. For example, skip a directory:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "List paths while skipping the cache directory.",
+  "value": [
+    ["find", "CMD"], [".", "PTH"],
+    ["-name", "FLG"], ["cache", "ARG"], ["-prune", "FLG"],
+    ["-o", "FLG"], ["-print", "FLG"]
+  ]
+}
+```
+
+As in v1, READ is checked **only on supplied or expanded roots**, or the base when
+omitted. Every root check and approval completes before execution. A denied root
+prevents the whole command. Directory authorization permits native discovery
+beneath it: descendant deny/ask rules and descendant file-type restrictions are
+not applied. There is no recursive policy pre-scan. Explicit roots still reject
+symlinks, hard-linked regular files, and special files; descendants may be listed
+as metadata, and native traversal does not follow symlinks. `ls -a` also lists
+`.` and `..` using native behavior under the directory authorization.
+
+Unknown options are rejected. In particular, `find` cannot execute commands,
+delete files, write output files, read indirect root lists, follow symlinks, or
+use predicates that access additional reference paths. The supported flags above
+are an allowlist, not a complete implementation of every GNU option.
+
 ### Create and update files
 
 `tee` writes stdin to each destination and to stdout. It creates missing files
@@ -348,7 +412,7 @@ after either `a` or `b` succeeds. Skipping a pipeline skips all its stages and
 retains the last executed status. The final result reports that status.
 
 Only CTL tags split commands: `["&&", "PTH"]` names a literal file. There is no
-separate chain field. The input types and schema restrict CMD values to the nine
+separate chain field. The input types and schema restrict CMD values to the
 supported commands and CTL values to the four supported operators. Every segment starts with CMD;
 leading, trailing, adjacent, or unsupported control operators reject the entire
 sequence before execution.
@@ -397,17 +461,18 @@ ordinary components, such as `report**.py`, also stay within one component.
 Hidden names require an explicitly leading dot in each component: `src/*`
 excludes them and `src/.*` includes them. Wildcards never select the special `.`
 or `..` directory entries.
-These follow the [Bash filename-matching rules](https://www.gnu.org/s/bash/manual/html_node/Filename-Expansion.html).
+These follow default [zsh filename generation](https://zsh.sourceforge.io/Doc/Release/Expansion.html#Filename-Generation).
 
-A standalone `**` follows Bash with `globstar` enabled. It matches zero or more
+A standalone `**/` follows zsh's default recursion rules. It matches zero or more
 directory levels, so `src/**/*.py` includes direct children of `src` and
-`**/file.py` includes `file.py` in the current directory. A final `**` also selects
-files: `sdf/**` includes `sdf/` and its visible descendants, while `sdf/**/`
-selects only directories, including `sdf/`. Bare `**` and `**/` exclude the
-implicit current directory. Recursive traversal skips hidden names; an explicit
-component such as `src/.hidden/**/*.py` can select files within a hidden directory.
-Only one standalone `**` component is supported per source pattern. For example,
-use `src/**/*.py` instead of `src/**/**/*.py`.
+`**/file.py` includes `file.py` in the current directory. A final `**` without a
+slash behaves like `*`: `sdf/**` selects only immediate visible children, while
+`sdf/**/*` selects visible descendants. `sdf/**/` selects directories, including
+`sdf/`; bare `**/` excludes the implicit current directory. Recursive traversal
+skips hidden names; an explicit component such as `src/.hidden/**/*.py` can
+select files within a hidden directory. Only one recursive `**/` component is
+supported per PTH; a final `**` does not count as a recursive component.
+Symlink-following `***/` patterns are unsupported.
 
 Source operands retain their order; each pattern's matches are sorted in
 C-locale filesystem byte order. If any pattern has no matches, that command
@@ -428,10 +493,10 @@ receives the existing permission checks. Selected transfer directories require c
 descendant, including hidden entries that the pattern itself does not select.
 
 Ancestor/descendant sources are allowed for literal and patterned operands when
-their destination mappings are separate. For example, `cp -R sdf/** out` can
+their destination mappings are separate. For example, `cp -R sdf/ sdf/**/* out` can
 copy `sdf/` and each visible descendant to distinct locations in an existing
 `out` directory. Repeated basenames can still cause destination conflicts.
-The approved argv executes in its original order: `mv sdf/** out` may move
+The approved argv executes in its original order: `mv sdf/ sdf/**/* out` may move
 `sdf/` first, then fail because its descendant operands no longer exist. These
 partial effects are preserved, and the native failure status controls `&&` and
 `||` continuations.
