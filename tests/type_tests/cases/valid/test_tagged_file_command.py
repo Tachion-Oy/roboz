@@ -67,6 +67,20 @@ writers = TaggedFileCommand(
 )
 assert_type(writers.value, list[TaggedToken])
 
+searches = TaggedFileCommand(
+    value=[
+        ("rg", "CMD"),
+        ("-n", "FLG"),
+        ("TODO|FIXME", "ARG"),
+        ("src", "PTH"),
+        ("|", "CTL"),
+        ("grep", "CMD"),
+        ("-F", "FLG"),
+        ("TODO", "ARG"),
+    ]
+)
+assert_type(searches.value, list[TaggedToken])
+
 
 def check_token_value(token: TaggedToken) -> None:
     if token[1] == "CMD":

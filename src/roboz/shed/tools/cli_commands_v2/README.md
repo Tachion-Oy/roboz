@@ -1,16 +1,17 @@
 # Tagged CLI v2
 
 This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`,
-`touch`, and `mkdir` through an ordered, tagged command contract. The existing v1
-CLI and default capabilities remain available. Public imports from `cli_commands.tagged_transfer`
-are compatibility re-exports of this package.
+`touch`, `mkdir`, `grep`, and `rg` through an ordered, tagged command contract.
+The existing v1 CLI and default capabilities remain available. Public imports
+from `cli_commands.tagged_transfer` are compatibility re-exports of this package.
 It uses the existing **resolve → permission guard → execute** tool chain. The
 new resolver validates the supported syntax and prepares both the executable
 argv and its required filesystem operations. It does not use path extraction.
-The module-local guard checks every required permission before requesting any
-approvals, then passes the prepared command to the tagged executor. One passive
-continuation resolver loops each reached command back through the same guard and
-executor; the four tool instances are fixed for sequences of any length.
+The module-local guard checks every required permission before requesting
+approvals, then passes the prepared command to the tagged
+executor. One passive continuation resolver loops each reached command back
+through the same guard and executor; the four tool instances are fixed for
+sequences of any length.
 
 Command specifications declare the command token, allowed tag/pattern pairs,
 option values, the option terminator, and conflicts. The shared validator reads
@@ -133,6 +134,71 @@ For example, count the first two lines of a file:
   ]
 }
 ```
+
+### Search file contents
+
+`grep` and `rg` take one pattern ARG, followed by file/directory PTH operands or
+stdin `["-", "ARG"]`. A pattern is passed literally to the native regex engine;
+shell characters and a leading dash have no shell or option meaning. File PTHs
+support the existing source patterns and preserve literal dash filenames.
+Without input operands they read stdin, except recursive `grep` searches the
+configured base. Stdin is empty without an incoming pipe and never waits for a
+terminal. Explicit stdin may be mixed with file operands.
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Find outstanding work in the source tree.",
+  "value": [
+    ["rg", "CMD"], ["-n", "FLG"], ["-i", "FLG"],
+    ["todo|fixme", "ARG"], ["src", "PTH"]
+  ]
+}
+```
+
+| Command | Supported options (separate FLG tokens before the pattern) |
+| --- | --- |
+| Both | `-n` / `--line-number`, `-i` / `--ignore-case`, `-v` / `--invert-match`, `-F` / `--fixed-strings`, `-w` / `--word-regexp`, `-x` / `--line-regexp`, `-c` / `--count`, `-l` / `--files-with-matches`, `-q` / `--quiet`, `-o` / `--only-matching`, `-H` / `--with-filename`, `--` |
+| Both, with unsigned decimal ARG values | `-m` / `--max-count`, `-A` / `--after-context`, `-B` / `--before-context`, `-C` / `--context`; zero is allowed |
+| `grep` | `-E` / `--extended-regexp`, `-h` / `--no-filename`, `-r` / `--recursive`, `-R` / `--dereference-recursive` |
+| `rg` | `-I` / `--no-filename`, `--hidden`, `--no-ignore`, `-uu` |
+
+GNU grep uses basic regexes by default; ripgrep uses its native regex syntax.
+`-F` selects fixed strings. Grep's `-E` and `-F` conflict, as do filename display
+and suppression options. Unknown, repeated, bundled, and attached options are
+rejected. The single allowlisted token `-uu` is an exception: it includes hidden
+files and disables ignores. Pattern files, custom ignore files, preprocessors,
+compressed searches, and symlink-following options for rg are unsupported.
+
+Grep requires a recursive flag for directory inputs; rg recurses by default.
+Ripgrep honors local and ancestor `.gitignore`, `.ignore`, and `.rgignore`
+files with its native precedence and Git-repository detection. Explicit file
+operands, including files selected by PTH globs, override ignore filtering.
+Ambient ripgrep configuration, global Git ignores, and Git `info/exclude` files
+are disabled so they cannot introduce undeclared reads or commands.
+
+Regular search inputs require READ and may not be hard-linked or special files.
+Explicit symlinks are rejected. Native grep `-r` and rg skip descendant symlinks
+and special files; grep `-R` rejects trees containing them before execution.
+
+Recursive searches require READ on every directory and regular file in the
+candidate tree, including hidden and ignored files. Ripgrep also requires READ
+on potential local/ancestor ignore files, unless `--no-ignore` or `-uu` disables
+ignore processing. **A denied ignored file blocks the search**, even though
+native ripgrep would skip it. The same file restrictions apply throughout the
+candidate tree, including hard-link rejection.
+
+Preparation only inspects filesystem entries; it does not read ignore-file or
+search-file contents. The existing guard checks all required permissions before
+requesting approvals, deduplicated across operands. After authorization, one
+native invocation applies ignore rules and searches. The shared preparation and
+execution contracts are unchanged.
+
+Native stdout, stderr, and status determine command chaining. Status `0` means
+a match, `1` means no matches, and `2` reports native search errors. For example,
+`cat file | grep pattern | wc -l` counts matching lines, and `rg pattern src ||
+tee fallback` runs the fallback after no matches or another search failure.
+The existing timeout, output-size, and filesystem-race boundaries still apply.
 
 ### Create and update files
 

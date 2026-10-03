@@ -1,4 +1,4 @@
-"""Opt-in tagged CLI v2 with guarded transfers, readers, and file/directory writers."""
+"""Opt-in tagged CLI v2 with guarded transfers, readers, searches, and writers."""
 
 from .command import get_run_tagged_file_command
 from .contracts import (

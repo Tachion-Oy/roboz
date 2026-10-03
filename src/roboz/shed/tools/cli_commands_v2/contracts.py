@@ -13,7 +13,7 @@ from roboz.shed.models import CommandReady, Operation
 
 type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
 type CommandName = Literal[
-    "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir"
+    "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg"
 ]
 type ControlOperator = Literal["&&", "||", ";", "|"]
 type TaggedToken = (
@@ -31,7 +31,7 @@ class TaggedFileCommand(Empty):
         min_length=1,
         description=(
             "Ordered [value, tag] pairs. Start each command with cp, mv, pwd, cat, "
-            "head, tail, wc, tee, touch, or mkdir tagged CMD; separate commands with "
+            "head, tail, wc, tee, touch, mkdir, grep, or rg tagged CMD; separate commands with "
             "['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
             "Tag flags FLG and paths PTH. Sources allow '*' within components and "
@@ -45,6 +45,8 @@ class TaggedFileCommand(Empty):
             "after flags and before destination PTHs; piped input overrides it. "
             "touch -d/-t values use ARG; -r uses PTH. mkdir accepts -p/--parents, "
             "-v/--verbose, and --; CREATE is required on each target and parent created by -p."
+            " grep/rg take one pattern ARG before input PTHs or stdin '-' ARG; "
+            "their count/context options take unsigned decimal ARG values."
         ),
     )
     model_config = ConfigDict(extra="forbid")
