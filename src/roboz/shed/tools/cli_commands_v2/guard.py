@@ -1,4 +1,4 @@
-"""Authorize explicit transfer requirements before requesting any approvals."""
+"""Authorize explicit filesystem requirements before requesting any approvals."""
 
 from pathlib import Path, PurePosixPath
 
@@ -142,7 +142,7 @@ def guard_tagged_file_command(
     messages: list[Message],
     ctx: GuardContext,
 ) -> GuardFilesResult[CommandExecution, CommandReady]:
-    """Check every transfer permission, then obtain all required approvals."""
+    """Check every required filesystem permission, then obtain all approvals."""
     if ctx.base is None:
         raise ValueError("Base is required")
     denial = _check_policy(input, ctx, ctx.base)

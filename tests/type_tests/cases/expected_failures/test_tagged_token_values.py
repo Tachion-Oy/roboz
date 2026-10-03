@@ -1,4 +1,4 @@
-from roboz.shed.tools.cli_commands.tagged_transfer import TaggedToken
+from roboz.shed.tools.cli_commands_v2 import TaggedToken
 
 unsupported_command: TaggedToken = ("rm", "CMD")
 unsupported_operator: TaggedToken = ("&", "CTL")

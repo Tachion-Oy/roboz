@@ -1,6 +1,9 @@
 from typing import assert_type
 
 from roboz.shed.tools.cli_commands.tagged_transfer import (
+    TaggedFileCommand as LegacyTaggedFileCommand,
+)
+from roboz.shed.tools.cli_commands_v2 import (
     CommandName,
     ControlOperator,
     TaggedFileCommand,
@@ -23,6 +26,27 @@ sequence = TaggedFileCommand(
     ]
 )
 assert_type(sequence.value, list[TaggedToken])
+
+readers = TaggedFileCommand(
+    value=[
+        ("pwd", "CMD"),
+        (";", "CTL"),
+        ("cat", "CMD"),
+        ("source", "PTH"),
+        ("|", "CTL"),
+        ("head", "CMD"),
+        ("-n", "FLG"),
+        ("2", "ARG"),
+        ("|", "CTL"),
+        ("tail", "CMD"),
+        ("-", "ARG"),
+        ("|", "CTL"),
+        ("wc", "CMD"),
+        ("-l", "FLG"),
+    ]
+)
+assert_type(readers.value, list[TaggedToken])
+assert_type(LegacyTaggedFileCommand(value=readers.value), TaggedFileCommand)
 
 
 def check_token_value(token: TaggedToken) -> None:

@@ -1,12 +1,12 @@
-"""Compatibility exports for the tagged CLI, now implemented in cli_commands_v2."""
+"""Opt-in tagged CLI v2 with guarded transfers and read commands; opt in through this package."""
 
-from roboz.shed.tools.cli_commands_v2 import (
+from .command import get_run_tagged_file_command
+from .contracts import (
     CommandName,
     ControlOperator,
     TaggedFileCommand,
     TaggedToken,
     TokenTag,
-    get_run_tagged_file_command,
 )
 
 __all__ = [

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add the opt-in `cli_commands_v2` package with tagged `pwd`, `cat`, `head`,
+  `tail`, and `wc`, including guarded file patterns and stdin pipelines alongside
+  `cp`/`mv`. Keep v1 as the default and retain `tagged_transfer` public imports.
+  Preserve raw bytes in v2 pipelines and escape non-UTF-8 output in reports.
+
 - Support one recursive `**` component in tagged `cp`/`mv` source patterns,
   including zero-depth and directory-only matches. Allow ancestor/descendant
   sources with separate destination mappings, retaining native operand order,
