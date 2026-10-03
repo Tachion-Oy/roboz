@@ -12,7 +12,7 @@ from roboz.models import Empty
 from roboz.shed.models import CommandReady, Operation
 
 type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
-type CommandName = Literal["cp", "mv", "pwd", "cat", "head", "tail", "wc"]
+type CommandName = Literal["cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch"]
 type ControlOperator = Literal["&&", "||", ";", "|"]
 type TaggedToken = (
     tuple[CommandName, Literal["CMD"]]
@@ -29,14 +29,19 @@ class TaggedFileCommand(Empty):
         min_length=1,
         description=(
             "Ordered [value, tag] pairs. Start each command with cp, mv, pwd, cat, "
-            "head, tail, or wc tagged CMD; separate commands with ['&&', 'CTL'], ['||', 'CTL'], "
+            "head, tail, wc, tee, or touch tagged CMD; separate commands with "
+            "['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
             "Tag flags FLG and paths PTH. Sources allow '*' within components and "
             "one standalone recursive '**' component, e.g. 'src/**/*.py'; "
-            "destinations must be literal. '?' and bracket patterns are "
+            "transfer/tee destinations and touch references must be literal. "
+            "touch targets also allow patterns; unmatched patterns fail before execution. "
+            "'?' and bracket patterns are "
             "unsupported. head/tail counts use unsigned decimal ARG values; "
             "reader stdin uses ['-', 'ARG']. A '-' tagged PTH names a literal "
-            "file. Omitted reader paths use stdin."
+            "file. Omitted reader paths use stdin. tee accepts one inline content ARG "
+            "after flags and before destination PTHs; piped input overrides it. "
+            "touch -d/-t values use ARG; -r uses PTH."
         ),
     )
     model_config = ConfigDict(extra="forbid")
@@ -63,7 +68,7 @@ class TaggedFileCommand(Empty):
 
 
 class CommandExecution(Empty):
-    """Execution data carried through the existing resolve/guard/result flow."""
+    """Execution progress with pipe bytes separate from the ready command's text stdin."""
 
     request: TaggedFileCommand
     remaining: list[TaggedToken]

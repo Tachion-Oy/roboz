@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add guarded tagged `tee` and `touch`, with allowlisted flags, inline UTF-8
+  content for `tee`, append support, and explicit or reference-based timestamps.
+  Check every target before writing, including existing-file READ and DELETE
+  permissions. Document that unmatched patterns fail before execution, even
+  with `touch -c`, matching zsh's default or Bash with `failglob` enabled.
+
 - Add the opt-in `cli_commands_v2` package with tagged `pwd`, `cat`, `head`,
   `tail`, and `wc`, including guarded file patterns and stdin pipelines alongside
   `cp`/`mv`. Keep v1 as the default and retain `tagged_transfer` public imports.

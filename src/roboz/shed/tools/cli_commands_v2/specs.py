@@ -6,6 +6,8 @@ from .commands.head import HEAD
 from .commands.mv import MV
 from .commands.pwd import PWD
 from .commands.tail import TAIL
+from .commands.tee import TEE
+from .commands.touch import TOUCH
 from .commands.wc import WC
 
-COMMANDS = {spec.name: spec for spec in (CP, MV, PWD, CAT, HEAD, TAIL, WC)}
+COMMANDS = {spec.name: spec for spec in (CP, MV, PWD, CAT, HEAD, TAIL, WC, TEE, TOUCH)}

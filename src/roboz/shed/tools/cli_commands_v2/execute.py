@@ -1,7 +1,6 @@
 """Execute one guarded tagged step and return its result or continuation."""
 
 import errno
-import shlex
 import subprocess
 
 from roboz.models import Message, Str
@@ -38,7 +37,7 @@ def _bounded_history(history: str, max_chars: int = LIGHT_MAX_CHARS) -> str:
 def _run_command(
     ready: CommandReady, ctx: FileCommandExecutionContext, stdin: bytes | None
 ) -> subprocess.CompletedProcess[bytes]:
-    """Map expected lookup and launch failures to shell exit statuses."""
+    """Run with pipe bytes or UTF-8 inline text and map expected launch failures."""
     binding = ctx.commands.binding_for(ready.command_name)
     try:
         executable = binding.require()
@@ -50,10 +49,12 @@ def _run_command(
         return subprocess.CompletedProcess(ready.argv, 126, b"", str(error).encode())
     argv = [str(executable), *ready.argv[1:]]
     try:
+        if stdin is None:
+            stdin = (ready.stdin or "").encode("utf-8")
         return subprocess.run(
             argv,
             cwd=ready.base_workdir,
-            input=stdin or b"",
+            input=stdin,
             capture_output=True,
             timeout=SUBPROCESS_TIMEOUT_SECONDS,
         )
@@ -113,17 +114,16 @@ def _execute_step(
     """Produce a guarded step's outcome, stopping on unexpected execution errors."""
     execution = input.original_input
     tokens, _ = split_command(execution.remaining)
-    command = shlex.join(value for value, _ in tokens)
+    ready = execution.ready
+    command = ready.display_command if ready is not None else tokens[0][0]
     try:
         failure = execution.failure
         if input.status != GuardStatus.ALLOWED:
             failure = input.message or "Permission denied"
         if failure is not None:
             return command, subprocess.CompletedProcess([], 1, b"", failure.encode())
-        ready = execution.ready
         if ready is None:
             raise ValueError("Missing prepared command")
-        command = ready.display_command
         return command, _run_command(ready, ctx, execution.stdin)
     except Exception as error:
         return _final_result(

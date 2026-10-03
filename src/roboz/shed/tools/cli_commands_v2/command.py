@@ -32,9 +32,9 @@ from .specs import COMMANDS
 def resolve_tagged_command(
     input: TaggedFileCommand, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
-    """Read, copy, or move files using ordered [value, tag] pairs in value.
+    r"""Read, create, update, copy, or move files using ordered [value, tag] pairs.
 
-    Start each command with cp, mv, pwd, cat, head, tail, or wc tagged CMD.
+    Start each command with cp, mv, pwd, cat, head, tail, wc, tee, or touch tagged CMD.
     Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
     Place separate flags before operands; -- ends options. Unknown, repeated,
     bundled, and attached options are unsupported.
@@ -53,6 +53,30 @@ def resolve_tagged_command(
     Example: value=[['cat', 'CMD'], ['data.txt', 'PTH'], ['|', 'CTL'],
     ['head', 'CMD'], ['-n', 'FLG'], ['2', 'ARG'], ['|', 'CTL'],
     ['wc', 'CMD'], ['-l', 'FLG']].
+
+    tee writes stdin to each literal destination PTH and to stdout. It creates
+    missing files and overwrites existing files; -a/--append appends instead.
+    One optional content ARG after flags and before destination PTHs supplies
+    inline text, encoded as UTF-8. Example: value=[['tee', 'CMD'], ['-a', 'FLG'],
+    ['Hello\n', 'ARG'], ['notes.txt', 'PTH']]. Incoming pipe bytes override inline
+    text, including empty output; with neither, stdin is empty. Without destination
+    paths tee only produces stdout and needs no filesystem permissions.
+    touch creates missing named files unless -c/--no-create is supplied, and
+    updates timestamps on existing regular files or directories without recursion.
+    It requires at least one target PTH. Wildcard targets select existing paths;
+    if a pattern matches nothing, the command fails before execution, even with -c,
+    and never creates a filename containing the unmatched wildcard. This matches
+    zsh's default and Bash with failglob, rather than default Bash.
+    touch accepts -a (access time), -m (modification time), -c/--no-create,
+    -d/--date followed by a date ARG, -t followed by [[CC]YY]MMDDhhmm[.ss] ARG,
+    and -r/--reference followed by a literal existing PTH requiring READ.
+    -a and -m may be combined, as may -r and -d for reference-relative dates.
+    -t conflicts with -d and -r. Native touch interprets dates and calendar values.
+    tee destinations and touch references reject wildcards. Both commands support
+    --, require CREATE on targets, and also require READ and DELETE on existing
+    regular files, including append and timestamp updates. Missing touch -c targets
+    are no-ops but still require CREATE. New files require existing parents.
+    All target permissions and approvals pass before any file is changed.
 
     cp/mv accept only PTH operands. Example: value=[['cp', 'CMD'],
     ['source.txt', 'PTH'], ['copy.txt', 'PTH']]. To copy a directory use
