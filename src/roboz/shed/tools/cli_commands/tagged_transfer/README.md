@@ -123,6 +123,10 @@ permission failures 126, signals 128 plus the signal number, and timeouts 124.
 Timeouts discard partial output. Cancellation, oversized output, and unexpected
 execution errors abort the sequence.
 
+Stored sequence history and the final report are capped at 40,000 characters,
+retaining the newest output and marking omitted earlier output. The final status
+counts toward that budget; piped stdout is passed intact.
+
 Pipes are buffered and sequential so every stage is guarded before execution.
 They preserve stdout exactly, including empty output, and keep stderr separate.
 The last pipeline stage determines its status (no `pipefail`). The current

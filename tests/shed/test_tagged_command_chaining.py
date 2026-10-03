@@ -15,6 +15,7 @@ from roboz import Agent, runtime
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Role
+from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools import runner
@@ -454,3 +455,73 @@ def test_terminal_failures_never_reach_fallback(
     else:
         assert _result(_invoke(tools, tokens)).startswith("Overall: failure")
     assert len(launched) == 1
+
+
+@pytest.mark.parametrize("terminal_error", [False, True])
+def test_sequence_history_is_bounded_and_keeps_latest_diagnostics(
+    tmp_path: Path, monkeypatch, terminal_error: bool
+) -> None:
+    (tmp_path / "source").write_text("data")
+    calls = []
+
+    def run(argv, cwd, stdin):
+        step = len(calls)
+        calls.append(argv)
+        if terminal_error and step == 3:
+            raise OSError("latest execution error")
+        stdout = f"start-{step}\n" + "x" * (LIGHT_MAX_CHARS // 2) + f"\nend-{step}"
+        return subprocess.CompletedProcess(
+            argv, 7 if step == 3 else 0, stdout, f"diagnostic-{step}"
+        )
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tokens: list[TaggedToken] = []
+    for step in range(4):
+        if tokens:
+            tokens.append((";", "CTL"))
+        tokens.extend(_copy("source", f"out{step}"))
+    responses = _invoke(
+        get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
+        tokens,
+    )
+    histories = [r["accumulated_output"] for r in responses if "remaining" in r]
+    assert len(calls) == 4 and len(histories) == 3
+    assert all(len(history) <= LIGHT_MAX_CHARS for history in histories)
+    result = _result(responses)
+    assert len(result) <= LIGHT_MAX_CHARS
+    assert result.count("earlier command output omitted") == 1
+    assert "start-0" not in result
+    if terminal_error:
+        assert result.startswith("Overall: failure (execution error)")
+        assert "latest execution error" in result
+    else:
+        assert result.startswith("Overall: failure (exit 7)")
+        assert "end-3" in result and "stderr:\ndiagnostic-3" in result
+
+
+def test_bounding_history_preserves_full_piped_stdout(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "source").write_text("data")
+    stdout = "p" * (LIGHT_MAX_CHARS + 1)
+    inputs = []
+
+    def run(argv, cwd, stdin):
+        inputs.append(stdin)
+        if len(inputs) == 1:
+            return subprocess.CompletedProcess(
+                argv, 0, stdout, "s" * (LIGHT_MAX_CHARS + 1)
+            )
+        return subprocess.CompletedProcess(argv, 0, "latest pipeline output", "")
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    responses = _invoke(
+        get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
+        [*_copy("source", "first"), ("|", "CTL"), *_copy("source", "last")],
+    )
+    assert inputs == [None, stdout]
+    history = next(r["accumulated_output"] for r in responses if "remaining" in r)
+    assert len(history) <= LIGHT_MAX_CHARS
+    result = _result(responses)
+    assert len(result) <= LIGHT_MAX_CHARS
+    assert result.startswith("Overall: success (exit 0)")
+    assert "earlier command output omitted" in result
+    assert "latest pipeline output" in result

@@ -5,7 +5,7 @@ import shlex
 import subprocess
 
 from roboz.models import Message, Str
-from roboz.models.truncation import Severity, Truncation, TruncationSpec
+from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation, TruncationSpec
 from roboz.shed.models import CommandReady, GuardFilesResult, GuardStatus
 from roboz.shed.tools import runner
 from roboz.shed.tools.cli_commands.utilities.constants import (
@@ -24,6 +24,16 @@ from roboz.tooling.decorators import factory
 
 from .contracts import CommandExecution
 from .sequence import next_command, split_command
+
+HISTORY_TRUNCATION_MARKER = "[earlier command output omitted]\n"
+
+
+def _bounded_history(history: str, max_chars: int = LIGHT_MAX_CHARS) -> str:
+    """Keep the newest output within the report budget, marking any omission."""
+    if len(history) <= max_chars:
+        return history
+    tail_chars = max_chars - len(HISTORY_TRUNCATION_MARKER)
+    return HISTORY_TRUNCATION_MARKER + history[-tail_chars:]
 
 
 def _run_command(
@@ -75,15 +85,16 @@ def _append_result(
         body = f"{PIPE_STDIN_FROM_PREVIOUS_COMMAND}\n{body}"
     if result.stderr:
         body += f"\nstderr:\n{result.stderr}"
-    execution.accumulated_output += _framed_cli_output(command, body) + "\n"
+    execution.accumulated_output = _bounded_history(
+        execution.accumulated_output + _framed_cli_output(command, body) + "\n"
+    )
 
 
-def _final_result(
-    execution: CommandExecution, returncode: int, truncation: TruncationSpec
-) -> Str:
-    status = "success" if returncode == 0 else "failure"
+def _final_result(history: str, summary: str, truncation: TruncationSpec) -> Str:
+    """Reserve space for the status so message truncation cannot hide the tail."""
+    header = f"Overall: {summary}\n"
     return Str(
-        value=f"Overall: {status} (exit {returncode})\n{execution.accumulated_output.rstrip()}",
+        value=header + _bounded_history(history.rstrip(), LIGHT_MAX_CHARS - len(header)),
         truncation=truncation,
     )
 
@@ -106,10 +117,10 @@ def _execute_step(
         command = ready.display_command
         return command, _run_command(ready, ctx)
     except Exception as error:
-        return Str(
-            value=f"Overall: failure (execution error)\n{execution.accumulated_output}"
-            + _framed_cli_output(command, str(error)),
-            truncation=ctx.truncation,
+        return _final_result(
+            execution.accumulated_output + _framed_cli_output(command, str(error)),
+            "failure (execution error)",
+            ctx.truncation,
         )
 
 
@@ -122,12 +133,12 @@ def _completed_result(
     """Bound captured output and record the normalized outcome before continuing."""
     captured_chars = len(result.stdout or "") + len(result.stderr or "")
     if captured_chars > MAX_COMMAND_OUTPUT_CHARS:
-        return Str(
-            value=f"Overall: failure (output too large; exit {result.returncode})\n"
-            + ERR_OUTPUT_TOO_LARGE.format(
+        return _final_result(
+            ERR_OUTPUT_TOO_LARGE.format(
                 actual_chars=captured_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
             ),
-            truncation=truncation,
+            f"failure (output too large; exit {result.returncode})",
+            truncation,
         )
     result.returncode = (
         result.returncode if result.returncode >= 0 else 128 - result.returncode
@@ -147,7 +158,10 @@ def _continue_or_finish(
         execution.stdin = (result.stdout or "") if piped else None
         execution.truncation = Truncation(threshold=0, severity=Severity.REMOVE)
         return execution
-    return _final_result(execution, result.returncode, truncation)
+    status = "success" if result.returncode == 0 else "failure"
+    return _final_result(
+        execution.accumulated_output, f"{status} (exit {result.returncode})", truncation
+    )
 
 
 @factory

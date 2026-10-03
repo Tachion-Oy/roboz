@@ -6,7 +6,8 @@
   with mixed Bash-style control flow and a fresh resolve/guard/execute cycle for
   every reached command. Preparation errors and denials now report failed steps,
   allowing independently guarded fallback commands; invalid sequence syntax
-  still rejects the whole call. Pipes buffer stdout sequentially.
+  still rejects the whole call. Pipes buffer stdout sequentially. Sequence history
+  retains the newest output within 40,000 characters and marks omitted output.
 
 - Support single-star source patterns in the experimental tagged `cp`/`mv` tool,
   including intermediate path components. Expand matches before guarding every
