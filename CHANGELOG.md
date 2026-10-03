@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Support OpenAI SDK 3.x alongside 2.x and update the locked SDK to 3.20.0.
+
 - Extend the experimental tagged `cp`/`mv` tool with recursive copies and directory
   moves, checking permissions for every descendant. Support GNU directory merges
   for `cp`, exact directory destinations, force, and source trailing-slash flags.
