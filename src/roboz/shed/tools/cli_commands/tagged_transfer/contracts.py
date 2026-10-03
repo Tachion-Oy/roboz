@@ -6,27 +6,67 @@ from pathlib import Path
 from re import Pattern
 from typing import Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from roboz.models import Empty
 from roboz.shed.models import CommandReady, Operation
 
-type TokenTag = Literal["CMD", "FLG", "ARG", "PTH"]
-type TaggedToken = tuple[str, TokenTag]
+type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
+type CommandName = Literal["cp", "mv"]
+type ControlOperator = Literal["&&", "||", ";", "|"]
+type TaggedToken = (
+    tuple[CommandName, Literal["CMD"]]
+    | tuple[ControlOperator, Literal["CTL"]]
+    | tuple[str, Literal["FLG", "ARG", "PTH"]]
+)
 
 
 class TaggedFileCommand(Empty):
-    """One command expressed as ordered [value, tag] pairs."""
+    """A command sequence expressed as one stream of ordered [value, tag] pairs."""
 
     value: list[TaggedToken] = Field(
         ...,
         min_length=1,
         description=(
-            "Ordered [value, tag] pairs. Start with ['cp', 'CMD'] or ['mv', 'CMD']; "
-            "tag flags FLG and literal paths PTH. ARG is unsupported for these commands."
+            "Ordered [value, tag] pairs. Each command starts with ['cp', 'CMD'] or "
+            "['mv', 'CMD']; separate commands with ['&&', 'CTL'], ['||', 'CTL'], "
+            "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
+            "Tag flags FLG and paths PTH. Sources allow single '*' patterns in any "
+            "component; destinations must be literal. '**', '?', and bracket patterns "
+            "are unsupported. ARG is unsupported for these commands."
         ),
     )
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("value")
+    @classmethod
+    def validate_sequence(cls, tokens: list[TaggedToken]) -> list[TaggedToken]:
+        """Validate control syntax; command options and paths are checked when reached."""
+        expect_command = True
+        for _, tag in tokens:
+            if tag == "CTL":
+                if expect_command:
+                    raise ValueError("A CTL operator must follow a command")
+                expect_command = True
+            elif expect_command:
+                if tag != "CMD":
+                    raise ValueError("Each command must start with a CMD token")
+                expect_command = False
+            elif tag == "CMD":
+                raise ValueError("Separate commands with a CTL operator")
+        if expect_command:
+            raise ValueError("A CTL operator must be followed by a command")
+        return tokens
+
+
+class CommandExecution(Empty):
+    """Execution data carried through the existing resolve/guard/result flow."""
+
+    request: TaggedFileCommand
+    remaining: list[TaggedToken]
+    stdin: str | None = None
+    accumulated_output: str = ""
+    failure: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,7 +101,7 @@ class PreparedCommand:
 class TaggedCommandSpec:
     """Supported tokens, option conflicts, and command-specific preparation."""
 
-    command: TaggedToken
+    command: tuple[CommandName, Literal["CMD"]]
     allowed: tuple[TokenRule, ...]
     forbidden_pairs: tuple[tuple[str, str], ...]
     prepare_command: Callable[[ParsedCommand, Path], PreparedCommand]
