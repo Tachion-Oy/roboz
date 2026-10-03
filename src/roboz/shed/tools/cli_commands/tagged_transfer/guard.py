@@ -20,7 +20,7 @@ from roboz.shed.tools.contexts import GuardContext
 from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.tooling.decorators import factory
 
-from .contracts import TaggedFileCommand
+from .contracts import CommandExecution
 
 
 def _matches(
@@ -55,11 +55,11 @@ def _policy_verdict(allow: bool, deny: bool, ctx: GuardContext) -> ActionVerdict
 
 
 def _denied(
-    input: ResolvedFileCommand[TaggedFileCommand, CommandReady],
+    input: ResolvedFileCommand[CommandExecution, CommandReady],
     item: GuardFileSingle[CommandReady],
     message: str,
     reason: GuardDenyReason = GuardDenyReason.POLICY_DENIED,
-) -> GuardFilesResult[TaggedFileCommand, CommandReady]:
+) -> GuardFilesResult[CommandExecution, CommandReady]:
     return GuardFilesResult(
         status=GuardStatus.DENIED,
         deny_reason=reason,
@@ -75,10 +75,10 @@ def _denied(
 
 
 def _check_policy(
-    input: ResolvedFileCommand[TaggedFileCommand, CommandReady],
+    input: ResolvedFileCommand[CommandExecution, CommandReady],
     ctx: GuardContext,
     base: Path,
-) -> GuardFilesResult[TaggedFileCommand, CommandReady] | None:
+) -> GuardFilesResult[CommandExecution, CommandReady] | None:
     """Return the first policy denial without requesting approval."""
     for item in input.items:
         allow = _matches(ctx.allow, item, base)
@@ -92,10 +92,10 @@ def _check_policy(
 
 
 def _request_approvals(
-    input: ResolvedFileCommand[TaggedFileCommand, CommandReady],
+    input: ResolvedFileCommand[CommandExecution, CommandReady],
     ctx: GuardContext,
     base: Path,
-) -> GuardFilesResult[TaggedFileCommand, CommandReady] | None:
+) -> GuardFilesResult[CommandExecution, CommandReady] | None:
     """Collect required approvals, then stop at the first declined or failed prompt."""
     pending = [item for item in input.items if _matches(ctx.ask, item, base)]
     if pending and ctx.pipe is None:
@@ -121,8 +121,8 @@ def _request_approvals(
 
 
 def _allowed(
-    input: ResolvedFileCommand[TaggedFileCommand, CommandReady],
-) -> GuardFilesResult[TaggedFileCommand, CommandReady]:
+    input: ResolvedFileCommand[CommandExecution, CommandReady],
+) -> GuardFilesResult[CommandExecution, CommandReady]:
     return GuardFilesResult(
         status=GuardStatus.ALLOWED,
         original_input=input.original_input,
@@ -138,10 +138,10 @@ def _allowed(
 
 @factory
 def guard_tagged_file_command(
-    input: ResolvedFileCommand[TaggedFileCommand, CommandReady],
+    input: ResolvedFileCommand[CommandExecution, CommandReady],
     messages: list[Message],
     ctx: GuardContext,
-) -> GuardFilesResult[TaggedFileCommand, CommandReady]:
+) -> GuardFilesResult[CommandExecution, CommandReady]:
     """Check every transfer permission, then obtain all required approvals."""
     if ctx.base is None:
         raise ValueError("Base is required")
