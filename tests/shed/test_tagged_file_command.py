@@ -332,7 +332,7 @@ def test_single_command_execution_reports_failures(
     (tmp_path / "source").write_text("data")
 
     def run(
-        argv: list[str], cwd: Path, stdin: str | None
+        argv: list[str], cwd: Path, stdin: str | None, **kwargs
     ) -> subprocess.CompletedProcess[str]:
         if outcome == "timeout":
             raise subprocess.TimeoutExpired(argv, 1)

@@ -181,6 +181,8 @@ counts toward that budget; piped stdout is passed intact.
 
 Pipes are buffered and sequential so every stage is guarded before execution.
 They preserve stdout exactly, including empty output, and keep stderr separate.
+Reports decode output as UTF-8 and show undecodable bytes as `\xNN` escapes;
+these display escapes do not change the bytes passed to the next pipeline stage.
 The last pipeline stage determines its status (no `pipefail`). The current
 `cp`/`mv` commands do not consume stdin. There is no rollback of earlier writes.
 

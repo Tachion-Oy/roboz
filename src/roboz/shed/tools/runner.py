@@ -44,9 +44,28 @@ class _CommandOutcome(StrEnum):
 
 
 def run_cli_argv(
-    argv: list[str], cwd: Path, stdin: str | None
+    argv: list[str], cwd: Path, stdin: str | None, *, preserve_bytes: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    """Run argv and preserve its exit status and separate output streams."""
+    """Run argv and preserve its exit status and separate output streams.
+
+    With preserve_bytes, map each input/output byte to its Latin-1 character
+    without newline conversion. This reversible string transport keeps buffered
+    pipes serializable; callers decode output for display separately.
+    """
+    if preserve_bytes:
+        result = subprocess.run(
+            argv,
+            cwd=cwd,
+            capture_output=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            input=stdin.encode("latin-1") if stdin is not None else None,
+        )
+        return subprocess.CompletedProcess(
+            result.args,
+            result.returncode,
+            result.stdout.decode("latin-1"),
+            result.stderr.decode("latin-1"),
+        )
     return subprocess.run(
         argv,
         cwd=cwd,

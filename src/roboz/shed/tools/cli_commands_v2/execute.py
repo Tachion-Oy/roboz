@@ -51,7 +51,14 @@ def _run_command(
         return subprocess.CompletedProcess(ready.argv, 126, "", str(error))
     argv = [str(executable), *ready.argv[1:]]
     try:
-        return runner.run_cli_argv(argv, ready.base_workdir, ready.stdin)
+        result = runner.run_cli_argv(
+            argv, ready.base_workdir, ready.stdin, preserve_bytes=True
+        )
+        if result.stderr:
+            result.stderr = result.stderr.encode("latin-1").decode(
+                "utf-8", "backslashreplace"
+            )
+        return result
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(
             argv, 124, "", ERR_TIMEOUT.format(timeout=SUBPROCESS_TIMEOUT_SECONDS)
@@ -76,7 +83,11 @@ def _append_result(
     """Accumulate reached command frames while keeping piped stdout out of history."""
     _, tail = split_command(execution.remaining)
     piped = bool(tail and tail[0] == ("|", "CTL"))
-    body = PIPE_OUTPUT_TO_NEXT_COMMAND if piped else result.stdout or ""
+    body = (
+        PIPE_OUTPUT_TO_NEXT_COMMAND
+        if piped
+        else (result.stdout or "").encode("latin-1").decode("utf-8", "backslashreplace")
+    )
     if result.returncode != 0:
         body = f"[error] Command failed (exit {result.returncode})\n{body}"
     elif not body:

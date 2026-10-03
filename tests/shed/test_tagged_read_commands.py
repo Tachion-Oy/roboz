@@ -273,6 +273,44 @@ def test_stdin_only_readers_need_no_file_permissions(tmp_path: Path, command) ->
     assert result.value.startswith("Overall: success (exit 0)")
 
 
+@pytest.mark.parametrize(("command", "escaped"), [("head", r"\xc3"), ("tail", r"\xa9")])
+@pytest.mark.parametrize("piped", [False, True])
+def test_byte_readers_preserve_split_utf8_output(
+    tmp_path: Path, command: str, escaped: str, piped: bool
+) -> None:
+    (tmp_path / "data").write_bytes("é".encode("utf-8"))
+    tokens = [(command, "CMD"), ("-c", "FLG"), ("1", "ARG"), ("data", "PTH")]
+    if piped:
+        tokens.extend([("|", "CTL"), ("wc", "CMD"), ("-c", "FLG")])
+    result = _result(
+        _invoke(
+            get_run_tagged_file_command(
+                base=tmp_path, default_verdict=ActionVerdict.allow
+            ),
+            tokens,
+        )
+    )
+    assert result.startswith("Overall: success (exit 0)")
+    assert f"\n{'1' if piped else escaped}\n--- end:" in result
+
+
+@pytest.mark.parametrize("content", [b"a\r\n", b"\xff\x00"])
+def test_reader_pipeline_preserves_binary_and_crlf_bytes(
+    tmp_path: Path, content: bytes
+) -> None:
+    (tmp_path / "data").write_bytes(content)
+    result = _result(
+        _invoke(
+            get_run_tagged_file_command(
+                base=tmp_path, default_verdict=ActionVerdict.allow
+            ),
+            [("cat", "CMD"), ("data", "PTH"), ("|", "CTL"), ("wc", "CMD"), ("-c", "FLG")],
+        )
+    )
+    assert result.startswith("Overall: success (exit 0)")
+    assert f"\n{len(content)}\n--- end:" in result
+
+
 def test_reader_pipeline_and_literal_dash_coexist_with_v1(tmp_path: Path) -> None:
     (tmp_path / "data").write_text("one\ntwo\nthree\n")
     (tmp_path / "-").write_text("literal\n")
@@ -320,9 +358,9 @@ def test_failed_read_does_not_reuse_payload_and_fallback_runs(
     launched = []
     run = runner.run_cli_argv
 
-    def record(argv, cwd, stdin):
+    def record(argv, cwd, stdin, **kwargs):
         launched.append(argv[1:])
-        return run(argv, cwd, stdin)
+        return run(argv, cwd, stdin, **kwargs)
 
     monkeypatch.setattr(runner, "run_cli_argv", record)
     monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: "no")

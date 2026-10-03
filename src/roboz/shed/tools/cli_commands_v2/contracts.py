@@ -67,6 +67,7 @@ class CommandExecution(Empty):
 
     request: TaggedFileCommand
     remaining: list[TaggedToken]
+    # Latin-1 maps raw pipe bytes to JSON-safe characters without losing bytes.
     stdin: str | None = None
     accumulated_output: str = ""
     failure: str | None = None

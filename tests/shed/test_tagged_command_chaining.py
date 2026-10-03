@@ -321,9 +321,9 @@ def test_denied_step_never_launches_and_fallback_is_guarded(
         prompts.append(message)
         return "no" if "protected" in message else "yes"
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         launched.append(Path(argv[-1]).name)
-        return original_run(argv, cwd, stdin)
+        return original_run(argv, cwd, stdin, **kwargs)
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     monkeypatch.setattr(runner, "run_cli_argv", run)
@@ -362,7 +362,7 @@ def test_pipeline_preserves_exact_stdout_and_uses_last_status(
     (tmp_path / "source").write_text("data")
     inputs: list[str | None] = []
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         inputs.append(stdin)
         return subprocess.CompletedProcess(
             argv, 7 if len(inputs) == 1 else 0, stdout, "diagnostic"
@@ -396,7 +396,7 @@ def test_failed_pipeline_stage_supplies_empty_input_to_next_guarded_stage(
     (tmp_path / "source").write_text("data")
     inputs: list[str | None] = []
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         inputs.append(stdin)
         if Path(argv[-1]).name == "first":
             raise subprocess.TimeoutExpired(argv, 1, output="discard partial")
@@ -449,7 +449,7 @@ def test_ordinary_process_failures_allow_fallback(
             raise FileNotFoundError("Missing cp")
         return original_require(binding)
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         launched.append(Path(argv[0]).name)
         if launched[-1] == "cp":
             if failure == "disappeared":
@@ -495,7 +495,7 @@ def test_terminal_failures_never_reach_fallback(
     (tmp_path / "source").write_text("data")
     launched: list[list[str]] = []
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         launched.append(argv)
         if failure == "error":
             raise OSError("Unexpected process failure")
@@ -525,7 +525,7 @@ def test_sequence_history_is_bounded_and_keeps_latest_diagnostics(
     (tmp_path / "source").write_text("data")
     calls = []
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         step = len(calls)
         calls.append(argv)
         if terminal_error and step == 3:
@@ -565,7 +565,7 @@ def test_bounding_history_preserves_full_piped_stdout(tmp_path: Path, monkeypatc
     stdout = "p" * (LIGHT_MAX_CHARS + 1)
     inputs = []
 
-    def run(argv, cwd, stdin):
+    def run(argv, cwd, stdin, **kwargs):
         inputs.append(stdin)
         if len(inputs) == 1:
             return subprocess.CompletedProcess(
