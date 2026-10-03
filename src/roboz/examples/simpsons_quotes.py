@@ -48,6 +48,7 @@ QUOTES: Final[list[str]] = [
     "Worst episode ever.",
     "Don't have a cow, man!",
     "Excellent!",
+    "Thank you, come again!",
     "I, for one, welcome our new insect overlords.",
     "I am so smart! S-M-R-T!",
     "Hi, everybody!",
