@@ -80,6 +80,48 @@ Rename a regular file (`mv -T reports/a.txt reports/renamed.txt`):
 
 This requires DELETE on `reports/a.txt` and CREATE on `reports/renamed.txt`.
 
+### Source patterns
+
+Use single stars in any source-path component:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Copy Python sources into backup.",
+  "value": [
+    ["cp", "CMD"],
+    ["projects/*/src/*.py", "PTH"],
+    ["backup", "PTH"]
+  ]
+}
+```
+
+`*` matches zero or more characters within one component. Patterns such as
+`src/*`, `src/*.py`, and `report-*-final.*` are supported. Hidden names require
+an explicitly leading dot in each component: `src/*` excludes them and `src/.*`
+includes them. Wildcards never select the special `.` or `..` directory entries.
+These follow the [Bash filename-matching rules](https://www.gnu.org/s/bash/manual/html_node/Filename-Expansion.html).
+
+Source operands retain their order; each pattern's matches are sorted in
+C-locale filesystem byte order. If any pattern has no matches, the entire call
+is rejected before execution. Missing or non-directory branches contribute no
+matches; symlinks, permission errors, and other traversal errors reject the
+call. Matched filenames are literal executable arguments, including spaces,
+leading dashes, and wildcard characters; they are never expanded again.
+
+Destinations, both the last positional PTH and `-t` values, remain literal and
+reject `*`. `**`, `?`, and bracket patterns are unsupported in all input paths.
+There is no shell quoting, variable expansion, or command substitution.
+Multiple-source and `-T` constraints apply to the expanded source count.
+Duplicate sources, overlaps, colliding outputs, and unsupported matched entries
+reject the entire call. Every match receives the existing permission checks.
+
+A trailing slash selects directories. Suffixes such as `/.` and `/..` retain
+their native meaning. For a single match, `cp -R project/s*/. backup` copies the
+directory contents directly into `backup`. Conflicting transfer roots are still
+rejected.
+Matched directories require a recursive flag for `cp`; `mv` needs none.
+
 ### Directories
 
 Copy a tree (`cp -R src backup`):
@@ -129,11 +171,12 @@ and [GNU mv manual](https://www.gnu.org/s/coreutils/manual/html_node/mv-invocati
 ## Supported subset
 
 - One command per call, beginning with `cp` or `mv` tagged CMD.
-- Flags use FLG; literal paths use PTH. ARG has no allowed use in these commands.
+- Flags use FLG; source patterns and literal destinations use PTH. ARG has no
+  allowed use in these commands.
 - Flags precede positional operands. This avoids dependence on option
   permutation and settings such as `POSIXLY_CORRECT`.
 - `-t` / `--target-directory` consumes a following PTH naming an existing directory.
-- `-T` / `--no-target-directory` requires one source and an exact destination.
+- `-T` / `--no-target-directory` requires one expanded source and an exact destination.
 - `cp` accepts `-r` / `-R` / `--recursive` for directory copies. `mv` moves
   directories without a recursive flag.
 - Both commands accept `-f` / `--force` and `--strip-trailing-slashes`.
@@ -153,7 +196,8 @@ Examples rejected before execution:
 | `-v --verbose`, `-vt`, `--target-directory=reports` | Repeated, bundled, or attached option forms |
 | Directory copies without a recursive flag, or `mv -r` | Native commands require recursion only for directory copies |
 | A special file anywhere in the source tree or at a mapped destination | Only regular files and directories are supported |
-| `*.txt` | Glob paths are unsupported |
+| `**`, `?.txt`, `[ab].txt`, or a destination containing `*` | Unsupported input patterns or a nonliteral destination |
+| A source pattern with no matches | All operands must resolve before execution |
 | A symlink in a source, destination, or path component | Symlinks are unsupported |
 | A source or existing destination file with more than one hard link | Hard-linked files are unsupported for both cp and mv |
 | Overlapping sources or outputs, a source/destination overlap, or a destination aliasing a source | Conflicting transfers |

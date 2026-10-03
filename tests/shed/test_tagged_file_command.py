@@ -127,7 +127,7 @@ def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
             "cannot be used together",
         ),
         ([("source", "PTH"), ("-v", "FLG"), ("target", "PTH")], "Place flags before"),
-        ([("*.txt", "PTH"), ("out", "PTH")], "Unsupported PTH"),
+        ([("**.txt", "PTH"), ("out", "PTH")], "Unsupported PTH"),
     ],
 )
 def test_unsupported_tokens_stop_preparation(
@@ -1047,4 +1047,425 @@ def test_recursive_traversal_error_stops_preparation(
     )
     assert isinstance(result, ParseError)
     assert "Cannot list nested directory" in result.message
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    ("pattern", "matches"),
+    [
+        (
+            "src/*",
+            [
+                "src/- option *?[].py",
+                "src/a.py",
+                "src/b.py",
+                "src/dir",
+                "src/report--final.txt",
+                "src/report-q-final.csv",
+            ],
+        ),
+        ("src/*.py", ["src/- option *?[].py", "src/a.py", "src/b.py"]),
+        ("src/.*", ["src/.hidden.py", "src/.hidden_dir"]),
+        ("src/*/", ["src/dir/"]),
+        ("src/*/.", ["src/dir/."]),
+        ("src/*/..", ["src/dir/.."]),
+        ("src/*///", ["src/dir///"]),
+        ("projects/*/src/*.py", ["projects/a/src/d.py", "projects/b/src/c.py"]),
+        ("projects/.* /src/*.py", ["projects/.hidden /src/h.py"]),
+        ("src/report-*-final.*", ["src/report--final.txt", "src/report-q-final.csv"]),
+    ],
+)
+def test_source_patterns_match_controlled_bash_expansion(
+    tmp_path: Path, pattern: str, matches: list[str]
+) -> None:
+    files = [
+        "src/b.py",
+        "src/a.py",
+        "src/- option *?[].py",
+        "src/.hidden.py",
+        "src/.hidden_dir/file.py",
+        "src/dir/file.py",
+        "src/report--final.txt",
+        "src/report-q-final.csv",
+        "projects/b/src/c.py",
+        "projects/a/src/d.py",
+        "projects/.hidden /src/h.py",
+        "projects/not_a_directory",
+    ]
+    for name in files:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(name)
+    (tmp_path / "projects/missing_src").mkdir()
+    (tmp_path / "out").mkdir()
+    result = _resolve(
+        tmp_path,
+        [("cp", "CMD"), ("-R", "FLG"), (pattern, "PTH"), ("out", "PTH")],
+    )
+    assert isinstance(result, ResolvedFileCommand)
+    assert result.items[0].value.argv == [
+        "cp",
+        "-R",
+        *(f"{tmp_path}/{name}" for name in matches),
+        f"{tmp_path}/out",
+    ]
+    if shutil.which("bash"):
+        bash = subprocess.run(
+            [
+                "bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                "unset GLOBIGNORE; shopt -u dotglob nullglob failglob; "
+                'IFS=; printf "%s\\0" $1',
+                "matching-test",
+                pattern,
+            ],
+            cwd=tmp_path,
+            env={**os.environ, "LC_ALL": "C"},
+            capture_output=True,
+            check=True,
+        )
+        # Bash collapses repeated trailing separators; prepared argv retains them.
+        bash_matches = [
+            name.rstrip("/") + "/" if pattern.endswith("/") else name
+            for name in matches
+        ]
+        actual = bash.stdout.split(b"\0")[:-1]
+        # Older Bash versions include special dot entries in wildcard matches.
+        if "*" in pattern.rsplit("/", 1)[-1]:
+            actual = [
+                name for name in actual if name.rsplit(b"/", 1)[-1] not in {b".", b".."}
+            ]
+        assert actual == [os.fsencode(name) for name in bash_matches]
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+@pytest.mark.parametrize("target_option", [False, True])
+def test_expansion_preserves_operand_order_flags_and_original_input(
+    tmp_path: Path, command: str, target_option: bool
+) -> None:
+    for name in ["literal", "z.py", "A.py", "a.py", "ä.py"]:
+        (tmp_path / name).write_text(name)
+    (tmp_path / "out").mkdir()
+    tokens: list[TaggedToken] = [(command, "CMD"), ("-v", "FLG")]
+    if target_option:
+        tokens.extend([("-t", "FLG"), ("out", "PTH"), ("--", "FLG")])
+    tokens.extend([("literal", "PTH"), ("*.py", "PTH")])
+    if not target_option:
+        tokens.append(("out", "PTH"))
+    command_input = TaggedFileCommand(value=tokens)
+    result = resolve_tagged_command(tmp_path)(command_input, [])
+    assert isinstance(result, ResolvedFileCommand)
+    assert result.original_input == command_input
+    argv = [command, "-v"]
+    if target_option:
+        argv.extend(["-t", f"{tmp_path}/out", "--"])
+    argv.extend(
+        f"{tmp_path}/{name}" for name in ["literal", "A.py", "a.py", "z.py", "ä.py"]
+    )
+    if not target_option:
+        argv.append(f"{tmp_path}/out")
+    assert result.items[0].value.argv == argv
+
+
+@pytest.mark.parametrize(
+    ("arguments", "error"),
+    [
+        (["missing*", "out"], "no matches"),
+        (["*.py", "missing*", "out"], "no matches"),
+        (["src/*/missing.py", "out"], "no matches"),
+        (["missing/../*.py", "out"], "no matches"),
+        (["src/file.py/../*.py", "out"], "no matches"),
+        (["src/*.py/", "out"], "no matches"),
+        (["-T", "*.py", "out"], "exactly one source"),
+        (["*.py", "new"], "Multiple sources"),
+        (["*.py", "a.py", "out"], "Overlapping"),
+        (["*.py", "out*"], "Destination PTH must be literal"),
+        (["-t", "out*", "*.py"], "Destination PTH must be literal"),
+        (["**.py", "out"], "Unsupported PTH"),
+        (["src/**/file", "out"], "Unsupported PTH"),
+        (["?*.py", "out"], "Unsupported PTH"),
+        (["[ab]*.py", "out"], "Unsupported PTH"),
+        (["*.py", "target**"], "Unsupported PTH"),
+    ],
+)
+def test_invalid_patterns_and_expanded_counts_stop_the_chain(
+    tmp_path: Path, arguments: list[str], error: str
+) -> None:
+    (tmp_path / "a.py").write_text("a")
+    (tmp_path / "b.py").write_text("b")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/file.py").write_text("file")
+    (tmp_path / "out").mkdir()
+    tokens: list[TaggedToken] = [("cp", "CMD")]
+    tokens.extend((arg, "FLG" if arg.startswith("-") else "PTH") for arg in arguments)
+    responses = _invoke(
+        get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
+        [_call(tokens)],
+    )
+    assert responses[0]["kind"] == "parse_error"
+    assert error in responses[0]["message"]
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert list((tmp_path / "out").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "kind", ["collision", "overlap", "directory", "hardlink", "fifo", "nested_link"]
+)
+def test_unsupported_expanded_transfers_reject_all_matches(
+    tmp_path: Path, kind: str
+) -> None:
+    (tmp_path / "projects/a/src").mkdir(parents=True)
+    (tmp_path / "projects/b/other").mkdir(parents=True)
+    (tmp_path / "projects/a/src/file").write_text("a")
+    (tmp_path / "projects/b/other/file").write_text("b")
+    (tmp_path / "out").mkdir()
+    pattern = "projects/*/*"
+    flags: list[TaggedToken] = [("-R", "FLG")]
+    if kind == "collision":
+        pattern += "/file"
+    elif kind == "overlap":
+        flags.append(("projects/a", "PTH"))
+    elif kind == "directory":
+        flags = []
+    elif kind == "hardlink":
+        (tmp_path / "projects/a/src/alias").hardlink_to(
+            tmp_path / "projects/a/src/file"
+        )
+    elif kind == "fifo":
+        os.mkfifo(tmp_path / "projects/a/src/pipe")
+    else:
+        (tmp_path / "projects/a/src/link").symlink_to(
+            tmp_path / "projects/b/other/file"
+        )
+    result = _resolve(
+        tmp_path, [("cp", "CMD"), *flags, (pattern, "PTH"), ("out", "PTH")]
+    )
+    assert isinstance(result, ParseError)
+    assert list((tmp_path / "out").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "pattern", ["link/*.py", "link/../*.py", "*link", "*link/*.py", "*link/"]
+)
+def test_source_expansion_rejects_symlinks_before_following_them(
+    tmp_path: Path, pattern: str
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/file.py").write_text("data")
+    (tmp_path / "link").symlink_to(tmp_path / "src", target_is_directory=True)
+    result = _resolve(tmp_path, [("cp", "CMD"), (pattern, "PTH"), ("out", "PTH")])
+    assert isinstance(result, ParseError)
+    assert "Symlinks are unsupported" in result.message
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("boundary", ["scan", "stat"])
+def test_source_expansion_propagates_traversal_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    (tmp_path / "projects/a/src").mkdir(parents=True)
+    (tmp_path / "projects/a/src/file.py").write_text("a")
+    (tmp_path / "projects/b/src").mkdir(parents=True)
+    original_iterdir = Path.iterdir
+    original_stat = Path.stat
+    blocked = tmp_path / "projects/b/src"
+
+    def iterdir(path: Path):
+        if path == blocked:
+            raise PermissionError("Cannot scan source directory")
+        return original_iterdir(path)
+
+    def stat(path: Path, *, follow_symlinks: bool = True):
+        if path == blocked and follow_symlinks:
+            raise OSError("Cannot stat source directory")
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(
+        Path,
+        "iterdir" if boundary == "scan" else "stat",
+        iterdir if boundary == "scan" else stat,
+    )
+    result = _resolve(
+        tmp_path, [("cp", "CMD"), ("projects/*/src/*.py", "PTH"), ("out", "PTH")]
+    )
+    assert isinstance(result, ParseError)
+    assert f"Cannot {boundary} source directory" in result.message
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+def test_one_denied_pattern_match_blocks_every_transfer_and_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    for name in ["a.py", "b.py"]:
+        (tmp_path / name).write_text(name)
+    (tmp_path / "out").mkdir()
+
+    def unexpected_prompt(*args, **kwargs):
+        pytest.fail("A denied expanded command requested approval")
+
+    monkeypatch.setattr(runtime, "interact_with_user", unexpected_prompt)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[
+            PermissionRule(
+                pattern="b.py",
+                operations={Operation.READ if command == "cp" else Operation.DELETE},
+            )
+        ],
+        ask_rules=[PermissionRule(pattern="out/a.py", operations={Operation.CREATE})],
+        pipe=EventPipe(),
+    )
+    responses = _invoke(
+        tools,
+        [_call([(command, "CMD"), ("-f", "FLG"), ("*.py", "PTH"), ("out", "PTH")])],
+    )
+    assert responses[1]["deny_reason"] == "policy_denied"
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert list((tmp_path / "out").iterdir()) == []
+    assert (tmp_path / "a.py").read_text() == "a.py"
+    assert (tmp_path / "b.py").read_text() == "b.py"
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+@pytest.mark.parametrize("accepted", [True, False])
+def test_pattern_force_transfer_requires_overwrite_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, accepted: bool, command: str
+) -> None:
+    (tmp_path / "a.py").write_text("new")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out/a.py").write_text("old")
+    prompts: list[str] = []
+
+    def approve(message: str, *, with_reply: bool):
+        prompts.append(message)
+        return "yes" if accepted else "no"
+
+    monkeypatch.setattr(runtime, "interact_with_user", approve)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        ask_rules=[PermissionRule(pattern="out/a.py", operations={Operation.DELETE})],
+        pipe=EventPipe(),
+    )
+    responses = _invoke(
+        tools,
+        [_call([(command, "CMD"), ("-f", "FLG"), ("*.py", "PTH"), ("out", "PTH")])],
+    )
+    assert len(prompts) == 1 and str(tmp_path / "out/a.py") in prompts[0]
+    assert (
+        "execute_tagged_file_command" in [r.get("caller") for r in responses]
+    ) is accepted
+    assert (tmp_path / "out/a.py").read_text() == ("new" if accepted else "old")
+
+
+@pytest.mark.skipif(
+    not shutil.which("cp") or not shutil.which("mv"), reason="Requires cp and mv"
+)
+@pytest.mark.parametrize(
+    ("command", "flags", "pattern", "matches"),
+    [
+        (
+            "cp",
+            [],
+            "projects/*/src/*.py",
+            ["projects/a/src/a.py", "projects/b/src/b.py"],
+        ),
+        (
+            "mv",
+            ["-t", "out"],
+            "projects/*/src/*.py",
+            ["projects/a/src/a.py", "projects/b/src/b.py"],
+        ),
+        ("cp", [], "*literal*", ["- literal **?[].py"]),
+        ("mv", [], "*literal*", ["- literal **?[].py"]),
+        ("cp", ["-R"], "projects/a/s*/.", ["projects/a/src/."]),
+        ("cp", ["-R"], "projects/a/src/*/..", ["projects/a/src/nested/.."]),
+        ("cp", ["-R"], "projects/*/s*/", ["projects/a/src/", "projects/b/stuff/"]),
+        ("mv", [], "projects/*/s*/", ["projects/a/src/", "projects/b/stuff/"]),
+    ],
+)
+def test_pattern_transfers_match_explicit_native_expansions(
+    tmp_path: Path, command: str, flags: list[str], pattern: str, matches: list[str]
+) -> None:
+    native = tmp_path / "native"
+    guarded = tmp_path / "guarded"
+    for root in [native, guarded]:
+        (root / "projects/a/src/nested").mkdir(parents=True)
+        (root / "projects/a/src/a.py").write_text("a")
+        (root / "projects/a/src/.hidden").write_text("hidden")
+        (root / "projects/b/stuff").mkdir(parents=True)
+        (root / "projects/b/stuff/b.py").write_text("b")
+        # File matching uses src; directory matching uses distinct output names.
+        if "*.py" in pattern:
+            (root / "projects/b/stuff").rename(root / "projects/b/src")
+        (root / "- literal **?[].py").write_text("literal")
+        (root / "out").mkdir()
+    native_argv = [command, *flags, *(f"{native}/{name}" for name in matches)]
+    if "-t" not in flags:
+        native_argv.append("out")
+    expected = subprocess.run(native_argv, cwd=native, capture_output=True, check=True)
+    tokens: list[TaggedToken] = [(command, "CMD")]
+    tokens.extend((arg, "FLG" if arg.startswith("-") else "PTH") for arg in flags)
+    tokens.append((pattern, "PTH"))
+    if "-t" not in flags:
+        tokens.append(("out", "PTH"))
+    responses = _invoke(
+        get_run_tagged_file_command(base=guarded, default_verdict=ActionVerdict.allow),
+        [_call(tokens)],
+    )
+    execution = next(
+        r for r in responses if r.get("caller") == "execute_tagged_file_command"
+    )
+    assert execution["value"].startswith(
+        f"Overall: success (exit {expected.returncode})"
+    )
+    assert _tree_contents(guarded) == _tree_contents(native)
+
+
+def test_absolute_source_pattern_keeps_base_wildcards_literal(tmp_path: Path) -> None:
+    base = tmp_path / "base*"
+    base.mkdir()
+    (base / "a.py").write_text("data")
+    for pattern in ["*.py", f"{base}/*.py"]:
+        result = _resolve(base, [("cp", "CMD"), (pattern, "PTH"), ("target", "PTH")])
+        assert isinstance(result, ResolvedFileCommand)
+        assert result.items[0].value.argv == ["cp", f"{base}/a.py", f"{base}/target"]
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+def test_exact_destination_accepts_one_expanded_source(
+    tmp_path: Path, command: str
+) -> None:
+    (tmp_path / "source.py").write_text("data")
+    result = _resolve(
+        tmp_path, [(command, "CMD"), ("-T", "FLG"), ("*.py", "PTH"), ("target", "PTH")]
+    )
+    assert isinstance(result, ResolvedFileCommand)
+    assert result.items[0].value.argv == [
+        command,
+        "-T",
+        f"{tmp_path}/source.py",
+        f"{tmp_path}/target",
+    ]
+
+
+def test_matched_directory_descendant_denial_blocks_the_call(tmp_path: Path) -> None:
+    (tmp_path / "src/nested").mkdir(parents=True)
+    (tmp_path / "src/nested/file").write_text("data")
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[
+            PermissionRule(pattern="src/nested/file", operations={Operation.READ})
+        ],
+    )
+    responses = _invoke(
+        tools, [_call([("cp", "CMD"), ("-R", "FLG"), ("s*", "PTH"), ("out", "PTH")])]
+    )
+    assert responses[1]["deny_reason"] == "policy_denied"
+    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
     assert not (tmp_path / "out").exists()
