@@ -24,6 +24,26 @@ sequence = TaggedFileCommand(
 )
 assert_type(sequence.value, list[TaggedToken])
 
+readers = TaggedFileCommand(
+    value=[
+        ("pwd", "CMD"),
+        (";", "CTL"),
+        ("cat", "CMD"),
+        ("source", "PTH"),
+        ("|", "CTL"),
+        ("head", "CMD"),
+        ("-n", "FLG"),
+        ("2", "ARG"),
+        ("|", "CTL"),
+        ("tail", "CMD"),
+        ("-", "ARG"),
+        ("|", "CTL"),
+        ("wc", "CMD"),
+        ("-l", "FLG"),
+    ]
+)
+assert_type(readers.value, list[TaggedToken])
+
 
 def check_token_value(token: TaggedToken) -> None:
     if token[1] == "CMD":

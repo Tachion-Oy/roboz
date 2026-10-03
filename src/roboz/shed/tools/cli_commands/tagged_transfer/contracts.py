@@ -12,7 +12,7 @@ from roboz.models import Empty
 from roboz.shed.models import CommandReady, Operation
 
 type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
-type CommandName = Literal["cp", "mv"]
+type CommandName = Literal["cp", "mv", "pwd", "cat", "head", "tail", "wc"]
 type ControlOperator = Literal["&&", "||", ";", "|"]
 type TaggedToken = (
     tuple[CommandName, Literal["CMD"]]
@@ -28,13 +28,15 @@ class TaggedFileCommand(Empty):
         ...,
         min_length=1,
         description=(
-            "Ordered [value, tag] pairs. Each command starts with ['cp', 'CMD'] or "
-            "['mv', 'CMD']; separate commands with ['&&', 'CTL'], ['||', 'CTL'], "
+            "Ordered [value, tag] pairs. Start each command with cp, mv, pwd, cat, "
+            "head, tail, or wc tagged CMD; separate commands with ['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
             "Tag flags FLG and paths PTH. Sources allow '*' within components and "
             "one standalone recursive '**' component, e.g. 'src/**/*.py'; "
             "destinations must be literal. '?' and bracket patterns are "
-            "unsupported. ARG is unsupported for these commands."
+            "unsupported. head/tail counts use unsigned decimal ARG values; "
+            "reader stdin uses ['-', 'ARG']. A '-' tagged PTH names a literal "
+            "file. Omitted reader paths use stdin."
         ),
     )
     model_config = ConfigDict(extra="forbid")
@@ -68,11 +70,44 @@ class CommandExecution(Empty):
     stdin: str | None = None
     accumulated_output: str = ""
     failure: str | None = None
+    ready: CommandReady | None = None
 
 
 @dataclass(frozen=True)
 class TokenRule:
-    """Allow a tagged token, optionally consuming the next token as a value."""
+    """Declare an accepted token and how it participates in argument validation.
+
+    The validator selects the first rule in a command's ``allowed`` tuple whose
+    tag and pattern both match. An unmatched token rejects the command before
+    execution. Matching a rule validates syntax; command preparation determines
+    the required filesystem operations, which the permission guard authorizes.
+
+    Args:
+        tag: Required token role, such as FLG for an option, PTH for a path,
+            or ARG for a count or stdin marker. The value must carry this tag
+            explicitly; its spelling alone does not determine its role.
+        pattern: Regular expression applied with ``fullmatch`` to the token's
+            entire value. For an option taking a value, this matches the option
+            spelling itself, not the following value.
+        option: Canonical key recorded in ``ParsedCommand.options`` with the
+            option's token index. Aliases such as -n and --lines share one key
+            so duplicate and conflicting options can be rejected. The original
+            spelling is preserved in argv. None makes the token a positional
+            operand; options must precede positional operands.
+        takes: Required tag of the immediately following option value, or None
+            if the option takes no value. The following token must also match
+            an allowed rule for this command. It is consumed with the option
+            and is not recorded as a positional operand. Used only when
+            ``option`` is set; command preparation checks any further constraints
+            on the value, such as requiring an unsigned count.
+        ends_options: Mark this option as the option terminator, normally --.
+            Later options are rejected, while positional operands still need
+            to match allowed rules. Used only when ``option`` is set.
+
+    For example, a rule with tag FLG, pattern ``-n|--lines``, option ``-n``,
+    and takes ARG accepts either spelling followed by an ARG token. The command
+    must also declare which ARG values are allowed.
+    """
 
     tag: TokenTag
     pattern: Pattern[str]
@@ -83,11 +118,16 @@ class TokenRule:
 
 @dataclass(frozen=True)
 class ParsedCommand:
-    """Validated argv with positional indices and canonical option indices."""
+    """Validated tokens with positional indices and canonical option indices."""
 
-    argv: list[str]
+    tokens: list[TaggedToken]
     operands: list[int]
     options: dict[str, int]
+
+    @property
+    def argv(self) -> list[str]:
+        """Return argument spellings without losing the original token roles."""
+        return [value for value, _ in self.tokens]
 
 
 @dataclass(frozen=True)

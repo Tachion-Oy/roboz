@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the opt-in tagged CLI with `pwd`, `cat`, `head`, `tail`, and `wc`,
+  including guarded file patterns and stdin pipelines alongside `cp`/`mv`.
+  The existing default CLI is unchanged.
+
 - Support one recursive `**` component in tagged `cp`/`mv` source patterns,
   including zero-depth and directory-only matches. Allow ancestor/descendant
   sources with separate destination mappings, retaining native operand order,

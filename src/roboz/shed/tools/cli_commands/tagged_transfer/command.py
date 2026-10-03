@@ -32,11 +32,31 @@ from .specs import COMMANDS
 def resolve_tagged_command(
     input: TaggedFileCommand, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
-    """Copy or move files and directories using ordered [value, tag] pairs in value.
+    """Read, copy, or move files using ordered [value, tag] pairs in value.
 
-    Start with ['cp', 'CMD'] or ['mv', 'CMD']. Tag flags FLG and paths PTH;
-    ARG is unsupported. Example: value=[['cp', 'CMD'], ['source.txt', 'PTH'],
-    ['copy.txt', 'PTH']]. To copy a directory use -r/-R/--recursive, e.g.
+    Start each command with cp, mv, pwd, cat, head, tail, or wc tagged CMD.
+    Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
+    Place separate flags before operands; -- ends options. Unknown, repeated,
+    bundled, and attached options are unsupported.
+    pwd prints the physical base directory, accepts -P/--physical, and requires
+    READ on the base. It takes no operands. cat accepts -n/--number,
+    -b/--number-nonblank (overrides -n), -s/--squeeze-blank, -E/--show-ends,
+    and -T/--show-tabs. head/tail default to ten lines and accept -n/--lines
+    or -c/--bytes followed by an unsigned decimal ARG, including zero, plus
+    -q/--quiet/--silent or -v/--verbose. Line/byte and quiet/verbose modes conflict.
+    Signed counts, size suffixes, and tail follow mode are unsupported.
+    wc accepts combinations of -l/--lines, -w/--words, -c/--bytes, -m/--chars,
+    and -L/--max-line-length; indirect file lists are unsupported.
+    Readers require READ on each selected regular file; directories are rejected.
+    File operands retain order and repeats. Omitted file operands or ['-', 'ARG']
+    read stdin; ['-', 'PTH'] reads the literal file. Without a pipe stdin is empty.
+    Example: value=[['cat', 'CMD'], ['data.txt', 'PTH'], ['|', 'CTL'],
+    ['head', 'CMD'], ['-n', 'FLG'], ['2', 'ARG'], ['|', 'CTL'],
+    ['wc', 'CMD'], ['-l', 'FLG']].
+
+    cp/mv accept only PTH operands. Example: value=[['cp', 'CMD'],
+    ['source.txt', 'PTH'], ['copy.txt', 'PTH']]. To copy a directory use
+    -r/-R/--recursive, e.g.
     value=[['cp', 'CMD'], ['-R', 'FLG'], ['src', 'PTH'], ['backup', 'PTH']].
     mv moves directories without a recursive flag. Both commands allow
     -v/--verbose, -f/--force, --strip-trailing-slashes, -t/--target-directory
@@ -58,10 +78,10 @@ def resolve_tagged_command(
     directory. Place flags before operands. -T requires one expanded source and an
     exact destination; -t and -T conflict. cp merges directory contents; src/.
     copies the contents directly into the destination. mv can replace an empty
-    directory, but cannot merge directories. Repeated flags, bundled flags, attached flag values,
-    symlinks, hard-linked files, special files, duplicate sources, conflicting
-    destinations, source/destination overlap, and cross-filesystem moves are
-    unsupported. Ancestor/descendant sources are allowed with separate outputs;
+    directory, but cannot merge directories. Symlinks, hard-linked files, and
+    special files are unsupported. Transfers reject duplicate sources, conflicting
+    destinations, source/destination overlap, and cross-filesystem moves.
+    Ancestor/descendant sources are allowed with separate outputs;
     mv may move a parent then fail on vanished descendants. Native partial effects
     and exit status are preserved.
     Paths may be absolute or relative to the configured base. cp requires READ
@@ -97,6 +117,7 @@ def _prepare_step(
     input: CommandExecution, base: Path
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
     input.failure = None
+    input.ready = None
     tokens, _ = split_command(input.remaining)
     try:
         name = tokens[0][0]
@@ -109,7 +130,9 @@ def _prepare_step(
         input.failure = str(error)
         return ResolvedFileCommand(original_input=input, items=[])
 
-    prepared.ready.stdin = input.stdin
+    if input.stdin is not None:
+        prepared.ready.stdin = input.stdin
+    input.ready = prepared.ready
     return ResolvedFileCommand(
         original_input=input,
         items=[
@@ -130,7 +153,7 @@ def get_run_tagged_file_command(
     execute_cli_truncation: TruncationSpec = default_cli_truncation(),
     pipe: EventPipe | None = None,
 ) -> list[Tool]:
-    """Build the experimental tagged cp/mv resolve -> guard -> execute chain.
+    """Build the opt-in tagged CLI resolve -> guard -> execute chain.
 
     Supply an absolute base and allow/deny/ask rules. Patterns match literal POSIX
     names, preserving spaces and backslashes. Only the entry tool is exposed to

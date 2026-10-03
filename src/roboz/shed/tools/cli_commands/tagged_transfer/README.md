@@ -1,6 +1,8 @@
-# Tagged cp/mv experiment
+# Tagged file commands
 
-This opt-in tool tests an ordered, tagged command contract with two commands.
+This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, and `wc`
+through an ordered, tagged command contract. The existing v1 CLI and default
+capabilities remain available.
 It uses the existing **resolve → permission guard → execute** tool chain. The
 new resolver validates the supported syntax and prepares both the executable
 argv and its required filesystem operations. It does not use path extraction.
@@ -82,6 +84,50 @@ Rename a regular file (`mv -T reports/a.txt reports/renamed.txt`):
 
 This requires DELETE on `reports/a.txt` and CREATE on `reports/renamed.txt`.
 
+### Read commands
+
+Readers support the following flags as separate FLG tokens, before operands:
+
+| Command | Supported options |
+| --- | --- |
+| `pwd` | `-P` / `--physical`; physical output is always used; no operands |
+| `cat` | `-n` / `--number`, `-b` / `--number-nonblank`, `-s` / `--squeeze-blank`, `-E` / `--show-ends`, `-T` / `--show-tabs` |
+| `head`, `tail` | `-n` / `--lines` or `-c` / `--bytes`, followed by an unsigned decimal ARG; `-q` / `--quiet` / `--silent` or `-v` / `--verbose` |
+| `wc` | Combinations of `-l` / `--lines`, `-w` / `--words`, `-c` / `--bytes`, `-m` / `--chars`, `-L` / `--max-line-length` |
+
+Defaults follow the native GNU commands: head/tail select ten lines and wc
+reports its default counts. Counts may be zero, but signed values and size
+suffixes are unsupported. Line/byte and quiet/verbose modes conflict. For cat,
+`-b` overrides `-n`. Unknown, bundled, attached, and repeated options are
+rejected, including aliases of the same option. `--` ends options.
+Follow mode and indirect file lists such as `wc --files0-from` are unsupported.
+
+File operands use PTH and support the source patterns described below. Every
+selected path must be a regular file without symlinks or hard links; selected
+directories and special files reject the whole command. READ is required on
+every selected file. Operands keep their order and repeats, while permission
+checks and approvals are deduplicated per file. `pwd` requires READ on the
+configured base itself.
+
+Omit file operands or use `["-", "ARG"]` to read stdin. `["-", "PTH"]`
+reads the literal file named `-`. File and stdin operands may be interleaved.
+Without an incoming pipe, stdin is empty; the tool never waits for terminal
+input. Stdin-only readers need no filesystem permissions.
+
+For example, count the first two lines of a file:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Count the first two lines.",
+  "value": [
+    ["cat", "CMD"], ["data.txt", "PTH"], ["|", "CTL"],
+    ["head", "CMD"], ["-n", "FLG"], ["2", "ARG"], ["|", "CTL"],
+    ["wc", "CMD"], ["-l", "FLG"]
+  ]
+}
+```
+
 ### Command sequences
 
 Tag control operators `CTL` in the same flat list:
@@ -107,8 +153,8 @@ after either `a` or `b` succeeds. Skipping a pipeline skips all its stages and
 retains the last executed status. The final result reports that status.
 
 Only CTL tags split commands: `["&&", "PTH"]` names a literal file. There is no
-separate chain field. The input types and schema restrict CMD values to `cp`/`mv`
-and CTL values to the four supported operators. Every segment starts with CMD;
+separate chain field. The input types and schema restrict CMD values to the seven
+supported commands and CTL values to the four supported operators. Every segment starts with CMD;
 leading, trailing, adjacent, or unsupported control operators reject the entire
 sequence before execution.
 Individual command options and paths are checked only when reached. Earlier
@@ -177,9 +223,9 @@ Destinations, both the last positional PTH and `-t` values, remain literal and
 reject `*`. `?` and bracket patterns are unsupported in all input paths.
 There is no shell quoting, variable expansion, or command substitution.
 Multiple-source and `-T` constraints apply to the expanded source count.
-Duplicate sources, conflicting destinations, source/destination overlap, and
-unsupported matched entries reject the entire command. Every match receives
-the existing permission checks. Selected directories require checks for every
+For transfers, duplicate sources, conflicting destinations, source/destination
+overlap, and unsupported matched entries reject the entire command. Every match
+receives the existing permission checks. Selected transfer directories require checks for every
 descendant, including hidden entries that the pattern itself does not select.
 
 Ancestor/descendant sources are allowed for literal and patterned operands when
@@ -243,7 +289,7 @@ can be transferred to a missing `new/`, while `new/.` still requires `new` to
 exist. See the [GNU cp manual](https://www.gnu.org/s/coreutils/manual/html_node/cp-invocation.html)
 and [GNU mv manual](https://www.gnu.org/s/coreutils/manual/html_node/mv-invocation.html).
 
-## Supported subset
+## Transfer command subset
 
 - One or more commands, each beginning with `cp` or `mv` tagged CMD, separated
   by `&&`, `||`, `;`, or `|` tagged CTL.
@@ -291,11 +337,14 @@ contains only the tagged value; its validator checks the command/CTL grammar.
 The executor consumes the remaining tokens directly, using the latest exit
 status to skip or select the next command.
 The guard transports the execution payload through its existing original-input
-field: remaining tokens, pipe input, accumulated output, and preparation errors.
+field: the prepared command, remaining tokens, pipe input, accumulated output,
+and preparation errors. The prepared command is independent of permission items,
+allowing stdin-only readers to execute with no filesystem requirements. Each
+reached command clears the previous payload before preparation.
 The original request is retained in full. Both entry and continuation use the
 same step preparation; there is no stored list of parsed commands or operators.
 
 The existing CLI tools and default capabilities are unchanged. Inspect
 `contracts.py`, `sequence.py`, `command.py`, `guard.py`, and `execute.py` to review
 the contract and guarded loop. Run `uv run pytest tests/shed/test_tagged*.py` for
-scripted agent calls that copy and move temporary files through the full chain.
+scripted agent calls that read, copy, and move temporary files through the full chain.

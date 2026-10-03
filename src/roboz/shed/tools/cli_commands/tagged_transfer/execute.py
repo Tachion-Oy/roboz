@@ -113,7 +113,9 @@ def _execute_step(
             failure = input.message or "Permission denied"
         if failure is not None:
             return command, subprocess.CompletedProcess([], 1, "", failure)
-        ready = input.items[0].value
+        ready = execution.ready
+        if ready is None:
+            raise ValueError("Missing prepared command")
         command = ready.display_command
         return command, _run_command(ready, ctx)
     except Exception as error:

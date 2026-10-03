@@ -1,4 +1,4 @@
-"""Experimental tagged cp/mv sequences; opt in through this package."""
+"""Experimental tagged file-command sequences; opt in through this package."""
 
 from .command import get_run_tagged_file_command
 from .contracts import (

@@ -1,12 +1,22 @@
-"""Small validation and filesystem transfer helpers for tagged commands."""
+"""Small validation and filesystem preparation helpers for tagged commands."""
 
 import os
+import re
+import shlex
 import stat
 from fnmatch import fnmatchcase
 from itertools import combinations, product
 from pathlib import Path
 
-from .contracts import ParsedCommand, TaggedCommandSpec, TaggedToken, TokenRule
+from roboz.shed.models import CommandReady, Operation
+
+from .contracts import (
+    ParsedCommand,
+    PreparedCommand,
+    TaggedCommandSpec,
+    TaggedToken,
+    TokenRule,
+)
 
 
 def _matching_rule(token: TaggedToken, spec: TaggedCommandSpec) -> TokenRule:
@@ -44,7 +54,7 @@ def _parse_arguments(
         if following is None or following[1][1] != rule.takes:
             raise ValueError(f"{token[0]} requires a following {rule.takes} token")
         _matching_rule(following[1], spec)
-    return ParsedCommand([value for value, _ in tokens], operands, options)
+    return ParsedCommand(tokens, operands, options)
 
 
 def validate_tokens(
@@ -285,3 +295,50 @@ def expand_transfers(transfers: list[tuple[Path, Path]]) -> list[tuple[Path, Pat
         is_directory, _ = source_entries[source]
         _validate_transfer_target(target, source_ids, directory=is_directory)
     return expanded
+
+
+def prepare_read(parsed: ParsedCommand, base: Path) -> PreparedCommand:
+    """Require READ on regular files, preserving repeated operands and stdin."""
+    first_operand = parsed.operands[0] if parsed.operands else len(parsed.tokens)
+    argv = parsed.argv[:first_operand]
+    operations: list[tuple[Operation, Path]] = []
+    for index in parsed.operands:
+        value, tag = parsed.tokens[index]
+        if (value, tag) == ("-", "ARG"):
+            argv.append(value)
+            continue
+        if tag != "PTH":
+            raise ValueError("Reader operands must be PTH or stdin '-' tagged ARG")
+        for spelling in expand_source_path(value, base):
+            path = resolve_literal_path(spelling, base)
+            file_stat = Path(spelling).stat()
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise ValueError(
+                    f"Reader path must be an existing regular file: {path}"
+                )
+            if file_stat.st_nlink > 1:
+                raise ValueError(f"Hard-linked files are unsupported: {path}")
+            argv.append(spelling)
+            operations.append((Operation.READ, path))
+    return PreparedCommand(
+        ready=CommandReady(
+            command_name=argv[0],
+            argv=argv,
+            base_workdir=base,
+            stdin="",
+            display_command=shlex.join(argv),
+        ),
+        operations=list(dict.fromkeys(operations)),
+    )
+
+
+def prepare_counted_read(parsed: ParsedCommand, base: Path) -> PreparedCommand:
+    """Check head/tail counts before preparing their regular-file operands."""
+    for option in ("-n", "-c"):
+        if option in parsed.options:
+            value = parsed.tokens[parsed.options[option] + 1][0]
+            if re.fullmatch(r"[0-9]+", value) is None:
+                raise ValueError(
+                    f"{option} requires an unsigned decimal count tagged ARG"
+                )
+    return prepare_read(parsed, base)
