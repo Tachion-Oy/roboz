@@ -1,0 +1,527 @@
+"""Inline CTL operators preserve a guarded loop and Bash list semantics."""
+
+import asyncio
+import errno
+import json
+import shlex
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from roboz import Agent, runtime
+from roboz.dependencies import ExecutableDependency
+from roboz.llm import MockLLMEndpoint
+from roboz.models import Role
+from roboz.models.truncation import LIGHT_MAX_CHARS
+from roboz.runtime import EventPipe
+from roboz.shed.models import ActionVerdict, Operation, PermissionRule
+from roboz.shed.tools import runner
+from roboz.shed.tools.cli_commands.tagged_transfer import (
+    TaggedFileCommand,
+    TaggedToken,
+    get_run_tagged_file_command,
+)
+from roboz.shed.tools.cli_commands.utilities.constants import MAX_COMMAND_OUTPUT_CHARS
+from roboz.tools import stop
+
+
+def _copy(source: str, destination: str) -> list[TaggedToken]:
+    return [("cp", "CMD"), (source, "PTH"), (destination, "PTH")]
+
+
+def _invoke(tools: list, tokens: list[TaggedToken]) -> list[dict]:
+    agent = Agent(
+        name="tagged_chain_test",
+        system_prompt="Transfer files.",
+        tools=[*tools, stop],
+        agent_endpoint=MockLLMEndpoint(
+            responses=[
+                {
+                    "action": "run_tagged_file_command",
+                    "rationale": "Transfer",
+                    "value": tokens,
+                },
+                {"action": "stop", "rationale": "Done", "value": "ok"},
+            ]
+        ),
+        initial_messages=None,
+    )
+    _, messages = agent.invoke()
+    return [json.loads(m.content) for m in messages if m.role == Role.USER]
+
+
+def _result(responses: list[dict]) -> str:
+    return next(
+        r["value"]
+        for r in reversed(responses)
+        if r.get("caller") == "execute_tagged_file_command"
+    )
+
+
+def test_public_contract_accepts_only_tokens_and_rejects_progress() -> None:
+    schema = TaggedFileCommand.model_json_schema()
+    assert "sequence" not in TaggedFileCommand.model_fields
+    assert "sequence" not in TaggedFileCommand(value=_copy("a", "b")).model_dump()
+    assert "sequence" not in schema["properties"]
+    assert "CommandSequence" not in schema.get("$defs", {})
+    assert schema["$defs"]["CommandName"]["enum"] == ["cp", "mv"]
+    assert schema["$defs"]["ControlOperator"]["enum"] == ["&&", "||", ";", "|"]
+    with pytest.raises(ValidationError):
+        TaggedFileCommand.model_validate({"value": _copy("a", "b"), "chain": "&&"})
+    with pytest.raises(ValidationError):
+        TaggedFileCommand.model_validate({"value": _copy("a", "b"), "sequence": None})
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        [("&&", "CTL"), *_copy("a", "b")],
+        [*_copy("a", "b"), ("||", "CTL")],
+        [*_copy("a", "b"), (";", "CTL"), ("|", "CTL"), *_copy("a", "c")],
+        [*_copy("a", "b"), ("&", "CTL"), *_copy("a", "c")],
+        [*_copy("a", "b"), ("&&", "CTL"), ("a", "PTH")],
+        [*_copy("a", "b"), *_copy("a", "c")],
+    ],
+)
+def test_malformed_sequence_rejects_before_first_transfer(
+    tmp_path: Path, tokens
+) -> None:
+    with pytest.raises(ValidationError):
+        TaggedFileCommand(value=tokens)
+    (tmp_path / "a").write_text("data")
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    responses = _invoke(tools, tokens)
+    assert not any(r.get("caller") == "guard_tagged_file_command" for r in responses)
+    assert not any(r.get("caller") == "execute_tagged_file_command" for r in responses)
+    assert not (tmp_path / "b").exists()
+
+
+def test_one_continuation_reuses_guard_and_resolves_after_prior_writes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "source").write_text("data")
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    entry, guard, execute, continuation = tools
+    assert entry.chained_to is None
+    assert guard.chained_to == [entry, continuation]
+    assert execute.chained_to == [guard]
+    assert continuation.chained_to == [execute]
+    tokens = [
+        *_copy("source", "created.txt"),
+        ("&&", "CTL"),
+        ("mv", "CMD"),
+        ("*.txt", "PTH"),
+        ("renamed", "PTH"),
+        ("&&", "CTL"),
+        *_copy("renamed", "backup"),
+    ]
+    responses = _invoke(tools, tokens)
+    assert [r["caller"] for r in responses] == [
+        "run_tagged_file_command",
+        "guard_tagged_file_command",
+        "execute_tagged_file_command",
+        "continue_tagged_file_command",
+        "guard_tagged_file_command",
+        "execute_tagged_file_command",
+        "continue_tagged_file_command",
+        "guard_tagged_file_command",
+        "execute_tagged_file_command",
+        "stop",
+    ]
+    assert _result(responses).startswith("Overall: success (exit 0)")
+    assert (tmp_path / "backup").read_text() == "data"
+    assert not (tmp_path / "created.txt").exists()
+    for response in responses:
+        if "original_input" in response:
+            assert response["original_input"]["request"]["value"] == [
+                list(t) for t in tokens
+            ]
+    # Reusing the same tools starts a fresh sequence.
+    assert _result(_invoke(tools, _copy("source", "fresh"))).startswith(
+        "Overall: success"
+    )
+    assert (tmp_path / "fresh").read_text() == "data"
+
+
+@pytest.mark.parametrize("name", ["&&", "||", ";", "|"])
+def test_operator_spelling_in_pth_is_literal(tmp_path: Path, name: str) -> None:
+    (tmp_path / name).write_text("data")
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    assert _result(_invoke(tools, _copy(name, "target"))).startswith("Overall: success")
+    assert (tmp_path / "target").read_text() == "data"
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="Requires Bash")
+@pytest.mark.parametrize(
+    ("sources", "operators"),
+    [
+        (["missing", "source", "source"], ["&&", "||"]),
+        (["source", "missing", "source"], ["||", "&&"]),
+        (["missing", "source", "source", "source"], ["&&", "|", ";"]),
+        (
+            ["missing", "source", "source", "source", "source"],
+            ["&&", "|", "|", "||"],
+        ),
+        (["missing", "source", "source"], ["|", "&&"]),
+        (["source", "missing", "source"], ["||", "|"]),
+        (["source", "missing", "source", "missing"], ["&&", "||", ";"]),
+        (["source", "missing", "source", "source"], ["|", "&&", "||"]),
+    ],
+)
+def test_mixed_lists_match_bash(
+    tmp_path: Path, sources: list[str], operators: list[str]
+) -> None:
+    native, guarded = tmp_path / "native", tmp_path / "guarded"
+    for root in [native, guarded]:
+        root.mkdir()
+        (root / "source").write_text("data")
+    tokens: list[TaggedToken] = []
+    script: list[str] = []
+    for i, source in enumerate(sources):
+        if i:
+            tokens.append((operators[i - 1], "CTL"))
+            script.append(operators[i - 1])
+        tokens.extend(_copy(source, f"out{i}"))
+        script.append(shlex.join(["cp", source, f"out{i}"]))
+    expected = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", " ".join(script)],
+        cwd=native,
+        capture_output=True,
+        check=False,
+    )
+    tools = get_run_tagged_file_command(
+        base=guarded, default_verdict=ActionVerdict.allow
+    )
+    result = _result(_invoke(tools, tokens))
+    status = "success" if expected.returncode == 0 else "failure"
+    assert result.startswith(f"Overall: {status} (exit {expected.returncode})")
+    assert {p.name: p.read_text() for p in guarded.iterdir()} == {
+        p.name: p.read_text() for p in native.iterdir()
+    }
+
+
+def test_skipped_pipeline_never_scans_sources_or_prompts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "source").write_text("data")
+    (tmp_path / "blocked").mkdir()
+    original_iterdir = Path.iterdir
+
+    def iterdir(path: Path):
+        assert path != tmp_path / "blocked", "Skipped pattern was expanded"
+        return original_iterdir(path)
+
+    def unexpected_prompt(*args, **kwargs):
+        pytest.fail("Skipped command requested approval")
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(runtime, "interact_with_user", unexpected_prompt)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        ask_rules=[PermissionRule(pattern="skip*", operations={Operation.CREATE})],
+        pipe=EventPipe(),
+    )
+    tokens = [
+        *_copy("source", "first"),
+        ("||", "CTL"),
+        *_copy("blocked/*", "skip1"),
+        ("|", "CTL"),
+        *_copy("source", "skip2"),
+        (";", "CTL"),
+        *_copy("first", "last"),
+    ]
+    responses = _invoke(tools, tokens)
+    assert _result(responses).startswith("Overall: success")
+    assert sum(r["caller"] == "guard_tagged_file_command" for r in responses) == 2
+    assert (tmp_path / "last").read_text() == "data"
+
+
+@pytest.mark.parametrize("denial", ["policy", "approval"])
+def test_denied_step_never_launches_and_fallback_is_guarded(
+    tmp_path: Path, monkeypatch, denial: str
+) -> None:
+    (tmp_path / "source").write_text("data")
+    (tmp_path / "protected").write_text("old")
+    prompts: list[str] = []
+    launched: list[str] = []
+    original_run = runner.run_cli_argv
+
+    def approve(message: str, **kwargs):
+        prompts.append(message)
+        return "no" if "protected" in message else "yes"
+
+    def run(argv, cwd, stdin):
+        launched.append(Path(argv[-1]).name)
+        return original_run(argv, cwd, stdin)
+
+    monkeypatch.setattr(runtime, "interact_with_user", approve)
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    protected = PermissionRule(pattern="protected", operations={Operation.DELETE})
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[protected] if denial == "policy" else [],
+        ask_rules=[
+            protected,
+            PermissionRule(pattern="fallback", operations={Operation.CREATE}),
+        ],
+        pipe=EventPipe(),
+    )
+    responses = _invoke(
+        tools,
+        [
+            *_copy("source", "protected"),
+            ("||", "CTL"),
+            *_copy("source", "fallback"),
+            (";", "CTL"),
+            *_copy("source", "protected"),
+        ],
+    )
+    assert _result(responses).startswith("Overall: failure (exit 1)")
+    assert launched == ["fallback"]
+    assert (tmp_path / "protected").read_text() == "old"
+    assert (tmp_path / "fallback").read_text() == "data"
+    assert len(prompts) == (1 if denial == "policy" else 3)
+
+
+@pytest.mark.parametrize("stdout", ["", "  data\n\n"])
+def test_pipeline_preserves_exact_stdout_and_uses_last_status(
+    tmp_path: Path, monkeypatch, stdout: str
+) -> None:
+    (tmp_path / "source").write_text("data")
+    inputs: list[str | None] = []
+
+    def run(argv, cwd, stdin):
+        inputs.append(stdin)
+        return subprocess.CompletedProcess(
+            argv, 7 if len(inputs) == 1 else 0, stdout, "diagnostic"
+        )
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    result = _result(
+        _invoke(
+            tools,
+            [
+                *_copy("source", "one"),
+                ("|", "CTL"),
+                *_copy("source", "two"),
+                ("&&", "CTL"),
+                *_copy("source", "three"),
+            ],
+        )
+    )
+    assert inputs == [None, stdout, None]
+    assert result.startswith("Overall: success (exit 0)")
+    assert "exit 7" in result and "stderr:\ndiagnostic" in result
+
+
+@pytest.mark.parametrize("failure", ["preparation", "denial", "timeout"])
+def test_failed_pipeline_stage_supplies_empty_input_to_next_guarded_stage(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    (tmp_path / "source").write_text("data")
+    inputs: list[str | None] = []
+
+    def run(argv, cwd, stdin):
+        inputs.append(stdin)
+        if Path(argv[-1]).name == "first":
+            raise subprocess.TimeoutExpired(argv, 1, output="discard partial")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tools = get_run_tagged_file_command(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[PermissionRule(pattern="first", operations={Operation.CREATE})]
+        if failure == "denial"
+        else [],
+    )
+    source = "missing" if failure == "preparation" else "source"
+    responses = _invoke(
+        tools,
+        [
+            *_copy(source, "first"),
+            ("|", "CTL"),
+            *_copy("source", "last"),
+        ],
+    )
+    assert inputs == ([None, ""] if failure == "timeout" else [""])
+    assert sum(r["caller"] == "guard_tagged_file_command" for r in responses) == 2
+    result = _result(responses)
+    assert result.startswith("Overall: success (exit 0)")
+    assert "discard partial" not in result
+
+
+@pytest.mark.parametrize(
+    ("failure", "status"),
+    [
+        ("lookup", 127),
+        ("disappeared", 127),
+        ("permission", 126),
+        ("format", 126),
+        ("timeout", 124),
+        ("signal", 143),
+    ],
+)
+def test_ordinary_process_failures_allow_fallback(
+    tmp_path: Path, monkeypatch, failure: str, status: int
+) -> None:
+    (tmp_path / "source").write_text("data")
+    launched: list[str] = []
+    original_require = ExecutableDependency.require
+
+    def require(binding):
+        if failure == "lookup" and binding.executable == "cp":
+            raise FileNotFoundError("Missing cp")
+        return original_require(binding)
+
+    def run(argv, cwd, stdin):
+        launched.append(Path(argv[0]).name)
+        if launched[-1] == "cp":
+            if failure == "disappeared":
+                raise FileNotFoundError(2, "Missing executable", argv[0])
+            if failure == "permission":
+                raise PermissionError("Cannot launch executable")
+            if failure == "format":
+                raise OSError(errno.ENOEXEC, "Invalid executable format", argv[0])
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired(
+                    argv, 1, output="discard partial", stderr="discard error"
+                )
+            return subprocess.CompletedProcess(argv, -15, "", "")
+        return subprocess.CompletedProcess(argv, 0, "fallback", "")
+
+    monkeypatch.setattr(ExecutableDependency, "require", require)
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    result = _result(
+        _invoke(
+            tools,
+            [
+                *_copy("source", "first"),
+                ("||", "CTL"),
+                ("mv", "CMD"),
+                ("source", "PTH"),
+                ("fallback", "PTH"),
+            ],
+        )
+    )
+    assert launched == (["mv"] if failure == "lookup" else ["cp", "mv"])
+    assert result.startswith("Overall: success (exit 0)")
+    assert f"exit {status}" in result
+    assert "discard" not in result
+
+
+@pytest.mark.parametrize("failure", ["error", "oversized", "cancelled"])
+def test_terminal_failures_never_reach_fallback(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    (tmp_path / "source").write_text("data")
+    launched: list[list[str]] = []
+
+    def run(argv, cwd, stdin):
+        launched.append(argv)
+        if failure == "error":
+            raise OSError("Unexpected process failure")
+        if failure == "cancelled":
+            raise asyncio.CancelledError()
+        return subprocess.CompletedProcess(
+            argv, 0, "x" * (MAX_COMMAND_OUTPUT_CHARS + 1), ""
+        )
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.allow
+    )
+    tokens = [*_copy("source", "first"), ("||", "CTL"), *_copy("source", "fallback")]
+    if failure == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            _invoke(tools, tokens)
+    else:
+        assert _result(_invoke(tools, tokens)).startswith("Overall: failure")
+    assert len(launched) == 1
+
+
+@pytest.mark.parametrize("terminal_error", [False, True])
+def test_sequence_history_is_bounded_and_keeps_latest_diagnostics(
+    tmp_path: Path, monkeypatch, terminal_error: bool
+) -> None:
+    (tmp_path / "source").write_text("data")
+    calls = []
+
+    def run(argv, cwd, stdin):
+        step = len(calls)
+        calls.append(argv)
+        if terminal_error and step == 3:
+            raise OSError("latest execution error")
+        stdout = f"start-{step}\n" + "x" * (LIGHT_MAX_CHARS // 2) + f"\nend-{step}"
+        return subprocess.CompletedProcess(
+            argv, 7 if step == 3 else 0, stdout, f"diagnostic-{step}"
+        )
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    tokens: list[TaggedToken] = []
+    for step in range(4):
+        if tokens:
+            tokens.append((";", "CTL"))
+        tokens.extend(_copy("source", f"out{step}"))
+    responses = _invoke(
+        get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
+        tokens,
+    )
+    histories = [r["accumulated_output"] for r in responses if "remaining" in r]
+    assert len(calls) == 4 and len(histories) == 3
+    assert all(len(history) <= LIGHT_MAX_CHARS for history in histories)
+    result = _result(responses)
+    assert len(result) <= LIGHT_MAX_CHARS
+    assert result.count("earlier command output omitted") == 1
+    assert "start-0" not in result
+    if terminal_error:
+        assert result.startswith("Overall: failure (execution error)")
+        assert "latest execution error" in result
+    else:
+        assert result.startswith("Overall: failure (exit 7)")
+        assert "end-3" in result and "stderr:\ndiagnostic-3" in result
+
+
+def test_bounding_history_preserves_full_piped_stdout(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "source").write_text("data")
+    stdout = "p" * (LIGHT_MAX_CHARS + 1)
+    inputs = []
+
+    def run(argv, cwd, stdin):
+        inputs.append(stdin)
+        if len(inputs) == 1:
+            return subprocess.CompletedProcess(
+                argv, 0, stdout, "s" * (LIGHT_MAX_CHARS + 1)
+            )
+        return subprocess.CompletedProcess(argv, 0, "latest pipeline output", "")
+
+    monkeypatch.setattr(runner, "run_cli_argv", run)
+    responses = _invoke(
+        get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
+        [*_copy("source", "first"), ("|", "CTL"), *_copy("source", "last")],
+    )
+    assert inputs == [None, stdout]
+    history = next(r["accumulated_output"] for r in responses if "remaining" in r)
+    assert len(history) <= LIGHT_MAX_CHARS
+    result = _result(responses)
+    assert len(result) <= LIGHT_MAX_CHARS
+    assert result.startswith("Overall: success (exit 0)")
+    assert "earlier command output omitted" in result
+    assert "latest pipeline output" in result

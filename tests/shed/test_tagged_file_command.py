@@ -21,7 +21,6 @@ from roboz.shed.models import (
     CommandReady,
     GuardStatus,
     Operation,
-    ParseError,
     PermissionRule,
 )
 from roboz.shed.tools import get_run_file_command
@@ -42,6 +41,21 @@ from roboz.tools import stop
 
 def _resolve(tmp_path: Path, value: list[TaggedToken]):
     return resolve_tagged_command(tmp_path)(TaggedFileCommand(value=value), [])
+
+
+def _preparation_failure(result) -> str:
+    assert isinstance(result, ResolvedFileCommand)
+    assert result.items == []
+    assert result.original_input.failure is not None
+    return result.original_input.failure
+
+
+def _execution_result(responses: list[dict]) -> str:
+    return next(
+        response["value"]
+        for response in reversed(responses)
+        if response.get("caller") == "execute_tagged_file_command"
+    )
 
 
 def _invoke(
@@ -76,6 +90,8 @@ def _call(value: list[TaggedToken]) -> dict:
         {"tokens": [["cp", "CMD"]]},
         {"value": [["cp", "CMD", "extra"]]},
         {"value": [["cp", "UNKNOWN"]]},
+        {"value": [["rm", "CMD"], ["source", "PTH"]]},
+        {"value": [["cp", "CMD"], ["&", "CTL"], ["mv", "CMD"]]},
     ],
 )
 def test_input_rejects_wrong_contract(payload: dict) -> None:
@@ -86,7 +102,7 @@ def test_input_rejects_wrong_contract(payload: dict) -> None:
 def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
     spec = replace(
         CP,
-        command=("example", "CMD"),
+        command=("cp", "CMD"),
         allowed=(
             TokenRule(
                 tag="FLG", pattern=re.compile(r"-n"), option="count", takes="ARG"
@@ -99,7 +115,7 @@ def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
         forbidden_pairs=(),
     )
     parsed = validate_tokens(
-        [("example", "CMD"), ("-n", "FLG"), ("2", "ARG"), ("--", "FLG"), ("3", "ARG")],
+        [("cp", "CMD"), ("-n", "FLG"), ("2", "ARG"), ("--", "FLG"), ("3", "ARG")],
         spec,
     )
     assert parsed.options == {"count": 1, "end": 3}
@@ -110,7 +126,6 @@ def test_token_rules_define_consumed_values_and_post_option_operands() -> None:
     ("arguments", "error"),
     [
         ([("source", "ARG"), ("target", "PTH")], "Unsupported ARG"),
-        ([("mv", "CMD")], "Unsupported CMD"),
         ([("-n", "FLG")], "Unsupported FLG"),
         ([("-r", "FLG"), ("--recursive", "FLG")], "Repeated option"),
         ([("-vt", "FLG")], "Unsupported FLG"),
@@ -134,8 +149,7 @@ def test_unsupported_tokens_stop_preparation(
     tmp_path: Path, arguments: list[TaggedToken], error: str
 ) -> None:
     result = _resolve(tmp_path, [("cp", "CMD"), *arguments])
-    assert isinstance(result, ParseError)
-    assert error in result.message
+    assert error in _preparation_failure(result)
 
 
 @pytest.mark.parametrize(
@@ -181,8 +195,7 @@ def test_exact_file_destination_rejects_directory(tmp_path: Path) -> None:
     result = _resolve(
         tmp_path, [("cp", "CMD"), ("-T", "FLG"), ("source", "PTH"), ("out", "PTH")]
     )
-    assert isinstance(result, ParseError)
-    assert "Destination must be a regular file" in result.message
+    assert "Destination must be a regular file" in _preparation_failure(result)
 
 
 @pytest.mark.parametrize(
@@ -217,7 +230,7 @@ def test_unsupported_filesystem_shapes_are_rejected(tmp_path: Path, kind: str) -
     result = _resolve(
         tmp_path, [("cp", "CMD"), (source_name, "PTH"), (destination_name, "PTH")]
     )
-    assert isinstance(result, ParseError)
+    assert _preparation_failure(result)
     assert source.read_text() == "data"
 
 
@@ -244,8 +257,7 @@ def test_cross_filesystem_move_is_rejected(
 
     monkeypatch.setattr(Path, "stat", stat)
     result = _resolve(tmp_path, [("mv", "CMD"), ("source", "PTH"), ("out", "PTH")])
-    assert isinstance(result, ParseError)
-    assert "Cross-filesystem" in result.message
+    assert "Cross-filesystem" in _preparation_failure(result)
 
 
 @pytest.mark.skipif(
@@ -307,7 +319,7 @@ def test_agent_executes_copy_and_move_through_existing_chain(tmp_path: Path) -> 
     ("outcome", "detail"),
     [
         ("nonzero", "exit 2"),
-        ("timeout", "timeout"),
+        ("timeout", "exit 124"),
         ("error", "execution error"),
         ("oversized", "output too large; exit 0"),
     ],
@@ -377,11 +389,9 @@ def test_chain_stops_before_execution_on_invalid_or_denied_call(
     responses = _invoke(
         tools, [_call([("cp", "CMD"), ("source", source_tag), ("out", "PTH")])]
     )
-    assert "execute_tagged_file_command" not in [
-        response.get("caller") for response in responses
-    ]
+    assert _execution_result(responses).startswith("Overall: failure")
     if failure == "invalid_tag":
-        assert responses[0]["kind"] == "parse_error"
+        assert "Unsupported ARG" in _execution_result(responses)
     else:
         assert (
             next(
@@ -401,7 +411,7 @@ def test_chain_stops_before_execution_on_invalid_or_denied_call(
 def test_overwrite_permissions_are_explicit_and_preserve_input(tmp_path: Path) -> None:
     (tmp_path / "source").write_text("new")
     (tmp_path / "target").write_text("old")
-    entry, guard, execute = get_run_tagged_file_command(
+    entry, guard, execute, _ = get_run_tagged_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.deny,
         allow_rules=[
@@ -417,7 +427,8 @@ def test_overwrite_permissions_are_explicit_and_preserve_input(tmp_path: Path) -
     )
     prepared = entry(command, [])
     assert isinstance(prepared, ResolvedFileCommand)
-    assert prepared.original_input == command
+    assert prepared.original_input.request == command
+    assert "sequence" not in command.model_dump()
     assert [(item.operation, item.location) for item in prepared.items] == [
         (Operation.READ, tmp_path / "source"),
         (Operation.CREATE, tmp_path / "target"),
@@ -425,7 +436,7 @@ def test_overwrite_permissions_are_explicit_and_preserve_input(tmp_path: Path) -
         (Operation.DELETE, tmp_path / "target"),
     ]
     result = guard(prepared, [])
-    assert result.original_input == command
+    assert result.original_input.request == command
     assert result.status == GuardStatus.ALLOWED
     assert execute.chain_condition(result)
 
@@ -447,9 +458,7 @@ def test_user_decline_stops_the_chain(
     responses = _invoke(
         tools, [_call([("mv", "CMD"), ("source", "PTH"), ("target", "PTH")])]
     )
-    assert "execute_tagged_file_command" not in [
-        response.get("caller") for response in responses
-    ]
+    assert _execution_result(responses).startswith("Overall: failure")
     denied = next(
         response
         for response in responses
@@ -494,9 +503,9 @@ def test_hard_linked_files_stop_before_execution(
     responses = _invoke(
         tools, [_call([(command, "CMD"), (source, "PTH"), ("allowed/output", "PTH")])]
     )
-    assert responses[0]["kind"] == "parse_error"
-    assert "Hard-linked" in responses[0]["message"]
-    assert str(linked) in responses[0]["message"]
+    assert _execution_result(responses).startswith("Overall: failure")
+    assert "Hard-linked" in _execution_result(responses)
+    assert str(linked) in _execution_result(responses)
     assert secret.read_text() == linked.read_text() == "protected"
     assert (tmp_path / "source").read_text() == "replacement"
 
@@ -514,7 +523,7 @@ def test_filename_rules_preserve_spaces_and_backslashes(
     tmp_path: Path, name: str, pattern: str, allowed: bool
 ) -> None:
     (tmp_path / name).write_text("data")
-    entry, guard, execute = get_run_tagged_file_command(
+    entry, guard, execute, _ = get_run_tagged_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.deny,
         allow_rules=[
@@ -527,7 +536,7 @@ def test_filename_rules_preserve_spaces_and_backslashes(
     )
     result = guard(prepared, [])
     assert (result.status == GuardStatus.ALLOWED) is allowed
-    assert execute.chain_condition(result) is allowed
+    assert execute.chain_condition(result)
 
 
 @pytest.mark.parametrize("command", ["cp", "mv"])
@@ -564,7 +573,7 @@ def test_each_overwrite_approval_controls_execution(
     )
     assert len(prompts) == 1
     assert operation.value in prompts[0] and str(tmp_path / "target") in prompts[0]
-    executed = "execute_tagged_file_command" in [r.get("caller") for r in responses]
+    executed = _execution_result(responses).startswith("Overall: success")
     assert executed is accepted
     assert (tmp_path / "target").read_text() == ("new" if accepted else "old")
     if accepted and command == "mv":
@@ -595,7 +604,7 @@ def test_later_policy_denial_prevents_all_approval_prompts(
         tools, [_call([("cp", "CMD"), ("source", "PTH"), ("target", "PTH")])]
     )
     assert responses[1]["deny_reason"] == "policy_denied"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert (tmp_path / "source").read_text() == "new"
     assert (tmp_path / "target").read_text() == "old"
 
@@ -629,7 +638,7 @@ def test_every_required_approval_must_succeed_before_execution(
     assert len(prompts) == 2
     assert "read" in prompts[0] and "delete" in prompts[1]
     assert responses[1]["deny_reason"] == "user_declined"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert (tmp_path / "source").read_text() == "new"
     assert (tmp_path / "target").read_text() == "old"
 
@@ -664,7 +673,7 @@ def test_policy_precedence_does_not_bypass_approval(
     )
     assert responses[1]["deny_reason"] == expected_reason
     assert len(prompts) == (1 if precedence == ActionVerdict.allow else 0)
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert not (tmp_path / "target").exists()
 
 
@@ -685,7 +694,7 @@ def test_missing_interaction_channel_denies_and_agent_continues(tmp_path: Path) 
 
     assert responses[1]["status"] == GuardStatus.DENIED
     assert "Approval unavailable" in responses[1]["message"]
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert responses[-1]["caller"] == "stop"
     assert (tmp_path / "source").read_text() == "new"
     assert (tmp_path / "target").read_text() == "old"
@@ -715,7 +724,7 @@ def test_unavailable_approval_denies_execution(
     )
     assert responses[1]["status"] == GuardStatus.DENIED
     assert "Approval unavailable" in responses[1]["message"]
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert (tmp_path / "source").read_text() == "keep"
     assert not (tmp_path / "target").exists()
 
@@ -728,7 +737,7 @@ def test_only_absolute_rules_can_authorize_a_source_outside_base(
     work.mkdir()
     source = tmp_path / "source"
     source.write_text("data")
-    entry, guard, execute = get_run_tagged_file_command(
+    entry, guard, execute, _ = get_run_tagged_file_command(
         base=work,
         default_verdict=ActionVerdict.deny,
         allow_rules=[
@@ -747,7 +756,7 @@ def test_only_absolute_rules_can_authorize_a_source_outside_base(
     )
     result = guard(prepared, [])
     assert (result.status == GuardStatus.ALLOWED) is absolute
-    assert execute.chain_condition(result) is absolute
+    assert execute.chain_condition(result)
 
 
 def _tree_contents(root: Path) -> dict[str, tuple[int, bytes | None]]:
@@ -897,7 +906,7 @@ def test_recursive_policy_denial_prevents_every_write_and_prompt(
     tokens.extend([("-f", "FLG"), ("-T", "FLG"), ("src", "PTH"), ("out", "PTH")])
     responses = _invoke(tools, [_call(tokens)])
     assert responses[1]["deny_reason"] == "policy_denied"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert _tree_contents(tmp_path) == before
 
 
@@ -940,9 +949,7 @@ def test_recursive_force_copy_respects_nested_overwrite_approval(
         ],
     )
     assert len(prompts) == 1 and str(tmp_path / "out/nested/file") in prompts[0]
-    assert (
-        "execute_tagged_file_command" in [r.get("caller") for r in responses]
-    ) is accepted
+    assert _execution_result(responses).startswith("Overall: success") is accepted
     assert (tmp_path / "out/nested/file").read_text() == ("new" if accepted else "old")
 
 
@@ -980,8 +987,7 @@ def test_recursive_unsupported_entries_reject_the_whole_transfer(
             )
         ],
     )
-    assert responses[0]["kind"] == "parse_error"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert (tmp_path / "private").read_text() == "protected"
     assert not (tmp_path / "out/src/nested/file").exists()
 
@@ -1019,8 +1025,7 @@ def test_recursive_conflicts_fail_before_execution(
         base=tmp_path, default_verdict=ActionVerdict.allow
     )
     responses = _invoke(tools, [_call(tokens)])
-    assert responses[0]["kind"] == "parse_error"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert _tree_contents(tmp_path) == before
 
 
@@ -1045,8 +1050,7 @@ def test_recursive_traversal_error_stops_preparation(
             ("out", "PTH"),
         ],
     )
-    assert isinstance(result, ParseError)
-    assert "Cannot list nested directory" in result.message
+    assert "Cannot list nested directory" in _preparation_failure(result)
     assert not (tmp_path / "out").exists()
 
 
@@ -1157,7 +1161,8 @@ def test_expansion_preserves_operand_order_flags_and_original_input(
     command_input = TaggedFileCommand(value=tokens)
     result = resolve_tagged_command(tmp_path)(command_input, [])
     assert isinstance(result, ResolvedFileCommand)
-    assert result.original_input == command_input
+    assert result.original_input.request == command_input
+    assert "sequence" not in command_input.model_dump()
     argv = [command, "-v"]
     if target_option:
         argv.extend(["-t", f"{tmp_path}/out", "--"])
@@ -1204,9 +1209,8 @@ def test_invalid_patterns_and_expanded_counts_stop_the_chain(
         get_run_tagged_file_command(base=tmp_path, default_verdict=ActionVerdict.allow),
         [_call(tokens)],
     )
-    assert responses[0]["kind"] == "parse_error"
-    assert error in responses[0]["message"]
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
+    assert error in _execution_result(responses)
     assert list((tmp_path / "out").iterdir()) == []
 
 
@@ -1242,7 +1246,7 @@ def test_unsupported_expanded_transfers_reject_all_matches(
     result = _resolve(
         tmp_path, [("cp", "CMD"), *flags, (pattern, "PTH"), ("out", "PTH")]
     )
-    assert isinstance(result, ParseError)
+    assert _preparation_failure(result)
     assert list((tmp_path / "out").iterdir()) == []
 
 
@@ -1256,8 +1260,7 @@ def test_source_expansion_rejects_symlinks_before_following_them(
     (tmp_path / "src/file.py").write_text("data")
     (tmp_path / "link").symlink_to(tmp_path / "src", target_is_directory=True)
     result = _resolve(tmp_path, [("cp", "CMD"), (pattern, "PTH"), ("out", "PTH")])
-    assert isinstance(result, ParseError)
-    assert "Symlinks are unsupported" in result.message
+    assert "Symlinks are unsupported" in _preparation_failure(result)
     assert not (tmp_path / "out").exists()
 
 
@@ -1290,8 +1293,7 @@ def test_source_expansion_propagates_traversal_failures(
     result = _resolve(
         tmp_path, [("cp", "CMD"), ("projects/*/src/*.py", "PTH"), ("out", "PTH")]
     )
-    assert isinstance(result, ParseError)
-    assert f"Cannot {boundary} source directory" in result.message
+    assert f"Cannot {boundary} source directory" in _preparation_failure(result)
     assert not (tmp_path / "out").exists()
 
 
@@ -1324,7 +1326,7 @@ def test_one_denied_pattern_match_blocks_every_transfer_and_prompt(
         [_call([(command, "CMD"), ("-f", "FLG"), ("*.py", "PTH"), ("out", "PTH")])],
     )
     assert responses[1]["deny_reason"] == "policy_denied"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert list((tmp_path / "out").iterdir()) == []
     assert (tmp_path / "a.py").read_text() == "a.py"
     assert (tmp_path / "b.py").read_text() == "b.py"
@@ -1356,9 +1358,7 @@ def test_pattern_force_transfer_requires_overwrite_approval(
         [_call([(command, "CMD"), ("-f", "FLG"), ("*.py", "PTH"), ("out", "PTH")])],
     )
     assert len(prompts) == 1 and str(tmp_path / "out/a.py") in prompts[0]
-    assert (
-        "execute_tagged_file_command" in [r.get("caller") for r in responses]
-    ) is accepted
+    assert _execution_result(responses).startswith("Overall: success") is accepted
     assert (tmp_path / "out/a.py").read_text() == ("new" if accepted else "old")
 
 
@@ -1467,5 +1467,5 @@ def test_matched_directory_descendant_denial_blocks_the_call(tmp_path: Path) -> 
         tools, [_call([("cp", "CMD"), ("-R", "FLG"), ("s*", "PTH"), ("out", "PTH")])]
     )
     assert responses[1]["deny_reason"] == "policy_denied"
-    assert "execute_tagged_file_command" not in [r.get("caller") for r in responses]
+    assert _execution_result(responses).startswith("Overall: failure")
     assert not (tmp_path / "out").exists()

@@ -5,7 +5,9 @@ It uses the existing **resolve → permission guard → execute** tool chain. Th
 new resolver validates the supported syntax and prepares both the executable
 argv and its required filesystem operations. It does not use path extraction.
 The module-local guard checks every required permission before requesting any
-approvals, then passes the prepared command to the existing executor.
+approvals, then passes the prepared command to the tagged executor. One passive
+continuation resolver loops each reached command back through the same guard and
+executor; the four tool instances are fixed for sequences of any length.
 
 Command specifications declare the command token, allowed tag/pattern pairs,
 option values, the option terminator, and conflicts. The shared validator reads
@@ -80,6 +82,56 @@ Rename a regular file (`mv -T reports/a.txt reports/renamed.txt`):
 
 This requires DELETE on `reports/a.txt` and CREATE on `reports/renamed.txt`.
 
+### Command sequences
+
+Tag control operators `CTL` in the same flat list:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Rename the report and back it up, with a fallback source.",
+  "value": [
+    ["mv", "CMD"], ["hello.txt", "PTH"], ["renamed.txt", "PTH"],
+    ["&&", "CTL"],
+    ["cp", "CMD"], ["renamed.txt", "PTH"], ["backup.txt", "PTH"],
+    ["||", "CTL"],
+    ["cp", "CMD"], ["fallback.txt", "PTH"], ["backup.txt", "PTH"]
+  ]
+}
+```
+
+`&&` continues on success, `||` on failure, `;` unconditionally, and `|` passes
+stdout to the next command. Pipelines bind first; `&&` and `||` have equal
+precedence and associate left to right, as in Bash. Thus `a || b && c` runs `c`
+after either `a` or `b` succeeds. Skipping a pipeline skips all its stages and
+retains the last executed status. The final result reports that status.
+
+Only CTL tags split commands: `["&&", "PTH"]` names a literal file. There is no
+separate chain field. The input types and schema restrict CMD values to `cp`/`mv`
+and CTL values to the four supported operators. Every segment starts with CMD;
+leading, trailing, adjacent, or unsupported control operators reject the entire
+sequence before execution.
+Individual command options and paths are checked only when reached. Earlier
+commands can create files used by later source patterns. Skipped commands do
+not expand paths, look up executables, or request approvals.
+
+Every reached command repeats resolution, guarding, and execution. Preparation
+errors, policy denials, and declined approvals produce status 1 without launching
+a process; `||` or `;` can continue to another independently guarded command.
+Process exit statuses are preserved; missing executables return 127, launch
+permission failures 126, signals 128 plus the signal number, and timeouts 124.
+Timeouts discard partial output. Cancellation, oversized output, and unexpected
+execution errors abort the sequence.
+
+Stored sequence history and the final report are capped at 40,000 characters,
+retaining the newest output and marking omitted earlier output. The final status
+counts toward that budget; piped stdout is passed intact.
+
+Pipes are buffered and sequential so every stage is guarded before execution.
+They preserve stdout exactly, including empty output, and keep stderr separate.
+The last pipeline stage determines its status (no `pipefail`). The current
+`cp`/`mv` commands do not consume stdin. There is no rollback of earlier writes.
+
 ### Source patterns
 
 Use single stars in any source-path component:
@@ -103,10 +155,10 @@ includes them. Wildcards never select the special `.` or `..` directory entries.
 These follow the [Bash filename-matching rules](https://www.gnu.org/s/bash/manual/html_node/Filename-Expansion.html).
 
 Source operands retain their order; each pattern's matches are sorted in
-C-locale filesystem byte order. If any pattern has no matches, the entire call
-is rejected before execution. Missing or non-directory branches contribute no
+C-locale filesystem byte order. If any pattern has no matches, that command
+fails before execution. Missing or non-directory branches contribute no
 matches; symlinks, permission errors, and other traversal errors reject the
-call. Matched filenames are literal executable arguments, including spaces,
+command. Matched filenames are literal executable arguments, including spaces,
 leading dashes, and wildcard characters; they are never expanded again.
 
 Destinations, both the last positional PTH and `-t` values, remain literal and
@@ -114,7 +166,7 @@ reject `*`. `**`, `?`, and bracket patterns are unsupported in all input paths.
 There is no shell quoting, variable expansion, or command substitution.
 Multiple-source and `-T` constraints apply to the expanded source count.
 Duplicate sources, overlaps, colliding outputs, and unsupported matched entries
-reject the entire call. Every match receives the existing permission checks.
+reject the entire command. Every match receives the existing permission checks.
 
 A trailing slash selects directories. Suffixes such as `/.` and `/..` retain
 their native meaning. For a single match, `cp -R project/s*/. backup` copies the
@@ -170,7 +222,8 @@ and [GNU mv manual](https://www.gnu.org/s/coreutils/manual/html_node/mv-invocati
 
 ## Supported subset
 
-- One command per call, beginning with `cp` or `mv` tagged CMD.
+- One or more commands, each beginning with `cp` or `mv` tagged CMD, separated
+  by `&&`, `||`, `;`, or `|` tagged CTL.
 - Flags use FLG; source patterns and literal destinations use PTH. ARG has no
   allowed use in these commands.
 - Flags precede positional operands. This avoids dependence on option
@@ -210,10 +263,16 @@ This is an experiment, not an OS sandbox. Filesystem races and broader command
 support remain out of scope. Commands use the existing runner's timeout and
 output handling; native execution can partially complete a multi-file transfer
 before failing. The tagged input is retained through resolution and guarding.
-The shared runner executes the prepared command directly; only legacy command
-sequences carry a chaining context.
+The shared process runner executes the prepared argv directly. The public input
+contains only the tagged value; its validator checks the command/CTL grammar.
+The executor consumes the remaining tokens directly, using the latest exit
+status to skip or select the next command.
+The guard transports the execution payload through its existing original-input
+field: remaining tokens, pipe input, accumulated output, and preparation errors.
+The original request is retained in full. Both entry and continuation use the
+same step preparation; there is no stored list of parsed commands or operators.
 
 The existing CLI tools and default capabilities are unchanged. Inspect
-`contracts.py`, `specs.py`, `helpers.py`, and `guard.py` to review the contract,
-intent resolution, and permissions. Run `uv run pytest tests/shed/test_tagged_file_command.py` for
+`contracts.py`, `sequence.py`, `command.py`, `guard.py`, and `execute.py` to review
+the contract and guarded loop. Run `uv run pytest tests/shed/test_tagged*.py` for
 scripted agent calls that copy and move temporary files through the full chain.
