@@ -45,6 +45,7 @@ QUOTES: Final[list[str]] = [
     "If you don't like your job, you don't go on strike; you go in every day and do it really half assed",
     "I don't want to look like a weirdo, I'll just wear a muumuu.",
     "Release the hounds!",
+    "Worst episode ever.",
     "Don't have a cow, man!",
     "Excellent!",
     "I, for one, welcome our new insect overlords.",
