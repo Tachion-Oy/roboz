@@ -34,8 +34,8 @@ def resolve_tagged_command(
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
     r"""Read, create, update, copy, or move files using ordered [value, tag] pairs.
 
-    Start each command with cp, mv, pwd, cat, head, tail, wc, tee, touch, or mkdir
-    tagged CMD.
+    Start each command with cp, mv, pwd, cat, head, tail, wc, tee, touch, mkdir,
+    grep, or rg tagged CMD.
     Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
     Place separate flags before operands; -- ends options. Unknown, repeated,
     bundled, and attached options are unsupported.
@@ -54,6 +54,35 @@ def resolve_tagged_command(
     Example: value=[['cat', 'CMD'], ['data.txt', 'PTH'], ['|', 'CTL'],
     ['head', 'CMD'], ['-n', 'FLG'], ['2', 'ARG'], ['|', 'CTL'],
     ['wc', 'CMD'], ['-l', 'FLG']].
+
+    grep/rg take one pattern ARG, then input PTHs or stdin '-' ARG. Patterns are
+    passed literally to the native regex engine; -F/--fixed-strings selects literal
+    matching, and grep -E/--extended-regexp selects extended regexes. Both accept
+    -n/--line-number, -i/--ignore-case, -v/--invert-match, -w/--word-regexp,
+    -x/--line-regexp, -c/--count, -l/--files-with-matches, -q/--quiet,
+    -o/--only-matching, and -H/--with-filename. Suppress filenames with grep
+    -h/--no-filename or rg -I/--no-filename. -H conflicts with suppression;
+    grep -E and -F conflict. -m/--max-count, -A/--after-context,
+    -B/--before-context, and -C/--context take unsigned decimal ARG values.
+    Without input paths these commands read empty or piped stdin, except recursive
+    grep searches the base. Explicit stdin '-' works in either command.
+    grep directory inputs require -r/--recursive or -R/--dereference-recursive.
+    rg searches directories recursively, honoring local and ancestor .gitignore,
+    .ignore, and .rgignore rules. Explicit file paths override ignore filtering.
+    rg accepts --hidden, --no-ignore, and the single allowlisted FLG -uu, which
+    includes hidden files and disables ignores; other bundled flags are rejected.
+    rg configuration, global Git ignores, and Git info/exclude files are disabled.
+    Recursive searches require READ on the entire candidate tree, including
+    hidden and ignored files. rg also requires READ on potential local/ancestor
+    ignore files unless --no-ignore or -uu disables them. A denied ignored file
+    blocks execution. Permissions and approvals are deduplicated before one native
+    invocation. Patterns never come from files and preprocessors are unsupported.
+    Explicit symlinks and hard-linked or special input files are unsupported;
+    recursive grep -r and rg skip descendant symlinks and special files, while
+    grep -R rejects them.
+    A match exits 0, no matches exits 1, and native search errors exit 2, selecting
+    CTL continuations normally. Example: value=[['rg', 'CMD'], ['-n', 'FLG'],
+    ['TODO|FIXME', 'ARG'], ['src', 'PTH']].
 
     tee writes stdin to each literal destination PTH and to stdout. It creates
     missing files and overwrites existing files; -a/--append appends instead.
