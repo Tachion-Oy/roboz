@@ -123,7 +123,7 @@ _TRANSFER_TOKENS = (
         option="--strip-trailing-slashes",
     ),
     TokenRule(tag="FLG", pattern=re.compile(r"--"), option="--", ends_options=True),
-    TokenRule(tag="PTH", pattern=re.compile(r"(?!.*\*\*)[^?\[\]\x00]+", re.DOTALL)),
+    TokenRule(tag="PTH", pattern=re.compile(r"[^?\[\]\x00]+", re.DOTALL)),
 )
 
 CP = TaggedCommandSpec(

@@ -59,4 +59,5 @@ QUOTES: Final[list[str]] = [
     "You don't win friends with salad.",
     "Okily-dokily!",
     "Stupid sexy Flanders!",
+    "Ay, caramba!",
 ]

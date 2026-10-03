@@ -42,10 +42,16 @@ def resolve_tagged_command(
     -v/--verbose, -f/--force, --strip-trailing-slashes, -t/--target-directory
     followed by a PTH directory, -T/--no-target-directory, and -- to end options.
     Sources allow '*' in any component, e.g. projects/*/src/*.py. Each star matches
-    zero or more characters within one component; hidden names require a leading
-    dot in that component. Matches are sorted in filesystem byte order per operand;
+    zero or more characters within one component. One standalone '**' component
+    recurses through zero or more directories, e.g. src/**/*.py or **/file.py.
+    A final '**' also selects files: sdf/** includes sdf/ and its visible tree;
+    sdf/**/ selects directories. Bare ** excludes the implicit current directory.
+    Hidden names require a leading dot in their component; recursion skips them.
+    Repeated stars within ordinary components, e.g. report**.py, are nonrecursive.
+    Matches are sorted in filesystem byte order per operand;
     zero matches fail the command. Destinations, including -t values, must be
-    literal and reject '*'. '**', '?', and bracket patterns are unsupported.
+    literal and reject '*'. Multiple recursive '**' components, '?', and bracket
+    patterns are unsupported.
     Trailing '/' selects directories;
     '/.' and '/..' suffixes retain their native meaning. No shell expansion is used.
     Without -t, the last PTH is the destination; multiple expanded sources need a
@@ -53,14 +59,17 @@ def resolve_tagged_command(
     exact destination; -t and -T conflict. cp merges directory contents; src/.
     copies the contents directly into the destination. mv can replace an empty
     directory, but cannot merge directories. Repeated flags, bundled flags, attached flag values,
-    symlinks, hard-linked files, special files, overlapping transfers, and
-    cross-filesystem moves are unsupported.
+    symlinks, hard-linked files, special files, duplicate sources, conflicting
+    destinations, source/destination overlap, and cross-filesystem moves are
+    unsupported. Ancestor/descendant sources are allowed with separate outputs;
+    mv may move a parent then fail on vanished descendants. Native partial effects
+    and exit status are preserved.
     Paths may be absolute or relative to the configured base. cp requires READ
     on sources; mv requires DELETE. Destinations require CREATE; overwriting an
     existing file or replacing an empty directory also requires READ and DELETE
-    there. Permissions cover every descendant, including empty directories; copy
-    merges require CREATE on existing directories without DELETE. -f does not
-    bypass policy or approval. Ask rules apply to every required permission.
+    there. Permissions cover every descendant, including hidden entries and empty
+    directories; copy merges require CREATE on existing directories without DELETE.
+    -f does not bypass policy or approval. Ask rules apply to every required permission.
     All policy checks for a command pass before its approvals are requested.
     Separate commands with CTL tokens: ['&&', 'CTL'] on success, ['||', 'CTL']
     on failure, [';', 'CTL'] unconditionally, or ['|', 'CTL'] to pass stdout.

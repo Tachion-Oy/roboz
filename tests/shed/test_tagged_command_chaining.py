@@ -161,6 +161,65 @@ def test_operator_spelling_in_pth_is_literal(tmp_path: Path, name: str) -> None:
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="Requires Bash")
+@pytest.mark.parametrize("operator", ["&&", "||"])
+def test_recursive_partial_move_status_controls_continuation(
+    tmp_path: Path, operator: str
+) -> None:
+    native, guarded = tmp_path / "native", tmp_path / "guarded"
+    for root in (native, guarded):
+        (root / "src/nested").mkdir(parents=True)
+        (root / "src/file").write_text("data")
+        (root / "out").mkdir()
+    expected = subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-c",
+            shlex.join(
+                [
+                    "mv",
+                    f"{native}/src/",
+                    f"{native}/src/file",
+                    f"{native}/src/nested",
+                    "out",
+                ]
+            )
+            + f" {operator} "
+            + shlex.join(["cp", "out/src/file", "continued"]),
+        ],
+        cwd=native,
+        capture_output=True,
+    )
+    tokens: list[TaggedToken] = [
+        ("mv", "CMD"),
+        ("src/**", "PTH"),
+        ("out", "PTH"),
+        (operator, "CTL"),
+        *_copy("out/src/file", "continued"),
+    ]
+    responses = _invoke(
+        get_run_tagged_file_command(base=guarded, default_verdict=ActionVerdict.allow),
+        tokens,
+    )
+    status = "success" if expected.returncode == 0 else "failure"
+    result = _result(responses)
+    assert result.startswith(f"Overall: {status} (exit {expected.returncode})")
+    assert "Command failed (exit 1)" in result
+    assert not (guarded / "src").exists()
+    assert (guarded / "out/src/file").read_text() == "data"
+    assert (guarded / "continued").exists() is (operator == "||")
+    contents = [
+        {
+            str(path.relative_to(root)): path.read_bytes() if path.is_file() else None
+            for path in root.rglob("*")
+        }
+        for root in (native, guarded)
+    ]
+    assert contents[0] == contents[1]
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="Requires Bash")
 @pytest.mark.parametrize(
     ("sources", "operators"),
     [
