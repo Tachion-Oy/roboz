@@ -1,8 +1,8 @@
 # Tagged CLI v2
 
-This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, and `touch`
-through an ordered, tagged command contract. The existing v1 CLI and default
-capabilities remain available. Public imports from `cli_commands.tagged_transfer`
+This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`,
+`touch`, and `mkdir` through an ordered, tagged command contract. The existing v1
+CLI and default capabilities remain available. Public imports from `cli_commands.tagged_transfer`
 are compatibility re-exports of this package.
 It uses the existing **resolve → permission guard → execute** tool chain. The
 new resolver validates the supported syntax and prepares both the executable
@@ -206,6 +206,49 @@ All target checks and approvals complete before any native writes. Symlinks,
 hard-linked regular files, and special files are unsupported. Target order and
 repeats are preserved while permissions and approvals are deduplicated.
 `["-", "PTH"]` names the literal file `-` for both commands.
+
+### Create directories
+
+`mkdir` requires one or more literal directory PTH operands. It accepts
+`-p` / `--parents` to create missing parents and accept existing directories,
+`-v` / `--verbose` to report each created directory, and `--` to end options.
+Flags must be separate FLG tokens before operands. Wildcards, ARG operands,
+unknown, repeated, bundled, and attached options are rejected. Explicit modes
+(`-m` / `--mode`) and security-context options are unsupported; native default
+directory permissions apply.
+
+Create a directory tree, then write a note after successful creation:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Create the daily notes directory and write today's note.",
+  "value": [
+    ["mkdir", "CMD"], ["-p", "FLG"], ["notes/daily", "PTH"],
+    ["&&", "CTL"],
+    ["tee", "CMD"], ["Hello\n", "ARG"], ["notes/daily/today.txt", "PTH"]
+  ]
+}
+```
+
+Every explicit directory target requires CREATE, even when it already exists.
+With `-p`, every missing parent also requires CREATE; existing intermediate
+directories require no additional permissions. For example, if `notes` is
+missing, the call above checks CREATE on both `notes` and `notes/daily` before
+running `mkdir`. Neither READ nor DELETE is required for directory creation.
+Checks and approvals are deduplicated and complete before any directory is
+created; a denied target or parent prevents the entire command.
+
+Path spelling and operand order are preserved, including repeated targets,
+trailing slashes, `/.`, and `/..`. `mkdir -p a/../b` can create both `a` and `b`,
+so both require CREATE. Symlinks and existing non-directory components reject
+the command before any writes, including components before or after `..`.
+Leading dashes, spaces, and backslashes in PTH names remain literal.
+
+Without `-p`, `mkdir a a/b` creates the parent before its child. Existing
+directories and missing parents produce native failures, and a failed
+multi-operand command can still create some directories. Earlier effects are
+preserved, and the native exit status selects `&&` or `||` continuations.
 
 ### Command sequences
 

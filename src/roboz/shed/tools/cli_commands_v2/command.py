@@ -34,7 +34,8 @@ def resolve_tagged_command(
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
     r"""Read, create, update, copy, or move files using ordered [value, tag] pairs.
 
-    Start each command with cp, mv, pwd, cat, head, tail, wc, tee, or touch tagged CMD.
+    Start each command with cp, mv, pwd, cat, head, tail, wc, tee, touch, or mkdir
+    tagged CMD.
     Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
     Place separate flags before operands; -- ends options. Unknown, repeated,
     bundled, and attached options are unsupported.
@@ -77,6 +78,18 @@ def resolve_tagged_command(
     regular files, including append and timestamp updates. Missing touch -c targets
     are no-ops but still require CREATE. New files require existing parents.
     All target permissions and approvals pass before any file is changed.
+
+    mkdir creates directories from one or more literal PTH operands. It accepts
+    -p/--parents to create missing parents and tolerate existing directories,
+    -v/--verbose to report created directories, and --. Modes (-m/--mode) and
+    security-context options are unsupported. Require CREATE on every explicit
+    target, including existing directories, and every missing parent created by
+    -p; existing intermediate directories need no additional permissions.
+    For example, mkdir -p a/../b may create both a and b and checks both paths.
+    Symlinks and existing non-directory components reject the whole command.
+    Operand order and duplicates are preserved, so mkdir a a/b works without -p.
+    Native missing-parent and existing-directory failures retain any partial
+    effects. Use && before dependent touch or tee commands.
 
     cp/mv accept only PTH operands. Example: value=[['cp', 'CMD'],
     ['source.txt', 'PTH'], ['copy.txt', 'PTH']]. To copy a directory use
