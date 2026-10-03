@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add guarded tagged `mkdir` with `-p` / `--parents`, `-v` / `--verbose`, and
+  literal directory targets. Check CREATE on every target and missing parent
+  before execution, including directories traversed before `..`. Preserve native
+  operand order, partial effects, and failure status for command chaining.
+
 - Add guarded tagged `tee` and `touch`, with allowlisted flags, inline UTF-8
   content for `tee`, append support, and explicit or reference-based timestamps.
   Check every target before writing, including existing-file READ and DELETE

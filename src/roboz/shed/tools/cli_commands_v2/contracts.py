@@ -12,7 +12,9 @@ from roboz.models import Empty
 from roboz.shed.models import CommandReady, Operation
 
 type TokenTag = Literal["CMD", "FLG", "ARG", "PTH", "CTL"]
-type CommandName = Literal["cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch"]
+type CommandName = Literal[
+    "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir"
+]
 type ControlOperator = Literal["&&", "||", ";", "|"]
 type TaggedToken = (
     tuple[CommandName, Literal["CMD"]]
@@ -29,19 +31,20 @@ class TaggedFileCommand(Empty):
         min_length=1,
         description=(
             "Ordered [value, tag] pairs. Start each command with cp, mv, pwd, cat, "
-            "head, tail, wc, tee, or touch tagged CMD; separate commands with "
+            "head, tail, wc, tee, touch, or mkdir tagged CMD; separate commands with "
             "['&&', 'CTL'], ['||', 'CTL'], "
             "[';', 'CTL'], or ['|', 'CTL'] using Bash control flow. "
             "Tag flags FLG and paths PTH. Sources allow '*' within components and "
             "one standalone recursive '**' component, e.g. 'src/**/*.py'; "
-            "transfer/tee destinations and touch references must be literal. "
+            "transfer/tee destinations, mkdir targets, and touch references must be literal. "
             "touch targets also allow patterns; unmatched patterns fail before execution. "
             "'?' and bracket patterns are "
             "unsupported. head/tail counts use unsigned decimal ARG values; "
             "reader stdin uses ['-', 'ARG']. A '-' tagged PTH names a literal "
             "file. Omitted reader paths use stdin. tee accepts one inline content ARG "
             "after flags and before destination PTHs; piped input overrides it. "
-            "touch -d/-t values use ARG; -r uses PTH."
+            "touch -d/-t values use ARG; -r uses PTH. mkdir accepts -p/--parents, "
+            "-v/--verbose, and --; CREATE is required on each target and parent created by -p."
         ),
     )
     model_config = ConfigDict(extra="forbid")

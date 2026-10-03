@@ -50,6 +50,10 @@ assert_type(LegacyTaggedFileCommand(value=readers.value), TaggedFileCommand)
 
 writers = TaggedFileCommand(
     value=[
+        ("mkdir", "CMD"),
+        ("-p", "FLG"),
+        ("notes", "PTH"),
+        ("&&", "CTL"),
         ("touch", "CMD"),
         ("-r", "FLG"),
         ("reference", "PTH"),

@@ -260,9 +260,10 @@ Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
 The opt-in [tagged CLI v2](src/roboz/shed/tools/cli_commands_v2/README.md) supports
-`cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, and `touch` with explicit token roles and
-mixed control operators. Import `get_run_tagged_file_command` from
-`roboz.shed.tools.cli_commands_v2` to use it alongside the default CLI below.
+`cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, `touch`, and `mkdir` with
+explicit token roles and mixed control operators. Import
+`get_run_tagged_file_command` from `roboz.shed.tools.cli_commands_v2` to use it
+alongside the default CLI below.
 
 Shed's `run_file_command` requires one `chain` operator per call, even for a
 single command: `"|"` forwards stdout to the next command, `"&&"` continues on

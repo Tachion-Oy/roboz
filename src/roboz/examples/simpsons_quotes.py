@@ -62,4 +62,5 @@ QUOTES: Final[list[str]] = [
     "Ay, caramba!",
     "I choo-choo-choose you.",
     "Mmm... donuts.",
+    "I was saying Boo-urns.",
 ]
