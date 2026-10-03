@@ -263,22 +263,25 @@ def resolve_transfers(
 
 
 def expand_transfers(transfers: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
-    """Map every tree entry before guarding, including hidden and empty directories."""
+    """Map every tree entry, caching source scans across overlapping operands."""
     expanded: list[tuple[Path, Path]] = []
     source_ids: set[tuple[int, int]] = set()
+    source_entries: dict[Path, tuple[bool, list[Path]]] = {}
     pending = list(reversed(transfers))
     while pending:
         source, target = pending.pop()
-        _validate_transfer_source(source)
-        source_stat = source.stat()
-        source_ids.add((source_stat.st_dev, source_stat.st_ino))
+        if source not in source_entries:
+            _validate_transfer_source(source)
+            source_stat = source.stat()
+            source_ids.add((source_stat.st_dev, source_stat.st_ino))
+            is_directory = stat.S_ISDIR(source_stat.st_mode)
+            children = sorted(source.iterdir(), reverse=True) if is_directory else []
+            source_entries[source] = is_directory, children
+        _, children = source_entries[source]
         expanded.append((source, target))
-        if source.is_dir():
-            pending.extend(
-                (child, target / child.name)
-                for child in sorted(source.iterdir(), reverse=True)
-            )
+        pending.extend((child, target / child.name) for child in children)
     # Parents precede children: a missing parent is a directory planned above.
     for source, target in expanded:
-        _validate_transfer_target(target, source_ids, directory=source.is_dir())
+        is_directory, _ = source_entries[source]
+        _validate_transfer_target(target, source_ids, directory=is_directory)
     return expanded

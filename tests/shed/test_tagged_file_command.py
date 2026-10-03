@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -1034,6 +1035,54 @@ def test_recursive_conflicts_fail_before_execution(
     responses = _invoke(tools, [_call(tokens)])
     assert _execution_result(responses).startswith("Overall: failure")
     assert _tree_contents(tmp_path) == before
+
+
+@pytest.mark.parametrize("command", ["cp", "mv"])
+def test_overlapping_sources_scan_once_and_keep_every_destination_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    (tmp_path / "src/nested/deep/empty").mkdir(parents=True)
+    (tmp_path / "src/nested/deep/.hidden").write_text("data")
+    (tmp_path / "out").mkdir()
+    scanned: list[Path] = []
+    original_iterdir = Path.iterdir
+
+    def iterdir(path: Path):
+        if path.is_relative_to(tmp_path / "src"):
+            scanned.append(path)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    flags: list[TaggedToken] = [("-R", "FLG")] if command == "cp" else []
+    result = _resolve(
+        tmp_path,
+        [
+            (command, "CMD"),
+            *flags,
+            ("src", "PTH"),
+            ("src/nested", "PTH"),
+            ("src/nested/deep", "PTH"),
+            ("out", "PTH"),
+        ],
+    )
+    assert isinstance(result, ResolvedFileCommand)
+    assert Counter(scanned) == {
+        tmp_path / name: 1
+        for name in ["src", "src/nested", "src/nested/deep", "src/nested/deep/empty"]
+    }
+    destinations = {
+        item.location.relative_to(tmp_path).as_posix()
+        for item in result.items
+        if item.operation == Operation.CREATE
+    }
+    assert {
+        "out/src/nested/deep/.hidden",
+        "out/nested/deep/.hidden",
+        "out/deep/.hidden",
+        "out/src/nested/deep/empty",
+        "out/nested/deep/empty",
+        "out/deep/empty",
+    } <= destinations
 
 
 def test_recursive_traversal_error_stops_preparation(
