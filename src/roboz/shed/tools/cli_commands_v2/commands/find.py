@@ -7,8 +7,9 @@ from pathlib import Path
 from roboz.shed.models import CommandReady, Operation
 
 from ..contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
+from ..paths import expand_source_path
 from ..tokens import PATH_TOKEN
-from .discovery import discovery_paths
+from .writers import inspect_file_path
 
 
 _VALUE_OPTIONS = (
@@ -39,11 +40,12 @@ def prepare_find(parsed: ParsedCommand, base: Path) -> PreparedCommand:
     argv = ["find", "-P"]
     operations: list[tuple[Operation, Path]] = []
     for root in roots or ["."]:
-        for spelling, path in discovery_paths(root, base):
-            if spelling.startswith("-") or spelling in {"!", "(", ")", ","}:
-                spelling = "./" + spelling
-            argv.append(spelling)
-            operations.append((Operation.READ, path))
+        for path_arg in expand_source_path(root, base, preserve_relative=True):
+            resolved_path, _ = inspect_file_path(path_arg, base)
+            if path_arg.startswith("-") or path_arg in {"!", "(", ")", ","}:
+                path_arg = "./" + path_arg
+            argv.append(path_arg)
+            operations.append((Operation.READ, resolved_path))
     while token is not None:
         value, tag = token
         if tag != "FLG" or value not in (*_VALUE_OPTIONS, *_EXPRESSION_OPTIONS):

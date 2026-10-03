@@ -202,7 +202,7 @@ def test_unsupported_discovery_syntax_has_no_execution_payload(tmp_path: Path, t
     assert resolved.items == []
 
 
-def test_predicate_option_spelling_is_literal_and_native_errors_control_fallback(
+def test_predicate_option_text_is_literal_and_native_errors_control_fallback(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "-delete").touch()

@@ -64,4 +64,5 @@ QUOTES: Final[list[str]] = [
     "Mmm... donuts.",
     "I was saying Boo-urns.",
     "I have three kids and no money. Why can't I have no kids and three money?",
+    "Woo-hoo!",
 ]

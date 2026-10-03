@@ -15,7 +15,7 @@ sequences of any length.
 
 Command specifications declare the command token, allowed tag/pattern pairs,
 option values, the option terminator, and conflicts. The shared validator reads
-those declarations without knowing tag names or flag spellings. Discovery
+those declarations without knowing tag names or flag names. Discovery
 commands validate their native argument ordering within their own modules. The cp/mv
 preparation functions interpret destination options; filesystem helpers receive
 explicit source and destination paths.
@@ -212,7 +212,7 @@ The existing timeout, output-size, and filesystem-race boundaries still apply.
 
 `ls` and `find` use native GNU output and expression behavior. Both default to
 the configured base, ignore stdin, and can pipe their output to another command.
-Relative operand spelling is retained, including `./`, trailing slashes, and
+Relative operand text is retained, including `./`, trailing slashes, and
 `..`; this matters for `find . -path './src/*'` and for printed filenames.
 Tagged paths that could be mistaken for options or expressions receive a `./`
 prefix. Missing literal roots produce native errors; unmatched PTH patterns fail
@@ -376,7 +376,7 @@ running `mkdir`. Neither READ nor DELETE is required for directory creation.
 Checks and approvals are deduplicated and complete before any directory is
 created; a denied target or parent prevents the entire command.
 
-Path spelling and operand order are preserved, including repeated targets,
+Path text and operand order are preserved, including repeated targets,
 trailing slashes, `/.`, and `/..`. `mkdir -p a/../b` can create both `a` and `b`,
 so both require CREATE. Symlinks and existing non-directory components reject
 the command before any writes, including components before or after `..`.
@@ -547,7 +547,7 @@ entry prevents the entire command. `-f` follows native force behavior and does
 not bypass any policy or approval. Traversal errors and unsupported entries
 reject the command before execution.
 
-Executable paths retain meaningful spelling such as `src/.` and trailing
+Executable paths retain meaningful syntax such as `src/.` and trailing
 slashes; canonical paths are used separately for permission checks. A directory
 can be transferred to a missing `new/`, while `new/.` still requires `new` to
 exist. See the [GNU cp manual](https://www.gnu.org/s/coreutils/manual/html_node/cp-invocation.html)

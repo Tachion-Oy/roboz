@@ -30,17 +30,17 @@ def prepare_read(parsed: ParsedCommand, base: Path) -> PreparedCommand:
             continue
         if tag != "PTH":
             raise ValueError("Reader operands must be PTH or stdin '-' tagged ARG")
-        for spelling in expand_source_path(value, base):
-            path = resolve_literal_path(spelling, base)
-            file_stat = Path(spelling).stat()
+        for path_arg in expand_source_path(value, base):
+            resolved_path = resolve_literal_path(path_arg, base)
+            file_stat = Path(path_arg).stat()
             if not stat.S_ISREG(file_stat.st_mode):
                 raise ValueError(
-                    f"Reader path must be an existing regular file: {path}"
+                    f"Reader path must be an existing regular file: {resolved_path}"
                 )
             if file_stat.st_nlink > 1:
-                raise ValueError(f"Hard-linked files are unsupported: {path}")
-            argv.append(spelling)
-            operations.append((Operation.READ, path))
+                raise ValueError(f"Hard-linked files are unsupported: {resolved_path}")
+            argv.append(path_arg)
+            operations.append((Operation.READ, resolved_path))
     return PreparedCommand(
         ready=CommandReady(
             command_name=argv[0],

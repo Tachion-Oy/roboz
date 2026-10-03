@@ -75,7 +75,7 @@ def _resolve(base: Path, tokens: list):
         ),
     ],
 )
-def test_mkdir_preserves_native_order_and_path_spelling(
+def test_mkdir_preserves_native_order_and_path_text(
     tmp_path: Path, flags, targets, success, created
 ) -> None:
     tokens = [

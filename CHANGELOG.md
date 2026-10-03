@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Add tagged `ls` and `find` with native listings, common read-only expressions,
-  relative root spelling, and v1-style READ checks on explicit roots. Support
+  relative root text, and v1-style READ checks on explicit roots. Support
   bundled `ls` flags, `find` pruning and boolean expressions, and raw `-print0`
   pipelines. Directory authorization covers native discovery below the root.
 - Correct shared tagged path expansion to match default zsh: a final `**` acts

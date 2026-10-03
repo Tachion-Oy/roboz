@@ -172,7 +172,7 @@ def test_one_continuation_reuses_guard_and_resolves_after_prior_writes(
 
 
 @pytest.mark.parametrize("name", ["&&", "||", ";", "|"])
-def test_operator_spelling_in_pth_is_literal(tmp_path: Path, name: str) -> None:
+def test_operator_text_in_pth_is_literal(tmp_path: Path, name: str) -> None:
     (tmp_path / name).write_text("data")
     tools = get_run_tagged_file_command(
         base=tmp_path, default_verdict=ActionVerdict.allow

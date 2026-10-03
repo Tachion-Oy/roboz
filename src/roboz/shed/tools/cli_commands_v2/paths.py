@@ -18,10 +18,10 @@ def resolve_literal_path(value: str, base: Path) -> Path:
         current /= part
         if current.is_symlink():
             raise ValueError(f"Symlinks are unsupported: {current}")
-    resolved = path.resolve()
-    if value.endswith("/") and resolved.exists() and not resolved.is_dir():
+    resolved_path = path.resolve()
+    if value.endswith("/") and resolved_path.exists() and not resolved_path.is_dir():
         raise ValueError(f"A trailing slash requires a directory: {value!r}")
-    return resolved
+    return resolved_path
 
 
 def _source_path_stat(value: str, base: Path) -> os.stat_result | None:
@@ -79,17 +79,21 @@ def _expand_globstar_matches(
     ]
 
 
-def expand_source_path(value: str, base: Path) -> list[str]:
+def expand_source_path(
+    value: str, base: Path, *, preserve_relative: bool = False
+) -> list[str]:
     """Expand stars and one recursive **/ component using zsh's default behavior.
 
     A final ** without a slash behaves like * and selects immediate children.
     Hidden names require a leading dot in their pattern component. Missing or
     non-directory branches do not match; symlinks and traversal errors reject
     preparation. Results use filesystem byte order and are never re-expanded.
+    By default results are absolute. preserve_relative retains relative operand
+    text, including ./ and trailing slashes, for native output and matching.
     """
-    spelling = os.path.join(str(base), value)
+    path_arg = os.path.join(str(base), value)
     if "*" not in value:
-        return [spelling]
+        return [value if preserve_relative else path_arg]
     parts = value.split("/")
     if "***" in parts[:-1]:
         raise ValueError("Symlink-following '***/' patterns are unsupported")
@@ -121,4 +125,7 @@ def expand_source_path(value: str, base: Path) -> list[str]:
     results = [path for path in prefixes if _source_path_stat(path, base) is not None]
     if not results:
         raise ValueError(f"Source pattern has no matches: {value!r}")
+    if preserve_relative and not os.path.isabs(value):
+        prefix = os.path.join(str(base), "")
+        results = [path.removeprefix(prefix) for path in results]
     return sorted(results, key=os.fsencode)

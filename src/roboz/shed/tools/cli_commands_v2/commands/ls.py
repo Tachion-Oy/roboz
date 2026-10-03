@@ -7,8 +7,9 @@ from pathlib import Path
 from roboz.shed.models import CommandReady, Operation
 
 from ..contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
+from ..paths import expand_source_path
 from ..tokens import PATH_TOKEN
-from .discovery import discovery_paths
+from .writers import inspect_file_path
 
 
 def prepare_ls(parsed: ParsedCommand, base: Path) -> PreparedCommand:
@@ -23,9 +24,10 @@ def prepare_ls(parsed: ParsedCommand, base: Path) -> PreparedCommand:
             options_ended = value == "--"
             argv.append(value)
             continue
-        for spelling, path in discovery_paths(value, base):
-            argv.append("./" + spelling if spelling.startswith("-") else spelling)
-            operations.append((Operation.READ, path))
+        for path_arg in expand_source_path(value, base, preserve_relative=True):
+            resolved_path, _ = inspect_file_path(path_arg, base)
+            argv.append("./" + path_arg if path_arg.startswith("-") else path_arg)
+            operations.append((Operation.READ, resolved_path))
     if not operations:
         operations.append((Operation.READ, base))
     return PreparedCommand(

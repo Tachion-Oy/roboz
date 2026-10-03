@@ -100,14 +100,14 @@ class TokenRule:
     Args:
         tag: Required token role, such as FLG for an option, PTH for a path,
             or ARG for a count or stdin marker. The value must carry this tag
-            explicitly; its spelling alone does not determine its role.
+            explicitly; its text alone does not determine its role.
         pattern: Regular expression applied with ``fullmatch`` to the token's
             entire value. For an option taking a value, this matches the option
-            spelling itself, not the following value.
+            name itself, not the following value.
         option: Canonical key recorded in ``ParsedCommand.options`` with the
             option's token index. Aliases such as -n and --lines share one key
             so duplicate and conflicting options can be rejected. The original
-            spelling is preserved in argv. None makes the token a positional
+            text is preserved in argv. None makes the token a positional
             operand; options must precede positional operands.
         takes: Required tag of the immediately following option value, or None
             if the option takes no value. The following token must also match
@@ -120,7 +120,7 @@ class TokenRule:
             to match allowed rules. Used only when ``option`` is set.
 
     For example, a rule with tag FLG, pattern ``-n|--lines``, option ``-n``,
-    and takes ARG accepts either spelling followed by an ARG token. The command
+    and takes ARG accepts either alias followed by an ARG token. The command
     must also declare which ARG values are allowed.
     """
 
@@ -141,7 +141,7 @@ class ParsedCommand:
 
     @property
     def argv(self) -> list[str]:
-        """Return argument spellings without losing the original token roles."""
+        """Return argument text without losing the original token roles."""
         return [value for value, _ in self.tokens]
 
 

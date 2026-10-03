@@ -13,7 +13,7 @@ from ..tokens import END_OPTIONS, PATH_TOKEN
 
 
 def _directory_operations(
-    spelling: str, *, parents: bool
+    path_arg: str, *, parents: bool
 ) -> list[tuple[Operation, Path]]:
     """Inspect components before collapsing '..', retaining every possible creation.
 
@@ -21,7 +21,7 @@ def _directory_operations(
     later symlink or non-directory. Missing parents without -p and existing
     directory errors are left to native mkdir, preserving ordered partial effects.
     """
-    path = Path(spelling)
+    path = Path(path_arg)
     current = Path(path.anchor).resolve()
     operations: list[tuple[Operation, Path]] = []
     for part in path.parts[1:]:
@@ -50,11 +50,11 @@ def prepare_mkdir(parsed: ParsedCommand, base: Path) -> PreparedCommand:
         value = parsed.tokens[index][0]
         if "*" in value:
             raise ValueError("mkdir target PTH must be literal; '*' is unsupported")
-        spelling = os.path.join(str(base), value)
+        path_arg = os.path.join(str(base), value)
         operations.extend(
-            _directory_operations(spelling, parents="-p" in parsed.options)
+            _directory_operations(path_arg, parents="-p" in parsed.options)
         )
-        argv.append(spelling)
+        argv.append(path_arg)
     return PreparedCommand(
         ready=CommandReady(
             command_name="mkdir",

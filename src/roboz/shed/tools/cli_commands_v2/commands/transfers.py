@@ -75,7 +75,7 @@ def resolve_transfers(
     into_directory: bool,
     source_names: list[str],
 ) -> list[tuple[Path, Path]]:
-    """Validate transfer roots, retaining GNU's contents-copy operand spelling."""
+    """Validate transfer roots, retaining GNU's contents-copy operand syntax."""
     source_ids: set[tuple[int, int]] = set()
     for source in sources:
         _validate_transfer_source(source)
