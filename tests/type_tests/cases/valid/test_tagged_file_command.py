@@ -92,6 +92,16 @@ discovery = TaggedFileCommand(
 assert_type(discovery.value, list[TaggedToken])
 
 
+comparison_and_deletion = TaggedFileCommand(
+    value=[
+        ("diff", "CMD"), ("-u", "FLG"), ("old", "PTH"), ("new", "PTH"),
+        ("&&", "CTL"), ("gio", "CMD"), ("trash", "ARG"), ("old", "PTH"),
+        (";", "CTL"), ("rm", "CMD"), ("-r", "FLG"), ("unused", "PTH"),
+    ]
+)
+assert_type(comparison_and_deletion.value, list[TaggedToken])
+
+
 def check_token_value(token: TaggedToken) -> None:
     if token[1] == "CMD":
         assert_type(token[0], CommandName)

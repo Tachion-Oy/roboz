@@ -3,7 +3,6 @@
 import re
 import shlex
 import stat
-from os import scandir
 from pathlib import Path
 from time import monotonic
 
@@ -11,7 +10,7 @@ from roboz.shed.models import CommandReady
 from roboz.shed.tools.cli_commands.utilities.constants import SUBPROCESS_TIMEOUT_SECONDS
 
 from ..contracts import ParsedCommand, TokenRule
-from ..paths import expand_source_path
+from ..paths import directory_entries, expand_source_path
 from ..tokens import END_OPTIONS, PATH_TOKEN
 from .writers import inspect_file_path
 
@@ -112,12 +111,10 @@ def recursive_children(
     during path validation. Otherwise native search skips those entries.
     """
     children: list[Path] = []
-    with scandir(directory) as entries:
-        for entry in entries:
-            check_search_deadline(deadline)
-            mode = entry.stat(follow_symlinks=False).st_mode
-            if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
-                children.append(directory / entry.name)
+    for entry in directory_entries(directory, lambda: check_search_deadline(deadline)):
+        mode = entry.stat(follow_symlinks=False).st_mode
+        if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
+            children.append(directory / entry.name)
     check_search_deadline(deadline)
     children.sort(reverse=True)
     check_search_deadline(deadline)

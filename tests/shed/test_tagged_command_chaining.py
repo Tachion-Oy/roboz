@@ -68,6 +68,7 @@ def test_public_contract_accepts_only_tokens_and_rejects_progress() -> None:
     assert "CommandSequence" not in schema.get("$defs", {})
     assert schema["$defs"]["CommandName"]["enum"] == [
         "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch", "mkdir", "grep", "rg", "ls", "find",
+        "diff", "gio", "rm",
     ]
     assert schema["$defs"]["ControlOperator"]["enum"] == ["&&", "||", ";", "|"]
     with pytest.raises(ValidationError):

@@ -32,10 +32,10 @@ from .specs import COMMANDS
 def resolve_tagged_command(
     input: TaggedFileCommand, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
-    r"""Read, create, update, copy, or move files using ordered [value, tag] pairs.
+    r"""Read, compare, create, update, transfer, or delete files with tagged arguments.
 
     Start each command with cp, mv, pwd, cat, head, tail, wc, tee, touch, mkdir,
-    grep, rg, ls, or find tagged CMD.
+    grep, rg, ls, find, diff, gio, or rm tagged CMD.
     Tag flags FLG, file paths PTH, and count values or stdin '-' ARG.
     Except for ls/find below, place separate flags before operands; -- ends
     options. Unknown, repeated, bundled, and attached options are unsupported.
@@ -54,6 +54,30 @@ def resolve_tagged_command(
     Example: value=[['cat', 'CMD'], ['data.txt', 'PTH'], ['|', 'CTL'],
     ['head', 'CMD'], ['-n', 'FLG'], ['2', 'ARG'], ['|', 'CTL'],
     ['wc', 'CMD'], ['-l', 'FLG']].
+
+    diff requires exactly two regular-file PTH operands after expansion, keeping
+    their order and repeats. It uses the same READ and file checks as readers,
+    accepts -u/--unified, -q/--brief, -s/--report-identical-files,
+    -i/--ignore-case, -w/--ignore-all-space, and --, and never reads stdin.
+    Native output and status are preserved: 0 means equal, 1 means different,
+    and 2 reports errors; these statuses control && and || normally.
+
+    gio accepts only ['trash', 'ARG'] followed by target PTHs, without options.
+    rm accepts separate -r/-R/--recursive, -f/--force, and -- flags before PTHs.
+    Both require DELETE on named entries; gio trash and recursive rm also check
+    every descendant, including hidden entries, before one native invocation.
+    Terminal symlinks, including dangling links and glob matches, are authorized
+    at their own pathname and never followed. Hard links and special entries
+    can also be deleted; paths through symlink parents are rejected, including
+    a trailing slash or dot component after a link. Remove links by bare pathname.
+    Operand text retains trailing separators and dot components for native
+    behavior. Repeats retain their order; permissions and approvals are deduplicated.
+    Recursive scans and expansion share a 60-second preparation deadline.
+    Missing named targets remain subject to DELETE; rm -f never bypasses policy.
+    Unmatched patterns fail before execution even with -f. Native missing-target
+    and no-operand behavior is preserved, including rm -f with no targets.
+    gio trash with no targets requires DELETE on the base before its native error.
+    Example: value=[['rm', 'CMD'], ['-r', 'FLG'], ['old', 'PTH']].
 
     grep/rg take one pattern ARG, then input PTHs or stdin '-' ARG. Patterns are
     passed literally to the native regex engine; -F/--fixed-strings selects literal

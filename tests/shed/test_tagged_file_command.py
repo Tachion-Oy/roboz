@@ -91,7 +91,7 @@ def _call(value: list[TaggedToken]) -> dict:
         {"tokens": [["cp", "CMD"]]},
         {"value": [["cp", "CMD", "extra"]]},
         {"value": [["cp", "UNKNOWN"]]},
-        {"value": [["rm", "CMD"], ["source", "PTH"]]},
+        {"value": [["chmod", "CMD"], ["source", "PTH"]]},
         {"value": [["cp", "CMD"], ["&", "CTL"], ["mv", "CMD"]]},
     ],
 )
@@ -1353,25 +1353,26 @@ def test_source_expansion_propagates_traversal_failures(
     (tmp_path / "projects/a/src").mkdir(parents=True)
     (tmp_path / "projects/a/src/file.py").write_text("a")
     (tmp_path / "projects/b/src").mkdir(parents=True)
-    original_iterdir = Path.iterdir
+    from roboz.shed.tools.cli_commands_v2 import paths
+
+    original_scandir = os.scandir
     original_stat = Path.stat
     blocked = tmp_path / "projects/b/src"
 
-    def iterdir(path: Path):
+    def scandir(path: Path):
         if path == blocked:
             raise PermissionError("Cannot scan source directory")
-        return original_iterdir(path)
+        return original_scandir(path)
 
     def stat(path: Path, *, follow_symlinks: bool = True):
         if path == blocked and follow_symlinks:
             raise OSError("Cannot stat source directory")
         return original_stat(path, follow_symlinks=follow_symlinks)
 
-    monkeypatch.setattr(
-        Path,
-        "iterdir" if boundary == "scan" else "stat",
-        iterdir if boundary == "scan" else stat,
-    )
+    if boundary == "scan":
+        monkeypatch.setattr(paths, "scandir", scandir)
+    else:
+        monkeypatch.setattr(Path, "stat", stat)
     result = _resolve(
         tmp_path, [("cp", "CMD"), (pattern, "PTH"), ("out", "PTH")]
     )
