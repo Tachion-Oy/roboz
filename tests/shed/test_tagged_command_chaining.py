@@ -67,7 +67,7 @@ def test_public_contract_accepts_only_tokens_and_rejects_progress() -> None:
     assert "sequence" not in schema["properties"]
     assert "CommandSequence" not in schema.get("$defs", {})
     assert schema["$defs"]["CommandName"]["enum"] == [
-        "cp", "mv", "pwd", "cat", "head", "tail", "wc",
+        "cp", "mv", "pwd", "cat", "head", "tail", "wc", "tee", "touch",
     ]
     assert schema["$defs"]["ControlOperator"]["enum"] == ["&&", "||", ";", "|"]
     with pytest.raises(ValidationError):
@@ -100,6 +100,26 @@ def test_malformed_sequence_rejects_before_first_transfer(
     assert not any(r.get("caller") == "guard_tagged_file_command" for r in responses)
     assert not any(r.get("caller") == "execute_tagged_file_command" for r in responses)
     assert not (tmp_path / "b").exists()
+
+
+@pytest.mark.parametrize("failure", ["denial", "preparation"])
+def test_failure_labels_use_prepared_command_or_command_name(
+    tmp_path: Path, failure: str
+) -> None:
+    source = tmp_path / "source file"
+    source.write_text("data")
+    tokens = [
+        ("head", "CMD"), ("-n", "FLG"),
+        ("2" if failure == "denial" else "-2", "ARG"), (source.name, "PTH"),
+    ]
+    tools = get_run_tagged_file_command(
+        base=tmp_path, default_verdict=ActionVerdict.deny
+    )
+    result = _result(_invoke(tools, tokens))
+    label = shlex.join(["head", "-n", "2", str(source)]) if failure == "denial" else "head"
+    assert result.startswith("Overall: failure (exit 1)")
+    assert f"--- begin: {label} ---\n" in result
+    assert f"--- end: {label} ---" in result
 
 
 def test_one_continuation_reuses_guard_and_resolves_after_prior_writes(

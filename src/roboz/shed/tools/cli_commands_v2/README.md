@@ -1,6 +1,6 @@
 # Tagged CLI v2
 
-This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, and `wc`
+This opt-in tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, and `touch`
 through an ordered, tagged command contract. The existing v1 CLI and default
 capabilities remain available. Public imports from `cli_commands.tagged_transfer`
 are compatibility re-exports of this package.
@@ -134,6 +134,79 @@ For example, count the first two lines of a file:
 }
 ```
 
+### Create and update files
+
+`tee` writes stdin to each destination and to stdout. It creates missing files
+and overwrites existing files by default; `-a` / `--append` appends instead.
+Destinations are literal PTH values and reject wildcards. Each destination must
+be a regular file or a missing file with an existing parent directory.
+
+One optional ARG after flags and before destination paths supplies inline text:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Append a note.",
+  "value": [
+    ["tee", "CMD"], ["-a", "FLG"],
+    ["Hello\n", "ARG"], ["notes.txt", "PTH"]
+  ]
+}
+```
+
+Inline text is encoded as UTF-8 when the subprocess starts, preserving whitespace
+and line endings; it is stdin, not an executable argument. Incoming pipe bytes override inline text,
+including empty output. With neither, stdin is empty and `tee` never waits for
+terminal input. With no destinations, `tee` only produces stdout and requires no
+filesystem permissions. For example, `tee` with a content ARG can feed `wc` via
+`["|", "CTL"]`. Inline text is omitted from command labels, including failure
+labels; successful `tee` still returns its content on stdout. Reports use the
+prepared command's label, including on permission denial. If preparation fails,
+the label is just the command name, with the error reported in the body.
+
+`touch` requires at least one target PTH. It creates missing named files empty,
+unless `-c` / `--no-create` is supplied, and updates timestamps on existing regular
+files and directories. Directory timestamps are updated without recursion.
+New files require existing parents; neither command creates parent directories.
+
+| Command | Supported options |
+| --- | --- |
+| `tee` | `-a` / `--append`, `--` |
+| `touch` | `-a` (access time), `-m` (modification time), `-c` / `--no-create`, `-d` / `--date` followed by a date ARG, `-t` followed by a `[[CC]YY]MMDDhhmm[.ss]` ARG, `-r` / `--reference` followed by PTH, `--` |
+
+Both use separate FLG tokens before operands. Unknown, repeated, bundled, and
+attached options are rejected. `touch -a -m` updates both timestamps. `-r` and
+`-d` can be combined for dates relative to reference timestamps; `-t` conflicts
+with either. Native `touch` interprets dates and calendar values. Reference paths
+must be literal existing regular files or directories and require READ.
+
+For example, create a file using another file's timestamps:
+
+```json
+{
+  "action": "run_tagged_file_command",
+  "rationale": "Create a file with the reference timestamps.",
+  "value": [
+    ["touch", "CMD"], ["-r", "FLG"], ["reference.txt", "PTH"],
+    ["new.txt", "PTH"]
+  ]
+}
+```
+
+`touch` targets also support the patterns described below. **If a pattern matches
+nothing, the command fails before execution, even with `-c`. It does not create
+a filename containing the unmatched wildcard.** This matches zsh's default
+and Bash with `failglob`, rather than default Bash. A missing named target such
+as `new.txt` is still created normally, or left missing with `-c`.
+
+Both commands require CREATE on every target. Existing regular files additionally
+require READ and DELETE, including append and timestamp updates, preserving v1's
+permission policy. Missing `touch -c` targets remain subject to CREATE permission.
+All target checks and approvals complete before any native writes. Symlinks,
+hard-linked regular files, and special files are unsupported. Target order and
+repeats are preserved while permissions and approvals are deduplicated.
+`["-", "PTH"]` names the literal file `-` for both commands.
+
 ### Command sequences
 
 Tag control operators `CTL` in the same flat list:
@@ -159,7 +232,7 @@ after either `a` or `b` succeeds. Skipping a pipeline skips all its stages and
 retains the last executed status. The final result reports that status.
 
 Only CTL tags split commands: `["&&", "PTH"]` names a literal file. There is no
-separate chain field. The input types and schema restrict CMD values to the seven
+separate chain field. The input types and schema restrict CMD values to the nine
 supported commands and CTL values to the four supported operators. Every segment starts with CMD;
 leading, trailing, adjacent, or unsupported control operators reject the entire
 sequence before execution.
@@ -222,7 +295,9 @@ use `src/**/*.py` instead of `src/**/**/*.py`.
 
 Source operands retain their order; each pattern's matches are sorted in
 C-locale filesystem byte order. If any pattern has no matches, that command
-fails before execution. Missing or non-directory branches contribute no
+fails before execution. This matches zsh's default or Bash with `failglob`,
+not default Bash's treatment of an unmatched pattern as a literal filename.
+Missing or non-directory branches contribute no
 matches; symlinks, permission errors, and other traversal errors reject the
 command. Matched filenames are literal executable arguments, including spaces,
 leading dashes, and wildcard characters; they are never expanded again.
@@ -337,10 +412,10 @@ Examples rejected before execution:
 ## Boundaries and review
 
 This is an experiment, not an OS sandbox. Filesystem races and broader command
-support remain out of scope. Commands use the existing runner's timeout and
-output handling; native execution can partially complete a multi-file transfer
+support remain out of scope. Commands retain the existing timeout and output
+limits; native execution can partially complete a multi-file transfer
 before failing. The tagged input is retained through resolution and guarding.
-The shared process runner executes the prepared argv directly. The public input
+The tagged executor runs the prepared argv directly. The public input
 contains only the tagged value; its validator checks the command/CTL grammar.
 The executor consumes the remaining tokens directly, using the latest exit
 status to skip or select the next command.
@@ -355,4 +430,4 @@ same step preparation; there is no stored list of parsed commands or operators.
 The existing CLI tools and default capabilities are unchanged. Inspect
 `contracts.py`, `sequence.py`, `command.py`, `guard.py`, and `execute.py` to review
 the contract and guarded loop. Run `uv run pytest tests/shed/test_tagged*.py` for
-scripted agent calls that read, copy, and move temporary files through the full chain.
+scripted agent calls that read, write, copy, and move temporary files through the full chain.

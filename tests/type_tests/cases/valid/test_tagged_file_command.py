@@ -48,6 +48,21 @@ readers = TaggedFileCommand(
 assert_type(readers.value, list[TaggedToken])
 assert_type(LegacyTaggedFileCommand(value=readers.value), TaggedFileCommand)
 
+writers = TaggedFileCommand(
+    value=[
+        ("touch", "CMD"),
+        ("-r", "FLG"),
+        ("reference", "PTH"),
+        ("target", "PTH"),
+        ("&&", "CTL"),
+        ("tee", "CMD"),
+        ("-a", "FLG"),
+        ("inline content\n", "ARG"),
+        ("target", "PTH"),
+    ]
+)
+assert_type(writers.value, list[TaggedToken])
+
 
 def check_token_value(token: TaggedToken) -> None:
     if token[1] == "CMD":
