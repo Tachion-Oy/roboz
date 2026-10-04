@@ -66,6 +66,7 @@ class CommandExecution(Empty):
     remaining: list[Token]
     stdin: bytes | None = None
     accumulated_output: str = ""
+    permission_history: str = ""
     failure: str | None = None
     ready: CommandReady | None = None
 

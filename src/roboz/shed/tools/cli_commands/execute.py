@@ -16,7 +16,7 @@ from roboz.shed.tools.cli_commands.constants import (
     SUBPROCESS_TIMEOUT_SECONDS,
     SUCCESS_NO_OUTPUT,
 )
-from roboz.shed.tools.formatting import _framed_cli_output, _with_guard_message
+from roboz.shed.tools.formatting import _framed_cli_output
 from roboz.shed.tools.contexts import FileCommandExecutionContext
 from roboz.tooling.decorators import factory
 
@@ -24,14 +24,21 @@ from .contracts import CommandExecution
 from .sequence import next_command, split_command
 
 HISTORY_TRUNCATION_MARKER = "[earlier command output omitted]\n"
+PERMISSION_TRUNCATION_MARKER = "[earlier permission messages omitted]\n"
+MAX_PERMISSION_HISTORY_CHARS = LIGHT_MAX_CHARS // 2
 
 
-def _bounded_history(history: str, max_chars: int = LIGHT_MAX_CHARS) -> str:
+def _bounded_history(
+    history: str,
+    max_chars: int = LIGHT_MAX_CHARS,
+    *,
+    marker: str = HISTORY_TRUNCATION_MARKER,
+) -> str:
     """Keep the newest output within the report budget, marking any omission."""
     if len(history) <= max_chars:
         return history
-    tail_chars = max_chars - len(HISTORY_TRUNCATION_MARKER)
-    return HISTORY_TRUNCATION_MARKER + history[-tail_chars:]
+    tail_chars = max_chars - len(marker)
+    return marker + history[-tail_chars:]
 
 
 def _run_command(
@@ -78,7 +85,6 @@ def _append_result(
     execution: CommandExecution,
     command: str,
     result: subprocess.CompletedProcess[bytes],
-    permission_message: str | None,
 ) -> None:
     """Accumulate reached command frames while keeping piped stdout out of history."""
     _, tail = split_command(execution.remaining)
@@ -94,15 +100,21 @@ def _append_result(
         body = f"{PIPE_STDIN_FROM_PREVIOUS_COMMAND}\n{body}"
     if stderr:
         body += f"\nstderr:\n{stderr}"
-    body = _with_guard_message(permission_message, body)
     execution.accumulated_output = _bounded_history(
         execution.accumulated_output + _framed_cli_output(command, body) + "\n"
     )
 
 
-def _final_result(history: str, summary: str, truncation: TruncationSpec) -> Str:
-    """Reserve space for the status so message truncation cannot hide the tail."""
+def _final_result(
+    history: str,
+    summary: str,
+    truncation: TruncationSpec,
+    permission_history: str,
+) -> Str:
+    """Reserve space for status and permissions before bounding command output."""
     header = f"Overall: {summary}\n"
+    if permission_history:
+        header += permission_history + "\n"
     return Str(
         value=header + _bounded_history(history.rstrip(), LIGHT_MAX_CHARS - len(header)),
         truncation=truncation,
@@ -121,7 +133,11 @@ def _execute_step(
     try:
         failure = execution.failure
         if input.status != GuardStatus.ALLOWED:
-            failure = input.message or "Permission denied"
+            failure = (
+                "Permission denied; see permission report above"
+                if input.message
+                else "Permission denied"
+            )
         if failure is not None:
             return command, subprocess.CompletedProcess([], 1, b"", failure.encode())
         if ready is None:
@@ -129,10 +145,10 @@ def _execute_step(
         return command, _run_command(ready, ctx, execution.stdin)
     except Exception as error:
         return _final_result(
-            execution.accumulated_output
-            + _framed_cli_output(command, _with_guard_message(input.message, str(error))),
+            execution.accumulated_output + _framed_cli_output(command, str(error)),
             "failure (execution error)",
             ctx.truncation,
+            execution.permission_history,
         )
 
 
@@ -141,7 +157,6 @@ def _completed_result(
     command: str,
     result: subprocess.CompletedProcess[bytes],
     truncation: TruncationSpec,
-    permission_message: str | None,
 ) -> Str | CommandExecution:
     """Bound captured output and record the normalized outcome before continuing."""
     captured_chars = len((result.stdout or b"").decode("utf-8", "backslashreplace")) + len(
@@ -149,19 +164,17 @@ def _completed_result(
     )
     if captured_chars > MAX_COMMAND_OUTPUT_CHARS:
         return _final_result(
-            _with_guard_message(
-                permission_message,
-                ERR_OUTPUT_TOO_LARGE.format(
-                    actual_chars=captured_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
-                ),
+            ERR_OUTPUT_TOO_LARGE.format(
+                actual_chars=captured_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
             ),
             f"failure (output too large; exit {result.returncode})",
             truncation,
+            execution.permission_history,
         )
     result.returncode = (
         result.returncode if result.returncode >= 0 else 128 - result.returncode
     )
-    _append_result(execution, command, result, permission_message)
+    _append_result(execution, command, result)
     return _continue_or_finish(execution, result, truncation)
 
 
@@ -178,7 +191,10 @@ def _continue_or_finish(
         return execution
     status = "success" if result.returncode == 0 else "failure"
     return _final_result(
-        execution.accumulated_output, f"{status} (exit {result.returncode})", truncation
+        execution.accumulated_output,
+        f"{status} (exit {result.returncode})",
+        truncation,
+        execution.permission_history,
     )
 
 
@@ -189,12 +205,15 @@ def execute_file_command(
     ctx: FileCommandExecutionContext,
 ) -> Str | CommandExecution:
     """Execute an allowed step; apply control operators to every ordinary outcome."""
+    execution = input.original_input
+    if input.message:
+        execution.permission_history = _bounded_history(
+            "\n".join(filter(None, [execution.permission_history, input.message])),
+            MAX_PERMISSION_HISTORY_CHARS,
+            marker=PERMISSION_TRUNCATION_MARKER,
+        )
     outcome = _execute_step(input, ctx)
     if isinstance(outcome, Str):
         return outcome
     command, result = outcome
-    # Denials already include the permission exchange in their error diagnostic.
-    permission_message = input.message if input.status == GuardStatus.ALLOWED else None
-    return _completed_result(
-        input.original_input, command, result, ctx.truncation, permission_message
-    )
+    return _completed_result(execution, command, result, ctx.truncation)

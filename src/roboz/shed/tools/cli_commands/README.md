@@ -97,8 +97,12 @@ Approval requires `y` or `yes`, ignoring case and surrounding whitespace.
 Reports retain each approval question, the exact reply as a JSON string, and
 the decision, including rejected replies and approvals preceding a later failure.
 Approval text is separate from native stdout and never enters a pipeline.
-An unavailable interaction or absent reply is reported explicitly. Existing
-report size limits still apply; omitted output does not prove no approval occurred.
+An unavailable interaction or absent reply is reported explicitly. Permission
+messages have a separate 20,000-character budget within the 40,000-character
+report limit, so large command output or a later oversized command cannot
+discard them. If permission messages themselves exceed their budget, the newest
+text is kept with an explicit omission marker. Omitted output does not prove
+no approval occurred.
 
 Permission patterns match literal POSIX names: spaces and backslashes are
 preserved. For example, a rule for `report` does not authorize `report `.

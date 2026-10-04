@@ -10,6 +10,7 @@ import pytest
 from roboz import Agent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.models import Role
+from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe, bind_api_user_io, reset_api_user_io
 from roboz.shed.models import ActionVerdict, ApplyPatch, Operation, PermissionRule
 from roboz.shed.sandbox import Sandbox
@@ -175,6 +176,74 @@ def test_approved_cli_failure_retains_user_reply(
     assert result.value.startswith("Overall: failure")
     assert prompts[0] in result.value
     assert 'User reply: " Y "\nDecision: allowed' in result.value
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["approved_output", "declined_fallback", "later_oversized", "permission_overflow"],
+)
+def test_permission_reply_survives_large_command_reports(
+    tmp_path, replies, monkeypatch, scenario
+):
+    reply = "no, use a different file" if scenario == "declined_fallback" else " Yes "
+    if scenario == "permission_overflow":
+        reply = "no " + "x" * LIGHT_MAX_CHARS + "; keep the final instruction"
+    prompts = replies(reply)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(Path(argv[0]).name)
+        if scenario == "later_oversized":
+            size = 0 if len(calls) == 1 else MAX_COMMAND_OUTPUT_CHARS + 1
+        else:
+            size = LIGHT_MAX_CHARS
+        return subprocess.CompletedProcess(argv, 0, b"x" * size, b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    tokens = [("tee", "CMD"), ("note", "PTH")]
+    if scenario != "approved_output":
+        tokens.extend([(";", "CTL"), ("pwd", "CMD")])
+    agent = Agent(
+        name="permission_report_test",
+        system_prompt="Write a file.",
+        tools=[
+            *get_run_file_command(
+                base=tmp_path,
+                default_verdict=ActionVerdict.allow,
+                ask_rules=[PermissionRule("note", {Operation.CREATE})],
+                pipe=EventPipe(),
+            ),
+            stop,
+        ],
+        agent_endpoint=MockLLMEndpoint(
+            [
+                {"action": "run_file_command", "rationale": "Write", "value": tokens},
+                {"action": "stop", "rationale": "Done", "value": "done"},
+            ]
+        ),
+        initial_messages=None,
+    )
+    _, messages = agent.invoke()
+    outputs = [json.loads(m.content) for m in messages if m.role == Role.USER]
+    report = next(
+        m["value"]
+        for m in outputs
+        if m.get("caller") == "execute_file_command" and "value" in m
+    )
+    assert len(report) <= LIGHT_MAX_CHARS
+    if scenario == "permission_overflow":
+        assert "[earlier permission messages omitted]" in report
+        assert '; keep the final instruction"\nDecision: denied' in report
+    else:
+        assert report.count(prompts[0]) == 1
+        assert f"User reply: {json.dumps(reply)}" in report
+    if scenario == "later_oversized":
+        assert "Command output too large" in report
+    else:
+        assert "earlier command output omitted" in report
+    if scenario in ("declined_fallback", "permission_overflow"):
+        assert calls == ["pwd"]
+        assert "Decision: denied" in report
 
 
 @pytest.mark.parametrize("old", ["before", "missing"])
