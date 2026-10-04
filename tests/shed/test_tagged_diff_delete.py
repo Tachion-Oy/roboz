@@ -19,7 +19,6 @@ from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools.cli_commands_v2 import TaggedFileCommand, get_run_tagged_file_command
 from roboz.shed.tools.cli_commands_v2 import paths
 from roboz.shed.tools.cli_commands_v2.command import resolve_tagged_command
-from roboz.shed.tools.cli_commands_v2.commands import deletions
 from roboz.tools import stop
 
 
@@ -366,7 +365,7 @@ def test_deletion_deadline_covers_all_operands_and_glob_expansion(
     def unexpected(*args, **kwargs):
         pytest.fail("Timed-out preparation launched a process")
 
-    monkeypatch.setattr(deletions, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(paths, "monotonic", lambda: elapsed)
     monkeypatch.setattr(paths, "scandir", slow_scandir)
     monkeypatch.setattr(subprocess, "run", unexpected)
     operands = ["**/*"] if glob else ["first", "second"]

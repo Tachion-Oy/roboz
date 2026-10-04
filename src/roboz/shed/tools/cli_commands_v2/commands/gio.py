@@ -12,13 +12,9 @@ from .deletions import prepare_deletion
 
 def prepare_gio(parsed: ParsedCommand, base: Path) -> PreparedCommand:
     """Accept only trash followed by paths, guarding the base when paths are omitted."""
-    if len(parsed.tokens) < 2 or parsed.tokens[1] != ("trash", "ARG"):
+    if "trash" not in parsed.options:
         raise ValueError("gio requires 'trash' tagged ARG before target PTHs")
-    operands: list[str] = []
-    for value, tag in parsed.tokens[2:]:
-        if tag != "PTH":
-            raise ValueError("gio trash targets must be tagged PTH")
-        operands.append(value)
+    operands = [parsed.tokens[index][0] for index in parsed.operands]
     prepared = prepare_deletion(["gio", "trash"], operands, base, recursive=True)
     if not operands:
         return PreparedCommand(prepared.ready, [(Operation.DELETE, base)])
@@ -27,7 +23,10 @@ def prepare_gio(parsed: ParsedCommand, base: Path) -> PreparedCommand:
 
 GIO = TaggedCommandSpec(
     command=("gio", "CMD"),
-    allowed=(PATH_TOKEN, TokenRule(tag="ARG", pattern=re.compile(r"trash"))),
+    allowed=(
+        PATH_TOKEN,
+        TokenRule(tag="ARG", pattern=re.compile(r"trash"), option="trash"),
+    ),
     forbidden_pairs=(),
     prepare_command=prepare_gio,
 )

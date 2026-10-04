@@ -2,18 +2,18 @@
 
 import re
 import stat
+from collections.abc import Callable
 from itertools import product
 from pathlib import Path
 
 from roboz.shed.models import Operation
 
 from ..contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
+from ..paths import preparation_deadline
 from .search import (
     SEARCH_TOKENS,
-    check_search_deadline,
     recursive_children,
     search_arguments,
-    search_deadline,
     search_path,
     search_ready,
 )
@@ -40,14 +40,14 @@ def _input_paths(path_args: list[str], base: Path) -> tuple[list[Path], list[Pat
 
 
 def _tree_paths(
-    roots: list[Path], base: Path, deadline: float
+    roots: list[Path], base: Path, check_deadline: Callable[[], None]
 ) -> tuple[set[Path], set[Path]]:
     """Validate candidate trees and retain their directories for ignore checks."""
     paths: set[Path] = set()
     directories: set[Path] = set()
     pending = list(reversed(roots))
     while pending:
-        check_search_deadline(deadline)
+        check_deadline()
         path, directory = search_path(str(pending.pop()), base)
         if path in paths:
             continue
@@ -55,12 +55,12 @@ def _tree_paths(
         if not directory:
             continue
         directories.add(path)
-        pending.extend(recursive_children(path, deadline))
+        pending.extend(recursive_children(path, check_deadline))
     return paths, directories
 
 
 def _ignore_files(
-    roots: list[Path], directories: set[Path], base: Path, deadline: float
+    roots: list[Path], directories: set[Path], base: Path, check_deadline: Callable[[], None]
 ) -> list[Path]:
     """Validate potential ignore files in the tree and above its explicit roots."""
     ignore_directories = directories.copy()
@@ -68,7 +68,7 @@ def _ignore_files(
         ignore_directories.update(root.parents)
     files: list[Path] = []
     for directory, name in product(sorted(ignore_directories), _IGNORE_NAMES):
-        check_search_deadline(deadline)
+        check_deadline()
         path, entry = inspect_file_path(str(directory / name), base)
         if entry is None:
             continue
@@ -80,12 +80,12 @@ def _ignore_files(
 
 def _recursive_reads(roots: list[Path], base: Path, *, ignore: bool) -> list[Path]:
     """Combine candidate-tree reads with any required ignore-file reads."""
-    deadline = search_deadline()
-    paths, directories = _tree_paths(roots, base, deadline)
+    check_deadline = preparation_deadline("Search")
+    paths, directories = _tree_paths(roots, base, check_deadline)
     if ignore:
-        paths.update(_ignore_files(roots, directories, base, deadline))
+        paths.update(_ignore_files(roots, directories, base, check_deadline))
     reads = sorted(paths)
-    check_search_deadline(deadline)
+    check_deadline()
     return reads
 
 

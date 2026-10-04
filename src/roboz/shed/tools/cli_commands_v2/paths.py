@@ -4,8 +4,12 @@ import os
 import stat
 from collections.abc import Callable, Iterator
 from fnmatch import fnmatchcase
+from functools import partial
 from os import scandir
 from pathlib import Path
+from time import monotonic
+
+from roboz.shed.tools.cli_commands.utilities.constants import SUBPROCESS_TIMEOUT_SECONDS
 
 
 def resolve_literal_path(value: str, base: Path) -> Path:
@@ -45,6 +49,20 @@ def inspect_entry_path(value: str, base: Path) -> tuple[Path, os.stat_result | N
         return resolved_path, os.lstat(path_arg)
     except (FileNotFoundError, NotADirectoryError):
         return resolved_path, None
+
+
+def preparation_deadline(operation: str) -> Callable[[], None]:
+    """Start one preparation time budget and return its expiration check."""
+    deadline = monotonic() + SUBPROCESS_TIMEOUT_SECONDS
+    return partial(check_preparation_deadline, deadline, operation)
+
+
+def check_preparation_deadline(deadline: float, operation: str) -> None:
+    """Fail preparation when its shared traversal and validation budget expires."""
+    if monotonic() >= deadline:
+        raise ValueError(
+            f"{operation} preparation timed out after {SUBPROCESS_TIMEOUT_SECONDS} seconds"
+        )
 
 
 def directory_entries(
