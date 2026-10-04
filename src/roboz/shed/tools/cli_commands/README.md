@@ -94,6 +94,11 @@ DELETE. Ask rules apply independently to CREATE, READ, and DELETE, including
 overwrite requirements. A policy denial prevents all approval prompts; declined
 or unavailable approval prevents execution.
 Approval requires `y` or `yes`, ignoring case and surrounding whitespace.
+Reports retain each approval question, the exact reply as a JSON string, and
+the decision, including rejected replies and approvals preceding a later failure.
+Approval text is separate from native stdout and never enters a pipeline.
+An unavailable interaction or absent reply is reported explicitly. Existing
+report size limits still apply; omitted output does not prove no approval occurred.
 
 Permission patterns match literal POSIX names: spaces and backslashes are
 preserved. For example, a rule for `report` does not authorize `report `.
@@ -209,6 +214,10 @@ are disabled so they cannot introduce undeclared reads or commands.
 Regular search inputs require READ and may not be hard-linked or special files.
 Explicit symlinks are rejected. Native grep `-r` and rg skip descendant symlinks
 and special files; grep `-R` rejects trees containing them before execution.
+Paths selected by a glob are explicit operands, so one matched symlink rejects
+the whole command without partial search output. Hard links share an inode:
+while its link count exceeds one, every name is rejected, including the name
+used before the extra link was created. Use separate files for link test fixtures.
 
 Recursive searches require READ on every directory and regular file in the
 candidate tree, including hidden and ignored files. Ripgrep also requires READ

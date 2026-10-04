@@ -218,6 +218,9 @@ and ignored files; rg additionally checks potential local/ancestor ignore files
 unless ignores are disabled. An ignored file can still block authorization.
 Explicit symlinks and hard-linked/special inputs are rejected. Recursive grep -r
 and rg skip descendant symlinks and special files; grep -R rejects them.
+Glob matches are explicit inputs: one matched symlink rejects the whole command
+before any file content is read. Every name of a file with multiple hard links
+is rejected; there is no privileged original name.
 Pattern files, preprocessors, and other executable options are unsupported.
 
 ### Search with alternation
@@ -350,8 +353,13 @@ names retain spaces and backslashes. Allow/deny conflicts use the configured
 precedence; unmatched operations use the default verdict. Ask rules apply to
 each required operation. Approvals and permissions are deduplicated per command;
 a denial prevents all approvals and execution. Missing/declined approval fails
-the step. The base directory alone grants no access. Recursive search preflight
-and deletion preparation have 60-second deadlines; deletion includes pattern
+the step. Tool reports include each approval question, the user's exact reply,
+and the decision, even if the approved operation later fails. These records are
+report text, never piped stdout. Read the user's reply before choosing your next
+action; successful execution alone does not mean that no prompt occurred.
+Preparation errors, such as a missing parent, may precede policy checks and are
+not policy-denial verdicts. The base directory alone grants no access. Recursive
+search preflight and deletion preparation have 60-second deadlines; deletion includes pattern
 expansion in its deadline. Each native command has a separate 60-second timeout.
 
 ## Keeping output useful
