@@ -1,205 +1,373 @@
-"""Prompts for the constrained CLI tools skill."""
+"""Usage and worked examples for guarded file commands."""
 
 from typing import Final
 
 from roboz.shed.identifiers import RUN_FILE_COMMAND_TOOL_NAME
 
 DESCRIPTION: Final[str] = (
-    f"How to use Roboz's constrained Unix file CLI via `{RUN_FILE_COMMAND_TOOL_NAME}`: input shape, "
-    "chaining, commands, oversized-output fail-closed behavior, and how to read this run's "
-    "path permissions (via `help`)."
+    f"Use `{RUN_FILE_COMMAND_TOOL_NAME}` for guarded file discovery, searching, reading, "
+    "writing, transfers, and deletion. Covers token roles, command options, path "
+    "permissions, patterns, and mixed command chains with worked examples."
 )
 
-_RUN_FILE_COMMAND_PH = "<<RUN_FILE_COMMAND_TOOL>>"
+_INSTRUCTIONS_TEMPLATE = r"""## File CLI (`<<RUN_FILE_COMMAND_TOOL>>`)
 
-_INSTRUCTIONS_TEMPLATE = """## Constrained file CLI (`<<RUN_FILE_COMMAND_TOOL>>`)
+Use this tool to discover, read, search, compare, create, update, copy, move, or
+remove files. Paths may be absolute or relative to the configured working
+directory. That directory is a path shorthand; authorization comes from the
+deployment's allow/deny/ask rules and default verdict.
 
-Use the **`<<RUN_FILE_COMMAND_TOOL>>`** tool with the configured working directory as **shorthand** for relative paths; permissions come only from allow/deny/ask rules (see `help`).
+### Input and choosing commands
 
-### Full reference: `help`
+Supply one `value` array of ordered `[value, tag]` pairs:
 
-Invoke **`command: help`** with empty `argv`. The tool returns **one combined document**:
+| Tag | Meaning |
+| --- | --- |
+| `CMD` | Command name; begins each command. |
+| `FLG` | Flag, option, or a `find` predicate/operator. |
+| `ARG` | Non-path argument: pattern, count, date, or inline `tee` content. |
+| `PTH` | File or directory path, including supported path patterns. |
+| `CTL` | One of `&&`, `||`, `;`, or `|`, between commands. |
 
-1. **Commands** — allowed command names, forbidden argument substrings, input JSON shape, chaining (`|` / `&&` / `||` / `;`), and worked examples.
-2. **Permissions** — same content as the host's path guard: how relative paths use the working directory, **allowed** and **denied** operation patterns (which paths allow read/create/delete), precedence (allow vs deny when both match), default when no rule matches, overwrite vs CREATE/DELETE, optional **ask** rules, and **tool-specific behaviors** (e.g. `tee`, `cp`, `mv`).
+Each JSON example below is one tool payload. Add the agent's usual `action`
+(`<<RUN_FILE_COMMAND_TOOL>>`) and `rationale` fields when invoking it. Send one
+JSON object per invocation; several commands belong in the same `value` array.
+Values are literal strings: do not add shell quoting around spaces or patterns.
+Only CTL tokens separate commands; `['&&', 'PTH']` names a literal file.
 
-That runtime output is authoritative for **this** session. This skill describes usage patterns; it does not duplicate your live allow/deny lines.
+Prefer `find`/`ls` for discovery, `rg` for text search (`grep` is also available),
+`wc -l` for size, and `head`/`tail` for bounded reading. Use `cat` for whole files,
+`diff` for comparison, `mkdir`/`touch`/`tee` for creation, `cp`/`mv` for transfers,
+and `gio trash`/`rm` for deletion. Use the file-editing skill for literal patches.
+The command set is fixed; Git and arbitrary programs are unavailable.
 
-## Choose command by intent
+## Chaining and pipelines
 
-- **Discover directories/files:** `find`, `ls`
-- **Locate symbols or text quickly in code:** **`rg`** (preferred); fallback **`grep`** with `-R` and `-n`
-- **Know size before reading:** `wc -l`
-- **Read the start or end of a file:** `head`, `tail`
-- **Print a whole file:** `cat` only when needed (see truncation below)
+Mix operators freely within one call. The supported operators follow zsh's
+control-flow rules:
 
-## Creating new files (and recreating missing ones)
+- `A && B`: run B after A succeeds (exit status 0).
+- `A || B`: run B after A fails (nonzero status).
+- `A ; B`: run B after either ordinary outcome of A.
+- `A | B`: pass A's exact stdout bytes to B's stdin; stderr stays separate.
 
-- **Create directories first:** `mkdir` (use `"chain":"&&"` with dependent steps).
-- **Create empty files:** `touch`.
-- **Create/populate file content:** `tee` with `stdin` content.
+Pipelines bind first. `&&` and `||` have equal precedence and associate left to
+right. Consequently `A || B && C` runs C after either A or B succeeds; it is not
+an if/else expression. The final pipeline stage determines pipeline status
+(no `pipefail`); the last executed command determines the call's final status.
+Empty stdout can still mean success. Search and diff decisions use exit status.
+See [zsh's grammar](https://zsh.sourceforge.io/Doc/Release/Shell-Grammar.html#Simple-Commands-_0026-Pipelines).
 
-## Moving or renaming files and directories
+Each reached command is prepared and guarded afresh, so later commands see
+files created earlier. Skipped commands and entire skipped pipelines neither
+expand paths nor request approvals. Preparation errors and permission denials
+are failed steps: `||` can select a fallback, which must pass its own checks.
+All permission checks for one command pass before any approvals or execution.
 
-- Use `mv` for rename/move operations (`mv SOURCE DEST` or `mv -t DEST_DIR SOURCE...`).
-- `mv` does not need a recursive flag for directories; moving a directory path moves the tree.
-- `mv` authorization checks are split: source paths require DELETE; destination paths require CREATE.
-- Overwriting an existing destination also requires READ and DELETE permission there.
+Pipelines run sequentially with buffered stdout, rather than concurrently.
+There is no shell parser, grouping, redirection, variable/command substitution,
+background execution, or streaming/SIGPIPE behavior. Only pipe input replaces
+inline `tee` content, even when the incoming bytes are empty. Without a pipe,
+readers receive empty stdin unless they name files.
 
-## Copying files and directories
+Missing executables return 127, permission/launch failures 126, and timeouts 124.
+Timeouts discard partial output and participate in normal control flow, including
+pipelines. An ordinary failed pipeline stage supplies its stdout (empty for a
+preparation error, denial, or timeout) to the next stage. Invalid sequence grammar
+rejects the whole call. Cancellation, oversized output, and unexpected execution
+errors stop the sequence, including fallbacks. Earlier writes are never rolled back.
 
-- Use `cp SOURCE DEST` for files and `cp -r SOURCE_DIR DEST` for directories.
-- `cp` authorization checks are split: source paths require READ; destination paths require CREATE.
+## Worked chains
 
-## Chain operators
+The command expressions explain intent; the JSON is what the tool accepts.
 
-Supply one required `chain` value for every call, including a single command. `"|"` forwards only stdout as the next command's stdin and runs every stage, even after a nonzero exit. `"&&"` runs the next command only after exit status zero. `"||"` runs the next command only after failure. `";"` always runs the next command after an ordinary execution failure. The same operator applies to every step. Only `"|"` replaces explicit `stdin` on later commands.
+### Dependent steps
 
-Success means exit status zero, even with empty output. Search and `diff` results follow exit status. The overall result reports the last command executed; for `"|"`, this is the final stage. A missing permitted executable has status 127. Timeouts count as failures for `"&&"`, `"||"`, and `";"`; a pipeline timeout stops immediately. Validation, help, permission denial, unexpected errors, and oversized output stop every chain. Earlier file changes are not rolled back.
+`mkdir -p notes && touch notes/today.txt`: create the file only after the
+directory command succeeds.
 
-Pipelines buffer each command's complete stdout before starting the next command. They do not reproduce streaming, backpressure, concurrent scheduling, or SIGPIPE behavior. Pass argv tokens directly; mixed operators, grouping, redirection, and shell parsing are unavailable.
-
-## Large output behavior (fail closed)
-
-If a command emits too much text, `<<RUN_FILE_COMMAND_TOOL>>` returns an explicit **error-style** response and stops the chain. It does **not** return a partial/truncated command result that could be mistaken for complete output (no partial output returned).
-
-This protects result semantics. A silently cut `rg`/`grep`/`cat` output can make it look like a match or line does not exist when it actually does.
-
-**What to do instead:** Prefer **narrow, targeted** inspection so each result stays bounded:
-
-- **`rg`** or **`grep`** (with `-n`; add `-R` for `grep` when searching trees) to find symbols, classes, or TODOs.
-- **Bounded search first:** `rg --count PATTERN path` or `rg --max-count 20 PATTERN path`.
-- **`head`** and **`tail`** to read the start or end of a file explicitly.
-- **`wc`** for line counts when you need to know size before reading.
-- **Multiple small commands** beat one huge `cat`: one pass for imports, another for a class, then `tail` for the bottom.
-
-If you must understand a long file end-to-end, **plan several targeted commands**—either in **one** `<<RUN_FILE_COMMAND_TOOL>>` call multiple `file_commands` entries, or across **separate** assistant turns (each turn: **one** JSON object only). Never emit multiple JSON objects in a single assistant message.
-
-### Large file read patterns (safe and bounded)
-
-Typical workflow: line count, then head and tail. **One** assistant message can run all three as independent steps with `"chain":";"` (still a single JSON object):
-
-{"chain": ";", "file_commands": [{"command": "wc", "argv": ["-l", "src/big_file.py"]}, {"command": "head", "argv": ["-n", "80", "src/big_file.py"]}, {"command": "tail", "argv": ["-n", "80", "src/big_file.py"]}]}
-
-Read from a specific start line onward (one call):
-
-{"chain": "|", "file_commands": [{"command": "tail", "argv": ["-n", "+400", "src/big_file.py"]}]}
-
-Rough middle window via pipe inside **one** call:
-
-{"file_commands": [{"command": "head", "argv": ["-n", "520", "src/big_file.py"]}, {"command": "tail", "argv": ["-n", "80"]}], "chain": "|"}
-
-## `rg` pattern examples (regex and OR)
-
-Simple OR with alternation:
-
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-n", "roboz|site-packages", "."]}]}
-
-Case-insensitive OR:
-
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-n", "-i", "todo|fixme|bug", "src/"]}]}
-
-Regex for common Python definitions:
-
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-n", "^def\\\\s+[A-Za-z_][A-Za-z0-9_]*\\\\(", "src/"]}]}
-
-Ignore behavior reminder: `rg` respects `.gitignore`/`.ignore` by default. If a broad search misses expected files, either target the specific directory/file path or add `-uu` to disable ignore filtering.
-
-Target ignored subtree directly:
-
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-n", "needle", "runtime-data/conversations/"]}]}
-
-Disable ignore filtering explicitly:
-
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-uu", "-n", "needle", "."]}]}
-
-## Input format
-
-```
-{"chain": "|"|"&&"|"||"|";", "file_commands": [{command, argv, stdin?}, ...]}
+```json
+{"value": [["mkdir", "CMD"], ["-p", "FLG"], ["notes", "PTH"], ["&&", "CTL"], ["touch", "CMD"], ["notes/today.txt", "PTH"]]}
 ```
 
-- **file_commands**: each entry has `command`, `argv` (all subprocess-style tokens in order), and optional `stdin`.
-- **chain**: required on every call; choose `"|"`, `"&&"`, `"||"`, or `";"` using the rules above.
-- **No shell operators in command strings**: use `chain` and multiple `file_commands` entries. Regex alternation inside an argument is allowed.
+### Fallback read
 
-## How to use `find` correctly
+`cat primary.txt || cat backup.txt`: read the backup if the primary is missing,
+unreadable, or denied. The backup is independently authorized; fallback does not
+bypass the primary's denial. After a successful primary read, the backup is skipped.
 
-`find` is special about argument order:
+```json
+{"value": [["cat", "CMD"], ["primary.txt", "PTH"], ["||", "CTL"], ["cat", "CMD"], ["backup.txt", "PTH"]]}
+```
 
-- Search roots must come first.
-- Predicates/flags come after roots.
-- In this tool, keep roots and predicates in one ordered `argv` list (roots first).
+### Independent inspections
 
-Good (two separate `find` roots—**one** call, `"chain":";"`):
+`wc -l report.txt ; head -n 20 report.txt ; tail -n 20 report.txt`: inspect size,
+start, and end. Each step runs after the previous step's ordinary success or failure.
 
-{"chain": ";", "file_commands": [{"command": "find", "argv": [".", "-type", "d", "-name", "roboz"]}, {"command": "find", "argv": [".", "-type", "d", "-name", "site-packages"]}]}
+```json
+{"value": [["wc", "CMD"], ["-l", "FLG"], ["report.txt", "PTH"], [";", "CTL"], ["head", "CMD"], ["-n", "FLG"], ["20", "ARG"], ["report.txt", "PTH"], [";", "CTL"], ["tail", "CMD"], ["-n", "FLG"], ["20", "ARG"], ["report.txt", "PTH"]]}
+```
 
-## Examples
+### Pipeline window
 
-Each bullet below shows **one** JSON payload shape for **one** `<<RUN_FILE_COMMAND_TOOL>>` invocation (still wrapped in the agent's outer `action` / `rationale` fields as usual)—never concatenate multiple examples into one assistant reply.
+`head -n 80 report.txt | tail -n 20 | cat -n`: read lines 61–80 when the file
+has at least 80 lines, then number that window from 1. Starting with `head` also
+bounds the captured output before piping; piping a huge `cat` into `head` would
+still capture all of `cat` first.
 
-- **help** — Print the full reference for this tool chain (commands, input shape, and path permissions).
+```json
+{"value": [["head", "CMD"], ["-n", "FLG"], ["80", "ARG"], ["report.txt", "PTH"], ["|", "CTL"], ["tail", "CMD"], ["-n", "FLG"], ["20", "ARG"], ["|", "CTL"], ["cat", "CMD"], ["-n", "FLG"]]}
+```
 
-{"chain": "|", "file_commands": [{"command": "help", "argv": []}]}
+### Mixed operators
 
-- **rg** — Fast search under a path (line numbers via `-n`).
+`mkdir -p out && head -n 20 source.txt | tee out/preview.txt || cat fallback.txt ; wc -l source.txt`
 
-{"chain": "|", "file_commands": [{"command": "rg", "argv": ["-n", "def main", "src/"]}]}
+Create the directory, then run the preview pipeline if mkdir succeeds. The pipeline
+status is tee's status: if head fails but tee succeeds, the fallback is skipped.
+The fallback runs when mkdir or the pipeline fails. The final wc runs after
+either ordinary outcome and determines the call's final status. Use separate
+`&&` steps when each file operation must succeed before a later write.
 
-- **cat** — Print the contents of a file.
+```json
+{"value": [["mkdir", "CMD"], ["-p", "FLG"], ["out", "PTH"], ["&&", "CTL"], ["head", "CMD"], ["-n", "FLG"], ["20", "ARG"], ["source.txt", "PTH"], ["|", "CTL"], ["tee", "CMD"], ["out/preview.txt", "PTH"], ["||", "CTL"], ["cat", "CMD"], ["fallback.txt", "PTH"], [";", "CTL"], ["wc", "CMD"], ["-l", "FLG"], ["source.txt", "PTH"]]}
+```
 
-{"chain": "|", "file_commands": [{"command": "cat", "argv": ["src/main.py"]}]}
+### Left-to-right conditions
 
-- **cat | grep** — Read a file and search its lines for a pattern (pipe: first command's output feeds the second).
+`cp source.txt preferred.txt || cp source.txt fallback.txt && cat source.txt`
 
-{"file_commands": [{"command": "cat", "argv": ["file.txt"]}, {"command": "grep", "argv": ["pattern"]}], "chain": "|"}
+A successful first copy skips the second copy and still runs cat. If the first
+copy fails, the fallback copy runs, and cat runs only if that copy succeeds.
 
-- **mkdir && touch** — Create a directory, then create a file inside it after success.
+```json
+{"value": [["cp", "CMD"], ["source.txt", "PTH"], ["preferred.txt", "PTH"], ["||", "CTL"], ["cp", "CMD"], ["source.txt", "PTH"], ["fallback.txt", "PTH"], ["&&", "CTL"], ["cat", "CMD"], ["source.txt", "PTH"]]}
+```
 
-{"file_commands": [{"command": "mkdir", "argv": ["sub"]}, {"command": "touch", "argv": ["sub/file"]}], "chain": "&&"}
+### Skipped pipeline
 
-- **cat primary || cat backup** — Read the backup only if reading the primary file fails.
+`cat primary.txt || cat backup.txt | head -n 20`: a successful primary read skips
+both fallback stages. Otherwise the backup feeds head, whose status determines
+the fallback pipeline's status. Its success alone does not prove that backup cat
+succeeded; inspect the individual command frames as well.
 
-{"chain": "||", "file_commands": [{"command": "cat", "argv": ["primary.txt"]}, {"command": "cat", "argv": ["backup.txt"]}]}
+```json
+{"value": [["cat", "CMD"], ["primary.txt", "PTH"], ["||", "CTL"], ["cat", "CMD"], ["backup.txt", "PTH"], ["|", "CTL"], ["head", "CMD"], ["-n", "FLG"], ["20", "ARG"]]}
+```
 
-- **tee (create with content)** — Create or overwrite a file with explicit stdin content.
+### Fresh path expansion
 
-{"chain": "|", "file_commands": [{"command": "tee", "argv": ["sub/file.txt"], "stdin": "line 1\\nline 2\\n"}]}
+`mkdir -p out && cp source.txt out/new.txt && cat out/*.txt`: the final pattern
+is expanded only after the copy succeeds, so it includes the newly created file.
 
-- **find then find** — Run both independent discoveries even if the first fails.
+```json
+{"value": [["mkdir", "CMD"], ["-p", "FLG"], ["out", "PTH"], ["&&", "CTL"], ["cp", "CMD"], ["source.txt", "PTH"], ["out/new.txt", "PTH"], ["&&", "CTL"], ["cat", "CMD"], ["out/*.txt", "PTH"]]}
+```
 
-{"file_commands": [{"command": "find", "argv": [".", "-name", "*.py"]}, {"command": "find", "argv": [".", "-type", "d"]}], "chain": ";"}
+## Command reference
 
-- **grep** — Recursive tree search under a directory (GNU `grep` needs `-R` when the path is a folder); line numbers via `-n`.
+Except for ls/find, place separate flags before operands. `--` ends options.
+Unknown, repeated, bundled, and attached options are rejected, except where
+explicitly supported below. Option values have their own ARG or PTH token.
 
-{"chain": "|", "file_commands": [{"command": "grep", "argv": ["-n", "-R", "TODO", "src/"]}]}
+### Reading and comparison
 
-- **find** — One `argv`: search roots first, then predicates (same subprocess order as CLI `find`).
+- `pwd`: physical base directory; optional `-P`/`--physical`; no operands.
+- `cat`: `-n`/`--number`, `-b`/`--number-nonblank` (overrides -n),
+  `-s`/`--squeeze-blank`, `-E`/`--show-ends`, `-T`/`--show-tabs`.
+- `head`/`tail`: ten lines by default; `-n`/`--lines` or `-c`/`--bytes` followed
+  by an unsigned decimal ARG (zero allowed). `-q`/`--quiet`/`--silent` conflicts
+  with `-v`/`--verbose`; line and byte counts conflict. Signed counts, size
+  suffixes, and follow mode are unsupported.
+- `wc`: combine `-l`/`--lines`, `-w`/`--words`, `-c`/`--bytes`, `-m`/`--chars`,
+  and `-L`/`--max-line-length`; indirect file lists are unsupported.
+- `diff`: exactly two regular-file PTHs after expansion, preserving order and
+  repeats; `-u`/`--unified`, `-q`/`--brief`, `-s`/`--report-identical-files`,
+  `-i`/`--ignore-case`, `-w`/`--ignore-all-space`. Status 0 means equal, 1
+  different, 2 error. It never reads stdin.
 
-{"chain": "|", "file_commands": [{"command": "find", "argv": [".", "-name", "*.py"]}]}
+Readers require READ on selected regular files and preserve operand order and
+repeats. Directories, symlinks, hard-linked files, and special files are rejected.
+Omitted reader operands or `['-', 'ARG']` consume stdin; `['-', 'PTH']` names the
+literal file. pwd requires READ on the base.
 
-- **Git** — Not available in this file CLI.
+### Text search
 
-- **diff** — Compare two files and show differences.
+`grep`/`rg` take one pattern ARG before input PTHs or stdin `['-', 'ARG']`.
+Patterns go literally to the native regex engine: do not shell-escape them.
+Both support `-F`/`--fixed-strings`; grep also supports `-E`/`--extended-regexp`
+(conflicting with -F). Both accept `-n`/`--line-number`, `-i`/`--ignore-case`,
+`-v`/`--invert-match`, `-w`/`--word-regexp`, `-x`/`--line-regexp`, `-c`/`--count`,
+`-l`/`--files-with-matches`, `-q`/`--quiet`, `-o`/`--only-matching`, and
+`-H`/`--with-filename`. Filename suppression is grep `-h`/`--no-filename` or
+rg `-I`/`--no-filename`, conflicting with -H. `-m`/`--max-count`,
+`-A`/`--after-context`, `-B`/`--before-context`, and `-C`/`--context` take unsigned
+decimal ARG values. Statuses are 0 for a match, 1 for no matches, 2 for errors.
 
-{"chain": "|", "file_commands": [{"command": "diff", "argv": ["old.py", "new.py"]}]}
+Without paths they read stdin, except recursive grep searches the base.
+grep directory inputs require `-r`/`--recursive` or `-R`/`--dereference-recursive`.
+rg searches directories recursively and respects local/ancestor `.gitignore`,
+`.ignore`, and `.rgignore`. Explicit files override ignore filtering; explicitly
+naming a directory does not disable ignores. rg supports `--hidden`, `--no-ignore`,
+and the single bundled flag `-uu` (hidden files plus no ignores). Configuration,
+global Git ignores, and Git info/exclude files are disabled.
 
-- **cp** — Copy a file.
+Recursive searches require READ on the entire candidate tree, including hidden
+and ignored files; rg additionally checks potential local/ancestor ignore files
+unless ignores are disabled. An ignored file can still block authorization.
+Explicit symlinks and hard-linked/special inputs are rejected. Recursive grep -r
+and rg skip descendant symlinks and special files; grep -R rejects them.
+Pattern files, preprocessors, and other executable options are unsupported.
 
-{"chain": "|", "file_commands": [{"command": "cp", "argv": ["source.txt", "copy.txt"]}]}
+### Search with alternation
 
-- **cp -r** — Copy a directory tree.
+`rg -n 'TODO|FIXME' src`: regex alternation stays inside one ARG token.
 
-{"chain": "|", "file_commands": [{"command": "cp", "argv": ["-r", "source_dir", "copy_dir"]}]}
+```json
+{"value": [["rg", "CMD"], ["-n", "FLG"], ["TODO|FIXME", "ARG"], ["src", "PTH"]]}
+```
 
-- **mv** — Rename or move a file or directory.
+### Discovery
 
-{"chain": "|", "file_commands": [{"command": "mv", "argv": ["old_name.txt", "new_name.txt"]}]}
+`ls` defaults to the base and accepts `-l`, `-a`/`--all`, `-A`/`--almost-all`,
+`-h`/`--human-readable`, `-d`/`--directory`, `-R`/`--recursive`, `-1`,
+`-r`/`--reverse`, `-t`, `-S`, `-U`, `-F`/`--classify`, `-p`, `-i`/`--inode`,
+`-s`/`--size`, and `-n`/`--numeric-uid-gid`. Native ordering, repetitions, and
+bundled flags such as `-lah` work; after `--` only PTHs are allowed.
 
-Note: which commands are permitted and how paths map to operations follow **`help`** and the tool specifications for this deployment.
+`find` takes PTH roots first (default `.`), then FLG predicates/operators and
+ARG values. It supports `-name`, `-iname`, `-path`, `-ipath`, `-type`, `-size`,
+`-mtime`, `-mmin`, `-maxdepth`, `-mindepth` with values; `-empty`, `-depth`,
+`-xdev`, `-print`, `-print0`, `-prune`, `-quit`; implicit AND, `-a`/`-and`,
+`-o`/`-or`, `!`/`-not`, and parentheses as FLGs. Optional `-P` or `--` may
+precede roots. ARG patterns use native *, ?, and bracket matching, without PTH
+expansion. Preserve relative roots for expressions such as `-path './src/*'`.
+
+ls/find require READ on explicit/expanded roots, or the base if omitted.
+Directory authorization permits discovery underneath it; descendant deny/ask
+rules and descendant file-type restrictions do not apply. Explicit roots reject
+symlinks, hard-linked files, and special files. Native traversal does not follow
+symlinks. Both ignore stdin and can pipe output. Execution, deletion, file-output
+actions, indirect root lists, and symlink-following options are unsupported.
+
+### Find by name
+
+`find . -name '*.py' -print`: the pattern is ARG, while the root is PTH.
+
+```json
+{"value": [["find", "CMD"], [".", "PTH"], ["-name", "FLG"], ["*.py", "ARG"], ["-print", "FLG"]]}
+```
+
+### Writing and directory creation
+
+`tee` writes stdin to each literal destination PTH and stdout, creating or
+overwriting files; `-a`/`--append` appends. One optional ARG after flags and before
+paths supplies inline UTF-8 text. Pipe bytes override it, including empty output.
+With neither source, stdin is empty. Without paths, tee needs no file permissions.
+
+`touch` requires target PTHs. It creates missing files and updates timestamps on
+existing regular files/directories without recursion. `-c`/`--no-create` skips
+missing files, but still requires CREATE. Options: `-a` (access time), `-m`
+(modification time), `-d`/`--date` plus date ARG, `-t` plus
+`[[CC]YY]MMDDhhmm[.ss]` ARG, and `-r`/`--reference` plus literal existing PTH
+requiring READ. Combine -a/-m and -r/-d; -t conflicts with -d/-r. Native touch
+interprets dates. Target patterns must match even with -c; references are literal.
+
+tee/touch require CREATE on targets and also READ and DELETE on existing regular
+files, including append and timestamp updates. Parents must already exist.
+
+`mkdir` creates literal directory PTHs. Options: `-p`/`--parents`,
+`-v`/`--verbose`, and `--`; mode/security-context options are unsupported.
+CREATE is required on every explicit target, including existing directories,
+and each missing parent created by -p. Existing intermediate directories need no
+extra permission. `mkdir -p a/../b` can create both a and b and checks both.
+Symlinks or non-directory components reject the command. Operand order/repeats
+are preserved, so `mkdir a a/b` works without -p. Native failures may retain
+partial effects; use && for dependent work.
+
+### Inline content
+
+Create notes, write two lines, and read them back. The content is one ARG,
+including its newlines; the destination is PTH.
+
+```json
+{"value": [["mkdir", "CMD"], ["-p", "FLG"], ["notes", "PTH"], ["&&", "CTL"], ["tee", "CMD"], ["line 1\nline 2\n", "ARG"], ["notes/today.txt", "PTH"], ["&&", "CTL"], ["cat", "CMD"], ["notes/today.txt", "PTH"]]}
+```
+
+### Transfers
+
+`cp`/`mv` take PTH operands; without -t the final path is the destination.
+cp requires `-r`/`-R`/`--recursive` for directories; mv moves directories without
+that flag. Both accept `-v`/`--verbose`, `-f`/`--force`,
+`--strip-trailing-slashes`, `-t`/`--target-directory` plus a literal PTH directory,
+`-T`/`--no-target-directory`, and `--`. -t and -T conflict; -T requires one
+expanded source and an exact destination. Multiple sources need a directory.
+cp merges directories; `src/.` copies contents into the destination. mv can
+replace an empty directory but cannot merge populated directories.
+
+cp requires READ on sources; mv requires DELETE. Destinations require CREATE;
+overwrites and empty-directory replacement also require READ and DELETE there.
+Permissions cover all descendants, including hidden files and empty directories.
+Copy merges require CREATE on existing directories without DELETE. Force never
+bypasses permissions or approval. Symlinks, hard-linked/special files,
+duplicate sources, conflicting destinations, overlapping source/destination
+paths, and cross-filesystem moves are rejected. Ancestor/descendant sources with
+separate outputs are allowed; native mv can move the parent then fail on a
+vanished descendant. Native partial effects and exit statuses are preserved.
+
+### Deletion
+
+`gio` supports only `['trash', 'ARG']` then target PTHs, without options.
+`rm` supports separate `-r`/`-R`/`--recursive`, `-f`/`--force`, and `--`
+before PTHs. DELETE is required on named entries; gio trash and recursive rm
+also check all descendants, including hidden entries, before execution.
+Terminal symlinks (even dangling links and glob matches) are deleted at their own
+path, never followed. Hard links and special entries can also be removed.
+Symlink parents are rejected, including a trailing slash or dot component after
+a link: remove links by bare pathname. Native suffixes, operand order, repeats,
+missing-target and no-operand behavior are preserved. Missing named targets still
+require DELETE; -f never bypasses policy. Unmatched patterns fail even with -f.
+gio trash with no targets checks DELETE on the base before its native error.
+
+## Paths, patterns, and permissions
+
+PTH patterns support `*` within components and one recursive `**/` component.
+`src/**/*.py` includes files directly under src and deeper. Following default
+zsh, final `**` acts like `*`: `src/**` selects immediate visible children,
+`src/**/*` selects descendants, and `src/**/` selects directories including src.
+Bare `**/` excludes the implicit current directory. Hidden names require an
+explicit leading dot in their component; recursion skips them. Repeated stars
+inside ordinary components are nonrecursive. Matches sort in filesystem byte
+order per operand; zero matches fail before execution. Multiple recursive
+components, `***/`, `?`, and bracket patterns are unsupported in PTH tokens.
+Transfer/tee destinations, mkdir targets, and touch references must be literal.
+Trailing `/` selects directories; `/.` and `/..` retain native meaning.
+
+Permission-rule patterns are separate from PTH expansion: relative rules match
+within the configured base, absolute rules can match outside it. Literal POSIX
+names retain spaces and backslashes. Allow/deny conflicts use the configured
+precedence; unmatched operations use the default verdict. Ask rules apply to
+each required operation. Approvals and permissions are deduplicated per command;
+a denial prevents all approvals and execution. Missing/declined approval fails
+the step. The base directory alone grants no access. Recursive search preflight
+and deletion preparation have 60-second deadlines; deletion includes pattern
+expansion in its deadline. Each native command has a separate 60-second timeout.
+
+## Keeping output useful
+
+Per-command stdout plus stderr over 100,000 decoded characters stops the whole
+sequence without returning partial command output. Narrow paths/patterns, use
+`rg --count` or `--max-count`, or begin a read with head/tail. A downstream head
+does not prevent an upstream command from exceeding the capture limit.
+
+The final multi-command report retains the newest output within 40,000 characters
+and explicitly marks omitted earlier output. This report limit does not change
+bytes passed through pipes. Non-UTF-8 bytes are escaped for display only. Inspect
+individual frames as well as the final status, especially after fallbacks or
+pipelines. File changes from earlier commands remain after subsequent failures.
 """
 
 INSTRUCTIONS: Final[str] = _INSTRUCTIONS_TEMPLATE.replace(
-    _RUN_FILE_COMMAND_PH, RUN_FILE_COMMAND_TOOL_NAME
+    "<<RUN_FILE_COMMAND_TOOL>>", RUN_FILE_COMMAND_TOOL_NAME
 )

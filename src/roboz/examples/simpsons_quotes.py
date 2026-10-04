@@ -67,4 +67,5 @@ QUOTES: Final[list[str]] = [
     "Woo-hoo!",
     "You'll have to speak up, I'm wearing a towel.",
     "I am the lizard queen!",
+    "I'm in danger.",
 ]

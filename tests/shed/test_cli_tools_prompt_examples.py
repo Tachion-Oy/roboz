@@ -1,653 +1,184 @@
-"""Regression tests for `cli_tools` prompt examples.
-
-Focus: validate the exact argv passed to subprocess and key output semantics.
-"""
-
-from __future__ import annotations
+"""Execute the CLI skill's actual examples through the public agent contract."""
 
 import json
-from pathlib import Path
-from subprocess import CompletedProcess
+import re
+import shutil
 
 import pytest
-from pydantic import ValidationError
-from roboz.agent import Agent
-from roboz.tools import stop
-from roboz.models import Message, Stop
-from roboz.models import Role
-from roboz.dependencies import ExecutableDependency
-from roboz.llm import MockLLMEndpoint
 
-from roboz.shed.models import (
-    ActionVerdict,
-    Help,
-    Operation,
-    PermissionRule,
-    RunFileCommand,
-    RunFileCommands,
-)
+from roboz import Agent
+from roboz.llm import MockLLMEndpoint
+from roboz.models import Role
+from roboz.runtime import EventPipe
+from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.skills.cli_tools.prompts import INSTRUCTIONS
 from roboz.shed.tools import get_run_file_command
-from roboz.shed.tools import runner as command_runner
-from roboz.shed.tools.cli_commands.run_file_command.specs import FILE_COMMANDS_READ
-from roboz.shed.tools.cli_commands.utilities.formatting import format_cli_commands_help
+from roboz.shed.tools.cli_commands import FileCommand
+from roboz.tools import stop
 
-
-def test_instructions_json_examples_are_argv_only() -> None:
-    assert '"args":' not in INSTRUCTIONS
-    assert '"paths":' not in INSTRUCTIONS
-
-
-def test_help_and_skill_json_examples_match_canonical_schema() -> None:
-    for document in (INSTRUCTIONS, format_cli_commands_help(FILE_COMMANDS_READ)):
-        examples = [
-            line.strip()
-            for line in document.splitlines()
-            if line.strip().startswith('{"') and "..." not in line
-        ]
-        assert examples
-        chained_operators: set[str] = set()
-        for example in examples:
-            parsed = RunFileCommands.model_validate(json.loads(example))
-            if len(parsed.file_commands) > 1:
-                chained_operators.add(parsed.chain)
-        assert chained_operators == {"|", "&&", "||", ";"}
-
-    schema = RunFileCommands.model_json_schema()
-    assert schema["properties"]["chain"]["enum"] == ["|", "&&", "||", ";"]
-    assert {"chain", "file_commands"} <= set(schema["required"])
-    assert "accumulated_output" not in schema["properties"]
-    for alias in ("pipe", "and"):
-        with pytest.raises(ValidationError):
-            RunFileCommands.model_validate(
-                {"chain": alias, "file_commands": [{"command": "cat", "argv": []}]}
-            )
-    with pytest.raises(ValidationError):
-        RunFileCommands.model_validate({"chain": "|", "file_commands": []})
-    with pytest.raises(ValidationError):
-        RunFileCommands.model_validate(
-            {
-                "chain": "|",
-                "file_commands": [{"command": "cat", "argv": []}],
-                "unknown": True,
-            }
-        )
-
-
-def test_instructions_describe_fail_closed_large_output_behavior() -> None:
-    assert "fail closed" in INSTRUCTIONS
-    assert "no partial output returned" in INSTRUCTIONS
-    assert "rg --max-count" in INSTRUCTIONS
-    assert "wc -l" in INSTRUCTIONS
-    assert "head" in INSTRUCTIONS
-    assert "tail" in INSTRUCTIONS
-    assert "cp" in INSTRUCTIONS
-    assert "mv" in INSTRUCTIONS
-    assert "no-clobber" not in INSTRUCTIONS
-
-
-def _allow_all() -> list[PermissionRule]:
-    return [
-        PermissionRule(
-            pattern="**",
-            operations={Operation.READ, Operation.CREATE, Operation.DELETE},
-        )
-    ]
-
-
-def _tools(tmp_path: Path):
-    return get_run_file_command(
-        base=tmp_path,
-        default_verdict=ActionVerdict.allow,
-        allow_rules=_allow_all(),
-        deny_rules=[],
-        takes_precedence=ActionVerdict.allow,
+EXAMPLES = {
+    heading: json.loads(payload)
+    for heading, payload in re.findall(
+        r"### ([^\n]+)\n(?:(?!\n### ).)*?```json\n(.*?)\n```",
+        INSTRUCTIONS,
+        flags=re.DOTALL,
     )
+}
 
 
-def _invoke_payload(input_cmd: RunFileCommands) -> dict[str, object]:
-    return {
-        "action": "run_file_command",
-        "rationale": "prompt example",
-        "chain": input_cmd.chain,
-        "file_commands": [cmd.model_dump() for cmd in input_cmd.file_commands],
-    }
-
-
-def _run_chain(
-    tmp_path: Path, input_cmd: RunFileCommands
-) -> tuple[Stop, list[Message]]:
-    endpoint = MockLLMEndpoint(
-        responses=[
-            _invoke_payload(input_cmd),
-            {"action": "stop", "rationale": "done", "value": "ok"},
-        ]
-    )
-    agent = Agent(
-        name="prompt_examples_agent",
-        tools=[*_tools(tmp_path), stop],
-        system_prompt="x",
-        agent_endpoint=endpoint,
-        initial_messages=None,
-    )
-    output, messages = agent.invoke()
-    assert isinstance(output, Stop)
-    return output, messages
-
-
-def _last_execute_value(messages: list[Message]) -> str:
-    for message in reversed(messages):
-        if message.role != Role.USER:
-            continue
-        try:
-            payload = json.loads(message.content)
-        except json.JSONDecodeError:
-            continue
-        if payload.get("caller") == "execute_file_command":
-            value = payload.get("value")
-            if isinstance(value, str):
-                return value
-    raise AssertionError("no execute_file_command payload")
-
-
-def _caller_payloads(messages: list[Message], caller: str) -> list[dict[str, object]]:
-    payloads: list[dict[str, object]] = []
-    for message in messages:
-        if message.role != Role.USER:
-            continue
-        try:
-            payload = json.loads(message.content)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and payload.get("caller") == caller:
-            payloads.append(payload)
-    return payloads
-
-
-def _abs(base: Path, rel: str) -> str:
-    return str((base / rel).resolve())
-
-
-def _install_subprocess_spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
-    calls: list[dict[str, object]] = []
-
-    # Keep argv tests independent of optional host executables such as ripgrep.
-    monkeypatch.setattr(
-        ExecutableDependency,
-        "require",
-        lambda dependency: Path("/test-bin") / dependency.executable,
-    )
-
-    def fake_run(
-        argv: list[str],
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-        input: str | None = None,
-    ) -> CompletedProcess[str]:
-        calls.append({"argv": list(argv), "cwd": Path(cwd), "stdin": input})
-        if Path(argv[0]).name == "diff":
-            return CompletedProcess(argv, 1, "1c1\n< a\n---\n> b\n", "")
-        return CompletedProcess(argv, 0, f"ok {' '.join(argv)}\n", "")
-
-    monkeypatch.setattr(command_runner.subprocess, "run", fake_run)
-    return calls
+def test_all_skill_examples_use_the_public_input_contract():
+    blocks = re.findall(r"```json\n(.*?)\n```", INSTRUCTIONS, re.DOTALL)
+    assert blocks and len(EXAMPLES) == len(blocks)
+    for block in blocks:
+        request = FileCommand.model_validate(json.loads(block))
+        assert request.value
 
 
 @pytest.fixture
-def prompt_workspace(tmp_path: Path) -> Path:
-    src = tmp_path / "src"
-    src.mkdir()
-    (src / "main.py").write_text(
-        'def main():\n    print("sample")\n\n# TODO: refine\ndef helper():\n    pass\n'
-    )
-    (tmp_path / "big_file.py").write_text("".join(f"line {i}\n" for i in range(1, 501)))
-    (tmp_path / "file.txt").write_text("alpha\nbeta\npattern line\n")
-    (tmp_path / "old.py").write_text("a\n")
-    (tmp_path / "new.py").write_text("b\n")
-    (tmp_path / "sample").mkdir()
-    (tmp_path / "site-packages").mkdir()
-    deep = (
-        tmp_path
-        / "sample_solutions"
-        / "game_player"
-        / "game_player_data"
-        / "conversations"
-    )
-    deep.mkdir(parents=True)
-    (deep / "log.txt").write_text("needle here\n")
-    (src / "sample.py").write_text("def foo():\n    pass\n")
+def workspace(tmp_path):
+    (tmp_path / "report.txt").write_text("".join(f"line {i}\n" for i in range(1, 101)))
+    (tmp_path / "source.txt").write_text("".join(f"source {i}\n" for i in range(1, 31)))
+    (tmp_path / "primary.txt").write_text("primary marker\n")
+    (tmp_path / "backup.txt").write_text("backup marker\n")
+    (tmp_path / "fallback.txt").write_text("fallback marker\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/app.py").write_text("# TODO: example\n")
     return tmp_path
 
 
-def test_prompt_help_returns_cli_help(prompt_workspace: Path) -> None:
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[RunFileCommand(command="help", argv=[])],  # type: ignore
+def _run(workspace, example, **policy):
+    tools = get_run_file_command(
+        base=workspace, default_verdict=ActionVerdict.allow, **policy
     )
-    result = _tools(prompt_workspace)[0](input=cmd, messages=[])
-    assert isinstance(result, Help)
-    assert "Available CLI commands" in result.message
-
-
-def test_pipe_passes_previous_stdout_to_next_stdin(
-    prompt_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    calls = _install_subprocess_spy(monkeypatch)
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[
-            RunFileCommand(command="cat", argv=["file.txt"]),
-            RunFileCommand(command="grep", argv=["pattern"]),
-        ],
+    agent = Agent(
+        name="cli_examples",
+        system_prompt="Run the documented example.",
+        agent_endpoint=MockLLMEndpoint(
+            [
+                {
+                    "action": "run_file_command",
+                    "rationale": "Example",
+                    **EXAMPLES[example],
+                },
+                {"action": "stop", "rationale": "Done", "value": "done"},
+            ]
+        ),
+        tools=[*tools, stop],
+        initial_messages=None,
     )
-    _run_chain(prompt_workspace, cmd)
-    assert len(calls) == 2
-    cat = str(ExecutableDependency("cat").require())
-    grep = str(ExecutableDependency("grep").require())
-    assert calls[0]["argv"] == [cat, _abs(prompt_workspace, "file.txt")]
-    assert calls[1]["argv"] == [grep, "pattern"]
-    assert calls[1]["stdin"] == f"ok {cat} {_abs(prompt_workspace, 'file.txt')}\n"
-
-
-@pytest.mark.parametrize(
-    ("cmd", "expected_argvs"),
-    [
-        (
-            RunFileCommands(
-                chain=";",
-                file_commands=[
-                    RunFileCommand(command="wc", argv=["-l", "big_file.py"]),
-                    RunFileCommand(command="head", argv=["-n", "80", "big_file.py"]),
-                    RunFileCommand(command="tail", argv=["-n", "80", "big_file.py"]),
-                ],
-            ),
-            [
-                ["wc", "-l", "{BASE}/big_file.py"],
-                ["head", "-n", "80", "{BASE}/big_file.py"],
-                ["tail", "-n", "80", "{BASE}/big_file.py"],
-            ],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="tail", argv=["-n", "+400", "big_file.py"])
-                ],
-            ),
-            [["tail", "-n", "+400", "{BASE}/big_file.py"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="head", argv=["-n", "520", "big_file.py"]),
-                    RunFileCommand(command="tail", argv=["-n", "80"]),
-                ],
-            ),
-            [["head", "-n", "520", "{BASE}/big_file.py"], ["tail", "-n", "80"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(
-                        command="rg", argv=["-n", "sample|site-packages", "."]
-                    )
-                ],
-            ),
-            [["rg", "-n", "sample|site-packages", "{BASE}"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(
-                        command="rg", argv=["-n", "-i", "todo|fixme|bug", "src/"]
-                    )
-                ],
-            ),
-            [["rg", "-n", "-i", "todo|fixme|bug", "{BASE}/src"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(
-                        command="rg",
-                        argv=["-n", r"^def\s+[A-Za-z_][A-Za-z0-9_]*\(", "src/"],
-                    )
-                ],
-            ),
-            [["rg", "-n", r"^def\s+[A-Za-z_][A-Za-z0-9_]*\(", "{BASE}/src"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(
-                        command="rg",
-                        argv=[
-                            "-n",
-                            "needle",
-                            "sample_solutions/game_player/game_player_data/conversations/",
-                        ],
-                    )
-                ],
-            ),
-            [
-                [
-                    "rg",
-                    "-n",
-                    "needle",
-                    "{BASE}/sample_solutions/game_player/game_player_data/conversations",
-                ]
-            ],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="rg", argv=["-uu", "-n", "needle", "."])
-                ],
-            ),
-            [["rg", "-uu", "-n", "needle", "{BASE}"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="rg", argv=["-n", "def main", "src/"])
-                ],
-            ),
-            [["rg", "-n", "def main", "{BASE}/src"]],
-        ),
-        (
-            RunFileCommands(
-                chain=";",
-                file_commands=[
-                    RunFileCommand(
-                        command="find", argv=[".", "-type", "d", "-name", "sample"]
-                    ),
-                    RunFileCommand(
-                        command="find",
-                        argv=[".", "-type", "d", "-name", "site-packages"],
-                    ),
-                ],
-            ),
-            [
-                ["find", "{BASE}", "-type", "d", "-name", "sample"],
-                ["find", "{BASE}", "-type", "d", "-name", "site-packages"],
-            ],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="find", argv=[".", "-name", "*.py"])
-                ],
-            ),
-            [["find", "{BASE}", "-name", "*.py"]],
-        ),
-        (
-            RunFileCommands(
-                chain=";",
-                file_commands=[
-                    RunFileCommand(command="find", argv=[".", "-name", "*.py"]),
-                    RunFileCommand(command="find", argv=[".", "-type", "d"]),
-                ],
-            ),
-            [["find", "{BASE}", "-name", "*.py"], ["find", "{BASE}", "-type", "d"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[RunFileCommand(command="cat", argv=["src/main.py"])],
-            ),
-            [["cat", "{BASE}/src/main.py"]],
-        ),
-        (
-            RunFileCommands(
-                chain="&&",
-                file_commands=[
-                    RunFileCommand(command="mkdir", argv=["sub"]),
-                    RunFileCommand(command="touch", argv=["sub/file"]),
-                ],
-            ),
-            [["mkdir", "{BASE}/sub"], ["touch", "{BASE}/sub/file"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(
-                        command="tee", argv=["sub/file.txt"], stdin="line 1\nline 2\n"
-                    )
-                ],
-            ),
-            [["tee", "{BASE}/sub/file.txt"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
-                ],
-            ),
-            [["grep", "-n", "-R", "TODO", "{BASE}/src"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="diff", argv=["old.py", "new.py"])
-                ],
-            ),
-            [["diff", "{BASE}/old.py", "{BASE}/new.py"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="cp", argv=["file.txt", "copy.txt"])
-                ],
-            ),
-            [["cp", "{BASE}/file.txt", "{BASE}/copy.txt"]],
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="cp", argv=["-r", "src", "src-copy"])
-                ],
-            ),
-            [["cp", "-r", "{BASE}/src", "{BASE}/src-copy"]],
-        ),
-    ],
-)
-def test_prompt_examples_pass_expected_argv_to_subprocess(
-    prompt_workspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    cmd: RunFileCommands,
-    expected_argvs: list[list[str]],
-) -> None:
-    calls = _install_subprocess_spy(monkeypatch)
-    _, messages = _run_chain(prompt_workspace, cmd)
-    _ = _last_execute_value(messages)
-
-    base = str(prompt_workspace.resolve())
-    realized = [
-        [tok.replace("{BASE}", base) for tok in argv] for argv in expected_argvs
+    _, messages = agent.invoke()
+    results = [
+        json.loads(message.content) for message in messages if message.role == Role.USER
     ]
-    for argv in realized:
-        argv[0] = str(ExecutableDependency(argv[0]).require())
-    actual = [call["argv"] for call in calls]
-    assert actual == realized
+    return [
+        item["value"]
+        for item in results
+        if item.get("caller") == "execute_file_command" and "value" in item
+    ][-1]
 
 
-def test_prompt_examples_real_subprocess_output_semantics(
-    prompt_workspace: Path,
-) -> None:
-    checks = [
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[RunFileCommand(command="cat", argv=["src/main.py"])],
-            ),
-            "def main",
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="cat", argv=["file.txt"]),
-                    RunFileCommand(command="grep", argv=["pattern"]),
-                ],
-            ),
-            "pattern",
-        ),
-        (
-            RunFileCommands(
-                chain="|",
-                file_commands=[
-                    RunFileCommand(command="grep", argv=["-n", "-R", "TODO", "src/"])
-                ],
-            ),
-            "TODO",
-        ),
-    ]
-    for cmd, expected in checks:
-        _, messages = _run_chain(prompt_workspace, cmd)
-        assert expected in _last_execute_value(messages)
-
-
-def test_prompt_diff_output_semantics(prompt_workspace: Path) -> None:
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[RunFileCommand(command="diff", argv=["old.py", "new.py"])],
-    )
-    _, messages = _run_chain(prompt_workspace, cmd)
-    out = _last_execute_value(messages)
-    assert out.startswith("Overall: failure (exit 1)")
-    assert "[error]" in out
-    assert "1c1" in out
-
-
-def test_prompt_fallback_example_recovers_with_backup(prompt_workspace: Path) -> None:
-    (prompt_workspace / "backup.txt").write_text("backup contents\n")
-    example = next(
-        json.loads(line)
-        for line in INSTRUCTIONS.splitlines()
-        if line.startswith('{"chain": "||"')
-    )
-    _, messages = _run_chain(prompt_workspace, RunFileCommands.model_validate(example))
-    result = _last_execute_value(messages)
+@pytest.mark.parametrize("example", EXAMPLES)
+def test_skill_example_executes_as_documented(workspace, example):
+    if example == "Search with alternation" and not shutil.which("rg"):
+        pytest.skip("Requires ripgrep")
+    result = _run(workspace, example)
     assert result.startswith("Overall: success (exit 0)")
-    assert "primary.txt" in result
-    assert "backup contents" in result
+    match example:
+        case "Dependent steps":
+            assert (workspace / "notes/today.txt").read_text() == ""
+        case "Fallback read" | "Skipped pipeline":
+            assert "primary marker" in result and "backup marker" not in result
+            assert "backup.txt" not in result
+        case "Independent inspections":
+            assert f"100 {workspace / 'report.txt'}" in result
+            assert "line 1\n" in result and "line 100\n" in result
+        case "Pipeline window":
+            assert "line 61\n" in result and "line 80\n" in result
+            assert "line 60\n" not in result and "line 81\n" not in result
+        case "Mixed operators":
+            expected = "".join(f"source {i}\n" for i in range(1, 21))
+            assert (workspace / "out/preview.txt").read_text() == expected
+            assert (
+                f"30 {workspace / 'source.txt'}" in result
+                and "fallback marker" not in result
+            )
+        case "Left-to-right conditions":
+            assert (workspace / "preferred.txt").read_text() == (
+                workspace / "source.txt"
+            ).read_text()
+            assert (workspace / "fallback.txt").read_text() == "fallback marker\n"
+            assert "source 30\n" in result
+        case "Fresh path expansion":
+            assert (workspace / "out/new.txt").read_text() == (
+                workspace / "source.txt"
+            ).read_text()
+            assert "source 30\n" in result
+        case "Search with alternation":
+            assert "src/app.py:1:# TODO: example" in result
+        case "Find by name":
+            assert "./src/app.py" in result
+        case "Inline content":
+            assert (workspace / "notes/today.txt").read_text() == "line 1\nline 2\n"
+            assert "line 1\nline 2\n" in result
+        case _:
+            pytest.fail(f"Add behavioral expectations for {example}")
 
 
-def test_negative_denies_relative_path_outside_allowed_scope(
-    prompt_workspace: Path,
-) -> None:
-    tools = get_run_file_command(
-        base=prompt_workspace,
-        default_verdict=ActionVerdict.deny,
-        allow_rules=[PermissionRule(pattern="src/**", operations={Operation.READ})],
-        deny_rules=[],
-        takes_precedence=ActionVerdict.deny,
+@pytest.mark.parametrize("failure", ["missing", "denied"])
+def test_documented_fallback_is_independently_guarded(workspace, failure):
+    if failure == "missing":
+        (workspace / "primary.txt").unlink()
+    denied = (
+        [PermissionRule("primary.txt", {Operation.READ})] if failure == "denied" else []
     )
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[RunFileCommand(command="cat", argv=["file.txt"])],
+    result = _run(workspace, "Fallback read", deny_rules=denied)
+    assert result.startswith("Overall: success") and "backup marker" in result
+    result = _run(
+        workspace,
+        "Fallback read",
+        deny_rules=[*denied, PermissionRule("backup.txt", {Operation.READ})],
     )
-    endpoint = MockLLMEndpoint(
-        responses=[
-            _invoke_payload(cmd),
-            {"action": "stop", "rationale": "done", "value": "ok"},
-        ]
-    )
-    agent = Agent(
-        name="negative_scope_agent",
-        tools=[*tools, stop],
-        system_prompt="x",
-        agent_endpoint=endpoint,
-        initial_messages=None,
-    )
-    _output, messages = agent.invoke()
-    guard_payloads = _caller_payloads(messages, "operation_guard")
-    exec_payloads = _caller_payloads(messages, "execute_file_command")
-    assert guard_payloads
-    assert not exec_payloads
-    assert "denied" in str(guard_payloads[-1].get("message", "")).lower()
+    assert result.startswith("Overall: failure") and "backup marker" not in result
 
 
-def test_negative_denies_absolute_path_outside_allowed_scope(
-    prompt_workspace: Path,
-) -> None:
-    outside = prompt_workspace.parent / "outside_example.txt"
-    outside.write_text("x")
-    tools = get_run_file_command(
-        base=prompt_workspace,
-        default_verdict=ActionVerdict.deny,
-        allow_rules=[PermissionRule(pattern="src/**", operations={Operation.READ})],
-        deny_rules=[],
-        takes_precedence=ActionVerdict.deny,
+@pytest.mark.parametrize("fallback_allowed", [True, False])
+def test_documented_left_associativity_after_copy_denial(workspace, fallback_allowed):
+    denied = [PermissionRule("preferred.txt", {Operation.CREATE})]
+    if not fallback_allowed:
+        denied.append(PermissionRule("fallback.txt", {Operation.CREATE}))
+    result = _run(workspace, "Left-to-right conditions", deny_rules=denied)
+    assert ("source 30\n" in result) is fallback_allowed
+    assert not (workspace / "preferred.txt").exists()
+    expected = (
+        (workspace / "source.txt").read_text()
+        if fallback_allowed
+        else "fallback marker\n"
     )
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[RunFileCommand(command="cat", argv=[str(outside)])],
-    )
-    endpoint = MockLLMEndpoint(
-        responses=[
-            _invoke_payload(cmd),
-            {"action": "stop", "rationale": "done", "value": "ok"},
-        ]
-    )
-    agent = Agent(
-        name="negative_abs_scope_agent",
-        tools=[*tools, stop],
-        system_prompt="x",
-        agent_endpoint=endpoint,
-        initial_messages=None,
-    )
-    _output, messages = agent.invoke()
-    guard_payloads = _caller_payloads(messages, "operation_guard")
-    exec_payloads = _caller_payloads(messages, "execute_file_command")
-    assert guard_payloads
-    assert not exec_payloads
-    assert "denied" in str(guard_payloads[-1].get("message", "")).lower()
+    assert (workspace / "fallback.txt").read_text() == expected
 
 
-def test_negative_denies_write_when_rules_are_read_only(prompt_workspace: Path) -> None:
-    tools = get_run_file_command(
-        base=prompt_workspace,
-        default_verdict=ActionVerdict.deny,
-        allow_rules=[PermissionRule(pattern="src/**", operations={Operation.READ})],
-        deny_rules=[],
-        takes_precedence=ActionVerdict.deny,
+def test_documented_mixed_chain_falls_back_then_continues(workspace):
+    result = _run(
+        workspace,
+        "Mixed operators",
+        deny_rules=[PermissionRule("out", {Operation.CREATE})],
     )
-    cmd = RunFileCommands(
-        chain="|",
-        file_commands=[RunFileCommand(command="touch", argv=["src/new_file.py"])],
+    assert result.startswith("Overall: success")
+    assert "fallback marker" in result and f"30 {workspace / 'source.txt'}" in result
+    assert not (workspace / "out").exists()
+
+
+def test_documented_skipped_pipeline_never_requests_approval(workspace, monkeypatch):
+    from roboz import runtime
+
+    def unexpected_approval(*args, **kwargs):
+        pytest.fail("A skipped pipeline must not request approval")
+
+    monkeypatch.setattr(runtime, "interact_with_user", unexpected_approval)
+    result = _run(
+        workspace,
+        "Skipped pipeline",
+        pipe=EventPipe(),
+        ask_rules=[PermissionRule("backup.txt", {Operation.READ})],
     )
-    endpoint = MockLLMEndpoint(
-        responses=[
-            _invoke_payload(cmd),
-            {"action": "stop", "rationale": "done", "value": "ok"},
-        ]
-    )
-    agent = Agent(
-        name="negative_write_agent",
-        tools=[*tools, stop],
-        system_prompt="x",
-        agent_endpoint=endpoint,
-        initial_messages=None,
-    )
-    _output, messages = agent.invoke()
-    guard_payloads = _caller_payloads(messages, "operation_guard")
-    exec_payloads = _caller_payloads(messages, "execute_file_command")
-    assert guard_payloads
-    assert not exec_payloads
-    assert "denied" in str(guard_payloads[-1].get("message", "")).lower()
+    assert "primary marker" in result and "backup.txt" not in result

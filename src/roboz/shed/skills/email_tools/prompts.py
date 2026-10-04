@@ -86,7 +86,9 @@ are user-authored, read-only, and do not prompt.
 Use an exact `attachment_ref` returned by an approved full read and an explicit
 `destination_path`. Relative destinations use the tool base; absolute paths
 remain absolute. Never construct an attachment reference or derive a local path
-from an email-provided filename. Filesystem policy guards the destination.
+from an email-provided filename. Filesystem policy guards the destination: CREATE is required, plus READ and DELETE
+when replacing an existing file, including their approval rules. Symlinks are
+not supported.
 
 ### Reply drafts (`{CREATE_REPLY_DRAFT_TOOL_NAME}`)
 
@@ -115,7 +117,7 @@ plain-text quote of the source message beneath the new reply. Set
 without the previous message.
 
 For either kind of draft, pass only explicit attachment paths the user provided
-(relative to the tool base or absolute; no globs; max 10). Do not invent or
+(relative to the tool base or absolute; no globs or symlinks; max 10). Do not invent or
 guess paths. Attaching requires READ permission on each file; the tools do not
 create or modify local files.
 
