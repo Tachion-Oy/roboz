@@ -4,8 +4,10 @@ import json
 import os
 import socket
 import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
@@ -405,6 +407,54 @@ def test_gio_arguments_delete_requirements_and_native_results_are_isolated(
     assert f"(exit {status})" in result.splitlines()[0]
     assert "native stdout" in result and "native stderr" in result
     assert (tmp_path / "entries/file").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires the Linux XDG trash backend")
+def test_native_gio_moves_files_and_directories_to_isolated_trash(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    # GLib uses a filesystem-level trash outside XDG_DATA_HOME on other devices.
+    # Skip before invoking gio if the temporary directory would take that path.
+    if tmp_path.stat().st_dev != Path.home().stat().st_dev:
+        pytest.skip("Isolated XDG trash requires the same filesystem as the home directory")
+    data_home = tmp_path / "data"
+    data_home.mkdir()
+    monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
+    monkeypatch.setenv("GIO_USE_VFS", "local")
+    monkeypatch.setenv("GIO_USE_PORTALS", "0")
+    # Keep any forced portal fallback away from the desktop session.
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", f"unix:path={tmp_path}/no-session-bus")
+
+    entries = tmp_path / "entries"
+    (entries / "directory/.hidden").mkdir(parents=True)
+    (entries / "directory/.hidden/nested.txt").write_text("nested contents")
+    (entries / "file name.txt").write_text("file contents")
+    target = tmp_path / "keep.txt"
+    target.write_text("link target")
+    (entries / "link").symlink_to(target)
+
+    result = _invoke(
+        tmp_path, [("gio", "CMD"), ("trash", "ARG"), ("entries/*", "PTH")],
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[PermissionRule(pattern="entries/**", operations={Operation.DELETE})],
+    )
+
+    assert result.startswith("Overall: success (exit 0)"), result
+    assert list(entries.iterdir()) == []
+    trashed = data_home / "Trash/files"
+    assert {p.name for p in trashed.iterdir()} == {"directory", "file name.txt", "link"}
+    assert (trashed / "file name.txt").read_text() == "file contents"
+    assert (trashed / "directory/.hidden/nested.txt").read_text() == "nested contents"
+    assert (trashed / "link").is_symlink()
+    assert (trashed / "link").readlink() == target
+    assert target.read_text() == "link target"
+    for name in ("directory", "file name.txt", "link"):
+        info = (data_home / "Trash/info" / f"{name}.trashinfo").read_text()
+        original = next(
+            line.removeprefix("Path=")
+            for line in info.splitlines() if line.startswith("Path=")
+        )
+        assert unquote(original) == str(entries / name)
 
 
 def test_gio_no_paths_requires_delete_on_base(tmp_path: Path, monkeypatch) -> None:
