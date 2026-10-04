@@ -70,4 +70,5 @@ QUOTES: Final[list[str]] = [
     "*Chuckles* I'm in danger.",
     "Mmm... forbidden donut.",
     "Nothing at all!",
+    "Mmm... beer.",
 ]

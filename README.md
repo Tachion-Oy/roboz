@@ -11,6 +11,7 @@
 RoboZ is a framework for building llm powered agents. The main idea is that every tool may be chained conditionally to a subsequent tool thus allowing easy injection of deterministic flows into agentic processes.
 
 [![CI](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml/badge.svg)](https://github.com/Tachion-Oy/roboz/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/roboz.svg)](https://pypi.org/project/roboz/)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE)
 
