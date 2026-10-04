@@ -21,7 +21,7 @@ from roboz.shed.tools import (
 )
 from roboz.shed.tools.apply_patch import apply_patch, execute_apply_patch_replace
 from roboz.shed.tools.compactification import compactify_messages_when_needed
-from roboz.shed.tools.runner import execute_file_command
+from roboz.shed.tools.cli_commands.execute import execute_file_command
 from roboz.shed.tools.truncation import default_cli_truncation
 from roboz.models import All, Stop, Str
 from roboz.models._serialization import get_finalized_message

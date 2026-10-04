@@ -119,23 +119,16 @@ def test_decode_raw_JSON_rejects_array_containing_an_object() -> None:
 def test_decode_raw_JSON_discards_prose_before_object(caplog):
     caplog.set_level(logging.WARNING)
     raw = (
-        "Let me verify the actual state of the dump files and any prior analysis "
-        "before claiming things are pending. I'll check what's actually on disk."
-        '{"action": "run_file_command", "rationale": "Checking the actual state '
-        "of the Slack feed directory to verify whether the sweep count and extraction "
-        'were already completed, since the user believes they were done.", "chain": '
-        '"and", "file_commands": [{"command": "find", "argv": ["/home/tommi/'
-        'Projects/TachionHub/readonly/safe-scripts/slack-scrape/slack-feed/", '
-        '"-type", "f", "-name", "*.md"]}, {"command": "find", "argv": '
-        '["/home/tommi/Projects/TachionHub/readonly/safe-scripts/slack-scrape/'
-        'slack-feed/", "-type", "d"]}]}'
+        "Let me verify the files before claiming the task is complete."
+        '{"action": "run_file_command", "rationale": "Inspect files", '
+        '"value": [["find", "CMD"], [".", "PTH"], ["-name", "FLG"], '
+        '["*.md", "ARG"], [";", "CTL"], ["ls", "CMD"]]}'
     )
-
     decoded = decode_raw_JSON(raw)
-
     assert decoded["action"] == "run_file_command"
-    assert decoded["chain"] == "and"
-    assert len(decoded["file_commands"]) == 2
+    assert decoded["value"][4] == [";", "CTL"]
+    assert len(decoded["value"]) == 6
+
     assert any("non-JSON prefix" in record.message for record in caplog.records)
     assert all("Let me verify" not in record.message for record in caplog.records)
 

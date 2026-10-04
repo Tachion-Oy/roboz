@@ -2,72 +2,33 @@
 
 ## Unreleased
 
-- Add tagged `diff`, `gio trash`, and `rm`. Compare exactly two expanded regular
-  files with READ checks; require DELETE on removal targets and all recursive
-  contents before execution. Support terminal symlinks, including dangling glob
-  matches, without following targets. Preserve native argument suffixes, output,
-  and status; bound deletion preparation with one 60-second deadline.
-
-- Add tagged `ls` and `find` with native listings, common read-only expressions,
-  relative root text, and v1-style READ checks on explicit roots. Support
-  bundled `ls` flags, `find` pruning and boolean expressions, and raw `-print0`
-  pipelines. Directory authorization covers native discovery below the root.
-- Correct shared tagged path expansion to match default zsh: a final `**` acts
-  like `*`, selecting immediate children; use `**/*` for descendants or `**/`
-  for recursive directory matches. Existing calls relying on Bash globstar's
-  final `**` must update their patterns. Permission-rule patterns are unchanged.
-
-- Add tagged `grep` and `rg` with native matching, recursive searches,
-  count/context options, and stdin pipelines. Guard the entire recursive candidate
-  tree and ripgrep's potential local/ancestor ignore files before one native run;
-  denied hidden or ignored files block execution. Reuse the existing preparation,
-  permission, and execution contracts. Bound recursive preparation with a
-  60-second deadline. Preserve native results and exit codes.
-
-- Add guarded tagged `mkdir` with `-p` / `--parents`, `-v` / `--verbose`, and
-  literal directory targets. Check CREATE on every target and missing parent
-  before execution, including directories traversed before `..`. Preserve native
-  operand order, partial effects, and failure status for command chaining.
-
-- Add guarded tagged `tee` and `touch`, with allowlisted flags, inline UTF-8
-  content for `tee`, append support, and explicit or reference-based timestamps.
-  Check every target before writing, including existing-file READ and DELETE
-  permissions. Document that unmatched patterns fail before execution, even
-  with `touch -c`, matching zsh's default or Bash with `failglob` enabled.
-
-- Add the opt-in `cli_commands_v2` package with tagged `pwd`, `cat`, `head`,
-  `tail`, and `wc`, including guarded file patterns and stdin pipelines alongside
-  `cp`/`mv`. Keep v1 as the default and retain `tagged_transfer` public imports.
-  Preserve raw bytes in v2 pipelines and escape non-UTF-8 output in reports.
-
-- Support one recursive `**` component in tagged `cp`/`mv` source patterns,
-  including zero-depth and directory-only matches. Allow ancestor/descendant
-  sources with separate destination mappings, retaining native operand order,
-  partial effects, and exit status. Duplicate sources and conflicting outputs
-  still fail before execution; permissions cover all selected tree entries.
-
-- Support inline `CTL` operators (`&&`, `||`, `;`, `|`) in tagged `cp`/`mv` calls,
-  with mixed Bash-style control flow and a fresh resolve/guard/execute cycle for
-  every reached command. Preparation errors and denials now report failed steps,
-  allowing independently guarded fallback commands; invalid sequence syntax
-  still rejects the whole call. Pipes buffer stdout sequentially. Sequence history
-  retains the newest output within 40,000 characters and marks omitted output.
-
-- Support single-star source patterns in the experimental tagged `cp`/`mv` tool,
-  including intermediate path components. Expand matches before guarding every
-  transfer; unmatched patterns fail the command and destinations remain literal.
-
+- Breaking: replace the file CLI with one command-token interface under
+  `roboz.shed.tools.cli_commands`. Use `get_run_file_command`, `FileCommand`,
+  and `Token`; the tool action is `run_file_command` with ordered `[value, tag]`
+  pairs in `value`. Remove the previous input models, command-spec customization,
+  runtime help, versioned package, and transfer compatibility imports. Update
+  Python callers and stored tool calls before replay; no automatic conversion
+  or compatibility aliases are provided.
+- `FileCommands` now exposes the full guarded command set: discovery, reading,
+  searching, comparison, writing, directory creation, copying, moving, trash,
+  and removal. Existing sandbox policies still govern each required operation.
+- Support mixed `&&`, `||`, `;`, and `|` with zsh-style precedence, guarded
+  fallbacks, fresh path expansion per reached command, and exact stdout bytes
+  through buffered pipelines. Preserve native output, exit status, and partial
+  effects; command output is bounded and reports mark omitted earlier history.
+- Guard recursive operations before execution, including overwrite permissions,
+  hidden entries, and search ignore files. Support source `*` and one recursive
+  `**/` component with default zsh semantics; unmatched patterns fail. Discovery
+  checks READ on starting roots; deletion can remove terminal symlinks without
+  following them. Search preflight and deletion preparation have 60-second deadlines.
+- Use one permission guard and chain builder for CLI commands, patches, and
+  email attachments. All tools check every requirement before any approvals and
+  preserve literal spaces and backslashes in permission patterns. Patches and
+  attachment downloads now apply ask rules to READ/DELETE overwrite requirements
+  and reject symlinks and hard-linked write targets using the CLI path helpers.
+- Move detailed CLI usage into the CLI skill, with executable examples covering
+  mixed chains, pipelines, fallbacks, skipped commands, and inline file content.
 - Support OpenAI SDK 3.x alongside 2.x and update the locked SDK to 3.22.1.
-
-- Extend the experimental tagged `cp`/`mv` tool with recursive copies and directory
-  moves, checking permissions for every descendant. Support GNU directory merges
-  for `cp`, exact directory destinations, force, and source trailing-slash flags.
-
-- Add an opt-in experimental tagged `cp`/`mv` tool for regular-file transfers,
-  using explicit token roles, command-specific effects, and the existing executor.
-  Its local guard applies overwrite approvals and literal filename matching;
-  transfers reject hard-linked files.
-
 - Raise dependency minimums and update locked python-dotenv, Pygments, pytest,
   and urllib3 versions to address known vulnerabilities. Add weekly dependency
   updates and vulnerability auditing in CI.

@@ -50,7 +50,7 @@ In the usual approach an agent is presented each tool separately in their system
 ### Deterministic chains
 The philosophy in RoboZ is that often workflows are mostly deterministic and only on occasion does one need to call an llm. For example in RoboZ an agent would trigger the "ask Bob if they want to have lunch" tool and all subsequent steps come by way of chaining: each tool can be chained to other tools upstream where their outputs are passed down the chain. Each link/edge may introduce a True/False condition, in our case the condition is if Bob is interested in having lunch with us at all. If he is not, RoboZ allows for the chain to break and returns back to the default tool, which for an agentic process is usually "ask the llm what to do next". The default mode is that chained tools are not presented to the agent, they are thus *passive* or in other words their role is strictly in forming deterministic workflows and they cannot be invoked.
 
-Chaining not only reduces the llm calls, but it also provides a useful way of introducing a fine-grained guard layer for tool calls. This is in fact precisely how the cli tools and their access policies work in Roboz. For a cli command a chained passive tool evaluates the intent and breaks the chain if policies are violated.
+Chaining also provides a permission guard for tool calls. CLI commands, patches, and email attachments share the same permission checks. A denied operation cannot execute; a CLI sequence can continue to an independently guarded fallback.
 
 
 ## Start here: Agent with a tool
@@ -259,28 +259,37 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
-The opt-in [tagged CLI v2](src/roboz/shed/tools/cli_commands_v2/README.md) supports
-`cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, `touch`, `mkdir`, `grep`, `rg`, `ls`,
-`find`, `diff`, `gio trash`, and `rm` with
-explicit token roles and mixed control operators. Import
-`get_run_tagged_file_command` from `roboz.shed.tools.cli_commands_v2` to use it
-alongside the default CLI below.
+The [guarded file CLI](src/roboz/shed/tools/cli_commands/README.md) supports
+`cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, `touch`, `mkdir`, `grep`,
+`rg`, `ls`, `find`, `diff`, `gio trash`, and `rm`. Import `get_run_file_command`
+from `roboz.shed.tools` or `roboz.shed.tools.cli_commands`, or use the
+`FileCommands` capability to bind the tools and CLI skill to a sandbox policy.
+With direct factory use, register `roboz.shed.skills.cli_skill` in the agent's
+`auto_loaded_skills` or `skills` so the model can access the command reference.
 
-Shed's `run_file_command` requires one `chain` operator per call, even for a
-single command: `"|"` forwards stdout to the next command, `"&&"` continues on
-success, `"||"` continues on failure, and `";"` always continues. Each call uses
-the same operator for every step. Pipelines buffer and run commands in order;
-they do not stream or reproduce backpressure, concurrent scheduling, or SIGPIPE.
-The reported status is the last command executed (the final pipeline stage for
-`"|"`). Pipeline timeouts stop the call. Earlier file changes are not rolled back.
+`run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
+`CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,
+and `CTL` for control operators. For example:
 
-For existing Python callers and stored tool calls, replace `"pipe"` with `"|"`.
-Legacy `"and"` was unconditional, so replace it with `";"`; choose `"&&"` when
-later commands depend on success and `"||"` for a fallback after failure.
-Update stored calls before replaying them; no automatic persistence rewrite is
-performed. For example, use
-`{"chain":"&&","file_commands":[{"command":"mkdir","argv":["notes"]},{"command":"touch","argv":["notes/today.txt"]}]}`
-when the second step needs the directory created by the first.
+```json
+{
+  "action": "run_file_command",
+  "rationale": "Create a directory and populate a note after success.",
+  "value": [
+    ["mkdir", "CMD"], ["-p", "FLG"], ["notes", "PTH"],
+    ["&&", "CTL"],
+    ["tee", "CMD"], ["Hello\n", "ARG"], ["notes/today.txt", "PTH"]
+  ]
+}
+```
+
+Mix `|`, `&&`, `||`, and `;` within the same call. Pipelines bind first;
+`&&` and `||` have equal precedence and run left to right. Each reached command
+is freshly resolved and guarded; a failed step can select an independently
+authorized fallback. Pipes buffer stdout bytes sequentially and use the final
+stage's status. Earlier file changes are not rolled back. The
+[CLI skill](src/roboz/shed/skills/cli_tools/prompts.py) supplies the complete
+usage reference and worked chaining examples.
 
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated

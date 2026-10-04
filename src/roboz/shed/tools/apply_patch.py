@@ -10,15 +10,18 @@ from roboz.shed.models import (
     GuardFileSingle,
     GuardFilesResult,
     GuardStatus,
-    Operation,
     ParseError,
     PermissionRule,
 )
-from roboz.shed.tools.cli_commands.utilities.formatting import _framed_cli_output
-from roboz.shed.tools.guard import build_guarded_tool_chain
+from roboz.shed.tools.formatting import _framed_cli_output
+from roboz.shed.tools.cli_commands.commands.writers import write_operations
+from roboz.shed.tools.cli_commands.paths import (
+    resolve_single_file_path,
+    resolve_tool_base,
+)
+from roboz.shed.tools.guard import build_guarded_tool_chain, operation_guard
 from roboz.shed.tools.truncation import default_cli_truncation
 from roboz.shed.tools.types import ResolvedFileCommand
-from roboz.shed.tools.utils import resolve_single_file_path, resolve_tool_base
 from roboz.shed.tools.contexts import GuardContext
 from roboz.models import Message, Str
 from roboz.models.truncation import Severity, Truncation, TruncationSpec
@@ -36,10 +39,9 @@ def apply_patch(
     """Prepare an exact single-file string replacement for permission checking."""
     base = ctx.resolve()
     try:
-        location = resolve_single_file_path(input.path, base=base)
-        if location.exists() and not location.is_file():
-            raise ValueError("Path must refer to a regular file")
-    except ValueError as e:
+        resolve_single_file_path(input.path, base=base)
+        operations = write_operations(input.path, base, create_parents=True)
+    except (ValueError, OSError) as e:
         return ParseError(
             message=str(e),
             truncation=Truncation(threshold=0, severity=Severity.LIGHT),
@@ -49,7 +51,7 @@ def apply_patch(
         original_input=input,
         items=[
             GuardFileSingle(
-                operation=Operation.CREATE,
+                operation=operation,
                 location=location,
                 value=ApplyPatchReady(
                     path=input.path,
@@ -58,6 +60,7 @@ def apply_patch(
                     replace_all=input.replace_all,
                 ),
             )
+            for operation, location in operations
         ],
     )
 
@@ -189,6 +192,6 @@ def get_apply_patch(
     entry = apply_patch(base).copy(name=APPLY_PATCH_NAME, description=description)
     return build_guarded_tool_chain(
         entry=entry,
-        guard_ctx=guard_ctx,
+        guard=operation_guard(guard_ctx),
         execute=execute_apply_patch_replace(execute_cli_truncation),
     )

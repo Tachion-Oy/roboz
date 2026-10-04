@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import assert_type
 
-from roboz.shed.models import ApplyPatch, GuardFilesResult, ParseError, RunFileCommands
+from roboz.shed.models import ApplyPatch, GuardFilesResult, ParseError, CommandReady
 from roboz.shed.tools import (
     CompactionContext,
     ConsolidateMemoryContext,
@@ -25,7 +25,8 @@ from roboz.shed.tools.compactification import (
     compactify_messages_when_needed,
 )
 from roboz.shed.tools.guard import operation_guard
-from roboz.shed.tools.runner import execute_file_command
+from roboz.shed.tools.cli_commands.contracts import CommandExecution
+from roboz.shed.tools.cli_commands.execute import execute_file_command
 from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.models import All, Stop, Str
 from roboz import Factory, Tool
@@ -39,7 +40,7 @@ assert_type(
 )
 assert_type(
     execute_file_command,
-    Factory[GuardFilesResult, Str | RunFileCommands, FileCommandExecutionContext],
+    Factory[GuardFilesResult[CommandExecution, CommandReady], Str | CommandExecution, FileCommandExecutionContext],
 )
 assert_type(
     compactify_messages_when_needed, Factory[All, CompactifyStatus, CompactionContext]
@@ -59,5 +60,5 @@ def bind(context: FileCommandExecutionContext) -> None:
         context.commands.external_dependencies(), tuple[ExternalDependency, ...]
     )
     assert_type(
-        execute_file_command(context), Tool[GuardFilesResult, Str | RunFileCommands]
+        execute_file_command(context), Tool[GuardFilesResult[CommandExecution, CommandReady], Str | CommandExecution]
     )

@@ -21,7 +21,8 @@ from roboz.shed.tools.email.contracts import (
     EmailSearchRequest,
 )
 from roboz.shed.tools.types import ResolvedFileCommand
-from roboz.shed.tools.utils import resolve_single_file_path
+from roboz.shed.tools.cli_commands.commands.writers import write_operations
+from roboz.shed.tools.cli_commands.paths import resolve_single_file_path
 from roboz.shed.tools.contexts import EmailContext
 from roboz.exceptions import (
     ExternalCallCancelledError,
@@ -210,7 +211,7 @@ def resolve_email_input(
         base = ctx.resolve()
         items = _resolve_attachment_items(input.attachment_paths, base=base)
         return ResolvedFileCommand(original_input=input, items=items)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         return ParseError(
             message=f"Invalid email draft: {exc}",
             truncation=Truncation(threshold=0, severity=Severity.LIGHT),
@@ -227,7 +228,7 @@ def resolve_reply_draft_input(
         resolve_reply_draft_request(input)
         items = _resolve_attachment_items(input.attachment_paths, base=ctx.resolve())
         return ResolvedFileCommand(original_input=input, items=items)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         return ParseError(
             message=f"Invalid email reply draft: {exc}",
             truncation=Truncation(threshold=0, severity=Severity.LIGHT),
@@ -243,28 +244,27 @@ def resolve_attachment_download(
     """Prepare an email attachment destination for permission checking."""
     del messages
     try:
-        destination = resolve_single_file_path(
+        base = ctx.resolve()
+        resolve_single_file_path(
             input.destination_path,
-            base=ctx.resolve(),
+            base=base,
             label="destination_path",
         )
-        if destination.exists() and not destination.is_file():
-            raise ValueError("destination_path must refer to a regular file")
-        if not destination.parent.is_dir():
-            raise ValueError("destination_path parent directory must exist")
+        operations = write_operations(input.destination_path, base)
         return ResolvedFileCommand(
             original_input=input,
             items=[
                 GuardFileSingle(
-                    operation=Operation.CREATE,
+                    operation=operation,
                     location=destination,
                     value=EmailAttachmentDownloadReady(
                         attachment_ref=_header(input.attachment_ref, "attachment_ref")
                     ),
                 )
+                for operation, destination in operations
             ],
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         return ParseError(
             message=f"Invalid attachment download: {exc}",
             truncation=Truncation(threshold=0, severity=Severity.LIGHT),
@@ -341,7 +341,9 @@ def execute_email_operation(
             value="[error] Email draft creation timed out; check the Drafts folder before retrying."
         )
     except (ExternalCallCancelledError, ExternalCallInterruptedError):
-        return Str(value="[error] Email draft creation was cancelled; check the Drafts folder before retrying.")
+        return Str(
+            value="[error] Email draft creation was cancelled; check the Drafts folder before retrying."
+        )
     except Exception:  # noqa: BLE001
         return Str(
             value="[error] Unable to create email draft due to an email provider failure."
@@ -407,7 +409,9 @@ def execute_reply_draft(
             value="[error] Email reply draft creation timed out; check the Drafts folder before retrying."
         )
     except (ExternalCallCancelledError, ExternalCallInterruptedError):
-        return Str(value="[error] Email reply draft creation was cancelled; check the Drafts folder before retrying.")
+        return Str(
+            value="[error] Email reply draft creation was cancelled; check the Drafts folder before retrying."
+        )
     except Exception:  # noqa: BLE001
         return Str(
             value="[error] Unable to create email reply draft due to an email provider failure."

@@ -36,6 +36,10 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/examples/simpsons_quotes.py",
             "roboz/shed/__init__.py",
             "roboz/shed/capabilities.py",
+            "roboz/shed/tools/cli_commands/contracts.py",
+            "roboz/shed/tools/cli_commands/command.py",
+            "roboz/shed/tools/cli_commands/README.md",
+            "roboz/shed/skills/cli_tools/prompts.py",
             "roboz/shed/tools/email/proton_bridge/service.py",
             "roboz/shed/tools/email/proton_bridge/models.py",
             "roboz/endpoints/__main__.py",
@@ -58,6 +62,15 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert "roboz/shed/tools/safe_scripts.py" not in names
         assert "roboz/shed/tools/safe_scripts/execution.py" not in names
         assert "roboz/shed/tools/safe_scripts/contracts.py" not in names
+        assert not any(
+            name.startswith((
+                "roboz/shed/tools/cli_commands_v2/",
+                "roboz/shed/tools/cli_commands/tagged_transfer/",
+                "roboz/shed/tools/cli_commands/run_file_command/",
+                "roboz/shed/tools/cli_commands/utilities/",
+            ))
+            for name in names
+        )
         assert "roboz/shed/py.typed" not in names
         assert "roboz/endpoints/py.typed" not in names
         assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)

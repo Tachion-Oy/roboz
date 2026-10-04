@@ -9,51 +9,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
-from pydantic.json_schema import SkipJsonSchema
 
 from roboz.models import Empty
 
 if TYPE_CHECKING:
     pass
-
-
-class RunFileCommand(BaseModel):
-    """One step in a ``run_file_command`` tool invocation."""
-
-    command: str = Field(
-        ...,
-        description="Unix command: grep, cat, find, ls, tee, wc, git, etc.",
-    )
-    argv: list[str] = Field(
-        default_factory=list,
-        description="All command arguments in order (subprocess argv[1:]). Includes flags, positionals, and path-like tokens.",
-    )
-    stdin: str | None = Field(
-        default=None,
-        description="Optional explicit stdin, for example content for tee. With chain='|', the previous command's stdout replaces stdin on subsequent steps, including empty stdout. Other operators preserve each command's explicit stdin.",
-    )
-    model_config = ConfigDict(extra="forbid")
-
-
-class RunFileCommands(Empty):
-    """Input model for the ``run_file_command`` tool.
-
-    Pass one or more commands in file_commands and always provide chain explicitly:
-    Use |, &&, ||, or ; for buffered sequential execution.
-    """
-
-    chain: Literal["|", "&&", "||", ";"] = Field(
-        ...,
-        description="Required operator: '|' forwards stdout after normal exits; '&&' continues after success; '||' continues after failure; ';' continues after ordinary outcomes. One operator applies to every step.",
-    )
-    file_commands: list[RunFileCommand] = Field(
-        ..., min_length=1, description="List of commands to execute sequentially"
-    )
-    accumulated_output: SkipJsonSchema[str] = Field(
-        default="",
-        description="(Internal) Carries framed output across command iterations.",
-    )
-    model_config = ConfigDict(extra="forbid")
 
 
 TInput = TypeVar("TInput", bound=Empty, default=Empty)
@@ -71,15 +31,6 @@ class ParseError(ToolValueBase):
 
     kind: Literal["parse_error"] = Field(default="parse_error")
     message: str = Field(..., description="Error message")
-
-
-class Help(ToolValueBase):
-    """Tool help output that terminates a tool chain."""
-
-    kind: Literal["help"] = Field(default="help")
-    message: str = Field(
-        ..., description="Formatted help text listing commands and flags"
-    )
 
 
 class CommandReady(ToolValueBase):

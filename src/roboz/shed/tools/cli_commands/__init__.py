@@ -1,23 +1,19 @@
-"""Guarded Unix file-oriented CLI tools (read, locate, modify files) and shared CLI utilities."""
+"""Guarded file commands for discovery, reads, writes, transfers, and deletion."""
 
-from roboz.shed.models import CommandReady, ParseError
-from roboz.shed.tools.guard import operation_guard
-from roboz.shed.tools.types import ResolvedFileCommand
-
-from .utilities.cmd_spec import CmdSpec
-from .utilities.formatting import (
-    format_cli_commands_help,
-    format_cli_constraints,
-    format_cli_full_help,
+from .command import get_run_file_command
+from .contracts import (
+    CommandName,
+    ControlOperator,
+    FileCommand,
+    Token,
+    TokenTag,
 )
 
 __all__ = [
-    "CmdSpec",
-    "CommandReady",
-    "ParseError",
-    "ResolvedFileCommand",
-    "format_cli_commands_help",
-    "format_cli_constraints",
-    "format_cli_full_help",
-    "operation_guard",
+    "CommandName",
+    "ControlOperator",
+    "FileCommand",
+    "Token",
+    "TokenTag",
+    "get_run_file_command",
 ]

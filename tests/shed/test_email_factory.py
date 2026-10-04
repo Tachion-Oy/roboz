@@ -470,6 +470,19 @@ def test_work_with_email_rejects_missing_or_directory_attachment(
     assert provider.requests == []
 
 
+def test_email_rejects_attachment_symlinks(tmp_path: Path) -> None:
+    (tmp_path / "file.pdf").write_bytes(b"attachment")
+    (tmp_path / "link.pdf").symlink_to(tmp_path / "file.pdf")
+    provider = _FakeDraftService()
+    resolved, _, result = _run_chain(
+        _tools(tmp_path, provider), _input(attachment_paths=["link.pdf"])
+    )
+    assert isinstance(resolved, ParseError)
+    assert "Symlinks are unsupported" in resolved.message
+    assert result is None
+    assert provider.requests == []
+
+
 def test_work_with_email_denies_attachment_without_read_permission(
     tmp_path: Path,
 ) -> None:
@@ -528,7 +541,7 @@ def test_work_with_email_ask_rule_can_block_attachment_read(tmp_path: Path) -> N
         pipe=pipe,
     )
 
-    with patch("roboz.shed.tools.utils.interact_with_user", return_value="no"):
+    with patch("roboz.runtime.interact_with_user", return_value="no"):
         _, guarded, result = _run_chain(tools, _input(attachment_paths=["ask-me.pdf"]))
 
     assert guarded is not None
@@ -540,6 +553,27 @@ def test_work_with_email_ask_rule_can_block_attachment_read(tmp_path: Path) -> N
 def test_work_with_email_schema_rejects_more_than_ten_attachments() -> None:
     with pytest.raises(ValidationError):
         _input(attachment_paths=[f"f{i}.pdf" for i in range(11)])
+
+
+def test_email_checks_all_attachment_policies_before_any_approval(tmp_path: Path) -> None:
+    for name in ("first.pdf", "denied.pdf"):
+        (tmp_path / name).write_bytes(b"attachment")
+    provider = _FakeDraftService()
+    tools = _tools(
+        tmp_path,
+        provider,
+        deny_rules=[PermissionRule("denied.pdf", {Operation.READ})],
+        ask_rules=[PermissionRule("first.pdf", {Operation.READ})],
+        pipe=EventPipe(),
+    )
+    with patch("roboz.runtime.interact_with_user") as prompt:
+        _, guarded, result = _run_chain(
+            tools, _input(attachment_paths=["first.pdf", "denied.pdf"])
+        )
+    assert guarded.status == GuardStatus.DENIED
+    prompt.assert_not_called()
+    assert result is None
+    assert provider.requests == []
 
 
 def test_work_with_email_schema_requires_a_primary_recipient() -> None:
@@ -771,8 +805,9 @@ def test_user_authored_email_reads_without_prompt(tmp_path: Path, mailbox: str) 
     assert "UNTRUSTED" not in result.value
 
 
+@pytest.mark.parametrize("existing", [False, True])
 def test_download_email_attachment_uses_guarded_context_base(
-    tmp_path: Path,
+    tmp_path: Path, existing: bool,
 ) -> None:
     provider = _FakeMailboxService()
     tools = _mailbox_tools(tmp_path, provider)
@@ -783,6 +818,8 @@ def test_download_email_attachment_uses_guarded_context_base(
     )
     destination = tmp_path / "downloads" / "notes.txt"
     destination.parent.mkdir()
+    if existing:
+        destination.write_bytes(b"old attachment")
 
     _, guarded, result = _run_chain(
         tools[entry_index : entry_index + 3],

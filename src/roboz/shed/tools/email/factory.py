@@ -25,8 +25,8 @@ from roboz.shed.tools.email.messages import (
     read_email,
     search_email,
 )
-from roboz.shed.tools.guard import build_guarded_tool_chain
-from roboz.shed.tools.utils import resolve_tool_base
+from roboz.shed.tools.guard import build_guarded_tool_chain, operation_guard
+from roboz.shed.tools.cli_commands.paths import resolve_tool_base
 from roboz.shed.tools.contexts import EmailContext, GuardContext
 from roboz.runtime.pipe import EventPipe
 from roboz.tooling import Tool
@@ -102,7 +102,9 @@ def get_work_with_email(
     )
     return [
         *build_guarded_tool_chain(
-            entry=draft, guard_ctx=guard_ctx, execute=execute_email_operation(runtime)
+            entry=draft,
+            guard=operation_guard(guard_ctx),
+            execute=execute_email_operation(runtime),
         ),
         search_email(runtime).copy(
             name=SEARCH_EMAIL_TOOL_NAME,
@@ -126,10 +128,12 @@ def get_work_with_email(
         ),
         *build_guarded_tool_chain(
             entry=download,
-            guard_ctx=guard_ctx,
+            guard=operation_guard(guard_ctx),
             execute=execute_attachment_download(runtime),
         ),
         *build_guarded_tool_chain(
-            entry=reply, guard_ctx=guard_ctx, execute=execute_reply_draft(runtime)
+            entry=reply,
+            guard=operation_guard(guard_ctx),
+            execute=execute_reply_draft(runtime),
         ),
     ]

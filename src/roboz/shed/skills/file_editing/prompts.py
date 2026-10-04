@@ -2,13 +2,13 @@
 
 _BODY: str = """## File editing (`__AP__`)
 
-This workflow assumes you already know **`__RC__`** from the **`__ST__`** skill: use it to **read and search** the tree before editing. This tool edits **one file at a time**, using **literal find/replace** (exact substring match) with the same path guards as the CLI tools.
+This workflow assumes you already know **`__RC__`** from the **`__ST__`** skill: use it to **read and search** the tree before editing. This tool edits **one file at a time**, using **literal find/replace** (exact substring match) with the same configured path permissions as the CLI tools.
 
 ### When to use this vs full-file rewrite
 
 Use this decision rule:
 
-1. **Small files (roughly <200-300 lines):** prefer rewriting the full file when many parts need to change, wither with **`__RC__`** or **`__AP__`**.
+1. **Small files (roughly <200-300 lines):** prefer rewriting the full file when many parts need to change, either with **`__RC__`** (`tee` with inline ARG content) or **`__AP__`**.
 2. **Find/replace edits (single region or repeated exact text):** use **`__AP__`**.
 3. **Large files or risky targeted edits:** use **`__AP__`** with strong context.
 
@@ -16,7 +16,7 @@ Use this decision rule:
 
 The tool takes a **single JSON object** with:
 
-- **`path`**: one path to a regular file target; it may be **relative** (resolved under the tool base) or **absolute** (same guard rules apply). Globs are not allowed.
+- **`path`**: one path to a regular file target; it may be **relative** (resolved under the tool base) or **absolute** (same guard rules apply). Globs and symlinks are not allowed.
 - **`old_string`**: the **exact** text to find in the file. Not a regex; whitespace, tabs, and newlines must match the file byte-for-byte in that region.
 - **`new_string`**: the replacement text (may be empty to delete the matched substring).
 - **`replace_all`**: boolean. If **`false`**, **`old_string`** must appear **exactly once** in the file. If **`true`**, **every** occurrence is replaced; at least one occurrence is required.
@@ -85,7 +85,7 @@ Full-file rewrite (also creates the file if missing):
 ### Limitations
 
 1. **Single-file scope** — each call targets one path only.
-2. **Path permissions:** the same **allow / deny / ask** rules as **`__RC__`** writes apply. Tool input paths may be relative or absolute, and permission rules may also be relative or absolute patterns. If no rule permits the target, the operation is blocked **before** any edit.
+2. **Path permissions:** the same **allow / deny / ask** rules as **`__RC__`** writes apply. Tool input paths may be relative or absolute, and permission rules may also be relative or absolute patterns. Creating requires CREATE; overwriting an existing file also requires READ and DELETE, including their ask rules. Every required permission is checked before any approval prompts or edit.
 3. **Failed find/replace edits:** if non-empty matching rules are not satisfied, the file should remain unchanged; verify with **`cat`** / **`rg`** when unsure.
 4. **No rename/move operation:** use **`__RC__`** with `mv` for file or directory moves; this tool only edits file contents.
 
