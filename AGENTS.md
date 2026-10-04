@@ -8,10 +8,10 @@ Read and follow the documents relevant to the task before editing:
   boundaries, and docstrings that become model prompts. Read for source changes.
 - [Testing practices](docs/testing-practices.md): test scope, mocking boundaries,
   and runtime versus typing tests. Read when changing behavior or tests.
-- [README.md](README.md): core concepts, Shed and Endpoints usage, runnable
-  examples, and the module map.
-- [Endpoint catalogue guide](src/roboz/endpoints/README.md): project
-  catalogue layout, inventory commands, custom locations, and recovery.
+- [README.md](README.md): core concepts, runnable examples, the module map,
+  [Shed and its guarded file CLI](README.md#shed),
+  [endpoint catalogues](README.md#endpoints-and-model-catalogues), and
+  [API key encryption](README.md#api-key-encryption).
 - [Verification workflow](.github/workflows/verify.yml): full CI commands,
   packaging checks, and supported test environments. Consult for changes to
   dependencies, packaging, or CI.
