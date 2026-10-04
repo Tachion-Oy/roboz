@@ -279,7 +279,7 @@ For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 
 ### Guarded file CLI
 
-![Guarded CLI workflow: resolve, check permissions, execute, and guard each subsequent command](https://raw.githubusercontent.com/Tachion-Oy/roboz/main/docs/assets/guarded-cli.svg)
+![Guarded CLI workflow: resolve, check permissions, execute, and guard each subsequent command](https://raw.githubusercontent.com/Tachion-Oy/roboz/093a5377df6c111fb7e290a1078c336b9e53794d/docs/assets/guarded-cli.svg)
 
 The file-command tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`,
 `tee`, `touch`, `mkdir`, `grep`, `rg`, `ls`, `find`, `diff`, `gio trash`, and
@@ -318,8 +318,24 @@ and `|` to pipe stdout. Pipelines bind first; `&&` and `||` run left to right.
 Each reached command gets its own permission checks. Pipes are buffered, and
 earlier file changes are not rolled back if a later command fails.
 
-The [CLI skill](src/roboz/shed/skills/cli_tools/prompts.py) contains the supported
-flags, path patterns, and command-specific permission rules.
+Command options are separate `FLG` tokens; options taking values use the next
+`ARG` or `PTH` token. `--` ends options. Source paths accept `*` within a path
+component and one recursive `**/` component; unmatched patterns fail. `?` and
+bracket patterns are unsupported, and destinations must be literal paths.
+Relative paths are resolved from `base`. A rule for `directory/**` covers the
+directory and its descendants.
+
+| Commands | Options | Permission checks |
+| --- | --- | --- |
+| `pwd`, `ls`, `find` | `pwd -P`; `ls -l/-a/-h/-R`; `find -name/-type/-maxdepth/-print` | READ on the base or selected roots |
+| `cat`, `head`, `tail`, `wc`, `diff` | `cat -n/-b`; `head/tail -n/-c`; `wc -l/-w/-c`; `diff -u/-q` | READ on selected files |
+| `grep`, `rg` | `-n/-i/-F/-m`; `grep -r/-R`; `rg --hidden/--no-ignore` | READ on selected files or search trees |
+| `cp`, `mv` | `-t/-T/-v/-f`; `cp -r/-R` | READ on copied sources, CREATE on destinations, DELETE on moved sources or overwritten entries |
+| `tee`, `touch`, `mkdir` | `tee -a`; `touch -c/-d/-r`; `mkdir -p/-v` | CREATE on targets; existing file updates also need READ and DELETE |
+| `gio trash`, `rm` | `gio trash`; `rm -r/-f` | DELETE on targets and recursive descendants |
+
+The [CLI skill](https://github.com/Tachion-Oy/roboz/blob/093a5377df6c111fb7e290a1078c336b9e53794d/src/roboz/shed/skills/cli_tools/prompts.py) is the full option
+allowlist and describes command-specific operand ordering and restrictions.
 
 ## Endpoints and model catalogues
 
