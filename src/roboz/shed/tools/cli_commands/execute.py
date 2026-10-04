@@ -16,7 +16,7 @@ from roboz.shed.tools.cli_commands.constants import (
     SUBPROCESS_TIMEOUT_SECONDS,
     SUCCESS_NO_OUTPUT,
 )
-from roboz.shed.tools.formatting import _framed_cli_output
+from roboz.shed.tools.formatting import _framed_cli_output, _with_guard_message
 from roboz.shed.tools.contexts import FileCommandExecutionContext
 from roboz.tooling.decorators import factory
 
@@ -78,6 +78,7 @@ def _append_result(
     execution: CommandExecution,
     command: str,
     result: subprocess.CompletedProcess[bytes],
+    permission_message: str | None,
 ) -> None:
     """Accumulate reached command frames while keeping piped stdout out of history."""
     _, tail = split_command(execution.remaining)
@@ -93,6 +94,7 @@ def _append_result(
         body = f"{PIPE_STDIN_FROM_PREVIOUS_COMMAND}\n{body}"
     if stderr:
         body += f"\nstderr:\n{stderr}"
+    body = _with_guard_message(permission_message, body)
     execution.accumulated_output = _bounded_history(
         execution.accumulated_output + _framed_cli_output(command, body) + "\n"
     )
@@ -127,7 +129,8 @@ def _execute_step(
         return command, _run_command(ready, ctx, execution.stdin)
     except Exception as error:
         return _final_result(
-            execution.accumulated_output + _framed_cli_output(command, str(error)),
+            execution.accumulated_output
+            + _framed_cli_output(command, _with_guard_message(input.message, str(error))),
             "failure (execution error)",
             ctx.truncation,
         )
@@ -138,6 +141,7 @@ def _completed_result(
     command: str,
     result: subprocess.CompletedProcess[bytes],
     truncation: TruncationSpec,
+    permission_message: str | None,
 ) -> Str | CommandExecution:
     """Bound captured output and record the normalized outcome before continuing."""
     captured_chars = len((result.stdout or b"").decode("utf-8", "backslashreplace")) + len(
@@ -145,8 +149,11 @@ def _completed_result(
     )
     if captured_chars > MAX_COMMAND_OUTPUT_CHARS:
         return _final_result(
-            ERR_OUTPUT_TOO_LARGE.format(
-                actual_chars=captured_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
+            _with_guard_message(
+                permission_message,
+                ERR_OUTPUT_TOO_LARGE.format(
+                    actual_chars=captured_chars, max_chars=MAX_COMMAND_OUTPUT_CHARS
+                ),
             ),
             f"failure (output too large; exit {result.returncode})",
             truncation,
@@ -154,7 +161,7 @@ def _completed_result(
     result.returncode = (
         result.returncode if result.returncode >= 0 else 128 - result.returncode
     )
-    _append_result(execution, command, result)
+    _append_result(execution, command, result, permission_message)
     return _continue_or_finish(execution, result, truncation)
 
 
@@ -186,4 +193,8 @@ def execute_file_command(
     if isinstance(outcome, Str):
         return outcome
     command, result = outcome
-    return _completed_result(input.original_input, command, result, ctx.truncation)
+    # Denials already include the permission exchange in their error diagnostic.
+    permission_message = input.message if input.status == GuardStatus.ALLOWED else None
+    return _completed_result(
+        input.original_input, command, result, ctx.truncation, permission_message
+    )

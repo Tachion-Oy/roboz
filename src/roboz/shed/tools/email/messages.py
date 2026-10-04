@@ -14,6 +14,7 @@ from roboz.exceptions import (
 )
 from roboz.models import Message, Str
 from roboz.runtime import interact_with_user
+from roboz.shed.tools.formatting import _with_guard_message
 from roboz.tooling.decorators import factory
 
 from .contracts import EmailMailbox, EmailProviderError, EmailSummary
@@ -200,6 +201,13 @@ def execute_attachment_download(
 ) -> Str:
     """Download an approved email attachment to its guarded destination."""
     del messages
+    result = _download_attachment(input, ctx)
+    result.value = _with_guard_message(input.message, result.value)
+    return result
+
+
+def _download_attachment(input: GuardFilesResult, ctx: EmailContext) -> Str:
+    """Download the attachment, retaining provider and filesystem diagnostics."""
     try:
         original = input.original_input
         if not isinstance(original, DownloadEmailAttachment):

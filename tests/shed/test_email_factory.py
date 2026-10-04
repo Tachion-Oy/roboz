@@ -550,6 +550,54 @@ def test_work_with_email_ask_rule_can_block_attachment_read(tmp_path: Path) -> N
     assert provider.requests == []
 
 
+@pytest.mark.parametrize("operation", ["draft", "reply", "download"])
+@pytest.mark.parametrize("provider_fails", [False, True])
+def test_email_result_preserves_filesystem_approval_reply(
+    tmp_path, monkeypatch, operation, provider_fails
+):
+    (tmp_path / "notes.txt").write_text("notes")
+    provider = _FakeMailboxService()
+    tools = _tools(
+        tmp_path,
+        provider,
+        ask_rules=[PermissionRule("**", {Operation.READ, Operation.CREATE})],
+        pipe=EventPipe(),
+    )
+    if operation == "draft":
+        chain = tools[:3]
+        payload = _input(attachment_paths=["notes.txt"])
+        method = "create_draft"
+    elif operation == "reply":
+        chain = tools[-3:]
+        payload = CreateReplyDraft(
+            source_message_ref="source", body_text="Thanks", attachment_paths=["notes.txt"]
+        )
+        method = "create_reply_draft"
+    else:
+        index = next(
+            i for i, tool in enumerate(tools)
+            if tool.name == DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME
+        )
+        chain = tools[index:index + 3]
+        payload = DownloadEmailAttachment(
+            attachment_ref="attachment", destination_path="new.txt"
+        )
+        method = "download_attachment"
+    if provider_fails:
+        def fail(*args, **kwargs):
+            raise EmailProviderError("provider unavailable")
+
+        monkeypatch.setattr(provider, method, fail)
+    with patch("roboz.runtime.interact_with_user", return_value=" Yes \n") as prompt:
+        _, guarded, result = _run_chain(chain, payload)
+
+    assert guarded.status == GuardStatus.ALLOWED
+    assert prompt.call_count == 1
+    assert prompt.call_args.args[0] in result.value
+    assert 'User reply: " Yes \\n"\nDecision: allowed' in result.value
+    assert ("[error]" in result.value) is provider_fails
+
+
 def test_work_with_email_schema_rejects_more_than_ten_attachments() -> None:
     with pytest.raises(ValidationError):
         _input(attachment_paths=[f"f{i}.pdf" for i in range(11)])
