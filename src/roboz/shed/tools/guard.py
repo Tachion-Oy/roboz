@@ -32,14 +32,14 @@ def _matches(
             continue
         pattern = rule.pattern if isinstance(rule.pattern, str) else rule.pattern()
         path = item.location
-        if not pattern.startswith("/"):
+        if not (pattern.startswith("/") or Path(pattern).is_absolute()):
             try:
                 path = path.relative_to(base)
             except ValueError:
                 continue
         if pattern.endswith("/**") and path.as_posix() == pattern[:-3]:
             return True
-        if PurePosixPath(path).full_match(pattern):
+        if PurePosixPath(path.as_posix()).full_match(pattern):
             return True
     return False
 
