@@ -40,12 +40,14 @@ tools = get_run_file_command(
     base=Path("/absolute/project"),
     default_verdict=ActionVerdict.deny,
     allow_rules=[
+        PermissionRule(pattern=".", operations={Operation.READ}),
         PermissionRule(pattern="src/*", operations={Operation.READ}),
         PermissionRule(pattern="reports/*", operations={Operation.CREATE, Operation.DELETE}),
     ],
 )
 agent = Agent(
     name="file_worker",
+    system_prompt="Inspect the working directory, then stop.",
     tools=[*tools, stop],
     auto_loaded_skills=[cli_skill],
     agent_endpoint=MockLLMEndpoint([
