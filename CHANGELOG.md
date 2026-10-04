@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0a1 - 2026-10-04
+
 - Breaking: replace the file CLI with one command-token interface under
   `roboz.shed.tools.cli_commands`. Use `get_run_file_command`, `FileCommand`,
   and `Token`; the tool action is `run_file_command` with ordered `[value, tag]`
@@ -28,6 +30,8 @@
   and reject symlinks and hard-linked write targets using the CLI path helpers.
 - Move detailed CLI usage into the CLI skill, with executable examples covering
   mixed chains, pipelines, fallbacks, skipped commands, and inline file content.
+  `FileCommands` registers the tools and skill together; direct factory callers
+  must register `roboz.shed.skills.cli_skill` in `auto_loaded_skills` or `skills`.
 - Support OpenAI SDK 3.x alongside 2.x and update the locked SDK to 3.22.1.
 - Raise dependency minimums and update locked python-dotenv, Pygments, pytest,
   and urllib3 versions to address known vulnerabilities. Add weekly dependency
