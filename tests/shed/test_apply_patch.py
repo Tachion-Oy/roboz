@@ -1,9 +1,11 @@
 """Tests for the apply_patch connector and Python string-replace executor."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from roboz.models import Str
+from roboz.runtime import EventPipe
 from roboz.models.truncation import Severity, Truncation
 from roboz.shed.models import (
     ActionVerdict,
@@ -56,8 +58,11 @@ def test_apply_patch_connector_builds_guard_input_for_modify(tmp_path: Path) -> 
         messages=[],
     )
     assert isinstance(out, ResolvedFileCommand)
-    assert len(out.items) == 1
-    assert out.items[0].operation == Operation.CREATE
+    assert [item.operation for item in out.items] == [
+        Operation.CREATE,
+        Operation.READ,
+        Operation.DELETE,
+    ]
     assert isinstance(out.items[0].value, ApplyPatchReady)
     assert out.items[0].value.path == "demo.txt"
     assert out.items[0].value.old_string == "old\n"
@@ -149,6 +154,69 @@ def test_apply_patch_guard_denies_disallowed_write(tmp_path: Path) -> None:
     denied = guard(input=ready, messages=[])
     assert isinstance(denied, GuardFilesResult)
     assert denied.status == GuardStatus.DENIED
+
+
+@pytest.mark.parametrize("operation", [Operation.READ, Operation.DELETE])
+def test_patch_checks_overwrite_policy_before_asking_to_create(
+    tmp_path: Path, operation: Operation
+) -> None:
+    target = tmp_path / "file.txt"
+    target.write_text("before")
+    entry, guard, execute = get_apply_patch(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        deny_rules=[PermissionRule("file.txt", {operation})],
+        ask_rules=[PermissionRule("file.txt", {Operation.CREATE})],
+        pipe=EventPipe(),
+    )
+    with patch("roboz.runtime.interact_with_user") as prompt:
+        result = guard(
+            entry(ApplyPatch(path="file.txt", old_string="", new_string="after"), []),
+            [],
+        )
+    assert result.status == GuardStatus.DENIED
+    assert not execute.chain_condition(result)
+    prompt.assert_not_called()
+    assert target.read_text() == "before"
+
+
+def test_patch_overwrite_requires_delete_approval(tmp_path: Path) -> None:
+    target = tmp_path / "file.txt"
+    target.write_text("before")
+    entry, guard, execute = get_apply_patch(
+        base=tmp_path,
+        default_verdict=ActionVerdict.allow,
+        ask_rules=[PermissionRule("file.txt", {Operation.DELETE})],
+        pipe=EventPipe(),
+    )
+    with patch("roboz.runtime.interact_with_user", return_value="no") as prompt:
+        result = guard(
+            entry(
+                ApplyPatch(path="file.txt", old_string="before", new_string="after"), []
+            ),
+            [],
+        )
+    assert result.status == GuardStatus.DENIED
+    assert not execute.chain_condition(result)
+    prompt.assert_called_once()
+    assert target.read_text() == "before"
+
+
+@pytest.mark.parametrize("name", [" spaced ", r"back\slash"])
+def test_patch_permission_patterns_preserve_literal_names(
+    tmp_path: Path, name: str
+) -> None:
+    entry, guard, execute = get_apply_patch(
+        base=tmp_path,
+        default_verdict=ActionVerdict.deny,
+        allow_rules=[PermissionRule(name, {Operation.CREATE})],
+    )
+    result = guard(
+        entry(ApplyPatch(path=name, old_string="", new_string="content"), []), []
+    )
+    assert result.status == GuardStatus.ALLOWED
+    execute(result, [])
+    assert (tmp_path / name).read_text() == "content"
 
 
 def test_apply_patch_executes_string_replace(tmp_path: Path) -> None:

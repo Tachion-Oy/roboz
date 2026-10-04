@@ -204,7 +204,7 @@ def execute_attachment_download(
         original = input.original_input
         if not isinstance(original, DownloadEmailAttachment):
             raise EmailProviderError("unsupported email attachment operation")
-        if len(input.items) != 1:
+        if len({item.location for item in input.items}) != 1:
             raise EmailProviderError("email attachment destination was not approved")
         item = input.items[0]
         payload = item.value

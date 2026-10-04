@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -15,7 +15,6 @@ from roboz.runtime import EventPipe
 from roboz.tooling.context import HasExternalDependencies
 
 if TYPE_CHECKING:
-    from roboz.shed.tools.cli_commands.utilities.cmd_spec import CmdSpec
     from roboz.shed.tools.runner import ExecutableCommandCatalog
     from roboz.shed.tools.email.contracts import EmailService
 
@@ -33,21 +32,7 @@ class GuardContext:
     allow: list[PermissionRule]
     ask: list[PermissionRule]
     default_verdict: ActionVerdict
-    command_specs: Sequence[CmdSpec] = ()
     pipe: EventPipe | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class FileCommandResolverContext:
-    """Command specifications and permission text for file-command resolution."""
-
-    base: Path
-    specs: Sequence[CmdSpec]
-    allow_rules: list[PermissionRule]
-    deny_rules: list[PermissionRule]
-    ask_rules: list[PermissionRule]
-    takes_precedence: ActionVerdict
-    default_verdict: ActionVerdict
 
 
 @dataclass(frozen=True, kw_only=True)

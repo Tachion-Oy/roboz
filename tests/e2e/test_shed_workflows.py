@@ -52,8 +52,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         return {
             "action": "run_file_command",
             "rationale": "read",
-            "chain": "&&",
-            "file_commands": [{"command": "cat", "argv": [path]}],
+            "value": [["cat", "CMD"], [path, "PTH"]],
         }
 
     definition = DeployableAgent(
@@ -109,16 +108,18 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         for output in outputs
         if output.get("caller") == "execute_file_command"
     ]
-    assert len(reads) == 2
+    assert len(reads) == 4
+    assert all(value.startswith("Overall: failure") for value in reads[2:])
     assert "before-marker" in reads[0] and "after-marker" in reads[1]
     assert all("private-marker" not in value for value in reads)
     denials = [
         output
         for output in outputs
-        if output.get("caller") == "operation_guard"
+        if output.get("caller") in {"operation_guard", "guard_file_command"}
         and output.get("status") == "denied"
     ]
-    assert len(denials) == 3
+    assert len(denials) == 2
+    assert "Symlinks" in reads[3] or "symlink" in reads[3]
     assert list((tmp_path / "logs").rglob("*.json"))
 
 
@@ -336,12 +337,51 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
     assert list(sandbox.project_logs_dir().rglob("*.json"))
 
 
+def test_file_commands_capability_writes_and_removes_with_the_cli_skill(tmp_path):
+    from roboz.shed.skills import cli_skill
+
+    sandbox = Sandbox(tmp_path / "sandbox", scope="project")
+    sandbox.project_dir().mkdir(parents=True)
+    folder = "projects/project/notes"
+    path = f"{folder}/note.txt"
+    definition = DeployableAgent(
+        name="cli_worker",
+        system_prompt="Write, verify, and remove the note.",
+        default_capabilities=(Capability(tools=(stop,)), FileCommands()),
+    )
+    definition.set_attributes(sandbox=sandbox)
+    definition.set_agent_endpoint(MockLLMEndpoint([
+        {
+            "action": "run_file_command", "rationale": "Exercise file commands",
+            "value": [
+                ["mkdir", "CMD"], [folder, "PTH"], ["&&", "CTL"],
+                ["tee", "CMD"], ["created by the CLI\n", "ARG"], [path, "PTH"],
+                ["&&", "CTL"], ["cat", "CMD"], [path, "PTH"],
+                ["&&", "CTL"], ["rm", "CMD"], [path, "PTH"],
+            ],
+        },
+        {"action": "stop", "rationale": "Done", "value": "done"},
+    ]))
+    agent, _ = definition.build()
+    assert cli_skill in agent.auto_loaded_skills
+    active_names = {tool.name for tool in agent.active_tools.values()}
+    assert "run_file_command" in active_names
+    assert not {"operation_guard", "execute_file_command", "continue_file_command"} & active_names
+    _, messages = agent.invoke()
+    results = [json.loads(m.content) for m in messages if m.role.value == "user"]
+    final = [r["value"] for r in results if r.get("caller") == "execute_file_command" and "value" in r][-1]
+    assert final.startswith("Overall: success") and "created by the CLI" in final
+    assert (sandbox.resolved_root / folder).is_dir()
+    assert not (sandbox.resolved_root / path).exists()
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
         test_guarded_read_edit_read_and_denied_escape(Path(directory))
     print("PASS guarded read/edit/read and denied escape")
 
     for scenario in (
+        test_file_commands_capability_writes_and_removes_with_the_cli_skill,
         test_repeated_deployment_construction_without_a_web_host,
         test_conversation_snapshot_memory_retention,
         test_conversation_snapshot_memory_with_separate_models,

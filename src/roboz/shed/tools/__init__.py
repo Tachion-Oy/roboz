@@ -7,7 +7,6 @@ from .contexts import (
     ConsolidateMemoryContext,
     EmailContext,
     FileCommandExecutionContext,
-    FileCommandResolverContext,
     GuardContext,
     PurgeFilesContext,
     SleepBetweenRunsContext,
@@ -15,7 +14,7 @@ from .contexts import (
     StopWhenWatchedAgentsInactiveContext,
 )
 from .runner import ExecutableCommandCatalog
-from .cli_commands.run_file_command import get_run_file_command
+from .cli_commands import get_run_file_command
 from .compactification import get_compactify_messages_when_needed_tool
 from .consolidate_memory import consolidate_memory
 from .purge_files import purge_files, purge_files_by_threshold
@@ -28,7 +27,6 @@ from .snapshot_conversations import (
 
 __all__ = [
     "GuardContext",
-    "FileCommandResolverContext",
     "FileCommandExecutionContext",
     "ExecutableCommandCatalog",
     "CompactionContext",

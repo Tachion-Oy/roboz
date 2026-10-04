@@ -1,7 +1,11 @@
-"""Shared permission guard for resolved tool operations."""
+"""Authorize explicit filesystem requirements before requesting any approvals."""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
+from roboz import runtime
+from roboz.exceptions import UserInputUnavailableError
+from roboz.models import Message
+from roboz.models.truncation import Severity, Truncation
 from roboz.shed.models import (
     ActionVerdict,
     GuardDenyReason,
@@ -9,71 +13,127 @@ from roboz.shed.models import (
     GuardFileSingleResult,
     GuardFilesResult,
     GuardStatus,
-    Help,
-    Operation,
-    ParseError,
+    PermissionRule,
     TInput,
     TPayload,
 )
-from roboz.shed.tools.guard_formatting import format_guard_constraints
-from roboz.shed.tools.types import ResolvedFileCommand
-from roboz.shed.tools.utils import check_allow_deny_permission, check_ask_permission
 from roboz.shed.tools.contexts import GuardContext
-from roboz.models import Message
-from roboz.models.truncation import Severity, Truncation
+from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.tooling import Tool
 from roboz.tooling.decorators import factory
 
-GUARD_ERR_DENIED = "operation={operation!r} DENIED for location={location!r}"
-GUARD_ERR_DENIED_BY_USER = "Denied by user response to permission prompt."
-CHAIN_BREAKING_OUTPUTS: tuple[type, ...] = (ParseError, Help)
+
+def _matches(
+    rules: list[PermissionRule], item: GuardFileSingle[TPayload], base: Path
+) -> bool:
+    """Match literal POSIX names without stripping spaces or changing separators."""
+    for rule in rules:
+        if item.operation not in rule.operations:
+            continue
+        pattern = rule.pattern if isinstance(rule.pattern, str) else rule.pattern()
+        path = item.location
+        if not pattern.startswith("/"):
+            try:
+                path = path.relative_to(base)
+            except ValueError:
+                continue
+        if pattern.endswith("/**") and path.as_posix() == pattern[:-3]:
+            return True
+        if PurePosixPath(path).full_match(pattern):
+            return True
+    return False
 
 
-def resolve_allow_verdict(
-    location: Path, operation: Operation, ctx: GuardContext
-) -> tuple[ActionVerdict, GuardDenyReason | None]:
-    """Check allow/deny and ask rules for a single guarded location."""
-    base_path = ctx.base.resolve() if ctx.base else None
-    verdict = check_allow_deny_permission(
-        location=location,
-        op_type=operation,
-        takes_precedence=ctx.takes_precedence,
-        allow_rules=ctx.allow,
-        deny_rules=ctx.deny,
-        default_verdict=ctx.default_verdict,
-        base_path=base_path,
-    )
-    if (
-        verdict == ActionVerdict.allow
-        and operation == Operation.CREATE
-        and location.exists()
-        and location.is_file()
-    ):
-        for overwrite_operation in (Operation.READ, Operation.DELETE):
-            verdict = check_allow_deny_permission(
-                location=location,
-                op_type=overwrite_operation,
-                takes_precedence=ctx.takes_precedence,
-                allow_rules=ctx.allow,
-                deny_rules=ctx.deny,
-                default_verdict=ctx.default_verdict,
-                base_path=base_path,
+def _policy_verdict(allow: bool, deny: bool, ctx: GuardContext) -> ActionVerdict:
+    if allow and deny:
+        return ctx.takes_precedence
+    if allow:
+        return ActionVerdict.allow
+    if deny:
+        return ActionVerdict.deny
+    return ctx.default_verdict
+
+
+def _denied(
+    input: ResolvedFileCommand[TInput, TPayload],
+    item: GuardFileSingle[TPayload],
+    message: str,
+    reason: GuardDenyReason = GuardDenyReason.POLICY_DENIED,
+) -> GuardFilesResult[TInput, TPayload]:
+    return GuardFilesResult(
+        status=GuardStatus.DENIED,
+        deny_reason=reason,
+        message=message,
+        original_input=input.original_input,
+        items=[
+            GuardFileSingleResult(
+                verdict=ActionVerdict.deny, location=item.location, value=item.value
             )
-            if verdict == ActionVerdict.deny:
-                return verdict, GuardDenyReason.POLICY_DENIED
-    if verdict == ActionVerdict.allow:
-        verdict, ask_outcome = check_ask_permission(
-            location=location,
-            op_type=operation,
-            ask_rules=ctx.ask,
-            base_path=base_path,
-            pipe=getattr(ctx, "pipe", None),
+        ],
+        truncation=Truncation(threshold=0, severity=Severity.LIGHT),
+    )
+
+
+def _check_policy(
+    input: ResolvedFileCommand[TInput, TPayload],
+    ctx: GuardContext,
+    base: Path,
+) -> GuardFilesResult[TInput, TPayload] | None:
+    """Return the first policy denial without requesting approval."""
+    for item in input.items:
+        allow = _matches(ctx.allow, item, base)
+        deny = _matches(ctx.deny, item, base)
+        verdict = _policy_verdict(allow, deny, ctx)
+        if verdict == ActionVerdict.deny:
+            return _denied(
+                input, item, f"Denied {item.operation}: {str(item.location)!r}"
+            )
+    return None
+
+
+def _request_approvals(
+    input: ResolvedFileCommand[TInput, TPayload],
+    ctx: GuardContext,
+    base: Path,
+) -> GuardFilesResult[TInput, TPayload] | None:
+    """Collect required approvals, then stop at the first declined or failed prompt."""
+    pending = [item for item in input.items if _matches(ctx.ask, item, base)]
+    if pending and ctx.pipe is None:
+        return _denied(
+            input, pending[0], "Approval unavailable: no interaction context"
         )
-        if verdict == ActionVerdict.deny and ask_outcome == "user_declined":
-            return verdict, GuardDenyReason.USER_DECLINED
-    if verdict == ActionVerdict.deny:
-        return verdict, GuardDenyReason.POLICY_DENIED
-    return verdict, None
+    for item in pending:
+        try:
+            reply = runtime.interact_with_user(
+                f"Allow {item.operation} for {str(item.location)!r}? (yes/no)",
+                with_reply=True,
+            )
+        except (UserInputUnavailableError, RuntimeError, ValueError) as error:
+            return _denied(input, item, f"Approval unavailable: {error}")
+        if reply is None or reply.strip().lower() not in ("y", "yes"):
+            return _denied(
+                input,
+                item,
+                "Denied by user response to permission prompt.",
+                GuardDenyReason.USER_DECLINED,
+            )
+    return None
+
+
+def _allowed(
+    input: ResolvedFileCommand[TInput, TPayload],
+) -> GuardFilesResult[TInput, TPayload]:
+    return GuardFilesResult(
+        status=GuardStatus.ALLOWED,
+        original_input=input.original_input,
+        items=[
+            GuardFileSingleResult(
+                verdict=ActionVerdict.allow, location=item.location, value=item.value
+            )
+            for item in input.items
+        ],
+        truncation=Truncation(threshold=0, severity=Severity.REMOVE),
+    )
 
 
 def guard_items(
@@ -82,52 +142,28 @@ def guard_items(
     original_input: TInput,
     ctx: GuardContext,
 ) -> GuardFilesResult[TInput, TPayload]:
-    """Validate guarded items and return deny or allowed guard results."""
-    items: list[GuardFileSingleResult[TPayload]] = []
-    for item in items_to_guard:
-        verdict, deny_reason = resolve_allow_verdict(item.location, item.operation, ctx)
-        if verdict == ActionVerdict.deny:
-            if deny_reason == GuardDenyReason.USER_DECLINED:
-                message = GUARD_ERR_DENIED_BY_USER
-            else:
-                message = GUARD_ERR_DENIED.format(
-                    operation=item.operation, location=item.location
-                )
-                message = f"{message}\n\n{format_guard_constraints(ctx)}"
-            return GuardFilesResult(
-                truncation=Truncation(threshold=0, severity=Severity.LIGHT),
-                status=GuardStatus.DENIED,
-                deny_reason=deny_reason,
-                items=[
-                    GuardFileSingleResult(
-                        verdict=verdict,
-                        location=item.location,
-                        value=item.value,
-                    )
-                ],
-                original_input=original_input,
-                message=message,
-            )
-        items.append(
-            GuardFileSingleResult(
-                verdict=verdict, location=item.location, value=item.value
-            )
-        )
+    """Check all explicit requirements before prompting; retain typed payloads.
 
-    return GuardFilesResult(
-        truncation=Truncation(threshold=0, severity=Severity.REMOVE),
-        status=GuardStatus.ALLOWED,
-        deny_reason=None,
-        items=items,
-        original_input=original_input,
-    )
+    Resolvers supply canonical permission locations and every operation required
+    by the effect, including READ and DELETE when overwriting an existing file.
+    """
+    if ctx.base is None:
+        raise ValueError("Base is required")
+    input = ResolvedFileCommand(original_input=original_input, items=items_to_guard)
+    denial = _check_policy(input, ctx, ctx.base)
+    if denial is not None:
+        return denial
+    denial = _request_approvals(input, ctx, ctx.base)
+    if denial is not None:
+        return denial
+    return _allowed(input)
 
 
 @factory
 def operation_guard(
     input: ResolvedFileCommand, messages: list[Message], ctx: GuardContext
 ) -> GuardFilesResult:
-    """Check whether the requested filesystem operations are permitted."""
+    """Check every required filesystem permission, then obtain all approvals."""
     return guard_items(
         items_to_guard=input.items, original_input=input.original_input, ctx=ctx
     )
@@ -136,26 +172,30 @@ def operation_guard(
 def build_guarded_tool_chain(
     *,
     entry: Tool,
-    guard_ctx: GuardContext,
+    guard: Tool,
     execute: Tool,
+    continuation: Tool | None = None,
 ) -> list[Tool]:
-    """Wire the shared resolve -> guard -> execute recipe.
+    """Build resolve -> guard -> execute, optionally looping through continuation.
 
-    Inserts the shared ``operation_guard`` between an already named/described
-    ``entry`` resolver and an ``execute`` stage, permitting execution only when
-    the guard returns ``GuardStatus.ALLOWED``. Parse-error and help outputs from
-    the entry terminate the chain before the guard runs. Returns
-    ``[entry, guard, execute]`` in registration order.
+    Without continuation, a denial ends the chain. With continuation, the
+    executor also receives denials to record a failed step without performing
+    its effect. The continuation's own condition selects execution outputs that
+    need another step, which returns through the same guard.
     """
-    guard = operation_guard(guard_ctx).copy(
+    guard = guard.copy(
         chained_to=entry,
-        chain_condition=lambda output: not isinstance(output, CHAIN_BREAKING_OUTPUTS),
+        chain_condition=lambda output: isinstance(output, ResolvedFileCommand),
     )
     execute = execute.copy(
         chained_to=guard,
         chain_condition=lambda output: (
             isinstance(output, GuardFilesResult)
-            and output.status == GuardStatus.ALLOWED
+            and (output.status == GuardStatus.ALLOWED or continuation is not None)
         ),
     )
-    return [entry, guard, execute]
+    if continuation is None:
+        return [entry, guard, execute]
+    continuation = continuation.copy(chained_to=execute)
+    guard.chain(continuation)
+    return [entry, guard, execute, continuation]

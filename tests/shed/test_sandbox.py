@@ -2,11 +2,42 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from roboz.shed.models import ActionVerdict, Operation
+from roboz.shed.models import (
+    ApplyPatch,
+    GuardFileSingle,
+    GuardStatus,
+    Operation,
+    ParseError,
+)
 from roboz.shed.sandbox import PermissionPolicy, Sandbox
-from roboz.shed.tools.utils import check_allow_deny_permission
+from roboz import runtime
+from roboz.models import Str
+from roboz.shed.tools import get_apply_patch
+from roboz.shed.tools.guard import guard_items
 
 from roboz.shed.tools.contexts import GuardContext
+
+
+def _guard(policy, location, operation, *, pipe=None):
+    return guard_items(
+        items_to_guard=[
+            GuardFileSingle(
+                operation=operation,
+                location=location.resolve(),
+                value=Str(value="payload"),
+            )
+        ],
+        original_input=Str(value="request"),
+        ctx=GuardContext(
+            base=policy.base,
+            takes_precedence=policy.takes_precedence,
+            allow=list(policy.allow),
+            deny=list(policy.deny),
+            ask=list(policy.ask),
+            default_verdict=policy.default_verdict,
+            pipe=pipe,
+        ),
+    )
 
 
 def test_constructs_unscoped_sandbox_with_layout_configuration(tmp_path):
@@ -63,17 +94,11 @@ def test_for_project_permissions_allow_only_the_selected_project(tmp_path, slug)
     sandbox = Sandbox(tmp_path / "root", projects="jobs")
     policy = sandbox.for_project(slug).permissions()
     for project in ("one", "two"):
-        verdict = check_allow_deny_permission(
-            location=sandbox.projects_dir / project / "file.txt",
-            op_type=Operation.CREATE,
-            takes_precedence=policy.takes_precedence,
-            allow_rules=policy.allow,
-            deny_rules=policy.deny,
-            default_verdict=policy.default_verdict,
-            base_path=policy.base,
+        result = _guard(
+            policy, sandbox.projects_dir / project / "file.txt", Operation.CREATE
         )
-        expected = ActionVerdict.allow if project == slug else ActionVerdict.deny
-        assert verdict == expected
+        expected = GuardStatus.ALLOWED if project == slug else GuardStatus.DENIED
+        assert result.status == expected
     assert sandbox.scope is None
     assert not sandbox.root.exists()
 
@@ -260,9 +285,6 @@ def test_sandbox_rejects_overlapping_persistence(
 
 @pytest.mark.parametrize("project_scoped", [False, True])
 def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped):
-    from roboz.shed.models import ActionVerdict, Operation
-    from roboz.shed.tools.guard import resolve_allow_verdict
-
     root = tmp_path / "sandbox"
     root.mkdir()
     outside = tmp_path / "outside.txt"
@@ -272,24 +294,28 @@ def test_policy_denies_escape_and_symlink_target(tmp_path: Path, project_scoped)
     if project_scoped:
         sandbox.configure_scope("research")
     policy = sandbox.permissions() if project_scoped else PermissionPolicy.local(root)
-    ctx = GuardContext(
-        base=policy.base,
-        takes_precedence=policy.takes_precedence,
-        allow=list(policy.allow),
-        deny=[],
-        ask=[],
-        default_verdict=policy.default_verdict,
-    )
+    entry, guard, execute = get_apply_patch(**policy.tool_options(runtime.EventPipe()))
     for path in [outside, root / ".." / "outside.txt", root / "link.txt"]:
-        assert resolve_allow_verdict(path, Operation.READ, ctx)[0] == ActionVerdict.deny
-    assert (
-        resolve_allow_verdict(
-            (sandbox.project_dir() if project_scoped else root) / "new.txt",
-            Operation.CREATE,
-            ctx,
-        )[0]
-        == ActionVerdict.allow
+        prepared = entry(
+            ApplyPatch(path=str(path), old_string="", new_string="changed"), []
+        )
+        if isinstance(prepared, ParseError):
+            assert "Symlinks are unsupported" in prepared.message
+            assert not guard.chain_condition(prepared)
+        else:
+            result = guard(prepared, [])
+            assert result.status == GuardStatus.DENIED
+            assert not execute.chain_condition(result)
+    assert outside.read_text() == "private"
+    prepared = entry(
+        ApplyPatch(
+            path=str((sandbox.project_dir() if project_scoped else root) / "new.txt"),
+            old_string="",
+            new_string="created",
+        ),
+        [],
     )
+    assert guard(prepared, []).status == GuardStatus.ALLOWED
 
 
 @pytest.mark.parametrize(
@@ -312,26 +338,14 @@ def test_configured_sandbox_permission_boundaries(tmp_path, area, operation, all
     )
     sandbox.configure_scope("my-project")
     policy = sandbox.permissions()
-    verdict = check_allow_deny_permission(
-        location=policy.base / area / "file.txt",
-        op_type=operation,
-        takes_precedence=policy.takes_precedence,
-        allow_rules=policy.allow,
-        deny_rules=policy.deny,
-        default_verdict=policy.default_verdict,
-        base_path=policy.base,
-    )
-    assert verdict == (ActionVerdict.allow if allowed else ActionVerdict.deny)
+    result = _guard(policy, policy.base / area / "file.txt", operation)
+    assert result.status == (GuardStatus.ALLOWED if allowed else GuardStatus.DENIED)
 
 
 @pytest.mark.parametrize(
-    "reply,expected", [("yes", ActionVerdict.allow), ("no", ActionVerdict.deny)]
+    "reply,expected", [("yes", GuardStatus.ALLOWED), ("no", GuardStatus.DENIED)]
 )
 def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expected):
-    from roboz.shed.tools import utils
-
-    from roboz.runtime import EventPipe
-
     sandbox = Sandbox(tmp_path / "root")
     sandbox.configure_scope("my-project")
     policy = sandbox.permissions()
@@ -342,15 +356,14 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
         prompts.append(message)
         return reply
 
-    monkeypatch.setattr(utils, "interact_with_user", interact)
-    verdict, _ = utils.check_ask_permission(
-        location=sandbox.shared_dir / "file.txt",
-        op_type=Operation.CREATE,
-        ask_rules=policy.ask,
-        base_path=policy.base,
-        pipe=EventPipe(),
+    monkeypatch.setattr(runtime, "interact_with_user", interact)
+    result = _guard(
+        policy,
+        sandbox.shared_dir / "file.txt",
+        Operation.CREATE,
+        pipe=runtime.EventPipe(),
     )
-    assert verdict == expected and len(prompts) == 1
+    assert result.status == expected and len(prompts) == 1
 
 
 @pytest.mark.parametrize(
@@ -363,9 +376,14 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
     ],
 )
 def test_project_permission_paths_treat_globs_as_literal_names(
-    tmp_path, projects, shared, slug, sibling
+    tmp_path, monkeypatch, projects, shared, slug, sibling
 ):
-    from roboz.shed.tools.utils import check_rule
+    prompts = []
+    monkeypatch.setattr(
+        runtime,
+        "interact_with_user",
+        lambda *args, **kwargs: prompts.append(args) or "yes",
+    )
 
     sandbox = Sandbox(tmp_path, projects=projects, shared=shared)
     sandbox.configure_scope(slug)
@@ -375,11 +393,16 @@ def test_project_permission_paths_treat_globs_as_literal_names(
             sandbox.project_dir(),
             sandbox.project_dir() / "file.txt",
         ):
-            assert check_rule(location, operation, list(policy.allow), policy.base)
-            assert not check_rule(location, operation, list(policy.ask), policy.base)
+            prompts.clear()
+            result = _guard(policy, location, operation, pipe=runtime.EventPipe())
+            assert result.status == GuardStatus.ALLOWED
+            assert not prompts
         for location in (sandbox.shared_dir, sandbox.shared_dir / "file.txt"):
-            assert check_rule(location, operation, list(policy.allow), policy.base)
-            assert check_rule(location, operation, list(policy.ask), policy.base)
-        assert not check_rule(
-            tmp_path / sibling / "file.txt", operation, list(policy.allow), policy.base
+            prompts.clear()
+            result = _guard(policy, location, operation, pipe=runtime.EventPipe())
+            assert result.status == GuardStatus.ALLOWED
+            assert len(prompts) == 1
+        assert (
+            _guard(policy, tmp_path / sibling / "file.txt", operation).status
+            == GuardStatus.DENIED
         )

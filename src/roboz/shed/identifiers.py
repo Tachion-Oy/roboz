@@ -3,7 +3,7 @@
 from typing import Final
 
 RUN_FILE_COMMAND_TOOL_NAME: Final[str] = "run_file_command"
-RUN_FILE_COMMAND_PASSIVE_TOOL_NAME: Final[str] = "run_file_command_passive"
+CONTINUE_FILE_COMMAND_TOOL_NAME: Final[str] = "continue_file_command"
 APPLY_PATCH_TOOL_NAME: Final[str] = "apply_patch"
 CREATE_EMAIL_DRAFT_TOOL_NAME: Final[str] = "create_email_draft"
 SEARCH_EMAIL_TOOL_NAME: Final[str] = "search_email"

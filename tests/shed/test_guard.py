@@ -1,29 +1,23 @@
-"""Permission-guard semantics for overlapping allow / deny / ask rules.
-
-These pin the deliberately *asymmetric* layering in ``resolve_allow_verdict``:
-allow vs. deny is decided by ``takes_precedence``; the ask (prompt) step is then
-layered only on top of an ``allow`` verdict. A deny is absolute - there is no
-"conditional deny" the user can approve away. See
-``docs/reference.md`` (Permission rule semantics) for the full description.
-"""
+"""All guarded tools apply policy precedence before requesting approvals."""
 
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from roboz.shed.tools import GuardContext
 from roboz.shed.models import (
     ActionVerdict,
     ApplyPatch,
     GuardDenyReason,
+    GuardFileSingle,
+    GuardStatus,
     Operation,
     PermissionRule,
 )
 from roboz.shed.tools.apply_patch import get_apply_patch
-from roboz.shed.tools.guard import resolve_allow_verdict
+from roboz.shed.tools.guard import guard_items
+from roboz.models import Str
 
-from roboz.exceptions import UserInputUnavailableError
 from roboz.runtime.io import (
     bind_output,
     reset_output,
@@ -66,14 +60,20 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_yes_allows(
     )
     location = tmp_path / "shared" / "f.md"  # not created: skip overwrite sub-check
 
-    with patch(
-        "roboz.shed.tools.utils.interact_with_user", return_value="yes"
-    ) as prompt:
-        verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
+    with patch("roboz.runtime.interact_with_user", return_value="yes") as prompt:
+        result = guard_items(
+            items_to_guard=[
+                GuardFileSingle(
+                    operation=CREATE, location=location, value=Str(value="payload")
+                )
+            ],
+            original_input=Str(value="request"),
+            ctx=ctx,
+        )
 
     # allow wins the overlap, then the prompt confirms -> allowed.
-    assert verdict == ActionVerdict.allow
-    assert reason is None
+    assert result.status == GuardStatus.ALLOWED
+    assert result.deny_reason is None
     prompt.assert_called_once()
 
 
@@ -89,12 +89,20 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_no_denies(
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz.shed.tools.utils.interact_with_user", return_value="no"):
-        verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
+    with patch("roboz.runtime.interact_with_user", return_value="no"):
+        result = guard_items(
+            items_to_guard=[
+                GuardFileSingle(
+                    operation=CREATE, location=location, value=Str(value="payload")
+                )
+            ],
+            original_input=Str(value="request"),
+            ctx=ctx,
+        )
 
     # Allowed by policy, but the user declines the prompt -> denied (by user).
-    assert verdict == ActionVerdict.deny
-    assert reason == GuardDenyReason.USER_DECLINED
+    assert result.status == GuardStatus.DENIED
+    assert result.deny_reason == GuardDenyReason.USER_DECLINED
 
 
 def test_deny_is_absolute_ask_rule_never_prompts(tmp_path: Path) -> None:
@@ -110,11 +118,19 @@ def test_deny_is_absolute_ask_rule_never_prompts(tmp_path: Path) -> None:
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz.shed.tools.utils.interact_with_user") as prompt:
-        verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
+    with patch("roboz.runtime.interact_with_user") as prompt:
+        result = guard_items(
+            items_to_guard=[
+                GuardFileSingle(
+                    operation=CREATE, location=location, value=Str(value="payload")
+                )
+            ],
+            original_input=Str(value="request"),
+            ctx=ctx,
+        )
 
-    assert verdict == ActionVerdict.deny
-    assert reason == GuardDenyReason.POLICY_DENIED
+    assert result.status == GuardStatus.DENIED
+    assert result.deny_reason == GuardDenyReason.POLICY_DENIED
     prompt.assert_not_called()
 
 
@@ -129,11 +145,19 @@ def test_overlap_with_deny_precedence_never_prompts(tmp_path: Path) -> None:
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz.shed.tools.utils.interact_with_user") as prompt:
-        verdict, reason = resolve_allow_verdict(location, CREATE, ctx)
+    with patch("roboz.runtime.interact_with_user") as prompt:
+        result = guard_items(
+            items_to_guard=[
+                GuardFileSingle(
+                    operation=CREATE, location=location, value=Str(value="payload")
+                )
+            ],
+            original_input=Str(value="request"),
+            ctx=ctx,
+        )
 
-    assert verdict == ActionVerdict.deny
-    assert reason == GuardDenyReason.POLICY_DENIED
+    assert result.status == GuardStatus.DENIED
+    assert result.deny_reason == GuardDenyReason.POLICY_DENIED
     prompt.assert_not_called()
 
 
@@ -149,7 +173,7 @@ def test_autonomous_approval_failure_leaves_operation_unexecuted(
             operations={CREATE, Operation.READ, Operation.DELETE},
         )
     ]
-    entry, guard, _execute = get_apply_patch(
+    entry, guard, execute = get_apply_patch(
         base=tmp_path,
         default_verdict=ActionVerdict.deny,
         allow_rules=rules,
@@ -167,8 +191,10 @@ def test_autonomous_approval_failure_leaves_operation_unexecuted(
     )
     token = bind_output(None)
     try:
-        with pytest.raises(UserInputUnavailableError):
-            guard(prepared, [])
+        result = guard(prepared, [])
+        assert result.status == GuardStatus.DENIED
+        assert "Approval unavailable" in result.message
+        assert not execute.chain_condition(result)
     finally:
         reset_output(token)
 

@@ -114,3 +114,22 @@ def test_endpoint_inventory_is_lazy():
             endpoint.dependency_id
             == f"model:{metadata['api_name']}:{metadata['model_name']}"
         )
+
+
+def test_canonical_file_cli_imports_and_removed_names():
+    from roboz.shed.tools import get_run_file_command
+    from roboz.shed.tools.cli_commands import FileCommand
+    from roboz.shed.tools.cli_commands import get_run_file_command as cli_factory
+    from roboz.shed import models
+
+    assert cli_factory is get_run_file_command
+    assert FileCommand(value=[("pwd", "CMD")]).value == [("pwd", "CMD")]
+    for name in (
+        "roboz.shed.tools.cli_commands_v2",
+        "roboz.shed.tools.cli_commands.tagged_transfer",
+        "roboz.shed.tools.cli_commands.run_file_command",
+        "roboz.shed.tools.cli_commands.utilities",
+    ):
+        assert find_spec(name) is None
+    assert not hasattr(models, "RunFileCommand")
+    assert not hasattr(models, "RunFileCommands")

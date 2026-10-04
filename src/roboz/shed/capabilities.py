@@ -23,7 +23,6 @@ from roboz.shed.tools import (
     get_compactify_messages_when_needed_tool,
     get_run_file_command,
 )
-from roboz.shed.tools.cli_commands.run_file_command import FILE_COMMANDS_READ
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
     DEFAULT_THRESHOLD_PERCENT,
@@ -169,7 +168,7 @@ class Email(AgentCapability):
 
 @dataclass(frozen=True)
 class FileCommands(AgentCapability):
-    """Guarded read commands, optionally accompanied by their orientation skill."""
+    """Guarded file commands, optionally accompanied by their orientation skill."""
 
     auto_load_skill: bool = True
 
@@ -179,13 +178,12 @@ class FileCommands(AgentCapability):
         return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
-        """Build a read-tool chain using this agent's pipe and selected policy."""
+        """Build a file-command chain using this agent's pipe and selected policy."""
         sandbox = cast(Sandbox, agent.sandbox)
         return Capability(
             tools=(
                 get_run_file_command(
                     **sandbox.permissions().tool_options(pipe),
-                    command_specs=FILE_COMMANDS_READ,
                 ),
             ),
             auto_loaded_skills=(cli_skill,) if self.auto_load_skill else (),

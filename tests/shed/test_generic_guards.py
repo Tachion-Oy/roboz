@@ -7,7 +7,7 @@ from roboz.shed.models import (
     GuardFilesResult,
     Operation,
 )
-from roboz.shed.tools.guard import build_guarded_tool_chain, guard_items
+from roboz.shed.tools.guard import operation_guard, build_guarded_tool_chain, guard_items
 from roboz.shed.tools.types import ResolvedFileCommand
 
 from roboz.models import Empty, Message, Str
@@ -53,7 +53,7 @@ def test_new_payload_survives_guard_chain_without_shared_type_registration(
         ask=[],
     )
     entry, guard, execute_tool = build_guarded_tool_chain(
-        entry=resolve, guard_ctx=ctx, execute=execute
+        entry=resolve, guard=operation_guard(ctx), execute=execute
     )
     ready = entry(input=CustomInput(label="extension"), messages=[])
     checked = guard(input=ready, messages=[])

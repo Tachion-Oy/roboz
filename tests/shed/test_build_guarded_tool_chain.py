@@ -1,9 +1,8 @@
 """Wiring tests for the shared ``build_guarded_tool_chain`` helper.
 
-These pin the invariant the helper owns: insert the shared ``operation_guard``
-between an entry resolver and an execute stage, permit execution only for
-``GuardStatus.ALLOWED``, stop before the guard for terminal entry outputs, and
-return the three tools in registration order.
+Without continuation, the builder connects resolved requirements to the guard
+and permits execution only after approval. CLI integration tests exercise the
+optional continuation loop and denied-step fallback behavior.
 """
 
 from pathlib import Path
@@ -13,12 +12,9 @@ from roboz.shed.models import (
     ActionVerdict,
     GuardFilesResult,
     GuardStatus,
-    Help,
     ParseError,
-    RunFileCommand,
-    RunFileCommands,
 )
-from roboz.shed.tools.guard import build_guarded_tool_chain
+from roboz.shed.tools.guard import operation_guard, build_guarded_tool_chain
 from roboz.shed.tools.types import ResolvedFileCommand
 
 from roboz.models import Empty, Message, Str
@@ -59,18 +55,14 @@ def _guard_ctx() -> GuardContext:
 
 
 def _allowed_result() -> GuardFilesResult:
-    original = RunFileCommands(
-        chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
-    )
+    original = _DummyInput()
     return GuardFilesResult(
         status=GuardStatus.ALLOWED, items=[], original_input=original
     )
 
 
 def _denied_result() -> GuardFilesResult:
-    original = RunFileCommands(
-        chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
-    )
+    original = _DummyInput()
     return GuardFilesResult(
         status=GuardStatus.DENIED, items=[], original_input=original
     )
@@ -81,7 +73,7 @@ def test_returns_entry_guard_execute_in_order() -> None:
     execute = _make_execute()
 
     chain = build_guarded_tool_chain(
-        entry=entry, guard_ctx=_guard_ctx(), execute=execute
+        entry=entry, guard=operation_guard(_guard_ctx()), execute=execute
     )
 
     assert len(chain) == 3
@@ -98,7 +90,7 @@ def test_guard_chained_to_entry_and_execute_chained_to_guard() -> None:
     execute = _make_execute()
 
     returned_entry, guard, returned_execute = build_guarded_tool_chain(
-        entry=entry, guard_ctx=_guard_ctx(), execute=execute
+        entry=entry, guard=operation_guard(_guard_ctx()), execute=execute
     )
 
     assert guard.chained_to == [returned_entry]
@@ -107,7 +99,7 @@ def test_guard_chained_to_entry_and_execute_chained_to_guard() -> None:
 
 def test_execute_runs_only_for_allowed_guard_result() -> None:
     _, _, execute = build_guarded_tool_chain(
-        entry=_make_entry(), guard_ctx=_guard_ctx(), execute=_make_execute()
+        entry=_make_entry(), guard=operation_guard(_guard_ctx()), execute=_make_execute()
     )
 
     assert execute.chain_condition(_allowed_result()) is True
@@ -116,26 +108,24 @@ def test_execute_runs_only_for_allowed_guard_result() -> None:
     assert execute.chain_condition(Str(value="parse error")) is False
 
 
-def test_guard_chain_continues_for_non_terminal_entry_outputs() -> None:
+def test_guard_chain_rejects_outputs_without_resolved_requirements() -> None:
     _, guard, _ = build_guarded_tool_chain(
-        entry=_make_entry(), guard_ctx=_guard_ctx(), execute=_make_execute()
+        entry=_make_entry(), guard=operation_guard(_guard_ctx()), execute=_make_execute()
     )
 
-    assert guard.chain_condition(_allowed_result()) is True
-    assert guard.chain_condition(Str(value="anything")) is True
+    assert guard.chain_condition(_allowed_result()) is False
+    assert guard.chain_condition(Str(value="anything")) is False
 
 
-def test_guard_chain_breaks_for_parse_errors_and_help() -> None:
+def test_guard_chain_breaks_for_parse_errors() -> None:
     _, guard, _ = build_guarded_tool_chain(
         entry=_make_entry(),
-        guard_ctx=_guard_ctx(),
+        guard=operation_guard(_guard_ctx()),
         execute=_make_execute(),
     )
 
     resolved = ResolvedFileCommand(
-        original_input=RunFileCommands(
-            chain="&&", file_commands=[RunFileCommand(command="ls", argv=[])]
-        ),
+        original_input=_DummyInput(),
         items=[],
     )
     assert guard.chain_condition(resolved) is True
@@ -144,4 +134,3 @@ def test_guard_chain_breaks_for_parse_errors_and_help() -> None:
         guard.chain_condition(ParseError(message="parse error", truncation=truncation))
         is False
     )
-    assert guard.chain_condition(Help(message="help", truncation=truncation)) is False
