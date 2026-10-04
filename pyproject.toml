@@ -1,14 +1,26 @@
 [project]
 name = "roboz"
 version = "0.5.0a1"
-description = "Typed agents, reusable capabilities, and model catalogues"
+description = "Python framework for typed LLM agents with conditional tool chaining."
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 import-names = ["roboz"]
 requires-python = ">=3.13"
-keywords = ["agents", "llm", "tool-calling", "workflows", "typing"]
+keywords = [
+    "python",
+    "ai-agents",
+    "agent-framework",
+    "agents",
+    "llm",
+    "tool-calling",
+    "tool-chaining",
+    "workflows",
+    "multi-agent",
+    "openai-compatible",
+    "typing",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -50,6 +62,7 @@ Homepage = "https://tachion.fi/"
 Repository = "https://github.com/Tachion-Oy/roboz"
 Issues = "https://github.com/Tachion-Oy/roboz/issues"
 Documentation = "https://github.com/Tachion-Oy/roboz#readme"
+Changelog = "https://github.com/Tachion-Oy/roboz/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 addopts = "--cov=roboz --cov-report=term-missing --ignore=tests/type_tests"

@@ -1,5 +1,6 @@
 """Authorize explicit filesystem requirements before requesting any approvals."""
 
+import json
 from pathlib import Path, PurePosixPath
 
 from roboz import runtime
@@ -95,36 +96,54 @@ def _request_approvals(
     input: ResolvedFileCommand[TInput, TPayload],
     ctx: GuardContext,
     base: Path,
-) -> GuardFilesResult[TInput, TPayload] | None:
+) -> GuardFilesResult[TInput, TPayload]:
     """Collect required approvals, then stop at the first declined or failed prompt."""
     pending = [item for item in input.items if _matches(ctx.ask, item, base)]
+    exchanges: list[str] = []
     if pending and ctx.pipe is None:
         return _denied(
             input, pending[0], "Approval unavailable: no interaction context"
         )
     for item in pending:
+        prompt = f"Allow {item.operation} for {str(item.location)!r}? (yes/no)"
         try:
-            reply = runtime.interact_with_user(
-                f"Allow {item.operation} for {str(item.location)!r}? (yes/no)",
-                with_reply=True,
-            )
+            reply = runtime.interact_with_user(prompt, with_reply=True)
         except (UserInputUnavailableError, RuntimeError, ValueError) as error:
-            return _denied(input, item, f"Approval unavailable: {error}")
-        if reply is None or reply.strip().lower() not in ("y", "yes"):
+            exchanges.append(f"Permission prompt: {prompt}\nApproval unavailable: {error}")
+            return _denied(input, item, "\n".join(exchanges))
+        approved = reply is not None and reply.strip().lower() in ("y", "yes")
+        reply_text = (
+            json.dumps(reply, ensure_ascii=False)
+            if reply is not None
+            else "(no reply received)"
+        )
+        exchanges.append(
+            f"Permission prompt: {prompt}\nUser reply: {reply_text}\n"
+            f"Decision: {'allowed' if approved else 'denied'}"
+        )
+        if not approved:
+            diagnostic = (
+                "Denied: no reply received to permission prompt."
+                if reply is None
+                else "Denied by user response to permission prompt."
+            )
             return _denied(
                 input,
                 item,
-                "Denied by user response to permission prompt.",
+                "\n".join([*exchanges, diagnostic]),
                 GuardDenyReason.USER_DECLINED,
             )
-    return None
+    return _allowed(input, message="\n".join(exchanges) or None)
 
 
 def _allowed(
     input: ResolvedFileCommand[TInput, TPayload],
+    *,
+    message: str | None = None,
 ) -> GuardFilesResult[TInput, TPayload]:
     return GuardFilesResult(
         status=GuardStatus.ALLOWED,
+        message=message,
         original_input=input.original_input,
         items=[
             GuardFileSingleResult(
@@ -153,10 +172,7 @@ def guard_items(
     denial = _check_policy(input, ctx, ctx.base)
     if denial is not None:
         return denial
-    denial = _request_approvals(input, ctx, ctx.base)
-    if denial is not None:
-        return denial
-    return _allowed(input)
+    return _request_approvals(input, ctx, ctx.base)
 
 
 @factory

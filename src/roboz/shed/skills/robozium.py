@@ -42,12 +42,57 @@ project directory. Use the supplied paths instead of guessing folder names.
 
 ## Sandbox permissions
 
-- Reads are contained within the sandbox.
-- Writes within the current project's directory are allowed.
-- Writes to the shared directory require user confirmation.
-- The read-only area and other projects are not writable.
-- Paths outside the sandbox are denied.
-- Confirmation can reject an allowed write; it cannot authorize a denied path.
+The hub is the file-tool base. The standard Robozium layout is shown below;
+the host can rename these folders, so use the actual paths in your project context.
+
+```text
+<hub>/
+  projects/
+    <current-project>/         Your writable project directory
+      conversation_logs/       Runtime conversation history
+      conversation_snapshots/  Librarian summaries
+      persistent_memory/       Librarian memory
+    <other-project>/           Readable, but not writable by this project
+  workspace/                   Shared across projects; changes require approval
+  readonly/                    Shared reference files; no changes allowed
+```
+
+| Location | Read | Create, modify, rename, or delete |
+| --- | --- | --- |
+| Current project and its descendants | Allowed | Allowed without a prompt |
+| Other projects and their descendants | Allowed | Denied |
+| Shared workspace and its descendants | Allowed | Ask the user for each operation requiring approval |
+| Read-only reference area | Allowed | Denied |
+| Other locations inside the hub | Allowed | Denied |
+| Outside the hub | Denied | Denied |
+
+Projects have separate writable areas, not private read boundaries. A folder
+named `private` inside your project is still readable under this policy. Making
+an in-hub path unreadable requires a host policy change. A deny-READ rule must
+take precedence over the broad READ allow rule; the standard policy gives
+allow rules precedence, so adding a conflicting deny rule alone is insufficient.
+For example, with base `/hub` and project `testing`,
+`projects/testing/private/secret.txt` is readable; `/tmp/private/secret.txt` is
+outside the hub and denied. Relative paths start at the hub, not at your project.
+Normalizing `.` or `..` does not change the rules for the resulting location.
+
+The guard checks every required permission before asking for approval. An
+existing-file write may require separate CREATE and DELETE approvals. Approval
+applies to that operation; it does not grant standing permission for later calls
+or override a policy denial. Approval questions go directly through the host UI.
+Tool results include the question, the user's exact reply, and the decision.
+Use that reply when deciding what to do next, including when the user declines
+and gives further instructions. Do not infer that no prompt occurred merely
+because a write succeeded or an earlier result is missing from your context.
+
+File validation may stop a command before permission evaluation: a missing
+parent or unsupported link is a preparation error, not a policy denial.
+Content reads and writes reject symlinks and files with multiple hard links;
+all names of a hard-linked file share that restriction. A symlink selected by a
+glob rejects the whole read/search command before any content is read. Directory
+searches with `grep -r` or `rg` skip descendant symlinks. `rm` can remove a terminal
+link at its own pathname without reading or changing the target. These guards
+apply to the file tools; they are not an operating-system sandbox.
 
 ## Librarian maintenance
 

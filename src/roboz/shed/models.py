@@ -176,7 +176,9 @@ class GuardFilesResult(Empty, Generic[TInput, TPayload]):
         description="Results for individual sentries"
     )
     original_input: SerializeAsAny[TInput]
-    message: str | None = Field(default=None, description="Terminal or deny message")
+    message: str | None = Field(
+        default=None, description="Approval questions and replies, or a denial diagnostic"
+    )
     model_config = ConfigDict(extra="forbid")
 
 

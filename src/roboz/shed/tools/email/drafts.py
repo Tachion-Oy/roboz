@@ -24,6 +24,7 @@ from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.shed.tools.cli_commands.commands.writers import write_operations
 from roboz.shed.tools.cli_commands.paths import resolve_single_file_path
 from roboz.shed.tools.contexts import EmailContext
+from roboz.shed.tools.formatting import _with_guard_message
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -296,6 +297,13 @@ def execute_email_operation(
 ) -> Str:
     """Create an approved email draft without sending it."""
     del messages
+    result = _create_draft(input, ctx)
+    result.value = _with_guard_message(input.message, result.value)
+    return result
+
+
+def _create_draft(input: GuardFilesResult, ctx: EmailContext) -> Str:
+    """Create the draft, retaining the existing provider failure diagnostics."""
     try:
         original = input.original_input
         if not isinstance(original, CreateEmailDraft):
@@ -358,6 +366,13 @@ def execute_reply_draft(
 ) -> Str:
     """Create an approved reply draft without sending it."""
     del messages
+    result = _create_reply(input, ctx)
+    result.value = _with_guard_message(input.message, result.value)
+    return result
+
+
+def _create_reply(input: GuardFilesResult, ctx: EmailContext) -> Str:
+    """Create the reply, retaining the existing provider failure diagnostics."""
     try:
         original = input.original_input
         if not isinstance(original, CreateReplyDraft):

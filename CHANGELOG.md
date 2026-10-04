@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Preserve filesystem approval questions, exact user replies, and decisions in
+  guarded tool reports, including declines and subsequent execution failures.
+  Reserve a separate CLI report budget for permission messages so large command
+  output does not discard them.
+  Clarify Robozium's hub layout, cross-project reads, shared-write approvals,
+  and link restrictions in the agent skills.
+
 ## 0.5.0a1 - 2026-10-04
 
 - Breaking: replace the file CLI with one command-token interface under

@@ -13,7 +13,7 @@ from roboz.shed.models import (
     ParseError,
     PermissionRule,
 )
-from roboz.shed.tools.formatting import _framed_cli_output
+from roboz.shed.tools.formatting import _framed_cli_output, _with_guard_message
 from roboz.shed.tools.cli_commands.commands.writers import write_operations
 from roboz.shed.tools.cli_commands.paths import (
     resolve_single_file_path,
@@ -116,7 +116,9 @@ def execute_apply_patch_replace(
     payload = input.items[0].value
     if not isinstance(payload, ApplyPatchReady):
         msg = "apply_patch: internal error: expected ApplyPatchReady payload"
-        body = _framed_cli_output("apply_patch string-replace", msg)
+        body = _framed_cli_output(
+            "apply_patch string-replace", _with_guard_message(input.message, msg)
+        )
         return Str(value=body.strip(), truncation=truncation)
 
     command_line = f"apply_patch string-replace {payload.path}"
@@ -124,6 +126,7 @@ def execute_apply_patch_replace(
     ok, out = _perform_replace(
         abs_path, payload.old_string, payload.new_string, payload.replace_all
     )
+    out = _with_guard_message(input.message, out)
     if not ok:
         body = _framed_cli_output(command_line, out)
         return Str(value=body.strip(), truncation=truncation)
