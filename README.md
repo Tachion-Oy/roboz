@@ -264,6 +264,8 @@ The [guarded file CLI](src/roboz/shed/tools/cli_commands/README.md) supports
 `rg`, `ls`, `find`, `diff`, `gio trash`, and `rm`. Import `get_run_file_command`
 from `roboz.shed.tools` or `roboz.shed.tools.cli_commands`, or use the
 `FileCommands` capability to bind the tools and CLI skill to a sandbox policy.
+With direct factory use, register `roboz.shed.skills.cli_skill` in the agent's
+`auto_loaded_skills` or `skills` so the model can access the command reference.
 
 `run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
 `CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,

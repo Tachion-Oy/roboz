@@ -11,6 +11,7 @@ from roboz.llm import MockLLMEndpoint
 from roboz.models import Role
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
+from roboz.shed.skills import cli_skill
 from roboz.shed.skills.cli_tools.prompts import INSTRUCTIONS
 from roboz.shed.tools import get_run_file_command
 from roboz.shed.tools.cli_commands import FileCommand
@@ -64,12 +65,17 @@ def _run(workspace, example, **policy):
             ]
         ),
         tools=[*tools, stop],
+        auto_loaded_skills=[cli_skill],
         initial_messages=None,
     )
     _, messages = agent.invoke()
     results = [
         json.loads(message.content) for message in messages if message.role == Role.USER
     ]
+    assert any(
+        item.get("caller") == cli_skill.name and "# Instructions" in item.get("value", "")
+        for item in results
+    )
     return [
         item["value"]
         for item in results

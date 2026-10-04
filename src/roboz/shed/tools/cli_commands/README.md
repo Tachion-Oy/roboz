@@ -29,8 +29,12 @@ registers the supported commands.
 ```python
 from pathlib import Path
 
+from roboz import Agent
+from roboz.llm import MockLLMEndpoint
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
+from roboz.shed.skills import cli_skill
 from roboz.shed.tools.cli_commands import get_run_file_command
+from roboz.tools import stop
 
 tools = get_run_file_command(
     base=Path("/absolute/project"),
@@ -40,10 +44,23 @@ tools = get_run_file_command(
         PermissionRule(pattern="reports/*", operations={Operation.CREATE, Operation.DELETE}),
     ],
 )
-# Add these tools to an Agent. Only run_file_command is model-facing;
-# the guard, executor, and continuation are automatic chained steps.
-# Add roboz.shed.skills.cli_skill to the agent's auto_loaded_skills for usage guidance.
+agent = Agent(
+    name="file_worker",
+    tools=[*tools, stop],
+    auto_loaded_skills=[cli_skill],
+    agent_endpoint=MockLLMEndpoint([
+        {"action": "run_file_command", "rationale": "Inspect the base", "value": [["pwd", "CMD"]]},
+        {"action": "stop", "rationale": "Done", "value": "done"},
+    ]),
+)
 ```
+
+Direct factory callers must register `cli_skill` in `auto_loaded_skills` to
+provide guidance before the first model turn, or in `skills` to make it
+loadable on demand. `FileCommands` registers the tools and skill together.
+If you supply `cli_skill_name`, register a corresponding skill with that name.
+Only `run_file_command` is exposed as a command tool; the guard, executor,
+and continuation run automatically.
 
 For model-facing instructions, load the [CLI skill](../../skills/cli_tools/prompts.py).
 It covers the command reference and worked chains, including mixed operators,

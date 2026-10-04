@@ -111,8 +111,10 @@ def get_run_file_command(
     Supply an absolute base and allow/deny/ask rules. Patterns match literal POSIX
     names, preserving spaces and backslashes. Only the entry tool is exposed to
     the agent; permission checks and execution are automatic chained steps.
-    The CLI skill supplies detailed usage; cli_skill_name selects its name in
-    the entry description. These guards do not provide an OS sandbox or
+    For direct Agent use, register roboz.shed.skills.cli_skill with
+    auto_loaded_skills or skills; cli_skill_name must match the registered skill's
+    name. FileCommands binds both tools and guidance automatically.
+    These guards do not provide an OS sandbox or
     protection against concurrent filesystem changes.
     """
     resolved_base = resolve_tool_base(base)
