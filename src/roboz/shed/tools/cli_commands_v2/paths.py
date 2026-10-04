@@ -12,18 +12,20 @@ from time import monotonic
 from roboz.shed.tools.cli_commands.utilities.constants import SUBPROCESS_TIMEOUT_SECONDS
 
 
-def resolve_literal_path(value: str, base: Path) -> Path:
-    """Resolve a literal path while rejecting symlinks in its components."""
-    path = Path(value)
-    if not path.is_absolute():
-        path = base / path
-    # Check the lexical path before resolving: a symlink followed by '..'
-    # must not disappear during normalization.
+def _reject_symlink_components(path: Path) -> None:
+    """Check lexical components before normalization can erase a link before '..'."""
     current = Path(path.anchor)
     for part in path.parts[1:]:
         current /= part
         if current.is_symlink():
             raise ValueError(f"Symlinks are unsupported: {current}")
+
+
+def resolve_literal_path(value: str, base: Path) -> Path:
+    """Resolve a literal path while rejecting symlinks in its components."""
+    path = base / value
+    _reject_symlink_components(path)
+
     resolved_path = path.resolve()
     if value.endswith("/") and resolved_path.exists() and not resolved_path.is_dir():
         raise ValueError(f"A trailing slash requires a directory: {value!r}")
@@ -51,6 +53,24 @@ def inspect_entry_path(value: str, base: Path) -> tuple[Path, os.stat_result | N
         return resolved_path, None
 
 
+def _source_path_stat(
+    value: str, base: Path, *, allow_terminal_symlinks: bool = False
+) -> os.stat_result | None:
+    """Inspect an absolute pattern candidate, returning None for missing branches.
+
+    Callers supply absolute argument strings, preserving dots and separators.
+    Stat the argument spelling rather than its normalized permission location.
+    """
+    if allow_terminal_symlinks:
+        return inspect_entry_path(value, base)[1]
+    try:
+        resolve_literal_path(value, base)
+        # Stat the lexical path: 'missing/..' must not become a match.
+        return Path(value).stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+
+
 def preparation_deadline(operation: str) -> Callable[[], None]:
     """Start one preparation time budget and return its expiration check."""
     deadline = monotonic() + SUBPROCESS_TIMEOUT_SECONDS
@@ -68,7 +88,10 @@ def check_preparation_deadline(deadline: float, operation: str) -> None:
 def directory_entries(
     directory: Path, check_deadline: Callable[[], None]
 ) -> Iterator[os.DirEntry[str]]:
-    """Enumerate all direct entries under a shared budget without following links."""
+    """Enumerate direct entries under a shared preparation budget.
+
+    Callers must validate the directory's symlink policy before enumeration.
+    """
     check_deadline()
     with scandir(directory) as entries:
         for entry in entries:
@@ -77,18 +100,27 @@ def directory_entries(
     check_deadline()
 
 
-def _source_path_stat(
-    value: str, base: Path, *, allow_terminal_symlinks: bool = False
-) -> os.stat_result | None:
-    """Inspect a pattern candidate, returning None for missing branches."""
-    if allow_terminal_symlinks:
-        return inspect_entry_path(value, base)[1]
-    try:
-        resolve_literal_path(value, base)
-        # Stat the lexical path: 'missing/..' must not become a match.
-        return Path(value).stat()
-    except (FileNotFoundError, NotADirectoryError):
-        return None
+def _unlimited() -> None:
+    """Leave existing callers' pattern expansion without a time limit."""
+
+
+def _split_source_pattern(value: str) -> tuple[str, list[str]]:
+    """Validate a star pattern and split its literal prefix from its components.
+
+    Empty components and dots retain meaningful argument spelling. The prefix
+    includes its trailing separator, or is empty when the first component matches.
+    """
+    parts = value.split("/")
+    if "***" in parts[:-1]:
+        raise ValueError("Symlink-following '***/' patterns are unsupported")
+    if parts[:-1].count("**") > 1:
+        raise ValueError(
+            f"Only one recursive '**' component is supported per source: {value!r}. "
+            "Use a pattern such as 'src/**/*.py'."
+        )
+    first_pattern = next(index for index, part in enumerate(parts) if "*" in part)
+    literal_prefix = "/".join(parts[:first_pattern]) + "/" if first_pattern else ""
+    return literal_prefix, parts[first_pattern:]
 
 
 def _expand_source_component(
@@ -110,7 +142,7 @@ def _expand_source_component(
     return matches
 
 
-def _expand_globstar(
+def _recursive_directory_prefixes(
     prefix: str,
     base: Path,
     *,
@@ -118,7 +150,7 @@ def _expand_globstar(
     allow_terminal_symlinks: bool,
     check_deadline: Callable[[], None],
 ) -> list[str]:
-    """Expand one recursive component, retaining directory prefixes for suffixes."""
+    """Collect visible directory prefixes, retaining their trailing separators."""
     root_stat = _source_path_stat(prefix.rstrip("/") or "/", base)
     if root_stat is None or not stat.S_ISDIR(root_stat.st_mode):
         return []
@@ -137,10 +169,6 @@ def _expand_globstar(
                 pending.append(child_prefix)
                 matches.append(child_prefix)
     return matches
-
-
-def _unlimited() -> None:
-    """Leave existing callers' pattern expansion without a time limit."""
 
 
 def expand_source_path(
@@ -166,40 +194,36 @@ def expand_source_path(
     path_arg = os.path.join(str(base), value)
     if "*" not in value:
         return [value if preserve_relative else path_arg]
-    parts = value.split("/")
-    if "***" in parts[:-1]:
-        raise ValueError("Symlink-following '***/' patterns are unsupported")
-    if parts[:-1].count("**") > 1:
-        raise ValueError(
-            f"Only one recursive '**' component is supported per source: {value!r}. "
-            "Use a pattern such as 'src/**/*.py'."
-        )
-    first_pattern = next(index for index, part in enumerate(parts) if "*" in part)
-    literal_prefix = "/".join(parts[:first_pattern]) + "/" if first_pattern else ""
+
+    literal_prefix, components = _split_source_pattern(value)
     prefixes = [os.path.join(str(base), literal_prefix)]
-    for index, part in enumerate(parts[first_pattern:], start=first_pattern):
-        if part == "**" and index < len(parts) - 1:
-            prefixes = [
-                match
-                for prefix in prefixes
-                for match in _expand_globstar(
-                    prefix,
-                    base,
-                    # Bare **/ omits the implicit current directory.
-                    include_root=index > 0 or any(parts[index + 1 :]),
-                    allow_terminal_symlinks=allow_terminal_symlinks,
-                    check_deadline=check_deadline,
+    for index, component in enumerate(components):
+        has_suffix = index < len(components) - 1
+        matches: list[str] = []
+        if component == "**" and has_suffix:
+            # Bare **/ omits the implicit current directory.
+            include_root = (
+                bool(literal_prefix) or index > 0 or any(components[index + 1 :])
+            )
+            for prefix in prefixes:
+                matches.extend(
+                    _recursive_directory_prefixes(
+                        prefix,
+                        base,
+                        include_root=include_root,
+                        allow_terminal_symlinks=allow_terminal_symlinks,
+                        check_deadline=check_deadline,
+                    )
                 )
-            ]
-            continue
-        matches = [
-            match
-            for prefix in prefixes
-            for match in _expand_source_component(prefix, part, base, check_deadline)
-        ]
-        prefixes = (
-            [match + "/" for match in matches] if index < len(parts) - 1 else matches
-        )
+        else:
+            for prefix in prefixes:
+                matches.extend(
+                    _expand_source_component(prefix, component, base, check_deadline)
+                )
+            if has_suffix:
+                matches = [match + "/" for match in matches]
+        prefixes = matches
+
     results: list[str] = []
     for path in prefixes:
         check_deadline()

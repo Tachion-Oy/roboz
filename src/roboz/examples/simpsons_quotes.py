@@ -66,4 +66,5 @@ QUOTES: Final[list[str]] = [
     "I have three kids and no money. Why can't I have no kids and three money?",
     "Woo-hoo!",
     "You'll have to speak up, I'm wearing a towel.",
+    "I am the lizard queen!",
 ]
