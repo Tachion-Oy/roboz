@@ -191,8 +191,8 @@ class Sandbox:
         """
         project = self.project_dir()
         writes = {Operation.CREATE, Operation.DELETE}
-        project_pattern = escape(str(project.relative_to(self.resolved_root)))
-        shared_pattern = escape(self.shared)
+        project_pattern = escape(project.relative_to(self.resolved_root).as_posix())
+        shared_pattern = escape(self.shared_dir.relative_to(self.resolved_root).as_posix())
         shared = (
             PermissionRule(shared_pattern, writes),
             PermissionRule(f"{shared_pattern}/**", writes),
