@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.5.0a1"
+version = "0.5.0rc1"
 description = "Python framework for typed LLM agents with conditional tool chaining."
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
@@ -22,7 +22,7 @@ keywords = [
     "typing",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",

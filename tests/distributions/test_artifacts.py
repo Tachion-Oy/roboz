@@ -38,18 +38,17 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/shed/capabilities.py",
             "roboz/shed/tools/cli_commands/contracts.py",
             "roboz/shed/tools/cli_commands/command.py",
-            "roboz/shed/tools/cli_commands/README.md",
             "roboz/shed/skills/cli_tools/prompts.py",
             "roboz/shed/tools/email/proton_bridge/service.py",
             "roboz/shed/tools/email/proton_bridge/models.py",
             "roboz/endpoints/__main__.py",
-            "roboz/endpoints/README.md",
             "roboz/endpoints/adapters/openai_compatible.py",
             "roboz/endpoints/catalog.py",
             "roboz/endpoints/catalog.pyi",
             "roboz/endpoints/inventory.py",
             "roboz/endpoints/inventory.pyi",
         } <= names
+        assert not any(name.endswith("/README.md") for name in names)
         for module in (
             "__init__",
             "__main__",
@@ -95,6 +94,9 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert not any(name.endswith("/entry_points.txt") for name in names)
     with tarfile.open(sdist) as archive:
         paths = [Path(name).parts[1:] for name in archive.getnames()]
+        assert [path for path in paths if path and path[-1] == "README.md"] == [
+            ("README.md",)
+        ]
         assert all(not path or path[0] not in {"scripts", ".github"} for path in paths)
         assert ("src", namespace, "py.typed") in paths
         assert ("src", namespace, "__init__.pyi") in paths
@@ -124,7 +126,6 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "service.py",
         ) in paths
         assert ("src", namespace, "endpoints", "inventory.pyi") in paths
-        assert ("src", namespace, "endpoints", "README.md") in paths
         assert all(not path or path[0] != "packages" for path in paths)
 
 

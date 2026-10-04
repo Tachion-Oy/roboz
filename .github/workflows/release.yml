@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing RoboZ release tag (for example, roboz-v0.1.2.dev12)"
+        description: "Existing RoboZ release tag (for example, roboz-v0.5.0rc1)"
         required: true
         type: string
 permissions:

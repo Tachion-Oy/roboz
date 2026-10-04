@@ -16,8 +16,8 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE)
 
 > [!WARNING]
-> RoboZ is pre-release software requiring Python 3.13 or newer. APIs may change
-> before 1.0.
+> RoboZ 0.5.0rc1 is a release candidate requiring Python 3.13 or newer. APIs may
+> change before 1.0.
 
 ## Table of contents
 
@@ -28,7 +28,11 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Chains, factories, truncation and many endpoints](#chains-factories-truncation-and-many-endpoints)
 - [Try it out](#try-it-out)
 - [Shed](#shed)
+  - [Guarded file CLI](#guarded-file-cli)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
+  - [Use the bundled examples](#use-the-bundled-examples)
+  - [Create a project catalogue](#create-a-project-catalogue)
+  - [Restore the bundled examples](#restore-the-bundled-examples)
 - [API key encryption](#api-key-encryption)
 - [Module map](#module-map)
 - [Robozium](#robozium)
@@ -260,38 +264,6 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 
-The [guarded file CLI](src/roboz/shed/tools/cli_commands/README.md) supports
-`cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`, `tee`, `touch`, `mkdir`, `grep`,
-`rg`, `ls`, `find`, `diff`, `gio trash`, and `rm`. Import `get_run_file_command`
-from `roboz.shed.tools` or `roboz.shed.tools.cli_commands`, or use the
-`FileCommands` capability to bind the tools and CLI skill to a sandbox policy.
-With direct factory use, register `roboz.shed.skills.cli_skill` in the agent's
-`auto_loaded_skills` or `skills` so the model can access the command reference.
-
-`run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
-`CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,
-and `CTL` for control operators. For example:
-
-```json
-{
-  "action": "run_file_command",
-  "rationale": "Create a directory and populate a note after success.",
-  "value": [
-    ["mkdir", "CMD"], ["-p", "FLG"], ["notes", "PTH"],
-    ["&&", "CTL"],
-    ["tee", "CMD"], ["Hello\n", "ARG"], ["notes/today.txt", "PTH"]
-  ]
-}
-```
-
-Mix `|`, `&&`, `||`, and `;` within the same call. Pipelines bind first;
-`&&` and `||` have equal precedence and run left to right. Each reached command
-is freshly resolved and guarded; a failed step can select an independently
-authorized fallback. Pipes buffer stdout bytes sequentially and use the final
-stage's status. Earlier file changes are not rolled back. The
-[CLI skill](src/roboz/shed/skills/cli_tools/prompts.py) supplies the complete
-usage reference and worked chaining examples.
-
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
 credentials, decrypted before construction. For a self-signed Bridge certificate,
@@ -305,13 +277,85 @@ script directory outside agent-writable paths.
 For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 [SafeScripts guide](docs/safe-scripts.md) for helper setup and execution policy.
 
+### Guarded file CLI
+
+![Guarded CLI workflow: resolve, check permissions, execute, and guard each subsequent command](https://raw.githubusercontent.com/Tachion-Oy/roboz/093a5377df6c111fb7e290a1078c336b9e53794d/docs/assets/guarded-cli.svg)
+
+The file-command tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`,
+`tee`, `touch`, `mkdir`, `grep`, `rg`, `ls`, `find`, `diff`, `gio trash`, and
+`rm`. The `FileCommands` capability adds the tool and its CLI skill to an
+agent. You can also use the factory directly:
+
+```python
+from pathlib import Path
+
+from roboz.shed.models import ActionVerdict, Operation, PermissionRule
+from roboz.shed.skills import cli_skill
+from roboz.shed.tools import get_run_file_command
+
+file_tools = get_run_file_command(
+    base=Path.cwd(),
+    default_verdict=ActionVerdict.deny,
+    allow_rules=[
+        PermissionRule(
+            pattern="notes/**",
+            operations={Operation.READ, Operation.CREATE, Operation.DELETE},
+        ),
+    ],
+)
+```
+
+Pass `file_tools` in the agent's `tools` and `cli_skill` in `auto_loaded_skills`
+or `skills`. `FileCommands` registers both automatically.
+
+`run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
+`CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,
+and `CTL` for control operators. The diagram's example creates a note and
+counts its lines.
+
+Use `&&` for dependent steps, `||` for a fallback, `;` for independent commands,
+and `|` to pipe stdout. Pipelines bind first; `&&` and `||` run left to right.
+Each reached command gets its own permission checks. Pipes are buffered, and
+earlier file changes are not rolled back if a later command fails.
+
+Command options are separate `FLG` tokens; options taking values use the next
+`ARG` or `PTH` token. `--` ends options. Source paths accept `*` within a path
+component and one recursive `**/` component; unmatched patterns fail. `?` and
+bracket patterns are unsupported, and destinations must be literal paths.
+Relative paths are resolved from `base`. A rule for `directory/**` covers the
+directory and its descendants.
+
+| Commands | Options | Permission checks |
+| --- | --- | --- |
+| `pwd`, `ls`, `find` | `pwd -P`; `ls -l/-a/-h/-R`; `find -name/-type/-maxdepth/-print` | READ on the base or selected roots |
+| `cat`, `head`, `tail`, `wc`, `diff` | `cat -n/-b`; `head/tail -n/-c`; `wc -l/-w/-c`; `diff -u/-q` | READ on selected files |
+| `grep`, `rg` | `-n/-i/-F/-m`; `grep -r/-R`; `rg --hidden/--no-ignore` | READ on selected files or search trees |
+| `cp`, `mv` | `-t/-T/-v/-f`; `cp -r/-R` | READ on copied sources, CREATE on destinations, DELETE on moved sources or overwritten entries |
+| `tee`, `touch`, `mkdir` | `tee -a`; `touch -c/-d/-r`; `mkdir -p/-v` | CREATE on targets; existing file updates also need READ and DELETE |
+| `gio trash`, `rm` | `gio trash`; `rm -r/-f` | DELETE on targets and recursive descendants |
+
+The [CLI skill](https://github.com/Tachion-Oy/roboz/blob/093a5377df6c111fb7e290a1078c336b9e53794d/src/roboz/shed/skills/cli_tools/prompts.py) is the full option
+allowlist and describes command-specific operand ordering and restrictions.
+
 ## Endpoints and model catalogues
 
 `roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`
-objects for OpenAI-compatible APIs. The OpenAI SDK is installed with RoboZ, but
-client construction and credential lookup remain deferred until an endpoint is
-materialized or used. Importing and inspecting the bundled catalogue needs no
-credentials:
+objects, provides ready-made endpoint examples, and can generate a typed
+catalogue for an application. Both forms expose provider and model names
+to Pylance and other Python type checkers.
+
+Only OpenAI-compatible API protocols are currently supported. Catalogue data
+contains provider URLs, credential environment-variable names, and model
+routes. It never contains credential values.
+
+The OpenAI SDK is installed with RoboZ, but client construction and credential
+lookup remain deferred until an endpoint is materialized or used. Importing and
+inspecting the bundled catalogue needs no credentials.
+
+### Use the bundled examples
+
+The installed catalogue includes example routes for OpenRouter, Cerebras, and
+Groq:
 
 ```python
 from roboz.endpoints.inventory import openrouter
@@ -321,20 +365,55 @@ print(endpoint.model_name)
 print(endpoint.max_context_tokens)
 ```
 
-The bundled OpenRouter, Cerebras, and Groq entries are examples. Initialize an
-editable project catalogue, change `models.json`, then generate the typed
-Python snapshot:
+The bundled declarations are shipped with RoboZ, so an editor can complete
+provider and model attributes without loading credentials or constructing SDK
+clients.
+
+### Create a project catalogue
+
+Run these commands from the application project root:
 
 ```bash
 uv run python -m roboz.endpoints inventory init
-# Edit model_catalogue/models.json.
+# Edit the generated models.json.
 uv run python -m roboz.endpoints inventory generate
 ```
 
-For a src-layout project named `my-app`, the commands create
-`src/my_app/model_catalogue/models.json` and
-`src/my_app/model_catalogue/providers.py`. Import the generated catalogue from
-your application package:
+For a src-layout project named `my-app`, this creates:
+
+```text
+src/my_app/model_catalogue/
+├── __init__.py
+├── models.json       # edit this
+└── providers.py      # generated; do not edit
+```
+
+The default location follows the package layout: `src/my_app/` or `my_app/`.
+If neither package exists, the CLI uses `model_catalogue/` in the project root.
+Use `--path` if automatic detection chooses the wrong location.
+
+Add providers and models to `models.json`, then run `generate` again. The
+generated module contains explicit type declarations for every provider and
+model, giving Pylance the same autocomplete and concrete endpoint types as the
+bundled catalogue.
+
+For example, a provider entry can contain:
+
+```json
+"my_service": {
+  "base_url": "https://models.example.com/v1",
+  "api_key_env": "MY_SERVICE_API_KEY_SECRET",
+  "models": {
+    "my_chat_model": {
+      "model_id": "my-chat-model",
+      "endpoint_type": "llm",
+      "max_context_tokens": 128000
+    }
+  }
+}
+```
+
+Import the generated endpoint through the application package:
 
 ```python
 from my_app.model_catalogue.providers import my_service
@@ -342,26 +421,102 @@ from my_app.model_catalogue.providers import my_service
 endpoint = my_service.my_chat_model
 ```
 
-Only OpenAI-compatible API protocols are supported. An inventory entry records
-a provider URL, the name of its credential environment variable, and its model
-routes; it never stores the credential itself. See the dedicated
-[endpoint catalogue README](src/roboz/endpoints/README.md) for the complete
-workflow, custom paths, and the inventory format.
+Provider and model keys become Python attributes and must be valid public
+Python identifiers. Chat models are typed as `LLMEndpoint`; transcription
+models are typed as `TranscriptionEndpoint`. Regenerate after every JSON change
+so runtime behavior and editor completion stay in sync. Chat models require
+`max_context_tokens`; transcription models do not accept it.
+
+Use `--path` to choose another JSON location. `generate` creates `providers.py`
+beside that file unless `--output` selects another module:
+
+```bash
+uv run python -m roboz.endpoints inventory init --path src/my_app/endpoints/models.json
+uv run python -m roboz.endpoints inventory generate --path src/my_app/endpoints/models.json
+```
+
+Create the parent Python package first, then reuse the same paths when
+regenerating. `generate` replaces only a module carrying its generated-file
+marker. Restart a running application after generation to import the new
+snapshot.
+
+### Restore the bundled examples
+
+To discard project customizations and start again from the examples in the
+installed RoboZ version:
+
+1. Delete the catalogue's `models.json`.
+2. Run `inventory init` to recreate it.
+3. Run `inventory generate` to refresh the generated Python module.
+
+`init` never overwrites JSON. `generate` replaces an existing Python file only
+when it carries the RoboZ generated-file marker.
+
+Run `python -m roboz.endpoints inventory <command> --help` for command options.
 
 ## API key encryption
 
-Run `python -m roboz.endpoints env encrypt` to encrypt all nonempty values
-whose names end in `_SECRET` into `.env.encrypt` from `.env`, using a hidden
-password. The source stays untouched; remove it when you no longer need it. Import
-`load_secrets` from `roboz.endpoints` to decrypt before starting an agent, or
-let an endpoint load its missing key when first used. Loading prefers
-`.env.encrypt` and falls back to plaintext `.env`.
+Credential integrations can import these public constants from
+`roboz.endpoints` or `roboz.endpoints.env`:
 
-Credential integrations can import `SECRET_SUFFIX` (`"_SECRET"`),
-`ENCRYPTED_NAMESPACE` (`"roboz:"`), and `DEFAULT_ENCRYPTED_ENV_PATH`
-(`Path(".env.encrypt")`) from either `roboz.endpoints` or `roboz.endpoints.env`.
-See the [credential documentation](src/roboz/endpoints/README.md#secrets-in-env)
-for supported imports and password handling.
+```python
+from roboz.endpoints import (
+    DEFAULT_ENCRYPTED_ENV_PATH,  # Final[Path]: Path(".env.encrypt")
+    ENCRYPTED_NAMESPACE,  # Final[str]: "roboz:"
+    SECRET_SUFFIX,  # Final[str]: "_SECRET"
+)
+```
+
+`SECRET_SUFFIX` identifies secret variable names. `ENCRYPTED_NAMESPACE`
+identifies RoboZ ciphertext, including unsupported versions; the current
+format starts with `roboz:v1:`. `DEFAULT_ENCRYPTED_ENV_PATH` is the relative
+encrypted file path used by default loading. These constants describe the
+supported format and defaults; they are not configuration settings.
+
+Keep using an ordinary `.env` file with entries such as
+`MY_SERVICE_API_KEY_SECRET=...` or
+`PROTON_BRIDGE_PASSWORD_SECRET=...`. Encrypt its nonempty `_SECRET` values from
+the project directory:
+
+```bash
+uv run python -m roboz.endpoints env encrypt
+# Use --path another.env for a different file.
+```
+
+The command asks for a hidden password twice, or consumes
+`ROBOZ_ENV_PASSWORD` from its process environment. It writes `.env.encrypt`
+beside the untouched `.env` source (or adds `.encrypt` to a custom path).
+The new file contains the parsed assignments with nonempty `_SECRET` values
+encrypted; comments and original formatting stay only in the source. You may
+delete the plaintext source after checking the result. Both files use dotenv
+syntax, so `python-dotenv` can parse the ciphertext but cannot decrypt it.
+Plaintext `.env` files continue to load without a password.
+
+An application can load secrets before starting an agent:
+
+```python
+from getpass import getpass
+from roboz.endpoints import load_secrets
+
+load_secrets(password=getpass("Secret password: "))
+```
+
+With no path argument, `load_secrets()` prefers `.env.encrypt` and falls back
+to `.env`. Pass `path=` to choose a file explicitly. Endpoints also load missing
+keys when first used. For deferred loading, set
+`ROBOZ_ENV_PASSWORD` in the application's process environment. The loader
+consumes it only when encrypted secrets need decrypting; an explicit `api_key=`
+on the adapter takes precedence. All pending secrets are validated before any
+are added to `os.environ`. Existing usable environment keys take precedence
+over file values.
+
+Re-running encryption recreates `.env.encrypt` from the plaintext source. A
+wrong password or damaged ciphertext fails during loading without injecting
+pending keys. The command writes no password or private-key file. Keep the
+password outside the repository and retain it for future decryption. Loaded
+secrets remain available in the application's process environment. Consuming
+a password removes only this process's environment entry; it cannot erase a
+parent-shell copy or guarantee memory wiping.
 
 ## Module map
 
