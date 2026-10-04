@@ -6,12 +6,11 @@ from pathlib import Path
 from roboz.shed.models import Operation
 
 from ..contracts import ParsedCommand, PreparedCommand, TaggedCommandSpec, TokenRule
+from ..paths import preparation_deadline
 from .search import (
     SEARCH_TOKENS,
-    check_search_deadline,
     recursive_children,
     search_arguments,
-    search_deadline,
     search_path,
     search_ready,
 )
@@ -21,12 +20,12 @@ def _read_operations(
     paths: list[str], base: Path, *, recursive: bool, follow: bool
 ) -> list[tuple[Operation, Path]]:
     """Collect distinct READ requirements in operand and traversal order."""
-    deadline = search_deadline()
+    check_deadline = preparation_deadline("Search")
     operations: list[tuple[Operation, Path]] = []
     pending = [path_arg for path_arg in reversed(paths) if path_arg != "-"]
     seen: set[Path] = set()
     while pending:
-        check_search_deadline(deadline)
+        check_deadline()
         path_arg = pending.pop()
         resolved_path, directory = search_path(path_arg, base)
         if resolved_path in seen:
@@ -39,9 +38,9 @@ def _read_operations(
             raise ValueError("grep directory inputs require -r/--recursive or -R")
         pending.extend(
             str(child)
-            for child in recursive_children(Path(path_arg), deadline, follow=follow)
+            for child in recursive_children(Path(path_arg), check_deadline, follow=follow)
         )
-    check_search_deadline(deadline)
+    check_deadline()
     return operations
 
 

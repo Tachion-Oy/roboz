@@ -3,15 +3,13 @@
 import re
 import shlex
 import stat
-from os import scandir
+from collections.abc import Callable
 from pathlib import Path
-from time import monotonic
 
 from roboz.shed.models import CommandReady
-from roboz.shed.tools.cli_commands.utilities.constants import SUBPROCESS_TIMEOUT_SECONDS
 
 from ..contracts import ParsedCommand, TokenRule
-from ..paths import expand_source_path
+from ..paths import directory_entries, expand_source_path
 from ..tokens import END_OPTIONS, PATH_TOKEN
 from .writers import inspect_file_path
 
@@ -90,21 +88,8 @@ def search_path(path_arg: str, base: Path) -> tuple[Path, bool]:
     return resolved_path, stat.S_ISDIR(entry.st_mode)
 
 
-def search_deadline() -> float:
-    """Give recursive preparation the same time allowance as native execution."""
-    return monotonic() + SUBPROCESS_TIMEOUT_SECONDS
-
-
-def check_search_deadline(deadline: float) -> None:
-    """Fail preparation when its shared traversal and ignore-check budget expires."""
-    if monotonic() >= deadline:
-        raise ValueError(
-            f"Search preparation timed out after {SUBPROCESS_TIMEOUT_SECONDS} seconds"
-        )
-
-
 def recursive_children(
-    directory: Path, deadline: float, *, follow: bool = False
+    directory: Path, check_deadline: Callable[[], None], *, follow: bool = False
 ) -> list[Path]:
     """Select direct children in reverse order for stack-based traversal.
 
@@ -112,13 +97,11 @@ def recursive_children(
     during path validation. Otherwise native search skips those entries.
     """
     children: list[Path] = []
-    with scandir(directory) as entries:
-        for entry in entries:
-            check_search_deadline(deadline)
-            mode = entry.stat(follow_symlinks=False).st_mode
-            if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
-                children.append(directory / entry.name)
-    check_search_deadline(deadline)
+    for entry in directory_entries(directory, check_deadline):
+        mode = entry.stat(follow_symlinks=False).st_mode
+        if follow or stat.S_ISREG(mode) or stat.S_ISDIR(mode):
+            children.append(directory / entry.name)
+    check_deadline()
     children.sort(reverse=True)
-    check_search_deadline(deadline)
+    check_deadline()
     return children
