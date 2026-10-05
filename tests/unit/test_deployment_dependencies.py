@@ -1,4 +1,4 @@
-"""Deployments inspect constructed agents without invoking their tools."""
+"""Deployments inspect declared capabilities without invoking their tools."""
 
 from roboz.deployment import (
     Capability,
@@ -238,3 +238,32 @@ def test_full_dependency_inspection_ignores_selections_on_every_definition():
     resources = {item.dependency_id for item in root.external_dependencies()}
     assert {"executable:parent_resource", "executable:child_resource"} <= resources
     assert root.capability_selection == child.capability_selection == {}
+
+
+@pytest.mark.parametrize("as_skill", [False, True])
+def test_inspection_accepts_alternatives_with_the_same_runtime_name(as_skill):
+    resources = (ExecutableDependency("first"), ExecutableDependency("second"))
+    capabilities = []
+    for resource in resources:
+        value = _resource_tool("shared_tool", resource)
+        label = ToolLabel(resource.executable, selectable=True)
+        if as_skill:
+            value = Skill(
+                name="shared_skill",
+                description="Shared",
+                instructions="Shared",
+                tools=(value,),
+            )
+            label = SkillLabel(resource.executable, selectable=True)
+        capabilities.append(Capability(label=label, value=value))
+    definition = _definition("root", capabilities=capabilities)
+
+    for selection in ({}, {"first": True}, {"second": True}):
+        definition.set_capability_selection(selection)
+        definition.build()
+        assert definition.external_dependencies() == resources
+        assert definition.capability_selection == selection
+
+    definition.set_capability_selection({"first": True, "second": True})
+    with pytest.raises(ValueError, match="Duplicate tool name"):
+        definition.build()

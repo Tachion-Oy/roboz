@@ -15,7 +15,7 @@ from roboz.agent import (
     run_background_agent,
     run_nested_agent,
 )
-from roboz.dependencies import ExternalDependency
+from roboz.dependencies import ExternalDependency, dedupe_external_dependencies
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe, EventSink
 from roboz.skill import Skill
@@ -396,17 +396,28 @@ class DeployableAgent(HasExternalDependencies):
         """Inspect the full declared graph, independently of capability selection.
 
         Use normal configuration validation and capability construction with no
-        event sinks. The root agent includes its foreground and background
-        descendants through their bound tool contexts. No agent is invoked and
-        no resource is checked or materialized by this method.
+        event sinks, collecting dependencies without registering alternatives
+        together in a runtime. Include foreground and background descendants.
+        No agent is invoked and no resource is checked or materialized.
 
         Each call builds fresh runtime state. Custom capability builders run as
         usual, including any construction effects they introduce; inspection
         does not provide filesystem isolation.
         """
         self._validate(include_all=True)
-        agent, _ = self._build(include_all=True)
-        return agent.external_dependencies()
+        resources: list[ExternalDependency] = []
+        for definition in self._walk():
+            endpoint = definition.agent_endpoint
+            if definition.mode is not AgentMode.DETERMINISTIC and endpoint is not None:
+                resources.extend(endpoint.external_dependencies())
+            tools, defaults, skills, automatic_skills = (
+                definition._build_capability_inputs(EventPipe(), include_all=True)
+            )
+            for skill in (*skills, *automatic_skills):
+                tools.extend(skill.tools)
+            for tool in (*defaults, *tools):
+                resources.extend(tool.external_dependencies())
+        return dedupe_external_dependencies(resources)
 
     def build(
         self,

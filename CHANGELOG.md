@@ -16,7 +16,8 @@
   `Email` preserves its declared skill label and binds its guidance and tools
   together, enabling either automatic or on-demand loading.
   Fixed labels stay included, disabled builders are skipped, and dependency
-  inspection continues to cover all declarations. `Filesystem` loading is now
+  inspection covers all declarations without registering conflicting alternatives
+  together in a runtime. `Filesystem` loading is now
   expressed by its skill label instead of `auto_load_skill`. No compatibility
   aliases or mandatory primitive tool set are introduced.
 
