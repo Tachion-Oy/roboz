@@ -17,12 +17,8 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import cli_skill, email_skill, file_editing
-from roboz.shed.tools import (
-    get_apply_patch,
-    get_compactify_messages_when_needed_tool,
-    get_run_file_command,
-)
+from roboz.shed.skills import FilesystemContext, email_skill, filesystem_skill
+from roboz.shed.tools import get_compactify_messages_when_needed_tool
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
     DEFAULT_THRESHOLD_PERCENT,
@@ -167,8 +163,12 @@ class Email(AgentCapability):
 
 
 @dataclass(frozen=True)
-class FileCommands(AgentCapability):
-    """Guarded file commands, optionally accompanied by their orientation skill."""
+class Filesystem(AgentCapability):
+    """Bind guarded file commands and patches as one complete filesystem skill.
+
+    Auto-load instructions and tools at invocation start by default. With
+    ``auto_load_skill=False``, offer the complete skill for on-demand loading.
+    """
 
     auto_load_skill: bool = True
 
@@ -178,36 +178,14 @@ class FileCommands(AgentCapability):
         return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
-        """Build a file-command chain using this agent's pipe and selected policy."""
+        """Construct both tool chains with this agent's permissions and event pipe."""
         sandbox = cast(Sandbox, agent.sandbox)
-        return Capability(
-            tools=(
-                get_run_file_command(
-                    **sandbox.permissions().tool_options(pipe),
-                ),
-            ),
-            auto_loaded_skills=(cli_skill,) if self.auto_load_skill else (),
+        skill = filesystem_skill(
+            FilesystemContext(permissions=sandbox.permissions(), pipe=pipe)
         )
-
-
-@dataclass(frozen=True)
-class FileEditing(AgentCapability):
-    """Literal patch editing with permissions derived from the sandbox."""
-
-    auto_load_skill: bool = True
-
-    @property
-    def required_attributes(self) -> RequiredAttributes:
-        """Require the owning agent's configured sandbox."""
-        return {"sandbox": Sandbox}
-
-    def build(self, agent: DeployableAgent, pipe: EventPipe) -> Capability:
-        """Build patch editing and optional orientation against the owning pipe."""
-        sandbox = cast(Sandbox, agent.sandbox)
-        return Capability(
-            tools=(get_apply_patch(**sandbox.permissions().tool_options(pipe)),),
-            auto_loaded_skills=(file_editing,) if self.auto_load_skill else (),
-        )
+        if self.auto_load_skill:
+            return Capability(auto_loaded_skills=(skill,))
+        return Capability(skills=(skill,))
 
 
 @dataclass(frozen=True)

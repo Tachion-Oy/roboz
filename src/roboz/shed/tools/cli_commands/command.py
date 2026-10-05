@@ -6,7 +6,7 @@ from roboz.models import Message
 from roboz.models.truncation import TruncationSpec
 from roboz.runtime import EventPipe
 from roboz.shed.identifiers import (
-    CLI_TOOLS_SKILL_NAME,
+    FILESYSTEM_SKILL_NAME,
     CONTINUE_FILE_COMMAND_TOOL_NAME,
     RUN_FILE_COMMAND_TOOL_NAME,
 )
@@ -104,16 +104,18 @@ def get_run_file_command(
     takes_precedence: ActionVerdict = ActionVerdict.deny,
     execute_cli_truncation: TruncationSpec = default_cli_truncation(),
     pipe: EventPipe | None = None,
-    cli_skill_name: str = CLI_TOOLS_SKILL_NAME,
+    cli_skill_name: str = FILESYSTEM_SKILL_NAME,
 ) -> list[Tool]:
     """Build the guarded file-command resolve -> guard -> execute chain.
 
     Supply an absolute base and allow/deny/ask rules. Patterns match literal POSIX
     names, preserving spaces and backslashes. Only the entry tool is exposed to
     the agent; permission checks and execution are automatic chained steps.
-    For direct Agent use, register roboz.shed.skills.cli_skill with
-    auto_loaded_skills or skills; cli_skill_name must match the registered skill's
-    name. FileCommands binds both tools and guidance automatically.
+    For a complete instruction-and-tool bundle, use
+    roboz.shed.skills.filesystem_skill(ctx) in auto_loaded_skills or skills
+    instead of registering this chain separately. Filesystem binds that skill
+    automatically. The retained cli_skill_name argument names the guidance
+    referenced in this standalone tool's description.
     These guards do not provide an OS sandbox or
     protection against concurrent filesystem changes.
     """

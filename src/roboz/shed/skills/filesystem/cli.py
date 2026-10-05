@@ -2,13 +2,7 @@
 
 from typing import Final
 
-from roboz.shed.identifiers import RUN_FILE_COMMAND_TOOL_NAME
-
-DESCRIPTION: Final[str] = (
-    f"Use `{RUN_FILE_COMMAND_TOOL_NAME}` for guarded file discovery, searching, reading, "
-    "writing, transfers, and deletion. Covers token roles, command options, path "
-    "permissions, patterns, and mixed command chains with worked examples."
-)
+from roboz.shed.identifiers import APPLY_PATCH_TOOL_NAME, RUN_FILE_COMMAND_TOOL_NAME
 
 _INSTRUCTIONS_TEMPLATE = r"""## File CLI (`<<RUN_FILE_COMMAND_TOOL>>`)
 
@@ -38,7 +32,8 @@ Only CTL tokens separate commands; `['&&', 'PTH']` names a literal file.
 Prefer `find`/`ls` for discovery, `rg` for text search (`grep` is also available),
 `wc -l` for size, and `head`/`tail` for bounded reading. Use `cat` for whole files,
 `diff` for comparison, `mkdir`/`touch`/`tee` for creation, `cp`/`mv` for transfers,
-and `gio trash`/`rm` for deletion. Use the file-editing skill for literal patches.
+and `gio trash`/`rm` for deletion. Use `<<APPLY_PATCH_TOOL>>` for literal patches;
+its input and editing workflow are described below.
 The command set is fixed; Git and arbitrary programs are unavailable.
 
 ## Chaining and pipelines
@@ -378,4 +373,4 @@ pipelines. File changes from earlier commands remain after subsequent failures.
 
 INSTRUCTIONS: Final[str] = _INSTRUCTIONS_TEMPLATE.replace(
     "<<RUN_FILE_COMMAND_TOOL>>", RUN_FILE_COMMAND_TOOL_NAME
-)
+).replace("<<APPLY_PATCH_TOOL>>", APPLY_PATCH_TOOL_NAME)

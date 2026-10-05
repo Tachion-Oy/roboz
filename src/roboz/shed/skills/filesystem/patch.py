@@ -1,8 +1,12 @@
 """Prompts for file editing (apply_patch; string replace under guards)."""
 
+from typing import Final
+
+from roboz.shed.identifiers import APPLY_PATCH_TOOL_NAME, RUN_FILE_COMMAND_TOOL_NAME
+
 _BODY: str = """## File editing (`__AP__`)
 
-This workflow assumes you already know **`__RC__`** from the **`__ST__`** skill: use it to **read and search** the tree before editing. This tool edits **one file at a time**, using **literal find/replace** (exact substring match) with the same configured path permissions as the CLI tools.
+Use **`__RC__`** to **read and search** the tree before editing. This tool edits **one file at a time**, using **literal find/replace** (exact substring match) with the same configured path permissions as file commands.
 
 ### When to use this vs full-file rewrite
 
@@ -106,44 +110,6 @@ Use **`__RC__`** for **targeted reads** so **`old_string`** matches reality:
 **Workflow:** read the relevant region, build a **minimal but unique** **`old_string`** (often 1-3 lines of context), set **`new_string`**, choose **`replace_all`**, call **`__AP__`**, then read again to confirm."""
 
 
-def _expand_body(
-    *,
-    apply_patch_tool_name: str,
-    run_file_command_tool_name: str,
-    cli_tools_skill_name: str,
-) -> str:
-    return (
-        _BODY.replace("__AP__", apply_patch_tool_name)
-        .replace("__RC__", run_file_command_tool_name)
-        .replace("__ST__", cli_tools_skill_name)
-    )
-
-
-def build_description(
-    *,
-    cli_tools_skill_name: str,
-    run_file_command_tool_name: str,
-    apply_patch_tool_name: str,
-) -> str:
-    """Build the file-editing skill's model-facing catalog description."""
-    return (
-        f"Applies precise, single-file code and text edits using the `{apply_patch_tool_name}` tool "
-        "(literal find/replace under path guards). Explains structured input (`path`, `old_string`, "
-        f"`new_string`, `replace_all`), matching rules, and how to combine with `{run_file_command_tool_name}` "
-        f"exploration from the `{cli_tools_skill_name}` skill. Supports exact substring replacement and "
-        'full-file rewrite mode (`old_string: ""`) for overwrite/create workflows.'
-    )
-
-
-def build_instructions(
-    *,
-    cli_tools_skill_name: str,
-    run_file_command_tool_name: str,
-    apply_patch_tool_name: str,
-) -> str:
-    """Build file-editing instructions with the configured public names."""
-    return _expand_body(
-        apply_patch_tool_name=apply_patch_tool_name,
-        run_file_command_tool_name=run_file_command_tool_name,
-        cli_tools_skill_name=cli_tools_skill_name,
-    )
+INSTRUCTIONS: Final[str] = _BODY.replace(
+    "__AP__", APPLY_PATCH_TOOL_NAME
+).replace("__RC__", RUN_FILE_COMMAND_TOOL_NAME)

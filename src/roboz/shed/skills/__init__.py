@@ -1,8 +1,7 @@
-"""Basic instructions for file and email tools."""
+"""Reusable instructions and context-bound tool bundles."""
 
 from .robozium import robozium
-from .cli_tools import cli_skill
-from .file_editing import file_editing
+from .filesystem import FilesystemContext, filesystem_skill
 from .email_tools import email_skill
 
-__all__ = ["cli_skill", "file_editing", "email_skill", "robozium"]
+__all__ = ["FilesystemContext", "filesystem_skill", "email_skill", "robozium"]

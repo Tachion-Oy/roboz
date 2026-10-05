@@ -10,8 +10,7 @@ from roboz.shed.agents import orchestrator as orchestrator_definition
 from roboz.shed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
-    FileCommands,
-    FileEditing,
+    Filesystem,
     MaintenanceCadence,
     MemoryConsolidation,
 )
@@ -60,8 +59,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         system_prompt="Complete the file task and stop.",
         default_capabilities=(
             Capability(tools=(stop,)),
-            FileCommands(),
-            FileEditing(),
+            Filesystem(),
         ),
     )
     definition.set_attributes(sandbox=sandbox)
@@ -337,9 +335,7 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
     assert list(sandbox.project_logs_dir().rglob("*.json"))
 
 
-def test_file_commands_capability_writes_and_removes_with_the_cli_skill(tmp_path):
-    from roboz.shed.skills import cli_skill
-
+def test_filesystem_capability_writes_and_removes_with_its_skill(tmp_path):
     sandbox = Sandbox(tmp_path / "sandbox", scope="project")
     sandbox.project_dir().mkdir(parents=True)
     folder = "projects/project/notes"
@@ -347,7 +343,7 @@ def test_file_commands_capability_writes_and_removes_with_the_cli_skill(tmp_path
     definition = DeployableAgent(
         name="cli_worker",
         system_prompt="Write, verify, and remove the note.",
-        default_capabilities=(Capability(tools=(stop,)), FileCommands()),
+        default_capabilities=(Capability(tools=(stop,)), Filesystem()),
     )
     definition.set_attributes(sandbox=sandbox)
     definition.set_agent_endpoint(MockLLMEndpoint([
@@ -363,11 +359,12 @@ def test_file_commands_capability_writes_and_removes_with_the_cli_skill(tmp_path
         {"action": "stop", "rationale": "Done", "value": "done"},
     ]))
     agent, _ = definition.build()
-    assert cli_skill in agent.auto_loaded_skills
-    active_names = {tool.name for tool in agent.active_tools.values()}
-    assert "run_file_command" in active_names
-    assert not {"operation_guard", "execute_file_command", "continue_file_command"} & active_names
+    assert [skill.name for skill in agent.auto_loaded_skills] == ["filesystem"]
+    assert "run_file_command" not in {tool.name for tool in agent.active_tools.values()}
     _, messages = agent.invoke()
+    active_names = {tool.name for tool in agent.active_tools.values()}
+    assert {"run_file_command", "apply_patch"} <= active_names
+    assert not {"operation_guard", "execute_file_command", "continue_file_command"} & active_names
     results = [json.loads(m.content) for m in messages if m.role.value == "user"]
     final = [r["value"] for r in results if r.get("caller") == "execute_file_command" and "value" in r][-1]
     assert final.startswith("Overall: success") and "created by the CLI" in final
@@ -381,7 +378,7 @@ if __name__ == "__main__":
     print("PASS guarded read/edit/read and denied escape")
 
     for scenario in (
-        test_file_commands_capability_writes_and_removes_with_the_cli_skill,
+        test_filesystem_capability_writes_and_removes_with_its_skill,
         test_repeated_deployment_construction_without_a_web_host,
         test_conversation_snapshot_memory_retention,
         test_conversation_snapshot_memory_with_separate_models,

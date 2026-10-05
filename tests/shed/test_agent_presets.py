@@ -4,8 +4,7 @@ from roboz.shed.agents import librarian, orchestrator
 from roboz.shed.capabilities import (
     ArtifactRetention,
     ConversationSnapshots,
-    FileCommands,
-    FileEditing,
+    Filesystem,
     MaintenanceCadence,
     MemoryConsolidation,
 )
@@ -30,8 +29,7 @@ def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
         type(capability) for capability in orchestrator_definition.capabilities
     ] == [
         Capability,
-        FileCommands,
-        FileEditing,
+        Filesystem,
     ]
     assert [type(capability) for capability in librarian_definition.capabilities] == [
         ConversationSnapshots,
