@@ -24,7 +24,7 @@ from roboz.agent._notifications import (
 )
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.agent._tool_observer import ToolInvocationObserver
-from roboz.agent.prompt_agent_tool import PromptAgentContext, prompt_agent
+from roboz.agent.prompt_llm_tool import PromptLLMContext, prompt_llm
 from roboz.dependencies import (
     ExternalDependency,
     dedupe_external_dependencies,
@@ -271,15 +271,15 @@ class Agent(HasExternalDependencies):
         }
         return Agent(**(old_input | overrides))
 
-    def _init_prompt_agent_tool(self) -> None:
+    def _init_prompt_llm_tool(self) -> None:
         if self.mode is AgentMode.DETERMINISTIC:
-            self._prompt_agent_tool = None
+            self._prompt_llm_tool = None
             return
         endpoint = self.agent_endpoint
         if endpoint is None:
             raise RuntimeError("model-driven instance has no endpoint")
-        self._prompt_agent_tool = prompt_agent(
-            PromptAgentContext(
+        self._prompt_llm_tool = prompt_llm(
+            PromptLLMContext(
                 active_tools=tuple(self.active_tools.values()),
                 endpoint=endpoint,
                 pipe=self.pipe,
@@ -307,7 +307,7 @@ class Agent(HasExternalDependencies):
                 self.passive_tools[t.id] = t
                 continue
             self.active_tools[t.id] = t
-        self._init_prompt_agent_tool()
+        self._init_prompt_llm_tool()
         self._validate_tool_chains(registered_tools | set(self.default_tools))
 
     def external_dependencies(
@@ -317,7 +317,7 @@ class Agent(HasExternalDependencies):
     ) -> tuple[ExternalDependency, ...]:
         """Derive the agent's dependency catalog exclusively from its Tool graph."""
         tools: list[Tool | None] = [
-            self._prompt_agent_tool,
+            self._prompt_llm_tool,
             self.prompt_user_tool,
             *self.default_tools,
             *self.active_tools.values(),
@@ -429,8 +429,8 @@ class Agent(HasExternalDependencies):
         """Return the next default tool, starting a new scheduling cycle as needed."""
         if not self._ephemeral_default_tools:
             self._ephemeral_default_tools = list(self.default_tools)
-            if self._prompt_agent_tool is not None:
-                self._ephemeral_default_tools.append(self._prompt_agent_tool)
+            if self._prompt_llm_tool is not None:
+                self._ephemeral_default_tools.append(self._prompt_llm_tool)
         return self._ephemeral_default_tools.pop(0)
 
     def append_and_pipe(self, message: Message):
@@ -540,7 +540,7 @@ class Agent(HasExternalDependencies):
                 }
             )
             self._init_skill(output)
-            tool = self.get_next_tool(self._prompt_agent_tool, output)
+            tool = self.get_next_tool(self._prompt_llm_tool, output)
             output = tool(output, self.messages)
             self.append_and_pipe(
                 get_finalized_message(
@@ -753,13 +753,13 @@ class Agent(HasExternalDependencies):
                 for dependency in dependencies
             )
 
-        if self._prompt_agent_tool is not None:
+        if self._prompt_llm_tool is not None:
             conf_table.add_row(
                 "Prompter",
-                self._prompt_agent_tool.name or "Not set",
+                self._prompt_llm_tool.name or "Not set",
                 f"Configured for {self.mode} execution.",
                 "-",
-                _get_external_dependencies((self._prompt_agent_tool,)),
+                _get_external_dependencies((self._prompt_llm_tool,)),
             )
 
         for t in self.active_tools.values():

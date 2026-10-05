@@ -256,7 +256,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
                 },
             ]
         ),
-        subagents=(child,),
+        nested_agents=(child,),
     )
     events = []
     agent, background_agents = _build_with_persistence(
@@ -315,7 +315,7 @@ def test_repeated_deployment_construction_without_a_web_host(tmp_path: Path) -> 
                     },
                 ]
             ),
-            subagents=(specialist,),
+            nested_agents=(specialist,),
         )
         return _build_with_persistence(
             definition, sandbox, event_sinks=(observed.append,)

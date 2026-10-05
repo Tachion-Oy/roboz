@@ -174,8 +174,8 @@ def test_init(agent):
     assert "tool_c" in passive_tool_names
     assert "tool_e" in passive_tool_names
     assert "tool_f" in passive_tool_names
-    assert agent._prompt_agent_tool is not None
-    assert "prompt_agent" == agent._prompt_agent_tool.name
+    assert agent._prompt_llm_tool is not None
+    assert "prompt_llm" == agent._prompt_llm_tool.name
 
 
 def test_get_next_tool_invoke_valid(agent):
@@ -687,7 +687,7 @@ def test_calling(agent):
 def test_agentic_agent_requires_non_empty_system_prompt(empty_prompt):
     with pytest.raises(ValueError, match="empty system prompt"):
         Agent(
-            name="empty_prompt_agent",
+            name="empty_prompt_llm",
             tools=[stop],
             system_prompt=empty_prompt,
             agent_endpoint=MockLLMEndpoint(
@@ -700,7 +700,7 @@ def test_agentic_agent_requires_non_empty_system_prompt(empty_prompt):
 def test_disabled_automatic_tool_prompt_uses_only_configured_system_prompt():
     system_prompt = "Use only these configured instructions."
     agent = Agent(
-        name="manual_tool_prompt_agent",
+        name="manual_tool_prompt_llm",
         tools=[stop],
         system_prompt=system_prompt,
         automatic_tool_prompt=False,
@@ -735,7 +735,7 @@ def test_deterministic_agent_allows_empty_system_prompt():
     )
     out, _ = agent.invoke()
     assert out.value == "done"
-    assert agent._prompt_agent_tool is None
+    assert agent._prompt_llm_tool is None
 
 
 def test_duplicate_tool_name_validation():
@@ -860,9 +860,9 @@ def test_copy_agent(agent):
     for name in orig_tool_names:
         if name not in auto_loaded_names:
             assert name in agent_copy.full_system_prompt
-    assert agent_copy._prompt_agent_tool is not None
-    assert agent._prompt_agent_tool is not None
-    assert agent_copy._prompt_agent_tool.name == agent._prompt_agent_tool.name
+    assert agent_copy._prompt_llm_tool is not None
+    assert agent._prompt_llm_tool is not None
+    assert agent_copy._prompt_llm_tool.name == agent._prompt_llm_tool.name
     assert agent_copy.pipe is agent.pipe
 
 

@@ -23,7 +23,7 @@ def orchestrator(
     sandbox: Sandbox,
     *,
     agent_endpoint: EndpointLike,
-    subagents: Sequence[DeployableAgent] = (),
+    nested_agents: Sequence[DeployableAgent] = (),
     background_agents: Sequence[DeployableAgent] = (),
     initial_messages: Sequence[Path | str] = (),
 ) -> DeployableAgent:
@@ -37,7 +37,7 @@ def orchestrator(
             Capability(tools=(stop,)),
             Filesystem(),
         ),
-        subagents=tuple(subagents),
+        nested_agents=tuple(nested_agents),
         background_agents=tuple(background_agents),
     )
     agent.set_agent_endpoint(agent_endpoint)

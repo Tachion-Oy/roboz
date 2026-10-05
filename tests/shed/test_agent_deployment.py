@@ -11,12 +11,12 @@ from roboz.llm import MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
 
-def _specialist(name, subagents=()):
+def _specialist(name, nested_agents=()):
     definition = DeployableAgent(
         name=name,
         system_prompt="Be a specialist.",
         default_capabilities=(Capability(tools=(stop,)),),
-        subagents=subagents,
+        nested_agents=nested_agents,
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     return definition
@@ -40,7 +40,7 @@ def test_librarian_defaults_snapshot_recursive_foreground_conversations(tmp_path
     foreground = orchestrator_definition(
         sandbox,
         agent_endpoint=MockLLMEndpoint([]),
-        subagents=(child,),
+        nested_agents=(child,),
     )
     names = foreground.agent_names(include_background=False)
     librarian = librarian_definition(

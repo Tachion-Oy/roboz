@@ -10,11 +10,11 @@ from roboz.llm import MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
 
-def _definition(name, subagents=(), background_agents=()):
+def _definition(name, nested_agents=(), background_agents=()):
     definition = DeployableAgent(
         name=name,
         system_prompt="Complete the task.",
-        subagents=subagents,
+        nested_agents=nested_agents,
         background_agents=background_agents,
         default_capabilities=(Capability(tools=(stop,)),),
     )
@@ -56,7 +56,7 @@ def test_child_slot_selects_invocation_behavior(background):
     )
     definition = _definition(
         "root",
-        subagents=() if background else (child,),
+        nested_agents=() if background else (child,),
         background_agents=(child,) if background else (),
     )
     responses = [] if background else [{"action": "worker", "rationale": "delegate"}]
@@ -110,11 +110,11 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
             pipes[self.name] = pipe
             return Capability(tools=(stop,))
 
-    def node(name, subagents=(), background_agents=()):
+    def node(name, nested_agents=(), background_agents=()):
         definition = DeployableAgent(
             name=name,
             system_prompt="Complete the task.",
-            subagents=subagents,
+            nested_agents=nested_agents,
             background_agents=background_agents,
             default_capabilities=(RecordPipe(name),),
         )
@@ -123,11 +123,11 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
 
     background = node(
         "background",
-        subagents=(node("background_child"),),
+        nested_agents=(node("background_child"),),
         background_agents=(node("nested"),),
     )
     child = node("child", background_agents=(background,))
-    definition = node("root", subagents=(child,), background_agents=(node("other"),))
+    definition = node("root", nested_agents=(child,), background_agents=(node("other"),))
     definition.set_initial_messages(("existing",))
     caller_events = []
     sandbox = Sandbox(tmp_path)
@@ -165,10 +165,10 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
 
 @pytest.mark.parametrize("collision", ["root", "foreground", "background", "nested"])
 def test_build_rejects_cross_branch_names_before_sinks(collision, tmp_path):
-    background = _definition("background", subagents=(_definition("nested"),))
+    background = _definition("background", nested_agents=(_definition("nested"),))
     definition = _definition(
         "root",
-        subagents=(_definition("foreground"),),
+        nested_agents=(_definition("foreground"),),
         background_agents=(background, _definition(collision)),
     )
 

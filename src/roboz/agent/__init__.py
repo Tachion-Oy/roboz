@@ -9,8 +9,8 @@ from roboz.agent.background_agent import (
     run_background_agent,
 )
 from roboz.agent.core import Agent
-from roboz.agent.prompt_agent_tool import PromptAgentContext, prompt_agent
-from roboz.agent.subagent import run_subagent
+from roboz.agent.prompt_llm_tool import PromptLLMContext, prompt_llm
+from roboz.agent.nested_agent import run_nested_agent
 from roboz.models import AgentMode
 
 __all__ = [
@@ -21,8 +21,8 @@ __all__ = [
     "BackgroundAgentState",
     "BackgroundAgentStatus",
     "get_active_agent_stack",
-    "PromptAgentContext",
-    "prompt_agent",
+    "PromptLLMContext",
+    "prompt_llm",
     "run_background_agent",
-    "run_subagent",
+    "run_nested_agent",
 ]

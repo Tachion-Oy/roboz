@@ -5,12 +5,12 @@ from pathlib import Path
 
 from roboz import Agent
 from roboz.tools import stop
-from roboz.agent.subagent import run_subagent
+from roboz.agent.nested_agent import run_nested_agent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink, RunLifecycleEvent
 
 
-def test_subagent_completion(tmp_path: Path) -> None:
+def test_nested_agent_completion(tmp_path: Path) -> None:
     events = []
     child = Agent(
         name="child",
@@ -22,7 +22,7 @@ def test_subagent_completion(tmp_path: Path) -> None:
             ]
         ),
     )
-    delegate = run_subagent(child)
+    delegate = run_nested_agent(child)
     parent = Agent(
         name="parent",
         tools=[delegate, stop],
@@ -76,7 +76,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
     root = DeployableAgent(
         name="coordinator",
         default_capabilities=(Capability(tools=(stop,)),),
-        subagents=(child,),
+        nested_agents=(child,),
         system_prompt="Delegate, then finish.",
     )
     root.set_agent_endpoint(
@@ -136,8 +136,8 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as directory:
-        test_subagent_completion(Path(directory))
-    print("PASS subagent completion")
+        test_nested_agent_completion(Path(directory))
+    print("PASS nested agent completion")
 
     with tempfile.TemporaryDirectory() as directory:
         test_generic_definitions_build_without_application_packages(Path(directory))

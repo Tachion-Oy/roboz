@@ -10,6 +10,6 @@ from typing import Final
 
 # --- Tools (``tool.name``) — imperative expressions `do` ---
 
-PROMPT_AGENT_TOOL_NAME: Final[str] = "prompt_agent"
+PROMPT_LLM_TOOL_NAME: Final[str] = "prompt_llm"
 RUN_BACKGROUND_AGENT_TOOL_NAME: Final[str] = "run_background_agent"
-RUN_SUBAGENT_TOOL_NAME: Final[str] = "run_subagent"
+RUN_NESTED_AGENT_TOOL_NAME: Final[str] = "run_nested_agent"

@@ -17,7 +17,9 @@ import roboz.runtime.persistence
 import roboz.tooling
 import roboz.tools
 from roboz.agent.core import Agent as CoreAgent
-from roboz.agent.prompt_agent_tool import prompt_agent as agent_prompt_agent
+from roboz.agent.nested_agent import run_nested_agent as agent_run_nested_agent
+from roboz.agent.prompt_llm_tool import PromptLLMContext
+from roboz.agent.prompt_llm_tool import prompt_llm as agent_prompt_llm
 from roboz.tooling.decorators import factory as tooling_factory
 from roboz.tooling.decorators import tool as tooling_tool
 from roboz.tools import prompt_user as tools_prompt_user
@@ -60,9 +62,9 @@ def test_root_exports_only_authoring_primitives_and_domains() -> None:
         "Message",
         "PromptUser",
         "Str",
-        "prompt_agent",
+        "prompt_llm",
         "prompt_user",
-        "run_subagent",
+        "run_nested_agent",
         "stop",
     ):
         assert not hasattr(rz, name)
@@ -154,7 +156,9 @@ def test_domain_ownership_exports() -> None:
 
     assert roboz.models.AgentMode is roboz.agent.AgentMode
     assert roboz.models.filter_messages is filter_messages
-    assert roboz.agent.prompt_agent is agent_prompt_agent
+    assert roboz.agent.PromptLLMContext is PromptLLMContext
+    assert roboz.agent.prompt_llm is agent_prompt_llm
+    assert roboz.agent.run_nested_agent is agent_run_nested_agent
     assert roboz.tools.stop is tools_stop
     assert roboz.tools.prompt_user is tools_prompt_user
     assert roboz.llm.call_llm_api is not None

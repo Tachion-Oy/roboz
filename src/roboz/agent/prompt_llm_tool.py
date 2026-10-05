@@ -13,8 +13,8 @@ from roboz.tooling.decorators import factory
 
 
 @dataclass(frozen=True, kw_only=True)
-class PromptAgentContext(HasExternalDependencies, Materializable):
-    """Model, available actions, and output pipe for one agent prompt."""
+class PromptLLMContext(HasExternalDependencies, Materializable):
+    """Model, available actions, and output pipe for one LLM prompt."""
 
     endpoint: EndpointLike
     active_tools: tuple[Tool, ...]
@@ -32,10 +32,10 @@ class PromptAgentContext(HasExternalDependencies, Materializable):
 
 
 @factory
-def prompt_agent(
-    input: Empty, messages: list[Message], ctx: PromptAgentContext
+def prompt_llm(
+    input: Empty, messages: list[Message], ctx: PromptLLMContext
 ) -> Invoke:
-    """Choose and prepare the next available agent action."""
+    """Ask the LLM to choose and prepare the next available agent action."""
     endpoint = ctx.endpoint
 
     def start_stream_attempt() -> None:

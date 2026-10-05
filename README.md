@@ -16,7 +16,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE)
 
 > [!WARNING]
-> RoboZ 0.5.0rc1 is a release candidate requiring Python 3.13 or newer. APIs may
+> RoboZ 0.5.0 requires Python 3.13 or newer. APIs may
 > change before 1.0.
 
 ## Table of contents
@@ -110,14 +110,14 @@ The main contracts of RoboZ are already visible:
 The above does not show the main idea of tool chaining, for that read the following sections.
 ## The central abstraction
 
-An agent is a loop that calls tools. Everything is defined as a tool: Skills,  background agents, prompting the agent, prompting the user, running nested agents, start up hooks etc. Everything.
+An agent is a loop that calls tools. Everything is defined as a tool: Skills,  background agents, prompting the LLM, prompting the user, running nested agents, start up hooks etc. Everything.
 
 **A tool can be triggered in three ways:**
-- **Invoked by an agent**: The `prompt_agent` tool asks an LLM what to do next and its `Invoke` output always calls another tool. It is constructed internally for `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` agents, but it is still just a tool.
+- **Invoked by an agent**: The `prompt_llm` tool asks an LLM what to do next and its `Invoke` output always calls another tool. It is constructed internally for `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` agents, but it is still just a tool.
 - **By chaining**. After an invoked tool has fired RoboZ checks if a chained tool with a *true* chain condition exists (for more than one *true* condition for a fork you get a runtime error). If yes, the output is passed on and the process repeats until the first broken chain or all chained tools are exhausted
-- **As default tools**. Defaults are called in order when no tools in a chain are left. A default cannot itself be chained to, so it cannot declare `chained_to`. The `prompt_agent` is then typically the last default tool for agentic processes.
+- **As default tools**. Defaults are called in order when no tools in a chain are left. A default cannot itself be chained to, so it cannot declare `chained_to`. The `prompt_llm` is then typically the last default tool for agentic processes.
 
-The traditional agentic approach is then a special case of a RoboZ agent if one just has the `prompt_agent` as the default with no chaining. An `AgentMode.DETERMINISTIC` agent has no `prompt_agent`; its default tools perform tasks directly, allowing deterministic branching through chaining. This is useful for a background agent that performs periodic maintenance work. `AgentMode.STEERABLE` agents may ask the user for input, while `AgentMode.AUTONOMOUS` agents cannot.
+The traditional agentic approach is then a special case of a RoboZ agent if one just has the `prompt_llm` as the default with no chaining. An `AgentMode.DETERMINISTIC` agent has no `prompt_llm`; its default tools perform tasks directly, allowing deterministic branching through chaining. This is useful for a background agent that performs periodic maintenance work. `AgentMode.STEERABLE` agents may ask the user for input, while `AgentMode.AUTONOMOUS` agents cannot.
 
 ## Why is this framework useful?
 ### Tool Chaining
@@ -138,7 +138,7 @@ To see the above in practice see the [complex example](https://github.com/Tachio
 
 In the code example below we illustrate some of the features that make RoboZ different from other frameworks.
 
-**Tool chaining** is usually introduced via the decorator argument `chained_to`, which points from a downstream tool to the upstream tool whose output becomes its input (tools also possess a `.chain` method). The input/output contract must respect the class inheritance structure, so the upstream output must be a subclass of the downstream input. A possible `chain_condition` can be passed in, which by definition has access to the tool's input argument and returns a boolean. The chain condition must evaluate to at most one `true` condition, but it can evaluate to `false` on all links, in which case scheduling resumes with the next configured default. Defaults may be referenced as upstream parents without also appearing in `tools`, but cannot declare `chained_to` themselves. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` construct a `prompt_agent` tool backed by the agent endpoint; `AgentMode.DETERMINISTIC` uses the configured default tools.
+**Tool chaining** is usually introduced via the decorator argument `chained_to`, which points from a downstream tool to the upstream tool whose output becomes its input (tools also possess a `.chain` method). The input/output contract must respect the class inheritance structure, so the upstream output must be a subclass of the downstream input. A possible `chain_condition` can be passed in, which by definition has access to the tool's input argument and returns a boolean. The chain condition must evaluate to at most one `true` condition, but it can evaluate to `false` on all links, in which case scheduling resumes with the next configured default. Defaults may be referenced as upstream parents without also appearing in `tools`, but cannot declare `chained_to` themselves. `AgentMode.STEERABLE` and `AgentMode.AUTONOMOUS` construct a `prompt_llm` tool backed by the agent endpoint; `AgentMode.DETERMINISTIC` uses the configured default tools.
 
 The `escalate` is an example of a **tool factory**, which accepts context parameter `ctx` which is added to the tool's closure and calling the factory with a context argument returns a tool. A very common use case is a tool with an endpoint as a context. In RoboZ all llm **endpoints are instances**, so it is easy to have a specific endpoint for a tool, that is different from that of the agent, below we construct deterministic mock endpoints so that no API keys are required for the examples. Factories have precisely the same chaining arguments in their decorator as a tool.
 
@@ -551,7 +551,7 @@ parent-shell copy or guarantee memory wiping.
 | Module | Provides |
 | --- | --- |
 | `roboz` | Agent, tool, factory, and skill authoring facade. |
-| `roboz.agent` | Agent implementations, subagents, and background agents. |
+| `roboz.agent` | Agent implementations, nested agents, and background agents. |
 | `roboz.deployment` | Reusable agent definitions and capabilities. |
 | `roboz.llm` | Endpoint contracts, selection, calls, and request policies. |
 | `roboz.models` | Typed messages and tool input/output models. |
