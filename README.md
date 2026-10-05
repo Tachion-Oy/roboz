@@ -16,7 +16,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://github.com/Tachion-Oy/roboz/blob/main/LICENSE)
 
 > [!WARNING]
-> RoboZ 0.5.0rc1 is a release candidate requiring Python 3.13 or newer. APIs may
+> RoboZ 0.5.0 requires Python 3.13 or newer. APIs may
 > change before 1.0.
 
 ## Table of contents

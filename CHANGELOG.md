@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-05
+
 - Add `Skill.factory(...)`, a typed classmethod returning a context-taking
   factory. Calling the factory builds a complete skill with concrete tools;
   agent and deployment input contracts are unchanged.

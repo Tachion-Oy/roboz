@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.5.0rc1"
+version = "0.5.0"
 description = "Python framework for typed LLM agents with conditional tool chaining."
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
