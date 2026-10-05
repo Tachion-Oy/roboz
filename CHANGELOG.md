@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add `Skill.factory(...)`, a typed classmethod returning a context-taking
+  factory. Calling the factory builds a complete skill with concrete tools;
+  agent and deployment input contracts are unchanged.
+- Breaking: consolidate the CLI and file-editing skills into
+  `filesystem_skill(FilesystemContext(permissions=..., pipe=...))`, containing
+  both guarded command and patch chains. Replace `FileCommands()` and
+  `FileEditing()` with one `Filesystem()` capability. Direct callers register
+  the constructed skill instead of separate instructions and tool chains.
+  `Filesystem(auto_load_skill=False)` registers the complete skill for on-demand
+  loading instead of exposing tools without their instructions.
+  The skill action changes from `cli_tools` / `file_editing` to `filesystem`;
+  `run_file_command`, `apply_patch`, and standalone tool builders remain available.
+
 ## 0.5.0rc1 - 2026-10-04
 
 - Preserve filesystem approval questions, exact user replies, and decisions in

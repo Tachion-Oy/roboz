@@ -257,12 +257,22 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 - `roboz.shed.capabilities` binds reusable behavior to agent configuration.
 - `roboz.shed.tools` contains guarded file commands, patching, email contracts,
   conversation compaction, snapshots, memory consolidation, and retention.
-- `roboz.shed.skills` supplies the agent instructions for those tools.
+- `roboz.shed.skills` supplies reusable instructions and complete tool bundles.
 - `roboz.shed.sandbox` defines filesystem scopes and tool permission policies.
 - `roboz.shed.dependency_health` checks configured external resources.
 
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
+
+`Skill.factory(name=..., description=..., instructions=..., build_tools=...)`
+defines a context-taking skill factory. The builder's annotated context type
+determines the factory's accepted context during type checking. Calling it
+invokes the builder and returns a concrete `Skill` with its instructions and tools.
+Each builder routes
+its context to the appropriate tool factories explicitly. Capability builders
+call skill factories when runtime configuration is available; agents accept the
+resulting skills, not the factories. Optional `depends_on` accepts an already
+constructed prerequisite skill.
 
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
@@ -283,30 +293,46 @@ For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 
 The file-command tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`,
 `tee`, `touch`, `mkdir`, `grep`, `rg`, `ls`, `find`, `diff`, `gio trash`, and
-`rm`. The `FileCommands` capability adds the tool and its CLI skill to an
-agent. You can also use the factory directly:
+`rm`. The `Filesystem` capability bundles these commands, the `apply_patch`
+literal-replacement tool, and their instructions into one `filesystem` skill.
+You can also construct the complete skill directly:
 
 ```python
 from pathlib import Path
 
+from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
-from roboz.shed.skills import cli_skill
-from roboz.shed.tools import get_run_file_command
+from roboz.shed.sandbox import PermissionPolicy
+from roboz.shed.skills import FilesystemContext, filesystem_skill
 
-file_tools = get_run_file_command(
+pipe = EventPipe()
+permissions = PermissionPolicy(
     base=Path.cwd(),
     default_verdict=ActionVerdict.deny,
-    allow_rules=[
+    allow=(
         PermissionRule(
             pattern="notes/**",
             operations={Operation.READ, Operation.CREATE, Operation.DELETE},
         ),
-    ],
+    ),
 )
+file_skill = filesystem_skill(FilesystemContext(permissions=permissions, pipe=pipe))
 ```
 
-Pass `file_tools` in the agent's `tools` and `cli_skill` in `auto_loaded_skills`
-or `skills`. `FileCommands` registers both automatically.
+Pass `file_skill` in the agent's `auto_loaded_skills` for startup activation,
+or `skills` for on-demand activation, and pass `pipe` as its `event_pipe`. The
+skill already contains both tool chains. `Filesystem()` derives the policy and
+pipe from its owning deployment and registers the complete skill automatically.
+`Filesystem(auto_load_skill=False)` offers the complete skill for on-demand
+activation: loading it makes both its instructions and tool chains available.
+The standalone `get_run_file_command` and `get_apply_patch` builders remain
+available for tool-only compositions.
+
+Migration: replace `FileCommands()` and `FileEditing()` with a single
+`Filesystem()`. Replace the `cli_skill` and `file_editing` instruction objects
+with `filesystem_skill(ctx)` and remove separately registered file tools from
+that composition. The skill action is now `filesystem`; tool actions remain
+`run_file_command` and `apply_patch`.
 
 `run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
 `CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,
@@ -334,8 +360,10 @@ directory and its descendants.
 | `tee`, `touch`, `mkdir` | `tee -a`; `touch -c/-d/-r`; `mkdir -p/-v` | CREATE on targets; existing file updates also need READ and DELETE |
 | `gio trash`, `rm` | `gio trash`; `rm -r/-f` | DELETE on targets and recursive descendants |
 
-The [CLI skill](https://github.com/Tachion-Oy/roboz/blob/093a5377df6c111fb7e290a1078c336b9e53794d/src/roboz/shed/skills/cli_tools/prompts.py) is the full option
-allowlist and describes command-specific operand ordering and restrictions.
+The filesystem skill's [command instructions](src/roboz/shed/skills/filesystem/cli.py)
+contain the full option allowlist and describe command-specific operand ordering
+and restrictions. Its [patch instructions](src/roboz/shed/skills/filesystem/patch.py)
+cover literal replacements and choosing between patches and full-file rewrites.
 
 ## Endpoints and model catalogues
 
