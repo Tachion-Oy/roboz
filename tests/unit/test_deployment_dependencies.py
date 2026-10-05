@@ -1,5 +1,12 @@
 """Deployments inspect constructed agents without invoking their tools."""
 
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    SkillLabel,
+    SkillLoading,
+    ToolLabel,
+)
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +16,6 @@ from roboz.models import Message, Str
 from roboz import Skill, factory
 from roboz.tools import stop
 from roboz.dependencies import ExecutableDependency
-from roboz.deployment import AgentCapability, Capability, DeployableAgent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 
 
@@ -54,7 +60,10 @@ def test_inspection_builds_all_agent_modes_without_invoking_or_materializing(tmp
     received = []
     program = ExecutableDependency("program")
 
-    class Feature(AgentCapability):
+    class Feature(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("feature"))
+
         @property
         def required_attributes(self):
             return {}
@@ -62,17 +71,15 @@ def test_inspection_builds_all_agent_modes_without_invoking_or_materializing(tmp
         def build(self, agent, pipe):
             received.append(agent)
             assert pipe.event_sinks == ()
-            return Capability(tools=(_resource_tool("program", program),))
+            return (_resource_tool("program", program),)
 
     nested = _definition("nested", endpoints[3])
     background = _definition("background", endpoints[2], nested_agents=(nested,))
-    foreground = _definition(
-        "foreground", endpoints[1], default_capabilities=(Feature(),)
-    )
+    foreground = _definition("foreground", endpoints[1], capabilities=(Feature(),))
     root = _definition(
         "root",
         endpoints[0],
-        default_capabilities=(Feature(),),
+        capabilities=(Feature(),),
         nested_agents=(foreground,),
         background_agents=(background,),
     )
@@ -96,21 +103,23 @@ def test_inspection_uses_agent_tool_and_skill_coverage_and_first_resource():
     direct = _resource_tool("direct")
     unloaded = _resource_tool("unloaded")
     automatic = _resource_tool("automatic")
-    feature = Capability(
-        tools=((direct, duplicate),),
-        default_tools=(default,),
-        skills=(
-            Skill(
+    features = (
+        Capability(label=ToolLabel("direct"), value=(direct, duplicate)),
+        Capability(label=ToolLabel("default", default=True), value=default),
+        Capability(
+            label=SkillLabel("lazy"),
+            value=Skill(
                 name="lazy", description="Lazy", instructions="Lazy", tools=(unloaded,)
             ),
         ),
-        auto_loaded_skills=(
-            Skill(
+        Capability(
+            label=SkillLabel("auto", loading=SkillLoading.AUTOMATIC),
+            value=Skill(
                 name="auto", description="Auto", instructions="Auto", tools=(automatic,)
             ),
         ),
     )
-    definition = _definition("root", default_capabilities=(feature,))
+    definition = _definition("root", capabilities=features)
     runtime, _ = definition.build()
     resources = definition.external_dependencies()
     assert resources == runtime.external_dependencies()
@@ -126,17 +135,20 @@ def test_inspection_uses_agent_tool_and_skill_coverage_and_first_resource():
 def test_inspection_uses_current_configuration_and_fresh_capability_state():
     pipes = []
 
-    class Feature(AgentCapability):
+    class Feature(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("feature"))
+
         @property
         def required_attributes(self):
             return {}
 
         def build(self, agent, pipe):
             pipes.append(pipe)
-            return Capability(tools=(_resource_tool("program"),))
+            return (_resource_tool("program"),)
 
     first, second = _endpoint("first"), _endpoint("second")
-    definition = _definition("root", first, default_capabilities=(Feature(),))
+    definition = _definition("root", first, capabilities=(Feature(),))
     assert definition.external_dependencies()[0] is first
     definition.set_agent_endpoint(second)
     definition.add_nested_agents(_definition("child", first))
@@ -160,7 +172,10 @@ def test_tool_inspection_errors_propagate_through_deployment(invalid):
         pytest.fail("inspection invoked a tool")
 
     definition = _definition(
-        "invalid", default_capabilities=(Capability(tools=(inspect_value(Context()),)),)
+        "invalid",
+        capabilities=(
+            Capability(label=ToolLabel("tools"), value=inspect_value(Context())),
+        ),
     )
     with pytest.raises(TypeError):
         definition.external_dependencies()
@@ -169,7 +184,10 @@ def test_tool_inspection_errors_propagate_through_deployment(invalid):
 def test_inspection_propagates_capability_construction_errors():
     error = RuntimeError("construction failed")
 
-    class Broken(AgentCapability):
+    class Broken(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("broken"))
+
         @property
         def required_attributes(self):
             return {}
@@ -178,7 +196,7 @@ def test_inspection_propagates_capability_construction_errors():
             raise error
 
     with pytest.raises(RuntimeError) as raised:
-        _definition("broken", default_capabilities=(Broken(),)).external_dependencies()
+        _definition("broken", capabilities=(Broken(),)).external_dependencies()
     assert raised.value is error
 
 
@@ -186,7 +204,7 @@ def test_resource_free_definition_can_be_inspected_built_and_invoked():
     definition = DeployableAgent(
         name="worker",
         mode=AgentMode.DETERMINISTIC,
-        default_capabilities=(Capability(default_tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop", default=True), value=stop),),
     )
     definition.set_agent_endpoint(_endpoint("unused"))
     assert definition.external_dependencies() == ()
@@ -195,3 +213,28 @@ def test_resource_free_definition_can_be_inspected_built_and_invoked():
     assert runtime.external_dependencies() == ()
     result, _ = runtime.invoke(input=Str(value="done"))
     assert result.value == "done"
+
+
+def test_full_dependency_inspection_ignores_selections_on_every_definition():
+    parent_tool = _resource_tool("parent_resource")
+    child_tool = _resource_tool("child_resource")
+    child = _definition(
+        "child",
+        capabilities=(
+            Capability(label=ToolLabel("child", selectable=True), value=child_tool),
+        ),
+    )
+    root = _definition(
+        "root",
+        nested_agents=(child,),
+        capabilities=(
+            Capability(label=ToolLabel("parent", selectable=True), value=parent_tool),
+        ),
+    )
+    root.set_capability_selection({})
+    child.set_capability_selection({})
+    runtime, _ = root.build()
+    assert not any(item.name == "parent_resource" for item in runtime.tools)
+    resources = {item.dependency_id for item in root.external_dependencies()}
+    assert {"executable:parent_resource", "executable:child_resource"} <= resources
+    assert root.capability_selection == child.capability_selection == {}

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Breaking: unify deployable-agent capabilities under `capabilities=` and
+  `add_capabilities()`, with typed `CapabilityLabel`, `ToolLabel`, and `SkillLabel`
+  metadata. Register existing objects with keyword-only
+  `Capability(label=..., value=...)`. Builders return runtime tools, chains, or
+  skills in a tuple; deployment applies the declared label to each value.
+  `ToolLabel(default=True)` preserves ordered default-tool
+  scheduling. Each definition owns its selection through
+  `set_capability_selection()`, including skill loading modes.
+  Custom builders now inherit from the ordinary `Capability` class instead of
+  implementing `AgentCapability`. Shed capabilities also use ordinary classes
+  with keyword-only constructors, such as `Email(service=...)`.
+  `Email` preserves its declared skill label and binds its guidance and tools
+  together, enabling either automatic or on-demand loading.
+  Fixed labels stay included, disabled builders are skipped, and dependency
+  inspection continues to cover all declarations. `Filesystem` loading is now
+  expressed by its skill label instead of `auto_load_skill`. No compatibility
+  aliases or mandatory primitive tool set are introduced.
+
 ## 0.5.0 - 2026-10-05
 
 - Add `Skill.factory(...)`, a typed classmethod returning a context-taking

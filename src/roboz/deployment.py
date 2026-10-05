@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from pathlib import Path
-from typing import Protocol
+from types import MappingProxyType
 
 from roboz.agent import (
     Agent,
@@ -24,51 +25,115 @@ type RequiredAttributeType = type[object] | tuple[type[object], ...]
 type RequiredAttributes = Mapping[str, RequiredAttributeType]
 
 
-class AgentCapability(Protocol):
-    """A configured feature that binds its tools to one agent runtime."""
+class SkillLoading(StrEnum):
+    """Choose when an intact skill's instructions and tools become available."""
 
-    @property
-    def required_attributes(self) -> RequiredAttributes:
-        """Declare configuration values required from the owning agent."""
-        ...
-
-    def build(self, agent: "DeployableAgent", pipe: EventPipe) -> "Capability":
-        """Bind configured tools using the owning agent and its fresh pipe."""
-        ...
+    ON_DEMAND = "on_demand"
+    AUTOMATIC = "automatic"
 
 
 @dataclass(frozen=True)
-class Capability(AgentCapability):
-    """Already-bound tools and skills that provide an agent feature.
+class CapabilityLabel:
+    """Identify one whole capability and whether its owner may deselect it."""
 
-    ``default_tools`` are ordered, repeatedly scheduled chain roots. A tool in
-    ``tools`` may declare ``chained_to`` with one of those defaults as its parent,
-    and scheduling resumes with the next default when the downstream branch ends.
-    Defaults cannot themselves declare ``chained_to``. Tools shared between
-    ``tools`` and ``default_tools`` retain their identity. Supplied objects remain
-    caller-owned and require no owner configuration.
+    name: str
+    selectable: bool = False
+
+    def __post_init__(self) -> None:
+        """Require a usable selection name before registering the capability."""
+        if not self.name.strip():
+            raise ValueError("capability name must be nonempty")
+
+
+@dataclass(frozen=True)
+class ToolLabel(CapabilityLabel):
+    """Expose a tool or chain; default roots run in declaration order."""
+
+    default: bool = False
+
+
+@dataclass(frozen=True)
+class SkillLabel(CapabilityLabel):
+    """Describe an opaque skill's declared loading behavior."""
+
+    loading: SkillLoading = SkillLoading.ON_DEMAND
+
+    def __post_init__(self) -> None:
+        """Validate the loading mode independently of the skill's contents."""
+        super().__post_init__()
+        if not isinstance(self.loading, SkillLoading):
+            raise TypeError("loading must be a SkillLoading value")
+
+
+class Capability:
+    """A labeled feature, supplied directly or bound by a subclass at build time.
+
+    Supply a value for an existing tool, chain, or intact skill. Subclasses can
+    omit the value and override build() to return fresh tools, chains, or skills.
+    Deployment applies this capability's declared label to every returned value.
+    Default chain roots retain declaration order. Objects remain caller-owned.
     """
 
-    tools: tuple[Tool | Sequence[Tool], ...] = ()
-    default_tools: tuple[Tool, ...] = ()
-    skills: tuple[Skill, ...] = ()
-    auto_loaded_skills: tuple[Skill, ...] = ()
+    def __init__(
+        self,
+        *,
+        label: ToolLabel | SkillLabel,
+        value: Tool | Sequence[Tool] | Skill | None = None,
+    ) -> None:
+        """Validate the outer payload without inspecting skill contents."""
+        self._label = label
+        self.value: Tool | tuple[Tool, ...] | Skill | None = None
+        if value is None:
+            return
+        match label:
+            case SkillLabel():
+                if not isinstance(value, Skill):
+                    raise TypeError("a SkillLabel requires a Skill")
+                self.value = value
+                return
+            case ToolLabel():
+                pass
+            case _:
+                raise TypeError("a bound capability requires a ToolLabel or SkillLabel")
+
+        if isinstance(value, Tool):
+            self.value = value
+            return
+        if not isinstance(value, Sequence) or any(
+            not isinstance(tool, Tool) for tool in value
+        ):
+            raise TypeError("a ToolLabel requires a Tool or tool chain")
+        if label.default and not value:
+            raise ValueError("a default tool capability requires a chain root")
+        self.value = tuple(value)
+
+    @property
+    def label(self) -> ToolLabel | SkillLabel:
+        """Return the immutable label used to select this whole capability."""
+        return self._label
 
     @property
     def required_attributes(self) -> RequiredAttributes:
-        """Declare that already-bound objects need no owner configuration."""
+        """Declare owner configuration needed by build(); none by default."""
         return {}
 
-    def build(self, agent: "DeployableAgent", pipe: EventPipe) -> "Capability":
-        """Return these already-bound inputs without copying or starting work."""
-        return self
+    def build(
+        self, agent: "DeployableAgent", pipe: EventPipe
+    ) -> tuple[Tool | Sequence[Tool] | Skill, ...]:
+        """Return runtime values in order; deployment applies the declared label."""
+        if self.value is None:
+            raise NotImplementedError(
+                "a capability without a value must implement build()"
+            )
+        return (self.value,)
 
 
 class DeployableAgent(HasExternalDependencies):
     """Mutable configuration for one agent and its attached child graph.
 
-    Constructor capabilities are fixed defaults. Later capabilities and child
-    definitions can only be appended. Runtime-specific values can be supplied
+    Capabilities form one ordered collection; labels define selectability.
+    Selection belongs to this definition and can be replaced between builds.
+    Runtime-specific values can be supplied
     after declaration with set_attributes(); they belong only to this node.
     Each build validates the complete graph and creates fresh runtime agents,
     pipes, and capability bindings without retaining execution state here.
@@ -82,11 +147,11 @@ class DeployableAgent(HasExternalDependencies):
         system_prompt: str = "",
         mode: AgentMode = AgentMode.STEERABLE,
         automatic_tool_prompt: bool = True,
-        default_capabilities: Sequence[AgentCapability] = (),
+        capabilities: Sequence[Capability] = (),
         nested_agents: Sequence["DeployableAgent"] = (),
         background_agents: Sequence["DeployableAgent"] = (),
     ) -> None:
-        """Configure identity, behavior, fixed capabilities, and initial children."""
+        """Configure identity, behavior, capabilities, and initial children."""
         self._name = name
         self._description = description
         self._system_prompt = system_prompt
@@ -95,8 +160,9 @@ class DeployableAgent(HasExternalDependencies):
         except ValueError as error:
             raise ValueError(f"Unsupported agent mode: {mode!r}") from error
         self._automatic_tool_prompt = automatic_tool_prompt
-        self._default_capabilities = tuple(default_capabilities)
-        self._additional_capabilities: list[AgentCapability] = []
+        self._capabilities: tuple[Capability, ...] = ()
+        self._capability_selection: dict[str, bool | SkillLoading] | None = None
+        self.add_capabilities(*capabilities)
         self._nested_agents: list[DeployableAgent] = []
         self._background_agents: list[DeployableAgent] = []
         self._agent_endpoint: EndpointLike | None = None
@@ -131,19 +197,44 @@ class DeployableAgent(HasExternalDependencies):
         return self._automatic_tool_prompt
 
     @property
-    def default_capabilities(self) -> tuple[AgentCapability, ...]:
-        """Return the fixed capabilities supplied at construction."""
-        return self._default_capabilities
+    def capabilities(self) -> tuple[Capability, ...]:
+        """Return every declared capability in construction order."""
+        return self._capabilities
 
     @property
-    def additional_capabilities(self) -> tuple[AgentCapability, ...]:
-        """Return capabilities appended after the fixed defaults."""
-        return tuple(self._additional_capabilities)
+    def capability_selection(self) -> Mapping[str, bool | SkillLoading] | None:
+        """Return the explicit choices, or None for all declared capabilities."""
+        if self._capability_selection is None:
+            return None
+        return MappingProxyType(self._capability_selection)
 
-    @property
-    def capabilities(self) -> tuple[AgentCapability, ...]:
-        """Return fixed and additional capabilities in build order."""
-        return (*self._default_capabilities, *self._additional_capabilities)
+    def set_capability_selection(
+        self, selection: Mapping[str, bool | SkillLoading] | None
+    ) -> None:
+        """Replace choices for future builds without modifying shared capabilities.
+
+        Fixed capabilities are always included. In an explicit selection,
+        omitted optional entries are disabled; True uses declared behavior.
+        Only selectable skill capabilities accept a loading override.
+        """
+        if selection is None:
+            self._capability_selection = None
+            return
+        choices = dict(selection)
+        labels = {
+            capability.label.name: capability.label for capability in self.capabilities
+        }
+        for name, choice in choices.items():
+            if name not in labels:
+                raise ValueError(f"unknown capability: {name!r}")
+            label = labels[name]
+            if not isinstance(choice, (bool, SkillLoading)):
+                raise TypeError(f"invalid capability choice for {name!r}")
+            if not label.selectable and choice is not True:
+                raise ValueError(f"capability {name!r} is fixed")
+            if isinstance(choice, SkillLoading) and not isinstance(label, SkillLabel):
+                raise ValueError(f"capability {name!r} is not a skill")
+        self._capability_selection = choices
 
     @property
     def nested_agents(self) -> tuple["DeployableAgent", ...]:
@@ -196,9 +287,13 @@ class DeployableAgent(HasExternalDependencies):
                 )
         self._attributes.update(values)
 
-    def add_capabilities(self, *capabilities: AgentCapability) -> None:
-        """Append capabilities after this node's fixed defaults."""
-        self._additional_capabilities.extend(capabilities)
+    def add_capabilities(self, *capabilities: Capability) -> None:
+        """Append declarations without changing an explicit selection."""
+        combined = (*self._capabilities, *capabilities)
+        names = [capability.label.name for capability in combined]
+        if len(set(names)) != len(names):
+            raise ValueError("capability names must be unique within an agent")
+        self._capabilities = combined
 
     def add_nested_agents(self, *nested_agents: "DeployableAgent") -> None:
         """Append synchronous child definitions."""
@@ -246,18 +341,47 @@ class DeployableAgent(HasExternalDependencies):
         return names
 
     def validate(self) -> None:
-        """Validate names and every capability requirement in the full graph."""
-        self.agent_names()
-        errors = list(self._configuration_errors())
-        if not errors:
-            return
-        details = "\n".join(f"- {error}" for error in errors)
-        raise ValueError(f"invalid agent configuration:\n{details}")
+        """Validate graph structure and the selected capabilities' requirements."""
+        self._validate()
 
-    def _configuration_errors(self) -> Iterator[str]:
-        """Yield capability requirement failures in stable graph order."""
-        for agent in self._walk():
-            yield from _capability_errors(agent)
+    def _selected_capabilities(
+        self, *, include_all: bool = False
+    ) -> tuple[Capability, ...]:
+        selection = self._capability_selection
+        if include_all or selection is None:
+            return self.capabilities
+        return tuple(
+            capability
+            for capability in self.capabilities
+            if not capability.label.selectable
+            or selection.get(capability.label.name, False) is not False
+        )
+
+    def _validate(self, *, include_all: bool = False) -> None:
+        self.agent_names()
+        errors = [
+            error
+            for agent in self._walk()
+            for error in _capability_errors(
+                agent, agent._selected_capabilities(include_all=include_all)
+            )
+        ]
+        if errors:
+            details = "\n".join(f"- {error}" for error in errors)
+            raise ValueError(f"invalid agent configuration:\n{details}")
+
+    def _bound_capabilities(
+        self, pipe: EventPipe, *, include_all: bool = False
+    ) -> Iterator[Capability]:
+        selection = {} if include_all else self._capability_selection or {}
+        for capability in self._selected_capabilities(include_all=include_all):
+            label = capability.label
+            loading = selection.get(capability.label.name)
+            match label, loading:
+                case SkillLabel(), SkillLoading() if loading != label.loading:
+                    label = replace(label, loading=loading)
+            for value in capability.build(self, pipe):
+                yield Capability(label=label, value=value)
 
     def _walk(self) -> tuple["DeployableAgent", ...]:
         definitions: list[DeployableAgent] = [self]
@@ -269,7 +393,7 @@ class DeployableAgent(HasExternalDependencies):
         return tuple(walked)
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
-        """Build an unstarted graph and inspect its tools' current resources.
+        """Inspect the full declared graph, independently of capability selection.
 
         Use normal configuration validation and capability construction with no
         event sinks. The root agent includes its foreground and background
@@ -280,7 +404,8 @@ class DeployableAgent(HasExternalDependencies):
         usual, including any construction effects they introduce; inspection
         does not provide filesystem isolation.
         """
-        agent, _ = self.build()
+        self._validate(include_all=True)
+        agent, _ = self._build(include_all=True)
         return agent.external_dependencies()
 
     def build(
@@ -296,12 +421,14 @@ class DeployableAgent(HasExternalDependencies):
         """
         self.validate()
         return self._build(
-            event_sinks=event_sinks, event_sink_factory=event_sink_factory
+            event_sinks=event_sinks,
+            event_sink_factory=event_sink_factory,
         )
 
     def _build(
         self,
         *,
+        include_all: bool = False,
         event_sinks: Sequence[EventSink] = (),
         event_sink_factory: Callable[[str], Sequence[EventSink]] | None = None,
     ) -> tuple[Agent, tuple[Agent, ...]]:
@@ -311,35 +438,17 @@ class DeployableAgent(HasExternalDependencies):
                 *event_sinks,
             )
         )
-        contributions = [
-            capability.build(self, pipe) for capability in self.capabilities
-        ]
-
-        tools = [tool for contribution in contributions for tool in contribution.tools]
-        default_tools = [tool for c in contributions for tool in c.default_tools]
-        background_agents: list[Agent] = []
-        for definition in self.nested_agents:
-            child, descendants = definition._build(
-                event_sinks=event_sinks, event_sink_factory=event_sink_factory
-            )
-            tools.append(
-                run_nested_agent(child).copy(
-                    name=child.name,
-                    description=child.description,
-                )
-            )
-            background_agents.extend(descendants)
-        for definition in self.background_agents:
-            child, descendants = definition._build(
-                event_sink_factory=event_sink_factory
-            )
-            default_tools.append(
-                run_background_agent(BackgroundAgentContext(agent=child)).copy(
-                    name=f"start_background_agent_{child.name}",
-                )
-            )
-            background_agents.append(child)
-            background_agents.extend(descendants)
+        tools, default_tools, skills, auto_loaded_skills = (
+            self._build_capability_inputs(pipe, include_all=include_all)
+        )
+        nested_tools, nested_backgrounds = self._build_nested_agents(
+            include_all=include_all,
+            event_sinks=event_sinks,
+            event_sink_factory=event_sink_factory,
+        )
+        background_tools, background_agents = self._build_background_agents(
+            include_all=include_all, event_sink_factory=event_sink_factory
+        )
 
         agent = Agent(
             name=self.name,
@@ -349,15 +458,90 @@ class DeployableAgent(HasExternalDependencies):
             mode=self.mode,
             automatic_tool_prompt=self.automatic_tool_prompt,
             system_prompt=self.system_prompt,
-            tools=tools,
-            default_tools=default_tools,
-            skills=[skill for c in contributions for skill in c.skills],
-            auto_loaded_skills=[
-                skill for c in contributions for skill in c.auto_loaded_skills
-            ],
+            tools=(*tools, *nested_tools),
+            default_tools=(*default_tools, *background_tools),
+            skills=skills,
+            auto_loaded_skills=auto_loaded_skills,
             initial_messages=self.initial_messages,
         )
-        return agent, tuple(background_agents)
+        return agent, (*nested_backgrounds, *background_agents)
+
+    def _build_capability_inputs(
+        self, pipe: EventPipe, *, include_all: bool
+    ) -> tuple[list[Tool], list[Tool], list[Skill], list[Skill]]:
+        """Dispatch bound contributions into the runtime's ordered input lists."""
+        tools: list[Tool] = []
+        default_tools: list[Tool] = []
+        skills: list[Skill] = []
+        auto_loaded_skills: list[Skill] = []
+        for contribution in self._bound_capabilities(pipe, include_all=include_all):
+            value = contribution.value
+            if isinstance(value, Tool):
+                value = (value,)
+            match contribution.label, value:
+                case SkillLabel(loading=SkillLoading.AUTOMATIC), Skill() as skill:
+                    auto_loaded_skills.append(skill)
+                case SkillLabel(), Skill() as skill:
+                    skills.append(skill)
+                case ToolLabel(default=True), tuple() as chain:
+                    default_tools.append(chain[0])
+                    tools.extend(chain[1:])
+                case ToolLabel(), tuple() as chain:
+                    tools.extend(chain)
+                case _:
+                    raise TypeError(
+                        "build() must return bound tool or skill capabilities"
+                    )
+
+        return tools, default_tools, skills, auto_loaded_skills
+
+    def _build_nested_agents(
+        self,
+        *,
+        include_all: bool,
+        event_sinks: Sequence[EventSink],
+        event_sink_factory: Callable[[str], Sequence[EventSink]] | None,
+    ) -> tuple[list[Tool], list[Agent]]:
+        """Bind nested delegates, retaining their descendants' background handles."""
+        tools: list[Tool] = []
+        background_agents: list[Agent] = []
+        for definition in self.nested_agents:
+            child, descendants = definition._build(
+                include_all=include_all,
+                event_sinks=event_sinks,
+                event_sink_factory=event_sink_factory,
+            )
+            tools.append(
+                run_nested_agent(child).copy(
+                    name=child.name,
+                    description=child.description,
+                )
+            )
+            background_agents.extend(descendants)
+        return tools, background_agents
+
+    def _build_background_agents(
+        self,
+        *,
+        include_all: bool,
+        event_sink_factory: Callable[[str], Sequence[EventSink]] | None,
+    ) -> tuple[list[Tool], list[Agent]]:
+        """Bind background starters without inheriting foreground event sinks."""
+        tools: list[Tool] = []
+        background_agents: list[Agent] = []
+        for definition in self.background_agents:
+            child, descendants = definition._build(
+                include_all=include_all, event_sink_factory=event_sink_factory
+            )
+            tools.append(
+                run_background_agent(BackgroundAgentContext(agent=child)).copy(
+                    name=f"start_background_agent_{child.name}",
+                )
+            )
+            background_agents.append(child)
+            background_agents.extend(descendants)
+
+        return tools, background_agents
 
 
 _MISSING = object()
@@ -368,9 +552,11 @@ def _type_name(expected: RequiredAttributeType) -> str:
     return " or ".join(item.__name__ for item in types)
 
 
-def _capability_errors(agent: DeployableAgent) -> Iterator[str]:
+def _capability_errors(
+    agent: DeployableAgent, capabilities: Sequence[Capability]
+) -> Iterator[str]:
     """Yield unmet attribute requirements for one configuration node."""
-    for capability in agent.capabilities:
+    for capability in capabilities:
         for name, expected in capability.required_attributes.items():
             error = _required_attribute_error(agent, capability, name, expected)
             if error is not None:
@@ -379,7 +565,7 @@ def _capability_errors(agent: DeployableAgent) -> Iterator[str]:
 
 def _required_attribute_error(
     agent: DeployableAgent,
-    capability: AgentCapability,
+    capability: Capability,
     name: str,
     expected: RequiredAttributeType,
 ) -> str | None:
@@ -400,8 +586,11 @@ def _required_attribute_error(
 
 
 __all__ = [
-    "AgentCapability",
     "Capability",
+    "CapabilityLabel",
+    "ToolLabel",
+    "SkillLabel",
+    "SkillLoading",
     "DeployableAgent",
     "RequiredAttributeType",
     "RequiredAttributes",

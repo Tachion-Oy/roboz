@@ -16,9 +16,9 @@ from roboz.shed.capabilities import (
 )
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.tools.email import EmailService
-from roboz import Agent
+from roboz import Agent, Skill, Tool
 from roboz.dependencies import ExternalDependency
-from roboz.deployment import AgentCapability, Capability, DeployableAgent
+from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import EndpointLike
 from roboz.runtime import EventPipe
 
@@ -26,15 +26,15 @@ from roboz.runtime import EventPipe
 def compose(
     sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe, service: EmailService
 ) -> None:
-    capabilities: tuple[AgentCapability, ...] = (
-        Email(service),
+    capabilities: tuple[Capability, ...] = (
+        Email(service=service),
         Filesystem(),
         Compactification(endpoint=endpoint),
         ConversationSnapshots(endpoint=endpoint),
         MemoryConsolidation(endpoint=endpoint),
         ArtifactRetention(),
         MaintenanceCadence(seconds=0),
-        SafeScripts(Path("/opt/trusted-scripts")),
+        SafeScripts(scripts_dir=Path("/opt/trusted-scripts")),
         SafeScripts(socket_path=Path("/run/scripts/service.sock")),
     )
     sandbox.configure_scope("project")
@@ -45,7 +45,10 @@ def compose(
         librarian(sandbox, {"orchestrator"}, agent_endpoint=endpoint), DeployableAgent
     )
     for capability in capabilities:
-        assert_type(capability.build(definition, pipe), Capability)
+        assert_type(
+            capability.build(definition, pipe),
+            tuple[Tool, ...] | tuple[Skill, ...],
+        )
     assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])
     assert_type(definition.external_dependencies(), tuple[ExternalDependency, ...])
 

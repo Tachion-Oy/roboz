@@ -42,7 +42,7 @@ def test_remote_discovery_execution_streaming_environment_and_schema(host, monke
         definition, agent, tool = _remote_tool(path, events.append)
         _, _, second = _remote_tool(path)
         assert tool.id != second.id
-        local = _agent(workspace, SafeScripts(scripts))[2]
+        local = _agent(workspace, SafeScripts(scripts_dir=scripts))[2]
         assert tool.InputModel == local.InputModel == RunShellScriptInput
         assert tool.OutputModel == local.OutputModel == ShellScriptResult
         dependencies = definition.external_dependencies()
@@ -215,7 +215,7 @@ def test_constructor_requires_one_target_and_host_owned_policy(settings):
 
 def test_imports_and_local_construction_remain_portable(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
-    SafeScripts(tmp_path)
+    SafeScripts(scripts_dir=tmp_path)
     with pytest.raises(ValueError, match="Linux"):
         SafeScripts(socket_path=tmp_path / "socket")
     subprocess.run(
@@ -374,7 +374,9 @@ def test_thousand_script_catalogue_matches_local_and_remote_results(host):
         _script(
             scripts, f"nested/script-{index:04}.sh", "# " + "x" * 512 + "\necho okay\n"
         )
-    local = _agent(workspace, SafeScripts(scripts))[2](RunShellScriptInput(), [])
+    local = _agent(workspace, SafeScripts(scripts_dir=scripts))[2](
+        RunShellScriptInput(), []
+    )
     assert len(local.scripts) == 1000
     with start() as (path, _):
         remote = _remote_tool(path)[2](RunShellScriptInput(), [])

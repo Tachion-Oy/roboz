@@ -27,6 +27,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Why is this framework useful?](#why-is-this-framework-useful)
 - [Chains, factories, truncation and many endpoints](#chains-factories-truncation-and-many-endpoints)
 - [Try it out](#try-it-out)
+- [Deployable agents and capabilities](#deployable-agents-and-capabilities)
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
@@ -245,6 +246,75 @@ python -m pip install roboz
 python -m roboz.examples.simple
 ```
 
+## Deployable agents and capabilities
+
+`DeployableAgent` holds one ordered capability collection and the choices for
+that definition. Constructor entries and later `add_capabilities(...)` entries
+follow the same rules. The primitive requires no particular tool set.
+
+```python
+from roboz import Skill
+from roboz.deployment import (
+    Capability, DeployableAgent, SkillLabel, SkillLoading, ToolLabel,
+)
+from roboz.llm import MockLLMEndpoint
+from roboz.tools import stop
+
+agent = DeployableAgent(
+    name="assistant",
+    system_prompt="Help the user.",
+    capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+)
+guide = Skill(name="guide", description="Project guidance", instructions="Help.")
+agent.add_capabilities(
+    Capability(label=SkillLabel("guide", selectable=True), value=guide)
+)
+agent.set_agent_endpoint(MockLLMEndpoint([]))
+agent.set_capability_selection({"guide": SkillLoading.ON_DEMAND})
+runtime, background_agents = agent.build()
+```
+
+Labels are immutable typed values. Their `name` is unique within an owning
+agent; `selectable=False` makes the declared capability fixed. `ToolLabel`
+exposes a tool or intact chain; `default=True` adds its first tool to
+`default_tools`. Default roots run in declaration order; selection preserves
+that order.
+`SkillLabel` declares `SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`.
+A skill's instructions and embedded tools always remain together.
+
+Inspect `agent.capabilities` and their labels without building tools. Selection
+belongs to the agent, not the shared capability: `capability_selection` is a
+read-only view, and `set_capability_selection(...)` replaces it for future builds.
+`None`, the initial value, includes all declared capabilities. An explicit map
+includes fixed entries plus enabled optional entries; omitted optional entries
+are disabled. `True` uses declared behavior, `False` disables an optional entry,
+and a `SkillLoading` value changes a selectable skill's loading mode. New optional
+entries stay disabled under an explicit map until selected. Existing runtimes
+keep their configuration, and child definitions have their own selections.
+
+For a capability requiring runtime bindings, subclass `Capability`, pass its
+label to `super().__init__(label=...)`, and override
+`build(agent, pipe)`. Override `required_attributes` when the builder needs owner
+configuration. Return a tuple of runtime tools, chains, or intact skills in
+construction order. A tool chain is one sequence inside that tuple; multiple
+entries under a default-tool label are scheduled as separate roots. Deployment
+applies the declared `ToolLabel` or `SkillLabel` to every returned value; builders
+do not construct new capabilities or pass labels again. The owner selects all
+values from one capability together. Excluded builders and their attribute
+requirements are skipped. Skills' embedded tools are never filtered or validated
+against the selection. `external_dependencies()` still inspects the full declared graph,
+including disabled capabilities, without changing choices or invoking agents.
+
+Migration: replace `default_capabilities=` with `capabilities=` and inspect
+`capabilities` instead of the old default/additional views. Replace the old
+four-field `Capability` build result with a tuple of runtime values. Use
+`Capability(label=..., value=...)` to register an existing tool, chain, or skill;
+its build returns the supplied value in a singleton tuple. Custom builders
+inherit from `Capability`; the separate `AgentCapability` protocol is removed.
+Capability constructors, including Shed's, accept keywords only. Labels remain
+immutable metadata.
+There are no compatibility aliases, inferred names, or separate registry.
+
 ## Shed
 
 `roboz.shed` provides reusable components built on the core primitives. Use an
@@ -280,9 +350,13 @@ credentials, decrypted before construction. For a self-signed Bridge certificate
 configure `certificate_sha256` or a trusted `ca_file`. Pass the service to
 `get_work_with_email(service=..., ...)`.
 
-For Robozium, pass `Email(service)` and `SafeScripts(scripts_dir=...)` from
+For Robozium, pass `Email(service=...)` and `SafeScripts(scripts_dir=...)` from
 `roboz.shed.capabilities` through `additional_capabilities`. Keep the trusted
 script directory outside agent-writable paths.
+
+`Email` preserves its declared `SkillLabel` when building a complete skill with
+email instructions and tools. Its default label loads that skill automatically;
+a selectable label lets the owning agent choose on-demand loading or disable it.
 
 For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 [SafeScripts guide](docs/safe-scripts.md) for helper setup and execution policy.
@@ -323,8 +397,8 @@ Pass `file_skill` in the agent's `auto_loaded_skills` for startup activation,
 or `skills` for on-demand activation, and pass `pipe` as its `event_pipe`. The
 skill already contains both tool chains. `Filesystem()` derives the policy and
 pipe from its owning deployment and registers the complete skill automatically.
-`Filesystem(auto_load_skill=False)` offers the complete skill for on-demand
-activation: loading it makes both its instructions and tool chains available.
+`Filesystem(label=SkillLabel("filesystem"))` offers the complete skill for
+on-demand activation: loading it makes both its instructions and tool chains available.
 The standalone `get_run_file_command` and `get_apply_patch` builders remain
 available for tool-only compositions.
 

@@ -1,3 +1,7 @@
+from roboz.deployment import (
+    Capability,
+    ToolLabel,
+)
 from pathlib import Path
 
 from roboz.shed.agents import librarian, orchestrator
@@ -11,7 +15,6 @@ from roboz.shed.capabilities import (
 from roboz.shed.sandbox import Sandbox
 from roboz.models import Empty, Message, Str
 from roboz import tool
-from roboz.deployment import AgentCapability, Capability
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import PersistenceSink, RunLifecycleEvent
 
@@ -48,14 +51,17 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
         seen.append(True)
         return Str(value="custom result")
 
-    class CustomCapability(AgentCapability):
+    class CustomCapability(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("custom_capability"))
+
         @property
         def required_attributes(self):
             return {}
 
         def build(self, agent, pipe):
             pipes.append(pipe)
-            return Capability(tools=(custom,))
+            return (custom,)
 
     events = []
     sandbox = Sandbox(tmp_path)

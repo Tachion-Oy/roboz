@@ -14,7 +14,11 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.shed.capabilities import SafeScripts
 from roboz.shed.sandbox import Sandbox
@@ -40,7 +44,7 @@ def _agent(workspace: Path, capability: SafeScripts, *, sink=None):
     definition = DeployableAgent(
         name="script_test",
         system_prompt="Use installed scripts.",
-        default_capabilities=(Capability(tools=(stop,)), capability),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop), capability),
     )
     definition.set_attributes(sandbox=Sandbox(workspace))
     definition.set_agent_endpoint(MockLLMEndpoint([]))
@@ -119,7 +123,7 @@ def _remote_tool(path, sink=None):
     definition = DeployableAgent(
         name="remote_scripts",
         system_prompt="Use scripts.",
-        default_capabilities=(SafeScripts(socket_path=path),),
+        capabilities=(SafeScripts(socket_path=path),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     agent, _ = definition.build(event_sinks=(sink,) if sink else ())

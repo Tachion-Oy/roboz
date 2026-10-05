@@ -1,12 +1,13 @@
-from dataclasses import replace
-
 import pytest
 from roboz.shed.capabilities import Compactification
 from roboz.shed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
 from roboz.agent import AgentMode
 from roboz.models import All
-from roboz.deployment import DeployableAgent
+from roboz.deployment import (
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import MockLLMEndpoint
 
 
@@ -14,12 +15,12 @@ from roboz.llm import MockLLMEndpoint
 def test_compaction_capability_preserves_tool_default_and_explicit_policy(threshold):
     capability = Compactification()
     if threshold is not None:
-        capability = replace(capability, threshold_percent=threshold)
+        capability = Compactification(threshold_percent=threshold)
     endpoint = MockLLMEndpoint([], max_context_tokens=1000)
     agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
-        default_capabilities=(capability,),
+        capabilities=(capability,),
     )
     agent.set_agent_endpoint(endpoint)
     agent, _ = agent.build()
@@ -36,7 +37,7 @@ def test_compaction_override_uses_its_model_context_budget():
     agent = DeployableAgent(
         system_prompt="Compact the conversation.",
         name="test",
-        default_capabilities=(Compactification(endpoint=override),),
+        capabilities=(Compactification(endpoint=override),),
     )
     agent.set_agent_endpoint(default)
     agent, _ = agent.build()
@@ -49,7 +50,7 @@ def test_compaction_without_any_endpoint_fails_before_starting_work():
         system_prompt="Compact the conversation.",
         name="test",
         mode=AgentMode.DETERMINISTIC,
-        default_capabilities=(Compactification(),),
+        capabilities=(Compactification(),),
     )
     with pytest.raises(ValueError, match="agent_endpoint.*None"):
         definition.build()
@@ -76,9 +77,7 @@ def test_compaction_follows_selection_without_initializing_idle_models():
     definition = DeployableAgent(
         name="test",
         system_prompt="Compact the conversation.",
-        default_capabilities=(
-            Compactification(endpoint=LLMEndpointRoute(lambda: selected)),
-        ),
+        capabilities=(Compactification(endpoint=LLMEndpointRoute(lambda: selected)),),
     )
     definition.set_agent_endpoint(default)
     agent, _ = definition.build()
@@ -95,7 +94,7 @@ def test_filesystem_requires_a_configured_sandbox(tmp_path):
     from roboz.shed.sandbox import Sandbox
 
     definition = DeployableAgent(
-        name="files", system_prompt="Work on files.", default_capabilities=(Filesystem(),)
+        name="files", system_prompt="Work on files.", capabilities=(Filesystem(),)
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     with pytest.raises(ValueError, match="sandbox"):
@@ -112,17 +111,25 @@ def test_rebuilding_filesystem_preserves_each_project(tmp_path):
     from roboz.shed.sandbox import Sandbox
 
     def endpoint(own, other):
-        return MockLLMEndpoint([
-            {
-                "action": "apply_patch", "rationale": "Write own project",
-                "path": f"projects/{own}/note.txt", "old_string": "", "new_string": own,
-            },
-            {
-                "action": "apply_patch", "rationale": "Attempt other project",
-                "path": f"projects/{other}/note.txt", "old_string": "", "new_string": "wrong",
-            },
-            {"action": "stop", "rationale": "Done", "value": "done"},
-        ])
+        return MockLLMEndpoint(
+            [
+                {
+                    "action": "apply_patch",
+                    "rationale": "Write own project",
+                    "path": f"projects/{own}/note.txt",
+                    "old_string": "",
+                    "new_string": own,
+                },
+                {
+                    "action": "apply_patch",
+                    "rationale": "Attempt other project",
+                    "path": f"projects/{other}/note.txt",
+                    "old_string": "",
+                    "new_string": "wrong",
+                },
+                {"action": "stop", "rationale": "Done", "value": "done"},
+            ]
+        )
 
     sandbox = Sandbox(tmp_path, scope="one")
     definition = orchestrator(sandbox, agent_endpoint=endpoint("one", "two"))
@@ -134,7 +141,8 @@ def test_rebuilding_filesystem_preserves_each_project(tmp_path):
         _, messages = agent.invoke()
         outputs = [json.loads(m.content) for m in messages if m.role.value == "user"]
         assert [
-            output["status"] for output in outputs
+            output["status"]
+            for output in outputs
             if output.get("caller") == "operation_guard"
         ] == ["allowed", "denied"]
         assert (sandbox.projects_dir / own / "note.txt").read_text() == own
@@ -162,17 +170,25 @@ def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
 
     sandbox = Sandbox(tmp_path, scope="project")
     definition = DeployableAgent(
-        name="files", system_prompt="Edit files.",
-        default_capabilities=(Capability(tools=(stop,)), Filesystem()),
+        name="files",
+        system_prompt="Edit files.",
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop), Filesystem()),
     )
     definition.set_attributes(sandbox=sandbox)
-    definition.set_agent_endpoint(MockLLMEndpoint([
-        {
-            "action": "apply_patch", "rationale": "Shared write",
-            "path": "shared/note.txt", "old_string": "", "new_string": "shared",
-        },
-        {"action": "stop", "rationale": "Done", "value": "done"},
-    ]))
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {
+                    "action": "apply_patch",
+                    "rationale": "Shared write",
+                    "path": "shared/note.txt",
+                    "old_string": "",
+                    "new_string": "shared",
+                },
+                {"action": "stop", "rationale": "Done", "value": "done"},
+            ]
+        )
+    )
     agent, _ = definition.build()
     replies = Replies()
     token = bind_api_user_io(replies)

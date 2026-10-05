@@ -1,3 +1,11 @@
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    RequiredAttributes,
+    SkillLabel,
+    SkillLoading,
+    ToolLabel,
+)
 import pickle
 from copy import copy, deepcopy
 from collections.abc import Mapping
@@ -8,22 +16,19 @@ from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Str
 from roboz import Skill, tool
 from roboz.tools import stop
-from roboz.deployment import (
-    AgentCapability,
-    Capability,
-    DeployableAgent,
-    RequiredAttributes,
-)
 from roboz.llm import MockLLMEndpoint
 
 
-class _ConfiguredCapability(AgentCapability):
+class _ConfiguredCapability(Capability):
+    def __init__(self):
+        super().__init__(label=ToolLabel("configured_capability"))
+
     @property
     def required_attributes(self) -> RequiredAttributes:
         return {"setting": str}
 
     def build(self, agent, pipe):
-        return Capability(tools=(stop,))
+        return (stop,)
 
 
 def _definition(
@@ -36,8 +41,10 @@ def _definition(
     definition = DeployableAgent(
         name=name,
         mode=AgentMode.DETERMINISTIC,
-        default_capabilities=(
-            capabilities if capabilities else (Capability(default_tools=(stop,)),)
+        capabilities=(
+            capabilities
+            if capabilities
+            else (Capability(label=ToolLabel("stop", default=True), value=stop),)
         ),
         nested_agents=nested_agents,
         background_agents=background_agents,
@@ -45,12 +52,15 @@ def _definition(
     return definition
 
 
-def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
+def test_build_preserves_loading_scheduling_and_chain_identity():
     calls = []
     built_pipes = []
     received_agents = []
 
-    class Capabilities(AgentCapability):
+    class ScheduledChain(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("chain", default=True))
+
         @property
         def required_attributes(self) -> Mapping:
             return {}
@@ -69,29 +79,31 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
                 calls.append(input.value)
                 return Empty()
 
-            return Capability(
-                tools=((begin, finish),),
-                default_tools=(begin,),
-                skills=(
-                    Skill(
-                        name="research",
-                        description="Research instructions.",
-                        instructions="ON_DEMAND_MARKER",
-                    ),
-                ),
-                auto_loaded_skills=(
-                    Skill(
-                        name="orientation",
-                        description="Orientation.",
-                        instructions="AUTO_LOADED_MARKER",
-                    ),
-                ),
-            )
+            return ((begin, finish),)
 
     definition = DeployableAgent(
         name="test",
         system_prompt="Exercise the capabilities.",
-        default_capabilities=(Capability(tools=(stop,)), Capabilities()),
+        capabilities=(
+            Capability(label=ToolLabel("stop"), value=stop),
+            ScheduledChain(),
+            Capability(
+                label=SkillLabel("research"),
+                value=Skill(
+                    name="research",
+                    description="Research instructions.",
+                    instructions="ON_DEMAND_MARKER",
+                ),
+            ),
+            Capability(
+                label=SkillLabel("orientation", loading=SkillLoading.AUTOMATIC),
+                value=Skill(
+                    name="orientation",
+                    description="Orientation.",
+                    instructions="AUTO_LOADED_MARKER",
+                ),
+            ),
+        ),
     )
     definition.set_agent_endpoint(
         MockLLMEndpoint(
@@ -112,7 +124,7 @@ def test_capabilities_build_all_four_surfaces_and_preserve_chain_identity():
     assert received_agents == [definition, definition]
     assert agent.pipe is not second.pipe
     assert agent.default_tools[0] is not second.default_tools[0]
-    assert agent.default_tools[0] in agent.tools
+    assert agent.tools[1].chained_to[0] is agent.default_tools[0]
     result, messages = agent.invoke()
     assert result.value == "ok"
     assert calls == ["default", "handoff", "default", "handoff"]
@@ -135,7 +147,7 @@ def test_build_returns_fresh_nested_background_handles():
     child = _definition("child", background_agents=(background,))
     root = _definition(
         "root",
-        capabilities=(Capability(default_tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop", default=True), value=stop),),
         nested_agents=(child,),
         background_agents=(_definition("other"),),
     )
@@ -153,25 +165,28 @@ def test_build_returns_fresh_nested_background_handles():
 def test_each_capability_receives_its_owning_agent():
     received = []
 
-    class Feature:
+    class Feature(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("feature"))
+
         @property
         def required_attributes(self):
             return {}
 
         def build(self, agent, pipe):
             received.append((agent, pipe))
-            return Capability(tools=(stop,))
+            return (stop,)
 
     child = DeployableAgent(
         name="child",
         system_prompt="Complete the task.",
-        default_capabilities=(Feature(),),
+        capabilities=(Feature(),),
     )
     child.set_agent_endpoint(MockLLMEndpoint([]))
     parent = DeployableAgent(
         name="parent",
         system_prompt="Delegate the task.",
-        default_capabilities=(Feature(),),
+        capabilities=(Feature(),),
         nested_agents=(child,),
     )
     parent.set_agent_endpoint(MockLLMEndpoint([]))
@@ -196,6 +211,7 @@ def test_incomplete_configuration_can_be_completed_later():
 def test_configuration_can_be_copied_and_unpickled():
     definition = DeployableAgent(name="copyable", mode=AgentMode.DETERMINISTIC)
     definition.set_attributes(setting="configured")
+    definition.set_capability_selection({})
 
     restored_definitions = (
         copy(definition),
@@ -207,6 +223,9 @@ def test_configuration_can_be_copied_and_unpickled():
         assert restored is not definition
         assert restored.setting == "configured"
         assert restored.mode is AgentMode.DETERMINISTIC
+        assert restored.capability_selection == {}
+        restored.set_capability_selection(None)
+        assert definition.capability_selection == {}
 
 
 def test_agent_modes_are_string_valued_enums():
@@ -224,9 +243,9 @@ def test_agent_modes_are_string_valued_enums():
 @pytest.mark.parametrize("mode", list(AgentMode))
 def test_build_preserves_agent_mode(mode: AgentMode):
     capability = (
-        Capability(default_tools=(stop,))
+        Capability(label=ToolLabel("stop", default=True), value=stop)
         if mode is AgentMode.DETERMINISTIC
-        else Capability(tools=(stop,))
+        else Capability(label=ToolLabel("stop"), value=stop)
     )
     definition = DeployableAgent(
         name=f"{mode}_agent",
@@ -234,7 +253,7 @@ def test_build_preserves_agent_mode(mode: AgentMode):
         system_prompt=(
             "Complete the task." if mode is not AgentMode.DETERMINISTIC else ""
         ),
-        default_capabilities=(capability,),
+        capabilities=(capability,),
     )
     if mode is not AgentMode.DETERMINISTIC:
         definition.set_agent_endpoint(MockLLMEndpoint([]))
@@ -250,7 +269,7 @@ def test_nested_agent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, c
         name="steerable_child",
         mode=AgentMode.STEERABLE,
         system_prompt="Ask once, then stop.",
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
     )
     child.set_agent_endpoint(
         MockLLMEndpoint(
@@ -268,7 +287,7 @@ def test_nested_agent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, c
         name="autonomous_parent",
         mode=AgentMode.AUTONOMOUS,
         system_prompt="Delegate, then stop.",
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
         nested_agents=(child,),
     )
     parent.set_agent_endpoint(
@@ -296,7 +315,9 @@ def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
     none.set_attributes(setting=None)
     wrong = _definition("wrong", capabilities=(_ConfiguredCapability(),))
     wrong.set_attributes(setting=42)
-    root = _definition("root", nested_agents=(missing, none), background_agents=(wrong,))
+    root = _definition(
+        "root", nested_agents=(missing, none), background_agents=(wrong,)
+    )
 
     with pytest.raises(ValueError) as raised:
         root.validate()
@@ -310,9 +331,9 @@ def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
     assert "setting' must be str; got int" in message
 
 
-def test_default_capabilities_and_child_views_cannot_be_replaced_or_cleared():
-    built_in = Capability()
-    extension = Capability(tools=(stop,))
+def test_capabilities_and_child_views_cannot_be_replaced_or_cleared():
+    built_in = Capability(label=ToolLabel("empty"), value=())
+    extension = Capability(label=ToolLabel("stop"), value=stop)
     child = _definition("child")
     background = _definition("background")
     definition = _definition("root", capabilities=(built_in,))
@@ -321,14 +342,10 @@ def test_default_capabilities_and_child_views_cannot_be_replaced_or_cleared():
     definition.add_nested_agents(child)
     definition.add_background_agents(background)
 
-    assert definition.default_capabilities == (built_in,)
-    assert definition.additional_capabilities == (extension,)
     assert definition.capabilities == (built_in, extension)
     assert definition.nested_agents == (child,)
     assert definition.background_agents == (background,)
     for attribute in (
-        "default_capabilities",
-        "additional_capabilities",
         "capabilities",
         "nested_agents",
         "background_agents",
@@ -348,13 +365,16 @@ def test_capability_attributes_cannot_overwrite_agent_structure(name):
 
 
 def test_valid_falsey_capability_attributes_are_accepted():
-    class FalseyCapability:
+    class FalseyCapability(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("falsey_capability"))
+
         @property
         def required_attributes(self):
             return {"items": list, "enabled": bool, "count": int}
 
         def build(self, agent, pipe):
-            return Capability()
+            return ((),)
 
     definition = _definition("falsey", capabilities=(FalseyCapability(),))
     definition.set_attributes(items=[], enabled=False, count=0)

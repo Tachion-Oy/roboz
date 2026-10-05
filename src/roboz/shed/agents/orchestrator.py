@@ -5,7 +5,11 @@ from pathlib import Path
 
 from roboz.shed.capabilities import Filesystem
 from roboz.shed.sandbox import Sandbox
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import EndpointLike
 from roboz.tools import stop
 
@@ -33,8 +37,8 @@ def orchestrator(
         name="orchestrator",
         description="Coordinates ongoing user goals and specialist agents.",
         system_prompt=ORCHESTRATOR_PROMPT,
-        default_capabilities=(
-            Capability(tools=(stop,)),
+        capabilities=(
+            Capability(label=ToolLabel("stop"), value=stop),
             Filesystem(),
         ),
         nested_agents=tuple(nested_agents),

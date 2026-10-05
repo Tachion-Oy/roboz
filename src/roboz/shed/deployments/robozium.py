@@ -3,12 +3,12 @@
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 
-from roboz.shed.agents import librarian, orchestrator
-from roboz.shed.sandbox import Sandbox
 from roboz.agent import Agent
-from roboz.deployment import AgentCapability, DeployableAgent
+from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute
 from roboz.runtime import EventSink, default_event_sinks
+from roboz.shed.agents import librarian, orchestrator
+from roboz.shed.sandbox import Sandbox
 
 
 def robozium(
@@ -17,7 +17,7 @@ def robozium(
     *,
     endpoint_getter: Callable[[], LLMEndpoint],
     memory_endpoint: EndpointLike,
-    additional_capabilities: Sequence[AgentCapability],
+    additional_capabilities: Sequence[Capability],
     specialists: Sequence[DeployableAgent],
     event_sinks: Sequence[EventSink] = (),
 ) -> tuple[Agent, tuple[Agent, ...]]:
@@ -42,11 +42,7 @@ def robozium(
     root.add_capabilities(*additional_capabilities)
     watched_agent_names = root.agent_names(include_background=False)
     root.add_background_agents(
-        librarian(
-            sandbox,
-            watched_agent_names,
-            agent_endpoint=memory_endpoint,
-        )
+        librarian(sandbox, watched_agent_names, agent_endpoint=memory_endpoint)
     )
     context = (
         "## Project context\n"

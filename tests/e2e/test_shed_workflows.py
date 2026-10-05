@@ -1,4 +1,3 @@
-
 """Exercise guarded file tools through the real agent and event pipeline."""
 
 import json
@@ -19,7 +18,11 @@ from roboz.shed.sandbox import Sandbox
 from roboz import Agent
 from roboz.agent import AgentMode
 from roboz.tools import stop
-from roboz.deployment import DeployableAgent, Capability
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink
 
@@ -57,8 +60,8 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
     definition = DeployableAgent(
         name="file_worker",
         system_prompt="Complete the file task and stop.",
-        default_capabilities=(
-            Capability(tools=(stop,)),
+        capabilities=(
+            Capability(label=ToolLabel("stop"), value=stop),
             Filesystem(),
         ),
     )
@@ -164,7 +167,7 @@ def _conversation_snapshot_memory_retention(
         name="librarian",
         mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
-        default_capabilities=(
+        capabilities=(
             ConversationSnapshots(
                 endpoint=MockLLMEndpoint(responses[:1]) if separate_endpoints else None,
                 token_growth_threshold=1,
@@ -224,7 +227,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     child = DeployableAgent(
         name="specialist",
         system_prompt="Complete the delegated task.",
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
     )
     child.set_agent_endpoint(
         MockLLMEndpoint(
@@ -343,30 +346,50 @@ def test_filesystem_capability_writes_and_removes_with_its_skill(tmp_path):
     definition = DeployableAgent(
         name="cli_worker",
         system_prompt="Write, verify, and remove the note.",
-        default_capabilities=(Capability(tools=(stop,)), Filesystem()),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop), Filesystem()),
     )
     definition.set_attributes(sandbox=sandbox)
-    definition.set_agent_endpoint(MockLLMEndpoint([
-        {
-            "action": "run_file_command", "rationale": "Exercise file commands",
-            "value": [
-                ["mkdir", "CMD"], [folder, "PTH"], ["&&", "CTL"],
-                ["tee", "CMD"], ["created by the CLI\n", "ARG"], [path, "PTH"],
-                ["&&", "CTL"], ["cat", "CMD"], [path, "PTH"],
-                ["&&", "CTL"], ["rm", "CMD"], [path, "PTH"],
-            ],
-        },
-        {"action": "stop", "rationale": "Done", "value": "done"},
-    ]))
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {
+                    "action": "run_file_command",
+                    "rationale": "Exercise file commands",
+                    "value": [
+                        ["mkdir", "CMD"],
+                        [folder, "PTH"],
+                        ["&&", "CTL"],
+                        ["tee", "CMD"],
+                        ["created by the CLI\n", "ARG"],
+                        [path, "PTH"],
+                        ["&&", "CTL"],
+                        ["cat", "CMD"],
+                        [path, "PTH"],
+                        ["&&", "CTL"],
+                        ["rm", "CMD"],
+                        [path, "PTH"],
+                    ],
+                },
+                {"action": "stop", "rationale": "Done", "value": "done"},
+            ]
+        )
+    )
     agent, _ = definition.build()
     assert [skill.name for skill in agent.auto_loaded_skills] == ["filesystem"]
     assert "run_file_command" not in {tool.name for tool in agent.active_tools.values()}
     _, messages = agent.invoke()
     active_names = {tool.name for tool in agent.active_tools.values()}
     assert {"run_file_command", "apply_patch"} <= active_names
-    assert not {"operation_guard", "execute_file_command", "continue_file_command"} & active_names
+    assert (
+        not {"operation_guard", "execute_file_command", "continue_file_command"}
+        & active_names
+    )
     results = [json.loads(m.content) for m in messages if m.role.value == "user"]
-    final = [r["value"] for r in results if r.get("caller") == "execute_file_command" and "value" in r][-1]
+    final = [
+        r["value"]
+        for r in results
+        if r.get("caller") == "execute_file_command" and "value" in r
+    ][-1]
     assert final.startswith("Overall: success") and "created by the CLI" in final
     assert (sandbox.resolved_root / folder).is_dir()
     assert not (sandbox.resolved_root / path).exists()

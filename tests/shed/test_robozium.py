@@ -15,7 +15,11 @@ import pytest
 
 from roboz.models import Empty
 from roboz.tools import stop
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
@@ -31,7 +35,7 @@ def _specialist(name, *, nested_agents=(), background_agents=()):
     definition = DeployableAgent(
         name=name,
         system_prompt="Complete specialist work.",
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
         nested_agents=nested_agents,
         background_agents=background_agents,
     )
@@ -79,7 +83,7 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
             sandbox,
             endpoint_getter=lambda: selected,
             memory_endpoint=MockLLMEndpoint([]),
-            additional_capabilities=(Capability(),),
+            additional_capabilities=(Capability(label=ToolLabel("empty"), value=()),),
             specialists=(specialist,),
             event_sinks=(events.append,),
         )
@@ -155,7 +159,10 @@ def test_recipe_composes_proton_bridge_and_safe_scripts_without_connecting(tmp_p
     sandbox = Sandbox(tmp_path / "data").for_project("project")
     root, (librarian,) = _build_recipe(
         sandbox,
-        additional_capabilities=(Email(service), SafeScripts(scripts)),
+        additional_capabilities=(
+            Email(service=service),
+            SafeScripts(scripts_dir=scripts),
+        ),
     )
 
     names = {
@@ -167,10 +174,13 @@ def test_recipe_composes_proton_bridge_and_safe_scripts_without_connecting(tmp_p
         "run_shell_script",
     }
     tools = {tool.name: tool for tool in root.active_tools.values()}
-    assert names <= tools.keys()
+    bound_email = next(
+        skill for skill in root.auto_loaded_skills if skill.name == email_skill.name
+    )
+    assert bound_email.instructions == email_skill.instructions
+    assert names <= tools.keys() | {tool.name for tool in bound_email.tools}
     assert not names.intersection(tool.name for tool in librarian.active_tools.values())
     assert service in root.external_dependencies()
-    assert email_skill in root.auto_loaded_skills
     listed = tools["run_shell_script"](RunShellScriptInput(), [])
     assert [(entry.script, entry.description) for entry in listed.scripts] == [
         ("hello.sh", "Print a greeting.")

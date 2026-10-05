@@ -1,8 +1,15 @@
-from roboz.deployment import AgentCapability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    ToolLabel,
+    DeployableAgent,
+)
 from roboz.runtime import EventPipe
 
 
-class Invalid(AgentCapability):
+class Invalid(Capability):
+    def __init__(self):
+        super().__init__(label=ToolLabel("invalid"))
+
     @property
     def required_attributes(self):
         return {}
@@ -11,4 +18,4 @@ class Invalid(AgentCapability):
         return "not capability contributions"
 
 
-capability: AgentCapability = Invalid()
+capability: Capability = Invalid()
