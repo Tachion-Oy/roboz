@@ -13,10 +13,10 @@ def inspect(
 ) -> None:
     parent = DeployableAgent(
         name="parent",
-        subagents=(child,),
+        nested_agents=(child,),
         background_agents=(background,),
     )
-    assert_type(parent.subagents, tuple[DeployableAgent, ...])
+    assert_type(parent.nested_agents, tuple[DeployableAgent, ...])
     assert_type(parent.background_agents, tuple[DeployableAgent, ...])
     assert_type(parent.add_capabilities(capability), None)
     result = parent.build(event_sinks=(lambda event: None,))

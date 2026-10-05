@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from roboz.agent.core import Agent
-from roboz.agent.subagent import run_subagent
+from roboz.agent.nested_agent import run_nested_agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Str
 from roboz.models.truncation import NO_MESSAGE
@@ -472,7 +472,7 @@ def test_agent_does_not_wire_terminal_subscribers(monkeypatch) -> None:
     console_print.assert_not_called()
 
 
-def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
+def test_nested_agent_lifecycle_events_reach_explicit_event_sinks() -> None:
     collected: list[object] = []
 
     def sink(event: object) -> None:
@@ -494,7 +494,7 @@ def test_nested_subagent_lifecycle_events_reach_explicit_event_sinks() -> None:
             ]
         ),
     )
-    delegate = run_subagent(child).copy(name="delegate")
+    delegate = run_nested_agent(child).copy(name="delegate")
     parent = Agent(
         name="parent_agent",
         tools=[delegate, stop],

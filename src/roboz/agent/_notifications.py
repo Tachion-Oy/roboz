@@ -18,7 +18,7 @@ LLM_PROVIDER_REQUEST_RETRY_PROMPT: Final[str] = (
     "The selected model could not complete the request. Choose another model, "
     "then enter retry and Send."
 )
-SUBAGENT_NO_OUTCOME_PLACEHOLDER: Final[str] = "The agent finished without a message."
+NESTED_AGENT_NO_OUTCOME_PLACEHOLDER: Final[str] = "The agent finished without a message."
 
 
 def auto_load_skill_rationale(skill_name: str) -> str:

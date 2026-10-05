@@ -65,7 +65,7 @@ def test_inspection_builds_all_agent_modes_without_invoking_or_materializing(tmp
             return Capability(tools=(_resource_tool("program", program),))
 
     nested = _definition("nested", endpoints[3])
-    background = _definition("background", endpoints[2], subagents=(nested,))
+    background = _definition("background", endpoints[2], nested_agents=(nested,))
     foreground = _definition(
         "foreground", endpoints[1], default_capabilities=(Feature(),)
     )
@@ -73,7 +73,7 @@ def test_inspection_builds_all_agent_modes_without_invoking_or_materializing(tmp
         "root",
         endpoints[0],
         default_capabilities=(Feature(),),
-        subagents=(foreground,),
+        nested_agents=(foreground,),
         background_agents=(background,),
     )
     absent = tmp_path / "unused"
@@ -139,7 +139,7 @@ def test_inspection_uses_current_configuration_and_fresh_capability_state():
     definition = _definition("root", first, default_capabilities=(Feature(),))
     assert definition.external_dependencies()[0] is first
     definition.set_agent_endpoint(second)
-    definition.add_subagents(_definition("child", first))
+    definition.add_nested_agents(_definition("child", first))
     resources = definition.external_dependencies()
     assert resources[0] is second
     assert first in resources

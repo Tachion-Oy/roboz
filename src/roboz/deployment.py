@@ -12,7 +12,7 @@ from roboz.agent import (
     AgentMode,
     BackgroundAgentContext,
     run_background_agent,
-    run_subagent,
+    run_nested_agent,
 )
 from roboz.dependencies import ExternalDependency
 from roboz.llm import EndpointLike
@@ -83,7 +83,7 @@ class DeployableAgent(HasExternalDependencies):
         mode: AgentMode = AgentMode.STEERABLE,
         automatic_tool_prompt: bool = True,
         default_capabilities: Sequence[AgentCapability] = (),
-        subagents: Sequence["DeployableAgent"] = (),
+        nested_agents: Sequence["DeployableAgent"] = (),
         background_agents: Sequence["DeployableAgent"] = (),
     ) -> None:
         """Configure identity, behavior, fixed capabilities, and initial children."""
@@ -97,12 +97,12 @@ class DeployableAgent(HasExternalDependencies):
         self._automatic_tool_prompt = automatic_tool_prompt
         self._default_capabilities = tuple(default_capabilities)
         self._additional_capabilities: list[AgentCapability] = []
-        self._subagents: list[DeployableAgent] = []
+        self._nested_agents: list[DeployableAgent] = []
         self._background_agents: list[DeployableAgent] = []
         self._agent_endpoint: EndpointLike | None = None
         self._initial_messages: tuple[Path | str, ...] = ()
         self._attributes: dict[str, object] = {}
-        self.add_subagents(*subagents)
+        self.add_nested_agents(*nested_agents)
         self.add_background_agents(*background_agents)
 
     @property
@@ -146,9 +146,9 @@ class DeployableAgent(HasExternalDependencies):
         return (*self._default_capabilities, *self._additional_capabilities)
 
     @property
-    def subagents(self) -> tuple["DeployableAgent", ...]:
+    def nested_agents(self) -> tuple["DeployableAgent", ...]:
         """Return attached synchronous child definitions."""
-        return tuple(self._subagents)
+        return tuple(self._nested_agents)
 
     @property
     def background_agents(self) -> tuple["DeployableAgent", ...]:
@@ -200,9 +200,9 @@ class DeployableAgent(HasExternalDependencies):
         """Append capabilities after this node's fixed defaults."""
         self._additional_capabilities.extend(capabilities)
 
-    def add_subagents(self, *subagents: "DeployableAgent") -> None:
+    def add_nested_agents(self, *nested_agents: "DeployableAgent") -> None:
         """Append synchronous child definitions."""
-        self._subagents.extend(self._checked_agents(subagents))
+        self._nested_agents.extend(self._checked_agents(nested_agents))
 
     def add_background_agents(self, *agents: "DeployableAgent") -> None:
         """Append background child definitions."""
@@ -235,7 +235,7 @@ class DeployableAgent(HasExternalDependencies):
             raise ValueError("agent graph must not contain cycles")
         ancestors = ancestors | {identity}
         names = {self.name}
-        definitions = self.subagents
+        definitions = self.nested_agents
         if include_background:
             definitions += self.background_agents
         for definition in definitions:
@@ -265,7 +265,7 @@ class DeployableAgent(HasExternalDependencies):
         while definitions:
             agent = definitions.pop(0)
             walked.append(agent)
-            definitions.extend((*agent.subagents, *agent.background_agents))
+            definitions.extend((*agent.nested_agents, *agent.background_agents))
         return tuple(walked)
 
     def external_dependencies(self) -> tuple[ExternalDependency, ...]:
@@ -318,12 +318,12 @@ class DeployableAgent(HasExternalDependencies):
         tools = [tool for contribution in contributions for tool in contribution.tools]
         default_tools = [tool for c in contributions for tool in c.default_tools]
         background_agents: list[Agent] = []
-        for definition in self.subagents:
+        for definition in self.nested_agents:
             child, descendants = definition._build(
                 event_sinks=event_sinks, event_sink_factory=event_sink_factory
             )
             tools.append(
-                run_subagent(child).copy(
+                run_nested_agent(child).copy(
                     name=child.name,
                     description=child.description,
                 )

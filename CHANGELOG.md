@@ -14,6 +14,18 @@
   loading instead of exposing tools without their instructions.
   The skill action changes from `cli_tools` / `file_editing` to `filesystem`;
   `run_file_command`, `apply_patch`, and standalone tool builders remain available.
+- Breaking: rename `prompt_agent` to `prompt_llm` and `PromptAgentContext` to
+  `PromptLLMContext`; import them from `roboz.agent` or
+  `roboz.agent.prompt_llm_tool`. Rename `run_subagent` to `run_nested_agent`,
+  available from `roboz.agent` or `roboz.agent.nested_agent`.
+  Use `nested_agents` and `add_nested_agents()` instead of `subagents` and
+  `add_subagents()` on deployment definitions; the Shed orchestrator also takes
+  `nested_agents`. Tool identifiers are now `PROMPT_LLM_TOOL_NAME` and
+  `RUN_NESTED_AGENT_TOOL_NAME`. The old names and modules are removed without
+  compatibility aliases. Execution behavior is unchanged: agents own the tool
+  loop, LLM prompting chooses its next action, and nested agent calls wait for
+  their result. Update caller/action filters for the new tool identifiers;
+  existing persisted records are not rewritten.
 
 ## 0.5.0rc1 - 2026-10-04
 

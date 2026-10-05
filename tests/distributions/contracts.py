@@ -38,9 +38,21 @@ def test_all_modules_and_required_dependencies_are_installed():
 def test_core_dependency_and_agent_contracts():
     import roboz as rz
     from types import SimpleNamespace
+    from roboz.agent import PromptLLMContext, prompt_llm, run_nested_agent
+    from roboz.agent.nested_agent import run_nested_agent as nested_factory
+    from roboz.agent.prompt_llm_tool import PromptLLMContext as PromptContext
+    from roboz.agent.prompt_llm_tool import prompt_llm as prompt_factory
     from roboz.dependencies import ExecutableDependency, dedupe_external_dependencies
     from roboz.llm import LLMEndpoint, LLMEndpointRoute, ModelSelector, MockLLMEndpoint
     from roboz.tools import stop
+
+    assert PromptLLMContext is PromptContext
+    assert prompt_llm is prompt_factory
+    assert run_nested_agent is nested_factory
+    assert prompt_llm.name == "prompt_llm"
+    assert run_nested_agent.name == "run_nested_agent"
+    for name in ("PromptAgentContext", "prompt_agent", "run_subagent"):
+        assert not hasattr(rz.agent, name)
 
     resource = ExecutableDependency("python")
     assert resource.external_dependencies() == (resource,)
@@ -73,6 +85,8 @@ def test_core_dependency_and_agent_contracts():
     )
     assert agent.invoke()[0].value == "ok"
     for name in (
+        "roboz.agent.prompt_agent_tool",
+        "roboz.agent.subagent",
         "roboz.tooling.dependencies",
         "roboz.agents",
         "roboz.workspace",

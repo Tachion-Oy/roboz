@@ -5,14 +5,14 @@ import pytest
 from pydantic import ValidationError
 
 from roboz.agent._identifiers import (
-    PROMPT_AGENT_TOOL_NAME,
+    PROMPT_LLM_TOOL_NAME,
     RUN_BACKGROUND_AGENT_TOOL_NAME,
-    RUN_SUBAGENT_TOOL_NAME,
+    RUN_NESTED_AGENT_TOOL_NAME,
 )
 from roboz.agent.background_agent import run_background_agent
 from roboz.agent.core import Agent
-from roboz.agent.prompt_agent_tool import prompt_agent
-from roboz.agent.subagent import run_subagent
+from roboz.agent.prompt_llm_tool import prompt_llm
+from roboz.agent.nested_agent import run_nested_agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Stop, Str
 from roboz.models.truncation import NO_MESSAGE
@@ -54,13 +54,13 @@ def test_prompt_user_at_start_returns_interaction_reply(bind_user_io):
 @pytest.mark.parametrize(
     "tool_obj, identifier",
     [
-        (prompt_agent, PROMPT_AGENT_TOOL_NAME),
+        (prompt_llm, PROMPT_LLM_TOOL_NAME),
         (prompt_user, PROMPT_USER_TOOL_NAME),
         (message_user, MESSAGE_USER_TOOL_NAME),
         (prompt_user_at_start, PROMPT_USER_AT_START_TOOL_NAME),
         (stop, STOP_TOOL_NAME),
         (run_background_agent, RUN_BACKGROUND_AGENT_TOOL_NAME),
-        (run_subagent, RUN_SUBAGENT_TOOL_NAME),
+        (run_nested_agent, RUN_NESTED_AGENT_TOOL_NAME),
     ],
 )
 def test_tool_name_matches_identifier(tool_obj, identifier):
@@ -68,8 +68,8 @@ def test_tool_name_matches_identifier(tool_obj, identifier):
     assert tool_obj.name == identifier
 
 
-def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
-    caplog.set_level(logging.INFO, logger="roboz.agent.prompt_agent_tool")
+def test_prompt_llm_does_not_emit_redundant_calling_llm_log(caplog):
+    caplog.set_level(logging.INFO, logger="roboz.agent.prompt_llm_tool")
     agent = Agent(
         name="logger_agent",
         tools=[stop],
@@ -82,7 +82,7 @@ def test_prompt_agent_does_not_emit_redundant_calling_llm_log(caplog):
     agent.invoke()
 
     assert not any(
-        record.name == "roboz.agent.prompt_agent_tool" for record in caplog.records
+        record.name == "roboz.agent.prompt_llm_tool" for record in caplog.records
     )
 
 

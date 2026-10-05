@@ -27,12 +27,12 @@ def test_public_robozium_exports_and_skill_name():
     assert robozium_skill.name == "robozium"
 
 
-def _specialist(name, *, subagents=(), background_agents=()):
+def _specialist(name, *, nested_agents=(), background_agents=()):
     definition = DeployableAgent(
         name=name,
         system_prompt="Complete specialist work.",
         default_capabilities=(Capability(tools=(stop,)),),
-        subagents=subagents,
+        nested_agents=nested_agents,
         background_agents=background_agents,
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
@@ -57,7 +57,7 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
     hidden = _specialist("hidden")
     specialist = _specialist(
         "specialist",
-        subagents=(_specialist("nested"),),
+        nested_agents=(_specialist("nested"),),
         background_agents=(hidden,),
     )
     watched = []
@@ -189,7 +189,7 @@ def test_librarian_watches_only_recursive_foreground_names(tmp_path):
     specialists = (
         _specialist(
             "specialist",
-            subagents=(_specialist("nested"),),
+            nested_agents=(_specialist("nested"),),
             background_agents=(_specialist("hidden"),),
         ),
     )

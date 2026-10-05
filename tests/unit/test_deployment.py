@@ -30,7 +30,7 @@ def _definition(
     name: str,
     *,
     capabilities=(),
-    subagents=(),
+    nested_agents=(),
     background_agents=(),
 ) -> DeployableAgent:
     definition = DeployableAgent(
@@ -39,7 +39,7 @@ def _definition(
         default_capabilities=(
             capabilities if capabilities else (Capability(default_tools=(stop,)),)
         ),
-        subagents=subagents,
+        nested_agents=nested_agents,
         background_agents=background_agents,
     )
     return definition
@@ -124,7 +124,7 @@ def test_duplicate_names_fail_before_building_capabilities_or_sinks():
     def unexpected(_name):
         raise AssertionError("Must validate names before allocating sinks")
 
-    root = _definition("duplicate", subagents=(_definition("duplicate"),))
+    root = _definition("duplicate", nested_agents=(_definition("duplicate"),))
     with pytest.raises(ValueError, match="unique"):
         root.build(event_sink_factory=unexpected)
 
@@ -136,7 +136,7 @@ def test_build_returns_fresh_nested_background_handles():
     root = _definition(
         "root",
         capabilities=(Capability(default_tools=(stop,)),),
-        subagents=(child,),
+        nested_agents=(child,),
         background_agents=(_definition("other"),),
     )
 
@@ -172,7 +172,7 @@ def test_each_capability_receives_its_owning_agent():
         name="parent",
         system_prompt="Delegate the task.",
         default_capabilities=(Feature(),),
-        subagents=(child,),
+        nested_agents=(child,),
     )
     parent.set_agent_endpoint(MockLLMEndpoint([]))
 
@@ -245,7 +245,7 @@ def test_build_preserves_agent_mode(mode: AgentMode):
     assert (agent.prompt_user_tool is None) is (mode is AgentMode.AUTONOMOUS)
 
 
-def test_subagent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, capsys):
+def test_nested_agent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, capsys):
     child = DeployableAgent(
         name="steerable_child",
         mode=AgentMode.STEERABLE,
@@ -269,7 +269,7 @@ def test_subagent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, capsy
         mode=AgentMode.AUTONOMOUS,
         system_prompt="Delegate, then stop.",
         default_capabilities=(Capability(tools=(stop,)),),
-        subagents=(child,),
+        nested_agents=(child,),
     )
     parent.set_agent_endpoint(
         MockLLMEndpoint(
@@ -296,7 +296,7 @@ def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
     none.set_attributes(setting=None)
     wrong = _definition("wrong", capabilities=(_ConfiguredCapability(),))
     wrong.set_attributes(setting=42)
-    root = _definition("root", subagents=(missing, none), background_agents=(wrong,))
+    root = _definition("root", nested_agents=(missing, none), background_agents=(wrong,))
 
     with pytest.raises(ValueError) as raised:
         root.validate()
@@ -318,19 +318,19 @@ def test_default_capabilities_and_child_views_cannot_be_replaced_or_cleared():
     definition = _definition("root", capabilities=(built_in,))
 
     definition.add_capabilities(extension)
-    definition.add_subagents(child)
+    definition.add_nested_agents(child)
     definition.add_background_agents(background)
 
     assert definition.default_capabilities == (built_in,)
     assert definition.additional_capabilities == (extension,)
     assert definition.capabilities == (built_in, extension)
-    assert definition.subagents == (child,)
+    assert definition.nested_agents == (child,)
     assert definition.background_agents == (background,)
     for attribute in (
         "default_capabilities",
         "additional_capabilities",
         "capabilities",
-        "subagents",
+        "nested_agents",
         "background_agents",
     ):
         with pytest.raises(AttributeError):

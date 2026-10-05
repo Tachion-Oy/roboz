@@ -66,7 +66,7 @@ Preserve information that affects continuation:
   prioritize, avoid, preserve, ignore, ask about, or validate.
 - Meaningful changes in the active conversation when they clarify the current
   state and next actions.
-- Tool or sub-agent outcomes only when they change what the next agent should
+- Tool or nested agent outcomes only when they change what the next agent should
   believe or do.
 
 Adapt to the task domain:
@@ -78,7 +78,7 @@ Adapt to the task domain:
 - For planning or research work, preserve selected options, rejected options
   with reasons, assumptions, evidence gathered, missing information, deadlines,
   and next decisions.
-- For operational or orchestration work, preserve delegation state, sub-agent
+- For operational or orchestration work, preserve delegation state, nested agent
   results, current routing decisions, outstanding user-facing commitments, and
   what should happen next.
 - For personal or logistical tasks such as travel planning, preserve itinerary

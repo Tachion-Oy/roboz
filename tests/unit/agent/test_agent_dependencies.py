@@ -7,7 +7,7 @@ from rich.console import Console
 
 from roboz.agent.background_agent import BackgroundAgentContext, run_background_agent
 from roboz.agent.core import Agent
-from roboz.agent.subagent import run_subagent
+from roboz.agent.nested_agent import run_nested_agent
 from roboz.llm.endpoints import LLMEndpoint, MockLLMEndpoint
 from roboz.models import Empty, Message
 from roboz.skill.core import Skill
@@ -76,8 +76,8 @@ def test_agent_dependency_view_covers_complete_tool_graph() -> None:
         "executable:passive",
         "executable:default",
     }
-    assert agent._prompt_agent_tool is not None
-    assert agent._prompt_agent_tool.external_dependencies()[0].dependency_id == (
+    assert agent._prompt_llm_tool is not None
+    assert agent._prompt_llm_tool.external_dependencies()[0].dependency_id == (
         "model:test:agent-model"
     )
 
@@ -95,7 +95,7 @@ def test_agent_info_lists_external_dependency_ids_and_kinds() -> None:
         return next(row for row in rows if value in row)
 
     assert "External Dependencies" in output.getvalue()
-    assert "model:test:agent-model (model_endpoint)" in row_containing("prompt_agent")
+    assert "model:test:agent-model (model_endpoint)" in row_containing("prompt_llm")
     assert "executable:active (executable)" in row_containing("use_active")
     assert "executable:passive (executable)" in row_containing("use_passive")
     default_row = row_containing("use_default, use_default")
@@ -109,7 +109,7 @@ def test_agent_info_uses_placeholder_for_tools_without_dependencies() -> None:
     agent._show_tools(Console(file=output, width=240, color_system=None))
 
     prompt_row = next(
-        row for row in output.getvalue().splitlines() if "prompt_agent" in row
+        row for row in output.getvalue().splitlines() if "prompt_llm" in row
     )
     assert prompt_row.split("│")[-2].strip() == "-"
 
@@ -140,19 +140,19 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     ctx = child
     nested = ChildContext(child=child)
     assert {d.dependency_id for d in ctx.external_dependencies()} == expected
-    subagent_tool = run_subagent(ctx)
+    nested_agent_tool = run_nested_agent(ctx)
     background_tool = run_background_agent(BackgroundAgentContext(agent=child))
-    copied_subagent_tool = subagent_tool.copy()
+    copied_nested_agent_tool = nested_agent_tool.copy()
     nested_tool = uses_child(nested)
     parent = Agent(
         name="parent",
         system_prompt="Use the child.",
-        tools=[subagent_tool],
+        tools=[nested_agent_tool],
         agent_endpoint=MockLLMEndpoint(responses=[]),
     )
 
     assert {
-        dependency.dependency_id for dependency in subagent_tool.external_dependencies()
+        dependency.dependency_id for dependency in nested_agent_tool.external_dependencies()
     } == expected
     assert {
         dependency.dependency_id
@@ -165,7 +165,7 @@ def test_agent_wrappers_derive_live_child_tool_graph() -> None:
     assert {d.dependency_id for d in ctx.external_dependencies()} == updated
     assert {d.dependency_id for d in nested.external_dependencies()} == updated
     assert _ids(parent) == updated
-    for wrapper in (subagent_tool, background_tool, copied_subagent_tool, nested_tool):
+    for wrapper in (nested_agent_tool, background_tool, copied_nested_agent_tool, nested_tool):
         assert {
             dependency.dependency_id for dependency in wrapper.external_dependencies()
         } == updated

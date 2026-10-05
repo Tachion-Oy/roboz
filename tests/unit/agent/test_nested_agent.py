@@ -1,17 +1,17 @@
-"""Tests for roboz.agent.subagent."""
+"""Tests for roboz.agent.nested_agent."""
 
 from unittest.mock import patch
 
 from roboz.agent.core import Agent
-from roboz.agent.subagent import SUBAGENT_NO_OUTCOME_PLACEHOLDER, run_subagent
+from roboz.agent.nested_agent import NESTED_AGENT_NO_OUTCOME_PLACEHOLDER, run_nested_agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Stop, Str
 from roboz.tools import stop
 
 
-def test_run_subagent_returns_child_stop_value() -> None:
+def test_run_nested_agent_returns_child_stop_value() -> None:
     child = Agent(
-        name="subagent_child",
+        name="nested_agent_child",
         tools=[stop],
         system_prompt="sub",
         agent_endpoint=MockLLMEndpoint(
@@ -24,32 +24,32 @@ def test_run_subagent_returns_child_stop_value() -> None:
             ]
         ),
     )
-    tool = run_subagent(child)
+    tool = run_nested_agent(child)
     out = tool(input=Empty(), messages=[])
     assert out.value == "plan is in ./plans/foo"
 
 
-def test_run_subagent_uses_placeholder_when_stop_has_no_value() -> None:
+def test_run_nested_agent_uses_placeholder_when_stop_has_no_value() -> None:
     child = Agent(
-        name="subagent_placeholder",
+        name="nested_agent_placeholder",
         tools=[stop],
         system_prompt="sub",
         agent_endpoint=MockLLMEndpoint([]),
     )
-    tool = run_subagent(child)
+    tool = run_nested_agent(child)
     with patch.object(child, "invoke", return_value=(Stop(value=None), [])):
         out = tool(input=Empty(), messages=[])
-    assert out.value == SUBAGENT_NO_OUTCOME_PLACEHOLDER
+    assert out.value == NESTED_AGENT_NO_OUTCOME_PLACEHOLDER
 
 
-def test_run_subagent_passes_input_to_child_agent() -> None:
+def test_run_nested_agent_passes_input_to_child_agent() -> None:
     child = Agent(
-        name="subagent_input",
+        name="nested_agent_input",
         tools=[stop],
         system_prompt="sub",
         agent_endpoint=MockLLMEndpoint([]),
     )
-    tool = run_subagent(child)
+    tool = run_nested_agent(child)
     payload = Str(value="input for the child")
 
     with patch.object(child, "invoke", return_value=(Stop(value="done"), [])) as invoke:

@@ -12,11 +12,11 @@ from roboz.tools import (
     prompt_user_at_start,
     stop,
 )
-from roboz.agent import prompt_agent, run_background_agent, run_subagent
+from roboz.agent import prompt_llm, run_background_agent, run_nested_agent
 from roboz.agent import (
     BackgroundAgentContext,
     BackgroundAgentStatus,
-    PromptAgentContext,
+    PromptLLMContext,
 )
 from roboz.dependencies import ExternalDependency
 from roboz.llm import MockLLMEndpoint
@@ -27,11 +27,11 @@ assert_type(prompt_user, Factory[PromptUser, Str, str])
 assert_type(message_user, Factory[Str, Str, str])
 assert_type(prompt_user_at_start, Factory[All, Str, str])
 assert_type(prompt_user("No reply"), Tool[PromptUser, Str])
-assert_type(run_subagent, Factory[Empty, Str, Agent])
+assert_type(run_nested_agent, Factory[Empty, Str, Agent])
 assert_type(
     run_background_agent, Factory[Empty, BackgroundAgentStatus, BackgroundAgentContext]
 )
-assert_type(prompt_agent, Factory[Empty, Invoke, PromptAgentContext])
+assert_type(prompt_llm, Factory[Empty, Invoke, PromptLLMContext])
 
 agent = Agent(
     name="child",
@@ -40,12 +40,12 @@ agent = Agent(
     agent_endpoint=MockLLMEndpoint([]),
 )
 background = BackgroundAgentContext(agent=agent)
-prompt = PromptAgentContext(
+prompt = PromptLLMContext(
     endpoint=MockLLMEndpoint([]), active_tools=(stop,), pipe=EventPipe()
 )
-assert_type(run_subagent(agent), Tool[Empty, Str])
+assert_type(run_nested_agent(agent), Tool[Empty, Str])
 assert_type(run_background_agent(background), Tool[Empty, BackgroundAgentStatus])
-assert_type(prompt_agent(prompt), Tool[Empty, Invoke])
+assert_type(prompt_llm(prompt), Tool[Empty, Invoke])
 assert_type(background.state.checks, int)
 assert_type(background.external_dependencies(), tuple[ExternalDependency, ...])
 assert_type(prompt.external_dependencies(), tuple[ExternalDependency, ...])

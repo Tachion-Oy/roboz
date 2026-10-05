@@ -37,7 +37,7 @@ def robozium(
     root = orchestrator(
         sandbox,
         agent_endpoint=LLMEndpointRoute(endpoint_getter),
-        subagents=tuple(specialists),
+        nested_agents=tuple(specialists),
     )
     root.add_capabilities(*additional_capabilities)
     watched_agent_names = root.agent_names(include_background=False)
