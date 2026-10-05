@@ -1,4 +1,4 @@
-"""Execute the CLI skill's actual examples through the public agent contract."""
+"""Validate filesystem examples and execute command examples through the agent."""
 
 import json
 import re
@@ -10,10 +10,10 @@ from roboz import Agent
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Role
 from roboz.runtime import EventPipe
-from roboz.shed.models import ActionVerdict, Operation, PermissionRule
-from roboz.shed.skills import cli_skill
-from roboz.shed.skills.cli_tools.prompts import INSTRUCTIONS
-from roboz.shed.tools import get_run_file_command
+from roboz.shed.models import ActionVerdict, ApplyPatch, Operation, PermissionRule
+from roboz.shed.sandbox import PermissionPolicy
+from roboz.shed.skills import FilesystemContext, filesystem_skill
+from roboz.shed.skills.filesystem.prompts import CLI_INSTRUCTIONS, PATCH_INSTRUCTIONS
 from roboz.shed.tools.cli_commands import FileCommand
 from roboz.tools import stop
 
@@ -21,18 +21,26 @@ EXAMPLES = {
     heading: json.loads(payload)
     for heading, payload in re.findall(
         r"### ([^\n]+)\n(?:(?!\n### ).)*?```json\n(.*?)\n```",
-        INSTRUCTIONS,
+        CLI_INSTRUCTIONS,
         flags=re.DOTALL,
     )
 }
 
 
-def test_all_skill_examples_use_the_public_input_contract():
-    blocks = re.findall(r"```json\n(.*?)\n```", INSTRUCTIONS, re.DOTALL)
+def test_all_command_examples_use_the_public_input_contract():
+    blocks = re.findall(r"```json\n(.*?)\n```", CLI_INSTRUCTIONS, re.DOTALL)
     assert blocks and len(EXAMPLES) == len(blocks)
     for block in blocks:
         request = FileCommand.model_validate(json.loads(block))
         assert request.value
+
+
+def test_all_patch_examples_use_the_public_input_contract():
+    blocks = re.findall(r"```json\n(.*?)\n```", PATCH_INSTRUCTIONS, re.DOTALL)
+    assert blocks
+    for block in blocks:
+        request = ApplyPatch.model_validate(json.loads(block))
+        assert request.path
 
 
 @pytest.fixture
@@ -47,9 +55,18 @@ def workspace(tmp_path):
     return tmp_path
 
 
-def _run(workspace, example, **policy):
-    tools = get_run_file_command(
-        base=workspace, default_verdict=ActionVerdict.allow, **policy
+def _run(workspace, example, *, deny_rules=(), ask_rules=(), pipe=None):
+    pipe = EventPipe() if pipe is None else pipe
+    skill = filesystem_skill(
+        FilesystemContext(
+            permissions=PermissionPolicy(
+                base=workspace,
+                default_verdict=ActionVerdict.allow,
+                deny=tuple(deny_rules),
+                ask=tuple(ask_rules),
+            ),
+            pipe=pipe,
+        )
     )
     agent = Agent(
         name="cli_examples",
@@ -64,8 +81,9 @@ def _run(workspace, example, **policy):
                 {"action": "stop", "rationale": "Done", "value": "done"},
             ]
         ),
-        tools=[*tools, stop],
-        auto_loaded_skills=[cli_skill],
+        tools=[stop],
+        auto_loaded_skills=[skill],
+        event_pipe=pipe,
         initial_messages=None,
     )
     _, messages = agent.invoke()
@@ -73,7 +91,7 @@ def _run(workspace, example, **policy):
         json.loads(message.content) for message in messages if message.role == Role.USER
     ]
     assert any(
-        item.get("caller") == cli_skill.name and "# Instructions" in item.get("value", "")
+        item.get("caller") == skill.name and "# Instructions" in item.get("value", "")
         for item in results
     )
     return [

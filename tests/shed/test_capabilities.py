@@ -90,14 +90,12 @@ def test_compaction_follows_selection_without_initializing_idle_models():
     assert tool(input=All(), messages=[]).to_compaction == "2.4k"
 
 
-@pytest.mark.parametrize("capability", ["commands", "editing"])
-def test_guarded_capabilities_require_a_configured_sandbox(tmp_path, capability):
-    from roboz.shed.capabilities import FileCommands, FileEditing
+def test_filesystem_requires_a_configured_sandbox(tmp_path):
+    from roboz.shed.capabilities import Filesystem
     from roboz.shed.sandbox import Sandbox
 
-    selected = FileCommands() if capability == "commands" else FileEditing()
     definition = DeployableAgent(
-        name="files", system_prompt="Work on files.", default_capabilities=(selected,)
+        name="files", system_prompt="Work on files.", default_capabilities=(Filesystem(),)
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     with pytest.raises(ValueError, match="sandbox"):
@@ -107,50 +105,49 @@ def test_guarded_capabilities_require_a_configured_sandbox(tmp_path, capability)
         definition.build()
 
 
-def test_rebuilding_file_editing_preserves_each_project(tmp_path):
+def test_rebuilding_filesystem_preserves_each_project(tmp_path):
+    import json
+
     from roboz.shed.agents import orchestrator
-    from roboz.shed.models import ApplyPatch, GuardStatus
     from roboz.shed.sandbox import Sandbox
 
+    def endpoint(own, other):
+        return MockLLMEndpoint([
+            {
+                "action": "apply_patch", "rationale": "Write own project",
+                "path": f"projects/{own}/note.txt", "old_string": "", "new_string": own,
+            },
+            {
+                "action": "apply_patch", "rationale": "Attempt other project",
+                "path": f"projects/{other}/note.txt", "old_string": "", "new_string": "wrong",
+            },
+            {"action": "stop", "rationale": "Done", "value": "done"},
+        ])
+
     sandbox = Sandbox(tmp_path, scope="one")
-    definition = orchestrator(sandbox, agent_endpoint=MockLLMEndpoint([]))
+    definition = orchestrator(sandbox, agent_endpoint=endpoint("one", "two"))
     first, _ = definition.build()
     sandbox.configure_scope("two")
+    definition.set_agent_endpoint(endpoint("two", "one"))
     second, _ = definition.build()
-    for agent, own, other in ((first, "one", "two"), (second, "two", "one")):
-        entry = next(tool for tool in agent.tools if tool.name == "apply_patch")
-        guard = next(tool for tool in agent.tools if entry in (tool.chained_to or ()))
-        execute = next(tool for tool in agent.tools if guard in (tool.chained_to or ()))
-        allowed = guard(
-            entry(
-                ApplyPatch(
-                    path=f"projects/{own}/note.txt", old_string="", new_string=own
-                ),
-                [],
-            ),
-            [],
-        )
-        assert allowed.status == GuardStatus.ALLOWED
-        execute(allowed, [])
+    for agent, own in ((first, "one"), (second, "two")):
+        _, messages = agent.invoke()
+        outputs = [json.loads(m.content) for m in messages if m.role.value == "user"]
+        assert [
+            output["status"] for output in outputs
+            if output.get("caller") == "operation_guard"
+        ] == ["allowed", "denied"]
         assert (sandbox.projects_dir / own / "note.txt").read_text() == own
-        denied = guard(
-            entry(
-                ApplyPatch(
-                    path=f"projects/{other}/note.txt", old_string="", new_string="wrong"
-                ),
-                [],
-            ),
-            [],
-        )
-        assert denied.status == GuardStatus.DENIED
+    assert (sandbox.projects_dir / "one/note.txt").read_text() == "one"
 
 
 @pytest.mark.parametrize("reply,allowed", [("yes", True), ("no", False)])
-def test_file_editing_keeps_shared_write_confirmation(tmp_path, reply, allowed):
-    from roboz.shed.capabilities import FileEditing
-    from roboz.shed.models import ApplyPatch, GuardStatus
+def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
+    from roboz.shed.capabilities import Filesystem
     from roboz.shed.sandbox import Sandbox
-    from roboz.runtime import EventPipe, bind_api_user_io, reset_api_user_io
+    from roboz.runtime import bind_api_user_io, reset_api_user_io
+    from roboz.deployment import Capability
+    from roboz.tools import stop
 
     class Replies:
         def __init__(self):
@@ -164,25 +161,27 @@ def test_file_editing_keeps_shared_write_confirmation(tmp_path, reply, allowed):
             pytest.fail("Expected a confirmation request")
 
     sandbox = Sandbox(tmp_path, scope="project")
-    definition = DeployableAgent(name="files", system_prompt="Edit files.")
+    definition = DeployableAgent(
+        name="files", system_prompt="Edit files.",
+        default_capabilities=(Capability(tools=(stop,)), Filesystem()),
+    )
     definition.set_attributes(sandbox=sandbox)
-    ((entry, guard, execute),) = FileEditing().build(definition, EventPipe()).tools
+    definition.set_agent_endpoint(MockLLMEndpoint([
+        {
+            "action": "apply_patch", "rationale": "Shared write",
+            "path": "shared/note.txt", "old_string": "", "new_string": "shared",
+        },
+        {"action": "stop", "rationale": "Done", "value": "done"},
+    ]))
+    agent, _ = definition.build()
     replies = Replies()
     token = bind_api_user_io(replies)
     try:
-        result = guard(
-            entry(
-                ApplyPatch(path="shared/note.txt", old_string="", new_string="shared"),
-                [],
-            ),
-            [],
-        )
+        agent.invoke()
     finally:
         reset_api_user_io(token)
-    assert (result.status == GuardStatus.ALLOWED) is allowed
     assert len(replies.prompts) == 1
     if allowed:
-        execute(result, [])
         assert (sandbox.shared_dir / "note.txt").read_text() == "shared"
     else:
         assert not (sandbox.shared_dir / "note.txt").exists()

@@ -3,7 +3,8 @@ import json
 import pytest
 
 from roboz.models import Empty, LocationStr, Message, Str
-from roboz.tooling.decorators import tool
+from roboz.tooling import Tool
+from roboz.tooling.decorators import factory, tool
 from roboz.skill.core import Skill, load_skills
 
 
@@ -30,6 +31,54 @@ def test_skill_creation():
     assert skill.name == "test_skill"
     assert skill.description == "A test skill"
     assert "Do something!" in skill.prompt
+    assert skill.tools == [sample_tool]
+
+
+def test_skill_factory_builds_with_the_exact_context_on_each_call():
+    calls = []
+
+    @factory
+    def read_context(input: Empty, messages: list[Message], ctx: list[str]) -> Str:
+        return Str(value=", ".join(ctx))
+
+    def build_tools(ctx: list[str]) -> list[Tool | list[Tool]]:
+        calls.append(ctx)
+        return [sample_tool, [read_context(ctx)]]
+
+    build_skill = Skill.factory(
+        name="context_skill",
+        description="A configured skill",
+        instructions="Use the configured tools.",
+        build_tools=build_tools,
+    )
+    assert calls == []
+
+    ctx = ["first"]
+    first = build_skill(ctx)
+    second = build_skill(ctx)
+    assert len(calls) == 2 and all(call is ctx for call in calls)
+    assert first is not second
+    assert first.name == "context_skill"
+    assert first.description == "A configured skill"
+    assert first.instructions == "Use the configured tools."
+    assert first.tools[0] is sample_tool
+    assert len(first.tools) == 2
+    ctx.append("second")
+    assert first.tools[1](Empty(), []).value == "first, second"
+
+
+def test_skill_factory_preserves_the_supplied_prerequisite():
+    prerequisite = Skill(name="base", description="Base", instructions="Start here.")
+    build_skill = Skill.factory(
+        name="child",
+        description="Child",
+        instructions="Continue here.",
+        build_tools=lambda ctx: [sample_tool],
+        depends_on=prerequisite,
+    )
+    skill = build_skill(None)
+    assert skill.depends_on is prerequisite
+    assert "builds on the skill base" in skill.prompt
     assert skill.tools == [sample_tool]
 
 

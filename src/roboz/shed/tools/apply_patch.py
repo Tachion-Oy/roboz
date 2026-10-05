@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from roboz.shed.identifiers import APPLY_PATCH_TOOL_NAME, FILE_EDITING_SKILL_NAME
+from roboz.shed.identifiers import APPLY_PATCH_TOOL_NAME, FILESYSTEM_SKILL_NAME
 from roboz.shed.models import (
     ActionVerdict,
     ApplyPatch,
@@ -145,7 +145,7 @@ def get_apply_patch(
     takes_precedence: ActionVerdict | None = None,
     execute_cli_truncation: TruncationSpec = default_cli_truncation(),
     pipe: EventPipe | None = None,
-    file_editing_skill_name: str = FILE_EDITING_SKILL_NAME,
+    file_editing_skill_name: str = FILESYSTEM_SKILL_NAME,
 ) -> list[Tool]:
     """Single-file apply_patch: same guard chain as CLI tools, Python replace executor.
 
@@ -160,7 +160,8 @@ def get_apply_patch(
         pipe: Optional event pipe used for interactive guard prompts.
         file_editing_skill_name: Skill id (``Skill.name``) referenced in the tool
             description as the source of detailed file-editing usage instructions.
-            Defaults to ``FILE_EDITING_SKILL_NAME``.
+            Defaults to ``FILESYSTEM_SKILL_NAME``. The keyword is retained for
+            standalone callers; the filesystem skill binds both tool chains.
     """
     allow = list(allow_rules if allow_rules else [])
     deny = list(deny_rules if deny_rules else [])

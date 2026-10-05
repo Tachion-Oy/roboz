@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz.shed.capabilities import FileCommands, FileEditing
+from roboz.shed.capabilities import Filesystem
 from roboz.shed.sandbox import Sandbox
 from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import EndpointLike
@@ -35,8 +35,7 @@ def orchestrator(
         system_prompt=ORCHESTRATOR_PROMPT,
         default_capabilities=(
             Capability(tools=(stop,)),
-            FileCommands(),
-            FileEditing(),
+            Filesystem(),
         ),
         subagents=tuple(subagents),
         background_agents=tuple(background_agents),

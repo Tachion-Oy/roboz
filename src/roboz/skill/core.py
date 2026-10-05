@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from logging import getLogger
 from pathlib import Path
 from typing import Final
@@ -79,6 +79,35 @@ class Skill:
             tools=self.tools if tools is None else tools,
             depends_on=self.depends_on,
         )
+
+    @classmethod
+    def factory[Ctx](
+        cls,
+        *,
+        name: str,
+        description: str,
+        instructions: str,
+        build_tools: Callable[[Ctx], Sequence[Tool | Sequence[Tool]]],
+        depends_on: Skill | None = None,
+    ) -> Callable[[Ctx], Skill]:
+        """Define a typed context-taking constructor for a complete skill.
+
+        Defining the factory does not call the tool builder. Each invocation
+        forwards the supplied context unchanged, calls the builder, and creates
+        a new skill through the normal constructor. The builder owns context
+        routing and tool identities. No results are cached, and context and
+        tool objects are not copied. Builder and constructor errors propagate.
+        """
+        def build(ctx: Ctx) -> Skill:
+            return cls(
+                name=name,
+                description=description,
+                instructions=instructions,
+                tools=build_tools(ctx),
+                depends_on=depends_on,
+            )
+
+        return build
 
     @classmethod
     def load_from_json(
