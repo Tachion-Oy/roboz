@@ -407,9 +407,7 @@ class DeployableAgent(HasExternalDependencies):
         self._validate(include_all=True)
         resources: list[ExternalDependency] = []
         for definition in self._walk():
-            endpoint = definition.agent_endpoint
-            if definition.mode is not AgentMode.DETERMINISTIC and endpoint is not None:
-                resources.extend(endpoint.external_dependencies())
+            resources.extend(definition._endpoint_dependencies())
             tools, defaults, skills, automatic_skills = (
                 definition._build_capability_inputs(EventPipe(), include_all=True)
             )
@@ -418,6 +416,15 @@ class DeployableAgent(HasExternalDependencies):
             for tool in (*defaults, *tools):
                 resources.extend(tool.external_dependencies())
         return dedupe_external_dependencies(resources)
+
+    def _endpoint_dependencies(self) -> tuple[ExternalDependency, ...]:
+        """Inspect the agent's model endpoint only when its mode uses it."""
+        if self.mode is AgentMode.DETERMINISTIC:
+            return ()
+        endpoint = self.agent_endpoint
+        if endpoint is None:
+            return ()
+        return endpoint.external_dependencies()
 
     def build(
         self,
