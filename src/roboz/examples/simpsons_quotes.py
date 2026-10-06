@@ -36,6 +36,7 @@ QUOTES: Final[list[str]] = [
     "I'm all hopped up on goofballs.",
     "D'oh!",
     "Everything's coming up Milhouse!",
+    "Go banana!",
     "Yoink!",
     "Ha-ha!",
     "Smell ya later!",

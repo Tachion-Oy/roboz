@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0a1 - 2026-10-06
+
 - Breaking: unify deployable-agent capabilities under `capabilities=` and
   `add_capabilities()`, with typed `CapabilityLabel`, `ToolLabel`, and `SkillLabel`
   metadata. Register existing objects with keyword-only
