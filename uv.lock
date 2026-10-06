@@ -965,7 +965,7 @@ wheels = [
 
 [[package]]
 name = "roboz"
-version = "0.5.0"
+version = "0.6.0a1"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
