@@ -355,6 +355,10 @@ constructed prerequisite skill.
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
 credentials, decrypted before construction. A settings callable may instead
 resolve current credentials when an operation runs; inspection does not call it.
+`ProtonBridgeSettings.from_env(prefix="PROTON_BRIDGE_")` reads the current
+environment. Pass it as the settings callable to defer loading. A custom prefix
+keeps application-specific names in the application; parsing and validation stay
+with the provider settings.
 For a self-signed Bridge certificate, configure `certificate_sha256` or a trusted
 `ca_file`. Pass the service to
 `get_work_with_email(service=..., ...)`.

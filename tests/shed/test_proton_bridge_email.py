@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
+from functools import partial
 from imaplib import IMAP4
 from threading import Event
 
@@ -581,23 +582,33 @@ def test_decrypted_credentials_and_factory_dependency(tmp_path, monkeypatch, cli
     assert "bridge-password" not in str(provider.redacted_metadata())
 
 
-def test_settings_are_resolved_at_use_and_not_retained(client):
-    current = None
-
-    def resolve():
-        if current is None:
-            raise EmailProviderError("Bridge credentials are locked")
-        return current
-
+def test_environment_settings_are_resolved_at_use_and_not_retained(client, monkeypatch):
+    prefix = "TEST_PROTON_BRIDGE_"
+    monkeypatch.delenv(prefix + "PASSWORD_SECRET", raising=False)
     provider = ProtonBridgeEmailService(
-        resolve, client_factory=lambda settings, context: client
+        partial(ProtonBridgeSettings.from_env, prefix=prefix),
+        client_factory=lambda settings, context: client,
     )
     assert provider.external_dependencies() == (provider,)
     assert provider.redacted_metadata() == {"provider": "proton_bridge"}
-    with pytest.raises(EmailProviderError, match="locked"):
+    with pytest.raises(EmailProviderError, match=prefix):
         provider.check()
-    current = settings()
+    for name, value in {
+        "IMAP_HOST": "127.0.0.1",
+        "IMAP_PORT": "1143",
+        "TLS_MODE": "starttls",
+        "ACCOUNT_ADDRESS": "me@example.com",
+        "USERNAME": "bridge-user",
+        "PASSWORD_SECRET": "bridge-password",
+        "CERTIFICATE_SHA256": "",
+    }.items():
+        monkeypatch.setenv(prefix + name, value)
+    assert ProtonBridgeSettings.from_env(prefix) == settings()
     assert provider.check()
-    current = None
-    with pytest.raises(EmailProviderError, match="locked"):
+    monkeypatch.setenv(prefix + "PASSWORD_SECRET", "roboz:v1:opaque")
+    with pytest.raises(EmailProviderError, match=prefix) as error:
+        provider.check()
+    assert "roboz:v1:opaque" not in str(error.value)
+    monkeypatch.delenv(prefix + "PASSWORD_SECRET")
+    with pytest.raises(EmailProviderError, match=prefix):
         provider.check()

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import (
     BaseModel,
@@ -15,6 +16,8 @@ from pydantic import (
     StringConstraints,
     field_validator,
 )
+
+from ..contracts import EmailProviderError
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -54,6 +57,31 @@ class ProtonBridgeSettings(BaseModel):
     ca_file: Path | None = None
     certificate_sha256: str | None = None
     timeout_s: float = Field(default=15.0, gt=0, allow_inf_nan=False)
+
+    @classmethod
+    def from_env(cls, prefix: str = "PROTON_BRIDGE_") -> Self:
+        """Read current prefixed environment settings without caching credentials.
+
+        Require IMAP_HOST, IMAP_PORT, TLS_MODE, ACCOUNT_ADDRESS, USERNAME, and
+        PASSWORD_SECRET; CERTIFICATE_SHA256 is optional. Credentials must already
+        be decrypted. Missing or invalid values raise a redacted EmailProviderError.
+        """
+        try:
+            return cls.model_validate(
+                {
+                    "imap_host": os.environ.get(prefix + "IMAP_HOST"),
+                    "imap_port": os.environ.get(prefix + "IMAP_PORT"),
+                    "tls_mode": os.environ.get(prefix + "TLS_MODE"),
+                    "account_address": os.environ.get(prefix + "ACCOUNT_ADDRESS"),
+                    "username": os.environ.get(prefix + "USERNAME"),
+                    "password": os.environ.get(prefix + "PASSWORD_SECRET"),
+                    "certificate_sha256": os.environ.get(prefix + "CERTIFICATE_SHA256") or None,
+                }
+            )
+        except ValueError:
+            raise EmailProviderError(
+                f"Configure {prefix}* with decrypted Proton Bridge settings."
+            ) from None
 
     @field_validator("username", "password")
     @classmethod
