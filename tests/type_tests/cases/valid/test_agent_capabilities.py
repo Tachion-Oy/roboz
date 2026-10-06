@@ -1,10 +1,11 @@
 from roboz.deployment import (
     Capability,
     DeployableAgent,
+    SkillLabel,
     SkillLoading,
     ToolLabel,
 )
-from typing import assert_type
+from typing import Literal, assert_type
 from collections.abc import Mapping
 
 from roboz import Agent
@@ -54,5 +55,8 @@ assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])
 
 assert_type(definition.capabilities, tuple[Capability, ...])
 assert_type(definition.capability_selection, Mapping[str, bool | SkillLoading] | None)
+assert_type(definition.resolve_capabilities(), dict[str, bool | SkillLoading])
+assert_type(ToolLabel("tool").kind, Literal["tool"])
+assert_type(SkillLabel("skill").kind, Literal["skill"])
 assert_type(definition.set_capability_selection({}), None)
 assert_type(definition.set_capability_selection(None), None)

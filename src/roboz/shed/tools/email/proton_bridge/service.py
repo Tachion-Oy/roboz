@@ -45,18 +45,24 @@ class ProtonBridgeEmailService(EmailService):
 
     def __init__(
         self,
-        settings: ProtonBridgeSettings,
+        settings: ProtonBridgeSettings | Callable[[], ProtonBridgeSettings],
         *,
         signature: EmailSignature | None = None,
         client_factory: ClientFactory = default_client_factory,
     ) -> None:
         """Accept explicit settings and an optional IMAPClient transport factory.
 
-        Construction performs no I/O. Each operation owns its connection.
+        A settings callable resolves current credentials when an operation runs.
+        Construction and inspection do not call it. Each operation owns its connection.
         """
-        self._settings = settings
+        self._settings_source = settings
         self._signature = signature
         self._client_factory = client_factory
+
+    @property
+    def _settings(self) -> ProtonBridgeSettings:
+        source = self._settings_source
+        return source() if callable(source) else source
 
     @property
     def dependency_id(self) -> str:
@@ -65,6 +71,8 @@ class ProtonBridgeEmailService(EmailService):
 
     def redacted_metadata(self) -> dict[str, str]:
         """Describe the connection without exposing credentials."""
+        if callable(self._settings_source):
+            return {"provider": "proton_bridge"}
         return {
             "provider": "proton_bridge",
             "host": self._settings.imap_host,

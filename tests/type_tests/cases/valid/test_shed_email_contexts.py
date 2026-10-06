@@ -74,6 +74,8 @@ def bind(service: EmailService, base: Path) -> None:
 
 
 def bind_proton_bridge(base: Path, username: str, password: str) -> None:
+    assert_type(ProtonBridgeSettings.from_env(), ProtonBridgeSettings)
+    assert_type(ProtonBridgeSettings.from_env("APP_PROTON_"), ProtonBridgeSettings)
     settings = ProtonBridgeSettings(
         imap_host="127.0.0.1",
         imap_port=1143,

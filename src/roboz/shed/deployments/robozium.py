@@ -2,13 +2,21 @@
 
 from collections.abc import Callable, Sequence
 from dataclasses import replace
+from pathlib import Path
 
-from roboz.agent import Agent
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    SkillLabel,
+    SkillLoading,
+    ToolLabel,
+)
 from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute
-from roboz.runtime import EventSink, default_event_sinks
 from roboz.shed.agents import librarian, orchestrator
+from roboz.shed.capabilities import Compactification, Email, SafeScripts
 from roboz.shed.sandbox import Sandbox
+from roboz.shed.skills import robozium as robozium_skill
+from roboz.shed.tools.email import EmailService
 
 
 def robozium(
@@ -17,16 +25,17 @@ def robozium(
     *,
     endpoint_getter: Callable[[], LLMEndpoint],
     memory_endpoint: EndpointLike,
-    additional_capabilities: Sequence[Capability],
-    specialists: Sequence[DeployableAgent],
-    event_sinks: Sequence[EventSink] = (),
-) -> tuple[Agent, tuple[Agent, ...]]:
-    """Build a fresh fixed orchestrator and Librarian for a scoped project.
+    email_service: EmailService,
+    specialists: Sequence[DeployableAgent] = (),
+    scripts_dir: Path | None = None,
+    script_socket: Path | None = None,
+) -> DeployableAgent:
+    """Define the persistent orchestrator and its fixed Librarian maintenance.
 
-    Additional capabilities follow the orchestrator's protected defaults, and
-    specialists become its synchronous children. The Librarian definition and
-    capability pipeline are owned entirely by this recipe. Construction creates
-    fresh runtime agents and bindings but does not start them.
+    The orchestrator owns its standard capabilities. SafeScripts and email are
+    selectable; callers may attach local capabilities and choose a selection
+    before calling ``build``. Email uses the supplied service. Scripts use
+    the read-only safe-scripts directory unless a directory or socket is supplied.
     """
     sandbox = replace(sandbox)
     project_slug = sandbox.scope
@@ -39,7 +48,24 @@ def robozium(
         agent_endpoint=LLMEndpointRoute(endpoint_getter),
         nested_agents=tuple(specialists),
     )
-    root.add_capabilities(*additional_capabilities)
+    if scripts_dir is None and script_socket is None:
+        scripts_dir = sandbox.readonly_dir / "safe-scripts"
+    root.add_capabilities(
+        Capability(
+            label=SkillLabel("robozium", loading=SkillLoading.AUTOMATIC),
+            value=robozium_skill,
+        ),
+        Compactification(threshold_percent=60.0),
+        Email(
+            label=SkillLabel("email", selectable=True, loading=SkillLoading.AUTOMATIC),
+            service=email_service,
+        ),
+        SafeScripts(
+            label=ToolLabel("safe_scripts", selectable=True),
+            scripts_dir=scripts_dir,
+            socket_path=script_socket,
+        ),
+    )
     watched_agent_names = root.agent_names(include_background=False)
     root.add_background_agents(
         librarian(sandbox, watched_agent_names, agent_endpoint=memory_endpoint)
@@ -56,16 +82,7 @@ def robozium(
         f"Memory: {sandbox.project_memory_dir()}"
     )
     root.set_initial_messages((sandbox.project_memory_dir(), context))
-    caller_sinks = tuple(event_sinks)
-
-    def sinks(name: str) -> tuple[EventSink, ...]:
-        """Create agent-specific persistence sinks for this runtime build."""
-        return default_event_sinks(
-            data_path=sandbox.project_logs_dir() / name,
-            include_cli=False,
-        )
-
-    return root.build(event_sinks=caller_sinks, event_sink_factory=sinks)
+    return root
 
 
 __all__ = ["robozium"]

@@ -282,7 +282,8 @@ that order.
 `SkillLabel` declares `SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`.
 A skill's instructions and embedded tools always remain together.
 
-Inspect `agent.capabilities` and their labels without building tools. Selection
+Inspect `agent.capabilities` and their labels without building tools. Each label's
+`kind` is `"tool"` or `"skill"`, so callers can expose metadata directly. Selection
 belongs to the agent, not the shared capability: `capability_selection` is a
 read-only view, and `set_capability_selection(...)` replaces it for future builds.
 `None`, the initial value, includes all declared capabilities. An explicit map
@@ -291,6 +292,12 @@ are disabled. `True` uses declared behavior, `False` disables an optional entry,
 and a `SkillLoading` value changes a selectable skill's loading mode. New optional
 entries stay disabled under an explicit map until selected. Existing runtimes
 keep their configuration, and child definitions have their own selections.
+
+`agent.resolve_capabilities()` returns effective choices for every declaration:
+fixed entries are `True`, enabled optional skills use their loading mode, and
+disabled entries are `False`. It leaves the explicit selection unchanged and
+does not build capabilities. The returned map can be passed back to
+`set_capability_selection()` or compared with another run's choices.
 
 For a capability requiring runtime bindings, subclass `Capability`, pass its
 label to `super().__init__(label=...)`, and override
@@ -346,13 +353,28 @@ constructed prerequisite skill.
 
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
-credentials, decrypted before construction. For a self-signed Bridge certificate,
-configure `certificate_sha256` or a trusted `ca_file`. Pass the service to
+credentials, decrypted before construction. A settings callable may instead
+resolve current credentials when an operation runs; inspection does not call it.
+`ProtonBridgeSettings.from_env(prefix="PROTON_BRIDGE_")` reads the current
+environment. Pass it as the settings callable to defer loading. A custom prefix
+keeps application-specific names in the application; parsing and validation stay
+with the provider settings.
+For a self-signed Bridge certificate, configure `certificate_sha256` or a trusted
+`ca_file`. Pass the service to
 `get_work_with_email(service=..., ...)`.
 
-For Robozium, pass `Email(service=...)` and `SafeScripts(scripts_dir=...)` from
-`roboz.shed.capabilities` through `additional_capabilities`. Keep the trusted
-script directory outside agent-writable paths.
+`roboz.shed.deployments.robozium(...)` returns a `DeployableAgent`. Its built-ins
+include fixed filesystem, stop, compactification, and Robozium guidance, plus
+selectable SafeScripts and email. Supply `email_service=...` and optionally
+`scripts_dir=...` or `script_socket=...`; scripts otherwise use the sandbox's
+read-only `safe-scripts` directory. Keep that directory outside agent-writable
+paths.
+
+Attach local additions with `definition.add_capabilities(...)`, apply
+`definition.set_capability_selection(...)`, then call `definition.build(...)`.
+This replaces the recipe's former `additional_capabilities` and `event_sinks`
+arguments and runtime tuple return. Supply event sinks and per-agent persistence
+through `build(event_sinks=..., event_sink_factory=...)`.
 
 `Email` preserves its declared `SkillLabel` when building a complete skill with
 email instructions and tools. Its default label loads that skill automatically;
