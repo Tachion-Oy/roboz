@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
+from typing import ClassVar, Literal
 
 from roboz.agent import (
     Agent,
@@ -49,6 +50,7 @@ class CapabilityLabel:
 class ToolLabel(CapabilityLabel):
     """Expose a tool or chain; default roots run in declaration order."""
 
+    kind: ClassVar[Literal["tool"]] = "tool"
     default: bool = False
 
 
@@ -56,6 +58,7 @@ class ToolLabel(CapabilityLabel):
 class SkillLabel(CapabilityLabel):
     """Describe an opaque skill's declared loading behavior."""
 
+    kind: ClassVar[Literal["skill"]] = "skill"
     loading: SkillLoading = SkillLoading.ON_DEMAND
 
     def __post_init__(self) -> None:
@@ -236,6 +239,27 @@ class DeployableAgent(HasExternalDependencies):
                 raise ValueError(f"capability {name!r} is not a skill")
         self._capability_selection = choices
 
+    def resolve_capabilities(self) -> dict[str, bool | SkillLoading]:
+        """Return effective choices for every declared capability.
+
+        Fixed capabilities resolve to True. Optional skills resolve to their
+        loading mode when enabled; omitted optional choices resolve to False.
+        With no explicit selection, all capabilities use their declared behavior.
+        Resolution neither builds capabilities nor changes the explicit selection.
+        """
+        selection = self._capability_selection
+        resolved: dict[str, bool | SkillLoading] = {}
+        for capability in self.capabilities:
+            label = capability.label
+            choice = True if selection is None else selection.get(label.name, False)
+            match label, choice:
+                case CapabilityLabel(selectable=False), _:
+                    choice = True
+                case SkillLabel(loading=loading), True:
+                    choice = loading
+            resolved[label.name] = choice
+        return resolved
+
     @property
     def nested_agents(self) -> tuple["DeployableAgent", ...]:
         """Return attached synchronous child definitions."""
@@ -347,14 +371,13 @@ class DeployableAgent(HasExternalDependencies):
     def _selected_capabilities(
         self, *, include_all: bool = False
     ) -> tuple[Capability, ...]:
-        selection = self._capability_selection
-        if include_all or selection is None:
+        if include_all:
             return self.capabilities
+        selection = self.resolve_capabilities()
         return tuple(
             capability
             for capability in self.capabilities
-            if not capability.label.selectable
-            or selection.get(capability.label.name, False) is not False
+            if selection[capability.label.name] is not False
         )
 
     def _validate(self, *, include_all: bool = False) -> None:
@@ -373,13 +396,15 @@ class DeployableAgent(HasExternalDependencies):
     def _bound_capabilities(
         self, pipe: EventPipe, *, include_all: bool = False
     ) -> Iterator[Capability]:
-        selection = {} if include_all else self._capability_selection or {}
-        for capability in self._selected_capabilities(include_all=include_all):
+        selection = {} if include_all else self.resolve_capabilities()
+        for capability in self.capabilities:
             label = capability.label
-            loading = selection.get(capability.label.name)
-            match label, loading:
-                case SkillLabel(), SkillLoading() if loading != label.loading:
-                    label = replace(label, loading=loading)
+            choice = selection.get(label.name, True)
+            if choice is False:
+                continue
+            match label, choice:
+                case SkillLabel(), SkillLoading() if choice != label.loading:
+                    label = replace(label, loading=choice)
             for value in capability.build(self, pipe):
                 yield Capability(label=label, value=value)
 

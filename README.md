@@ -282,7 +282,8 @@ that order.
 `SkillLabel` declares `SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`.
 A skill's instructions and embedded tools always remain together.
 
-Inspect `agent.capabilities` and their labels without building tools. Selection
+Inspect `agent.capabilities` and their labels without building tools. Each label's
+`kind` is `"tool"` or `"skill"`, so callers can expose metadata directly. Selection
 belongs to the agent, not the shared capability: `capability_selection` is a
 read-only view, and `set_capability_selection(...)` replaces it for future builds.
 `None`, the initial value, includes all declared capabilities. An explicit map
@@ -291,6 +292,12 @@ are disabled. `True` uses declared behavior, `False` disables an optional entry,
 and a `SkillLoading` value changes a selectable skill's loading mode. New optional
 entries stay disabled under an explicit map until selected. Existing runtimes
 keep their configuration, and child definitions have their own selections.
+
+`agent.resolve_capabilities()` returns effective choices for every declaration:
+fixed entries are `True`, enabled optional skills use their loading mode, and
+disabled entries are `False`. It leaves the explicit selection unchanged and
+does not build capabilities. The returned map can be passed back to
+`set_capability_selection()` or compared with another run's choices.
 
 For a capability requiring runtime bindings, subclass `Capability`, pass its
 label to `super().__init__(label=...)`, and override

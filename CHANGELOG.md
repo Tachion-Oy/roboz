@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `DeployableAgent.resolve_capabilities()` for effective launch choices and
+  expose `kind` on capability labels for direct metadata responses.
 - Return the agent definition from the existing Robozium recipe and include its
   fixed guidance/compactification plus selectable SafeScripts and email. Attach
   additions and selections to that definition before building runtime agents.
