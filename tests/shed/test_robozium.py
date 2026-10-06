@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 import importlib
 
-from roboz.shed.capabilities import Email, SafeScripts
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.deployments import robozium as exported_robozium
 from roboz.shed.skills import robozium as robozium_skill
@@ -19,6 +18,7 @@ from roboz.deployment import (
     Capability,
     DeployableAgent,
     ToolLabel,
+    SkillLoading,
 )
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 from roboz.runtime import default_event_sinks
@@ -79,7 +79,7 @@ def test_recipe_watches_complete_foreground_and_builds_independent_graphs(
     events = []
 
     def build():
-        return recipe_module.robozium(
+        return _build_recipe(
             sandbox,
             endpoint_getter=lambda: selected,
             memory_endpoint=MockLLMEndpoint([]),
@@ -125,14 +125,42 @@ def _endpoint(name):
     )
 
 
-def _build_recipe(sandbox, **choices):
+def _email_service():
+    return ProtonBridgeEmailService(
+        ProtonBridgeSettings.model_validate(
+            {
+                "imap_host": "127.0.0.1",
+                "imap_port": 1143,
+                "tls_mode": "starttls",
+                "account_address": "me@example.com",
+                "username": "bridge-user",
+                "password": "bridge-password",
+            }
+        )
+    )
+
+
+def _define_recipe(sandbox, **choices):
     return recipe_module.robozium(
         sandbox,
         endpoint_getter=choices.pop("endpoint_getter", lambda: _endpoint("selected")),
         memory_endpoint=choices.pop("memory_endpoint", _endpoint("memory")),
-        additional_capabilities=choices.pop("additional_capabilities", ()),
-        specialists=choices.pop("specialists", ()),
-        event_sinks=choices.pop("event_sinks", ()),
+        email_service=choices.pop("email_service", _email_service()),
+        **choices,
+    )
+
+
+def _build_recipe(sandbox, **choices):
+    event_sinks = choices.pop("event_sinks", ())
+    additional = choices.pop("additional_capabilities", ())
+    definition = _define_recipe(sandbox, **choices)
+    definition.add_capabilities(*additional)
+    return definition.build(
+        event_sinks=event_sinks,
+        event_sink_factory=lambda name: default_event_sinks(
+            data_path=sandbox.project_logs_dir() / name,
+            include_cli=False,
+        ),
     )
 
 
@@ -159,10 +187,8 @@ def test_recipe_composes_proton_bridge_and_safe_scripts_without_connecting(tmp_p
     sandbox = Sandbox(tmp_path / "data").for_project("project")
     root, (librarian,) = _build_recipe(
         sandbox,
-        additional_capabilities=(
-            Email(service=service),
-            SafeScripts(scripts_dir=scripts),
-        ),
+        email_service=service,
+        scripts_dir=scripts,
     )
 
     names = {
@@ -300,4 +326,38 @@ def test_built_root_keeps_live_selection_and_independent_memory_endpoint(tmp_pat
 
     assert replacement in root.external_dependencies()
     assert memory in maintenance.external_dependencies()
+    assert not list(tmp_path.iterdir())
+
+
+def test_recipe_owns_builtins_and_only_scripts_and_email_are_selectable(tmp_path):
+    definition = _define_recipe(Sandbox(tmp_path).for_project("project"))
+    labels = {cap.label.name: cap.label for cap in definition.capabilities}
+    assert {name for name, label in labels.items() if label.selectable} == {
+        "safe_scripts",
+        "email",
+    }
+    assert set(labels) == {
+        "stop",
+        "filesystem",
+        "robozium",
+        "compactification",
+        "safe_scripts",
+        "email",
+    }
+    definition.set_capability_selection({})
+    fixed, (maintenance,) = definition.build()
+    assert {skill.name for skill in fixed.auto_loaded_skills} == {
+        "filesystem",
+        "robozium",
+    }
+    assert "run_shell_script" not in {tool.name for tool in fixed.tools}
+    definition.set_capability_selection(
+        {"email": SkillLoading.ON_DEMAND, "safe_scripts": True}
+    )
+    selected, (selected_maintenance,) = definition.build()
+    assert email_skill.name in {skill.name for skill in selected.skills}
+    assert "run_shell_script" in {tool.name for tool in selected.tools}
+    assert [tool.name for tool in maintenance.default_tools] == [
+        tool.name for tool in selected_maintenance.default_tools
+    ]
     assert not list(tmp_path.iterdir())

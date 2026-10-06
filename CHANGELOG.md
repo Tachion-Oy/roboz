@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Return the agent definition from the existing Robozium recipe and include its
+  fixed guidance/compactification plus selectable SafeScripts and email. Attach
+  additions and selections to that definition before building runtime agents.
+  Proton Bridge accepts deferred settings for credentials unlocked after startup.
+
 ## 0.6.0a1 - 2026-10-06
 
 - Breaking: unify deployable-agent capabilities under `capabilities=` and

@@ -346,13 +346,24 @@ constructed prerequisite skill.
 
 `roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
 and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
-credentials, decrypted before construction. For a self-signed Bridge certificate,
-configure `certificate_sha256` or a trusted `ca_file`. Pass the service to
+credentials, decrypted before construction. A settings callable may instead
+resolve current credentials when an operation runs; inspection does not call it.
+For a self-signed Bridge certificate, configure `certificate_sha256` or a trusted
+`ca_file`. Pass the service to
 `get_work_with_email(service=..., ...)`.
 
-For Robozium, pass `Email(service=...)` and `SafeScripts(scripts_dir=...)` from
-`roboz.shed.capabilities` through `additional_capabilities`. Keep the trusted
-script directory outside agent-writable paths.
+`roboz.shed.deployments.robozium(...)` returns a `DeployableAgent`. Its built-ins
+include fixed filesystem, stop, compactification, and Robozium guidance, plus
+selectable SafeScripts and email. Supply `email_service=...` and optionally
+`scripts_dir=...` or `script_socket=...`; scripts otherwise use the sandbox's
+read-only `safe-scripts` directory. Keep that directory outside agent-writable
+paths.
+
+Attach local additions with `definition.add_capabilities(...)`, apply
+`definition.set_capability_selection(...)`, then call `definition.build(...)`.
+This replaces the recipe's former `additional_capabilities` and `event_sinks`
+arguments and runtime tuple return. Supply event sinks and per-agent persistence
+through `build(event_sinks=..., event_sink_factory=...)`.
 
 `Email` preserves its declared `SkillLabel` when building a complete skill with
 email instructions and tools. Its default label loads that skill automatically;

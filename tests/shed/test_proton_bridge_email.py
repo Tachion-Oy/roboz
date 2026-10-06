@@ -579,3 +579,25 @@ def test_decrypted_credentials_and_factory_dependency(tmp_path, monkeypatch, cli
     )
     assert provider.check() and client.closed
     assert "bridge-password" not in str(provider.redacted_metadata())
+
+
+def test_settings_are_resolved_at_use_and_not_retained(client):
+    current = None
+
+    def resolve():
+        if current is None:
+            raise EmailProviderError("Bridge credentials are locked")
+        return current
+
+    provider = ProtonBridgeEmailService(
+        resolve, client_factory=lambda settings, context: client
+    )
+    assert provider.external_dependencies() == (provider,)
+    assert provider.redacted_metadata() == {"provider": "proton_bridge"}
+    with pytest.raises(EmailProviderError, match="locked"):
+        provider.check()
+    current = settings()
+    assert provider.check()
+    current = None
+    with pytest.raises(EmailProviderError, match="locked"):
+        provider.check()
