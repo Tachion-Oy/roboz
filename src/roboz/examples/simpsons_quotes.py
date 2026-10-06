@@ -76,4 +76,5 @@ QUOTES: Final[list[str]] = [
     "Everything's coming up Milhouse!",
     "I didn't do it.",
     "Do it for her.",
+    "A noble spirit embiggens the smallest man.",
 ]

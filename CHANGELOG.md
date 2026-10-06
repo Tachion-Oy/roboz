@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.1a1 - 2026-10-06
+
 - Add `DeployableAgent.resolve_capabilities()` for effective launch choices and
   expose `kind` on capability labels for direct metadata responses.
 - Return the agent definition from the existing Robozium recipe and include its
