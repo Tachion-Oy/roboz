@@ -55,7 +55,7 @@ assert_type(definition.build(), tuple[Agent, tuple[Agent, ...]])
 
 assert_type(definition.capabilities, tuple[Capability, ...])
 assert_type(definition.capability_selection, Mapping[str, bool | SkillLoading] | None)
-assert_type(definition.resolve_capabilities(), dict[str, bool | SkillLoading])
+assert_type(definition.resolve_capabilities(None), dict[str, bool | SkillLoading])
 assert_type(ToolLabel("tool").kind, Literal["tool"])
 assert_type(SkillLabel("skill").kind, Literal["skill"])
 assert_type(definition.set_capability_selection({}), None)

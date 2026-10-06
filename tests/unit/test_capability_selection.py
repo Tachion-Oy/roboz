@@ -47,18 +47,18 @@ def test_resolution_preserves_selection_and_round_trips_without_building(
             Capability(label=SkillLabel("guide", selectable=True)),
         ),
     )
-    agent.set_capability_selection(selection)
-    resolved = agent.resolve_capabilities()
+    agent.set_capability_selection({"guide": SkillLoading.AUTOMATIC})
+    resolved = agent.resolve_capabilities(selection)
     assert resolved == {
         "fixed": True,
         "fixed_skill": True,
         "optional": tool_choice,
         "guide": skill_choice,
     }
-    assert agent.capability_selection == selection
+    assert agent.capability_selection == {"guide": SkillLoading.AUTOMATIC}
     agent.set_capability_selection(resolved)
     resolved.clear()
-    assert agent.resolve_capabilities()["guide"] == skill_choice
+    assert agent.resolve_capabilities(agent.capability_selection)["guide"] == skill_choice
 
 
 def test_selection_and_loading_belong_to_each_definition_and_future_builds():

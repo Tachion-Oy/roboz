@@ -220,14 +220,23 @@ class DeployableAgent(HasExternalDependencies):
         omitted optional entries are disabled; True uses declared behavior.
         Only selectable skill capabilities accept a loading override.
         """
-        if selection is None:
-            self._capability_selection = None
-            return
-        choices = dict(selection)
+        choices = None if selection is None else dict(selection)
+        self.resolve_capabilities(choices)
+        self._capability_selection = choices
+
+    def resolve_capabilities(
+        self, selection: Mapping[str, bool | SkillLoading] | None
+    ) -> dict[str, bool | SkillLoading]:
+        """Validate and resolve choices without changing this definition.
+
+        None includes all declarations. Fixed capabilities resolve to True;
+        enabled optional skills resolve to their loading mode. Omitted optional
+        choices resolve to False. No capabilities are built.
+        """
         labels = {
             capability.label.name: capability.label for capability in self.capabilities
         }
-        for name, choice in choices.items():
+        for name, choice in (selection or {}).items():
             if name not in labels:
                 raise ValueError(f"unknown capability: {name!r}")
             label = labels[name]
@@ -237,20 +246,8 @@ class DeployableAgent(HasExternalDependencies):
                 raise ValueError(f"capability {name!r} is fixed")
             if isinstance(choice, SkillLoading) and not isinstance(label, SkillLabel):
                 raise ValueError(f"capability {name!r} is not a skill")
-        self._capability_selection = choices
-
-    def resolve_capabilities(self) -> dict[str, bool | SkillLoading]:
-        """Return effective choices for every declared capability.
-
-        Fixed capabilities resolve to True. Optional skills resolve to their
-        loading mode when enabled; omitted optional choices resolve to False.
-        With no explicit selection, all capabilities use their declared behavior.
-        Resolution neither builds capabilities nor changes the explicit selection.
-        """
-        selection = self._capability_selection
         resolved: dict[str, bool | SkillLoading] = {}
-        for capability in self.capabilities:
-            label = capability.label
+        for label in labels.values():
             choice = True if selection is None else selection.get(label.name, False)
             match label, choice:
                 case CapabilityLabel(selectable=False), _:
@@ -373,7 +370,7 @@ class DeployableAgent(HasExternalDependencies):
     ) -> tuple[Capability, ...]:
         if include_all:
             return self.capabilities
-        selection = self.resolve_capabilities()
+        selection = self.resolve_capabilities(self._capability_selection)
         return tuple(
             capability
             for capability in self.capabilities
@@ -396,7 +393,7 @@ class DeployableAgent(HasExternalDependencies):
     def _bound_capabilities(
         self, pipe: EventPipe, *, include_all: bool = False
     ) -> Iterator[Capability]:
-        selection = {} if include_all else self.resolve_capabilities()
+        selection = {} if include_all else self.resolve_capabilities(self._capability_selection)
         for capability in self.capabilities:
             label = capability.label
             choice = selection.get(label.name, True)

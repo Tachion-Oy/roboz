@@ -293,9 +293,11 @@ and a `SkillLoading` value changes a selectable skill's loading mode. New option
 entries stay disabled under an explicit map until selected. Existing runtimes
 keep their configuration, and child definitions have their own selections.
 
-`agent.resolve_capabilities()` returns effective choices for every declaration:
+`agent.resolve_capabilities(selection)` validates choices and returns their
+effective values:
 fixed entries are `True`, enabled optional skills use their loading mode, and
-disabled entries are `False`. It leaves the explicit selection unchanged and
+disabled entries are `False`. Pass `None` for all declarations. It leaves the
+agent's selection unchanged and
 does not build capabilities. The returned map can be passed back to
 `set_capability_selection()` or compared with another run's choices.
 
