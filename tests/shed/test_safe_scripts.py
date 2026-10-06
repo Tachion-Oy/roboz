@@ -29,7 +29,7 @@ def test_discovery_and_success_share_one_tool_without_construction_side_effects(
     tmp_path: Path,
 ) -> None:
     workspace, scripts = tmp_path / "workspace", tmp_path / "installed"
-    capability = SafeScripts(scripts)
+    capability = SafeScripts(scripts_dir=scripts)
     definition, agent, tool = _agent(workspace, capability)
     assert not workspace.exists() and not scripts.exists()
     assert [dep.dependency_id for dep in definition.external_dependencies()] == [
@@ -49,7 +49,7 @@ def test_discovery_and_success_share_one_tool_without_construction_side_effects(
 
 
 def test_each_build_copies_the_script_tool_identity(tmp_path: Path) -> None:
-    capability = SafeScripts(tmp_path / "installed")
+    capability = SafeScripts(scripts_dir=tmp_path / "installed")
     _, _, first_tool = _agent(tmp_path / "workspace", capability)
     _, _, second_tool = _agent(tmp_path / "workspace", capability)
     assert first_tool.name == second_tool.name == "run_shell_script"
@@ -62,7 +62,7 @@ def test_local_execution_requires_sandbox_instead_of_file_permissions(
     definition = DeployableAgent(
         name="script_test",
         system_prompt="Use installed scripts.",
-        default_capabilities=(SafeScripts(tmp_path / "installed"),),
+        capabilities=(SafeScripts(scripts_dir=tmp_path / "installed"),),
     )
     definition.set_attributes(permissions=PermissionPolicy.local(tmp_path))
     definition.set_agent_endpoint(MockLLMEndpoint([]))
@@ -85,7 +85,7 @@ def test_untrusted_paths_are_refused(tmp_path: Path, name: str) -> None:
     workspace, scripts = tmp_path / "workspace", tmp_path / "installed"
     _script(scripts, "okay.sh", "echo safe\n")
     workspace.mkdir()
-    _, _, tool = _agent(workspace, SafeScripts(scripts))
+    _, _, tool = _agent(workspace, SafeScripts(scripts_dir=scripts))
     assert tool(RunShellScriptInput(script=name), []).status == "refused"
 
 
@@ -97,7 +97,7 @@ def test_symlinks_and_non_scripts_never_appear_or_run(tmp_path: Path) -> None:
     (scripts / "alias-dir").symlink_to(tmp_path, target_is_directory=True)
     (scripts / "note.txt").write_text("not a script")
     workspace.mkdir()
-    _, _, tool = _agent(workspace, SafeScripts(scripts))
+    _, _, tool = _agent(workspace, SafeScripts(scripts_dir=scripts))
     assert [entry.script for entry in tool(RunShellScriptInput(), []).scripts] == [
         "real.sh"
     ]
@@ -120,7 +120,7 @@ def test_output_streaming_exit_failure_and_environment_filtering(
     observed = []
     _, _, tool = _agent(
         workspace,
-        SafeScripts(scripts, env_allowlist=("SAFE_SCRIPT_TEST_ALLOWED",)),
+        SafeScripts(scripts_dir=scripts, env_allowlist=("SAFE_SCRIPT_TEST_ALLOWED",)),
         sink=observed.append,
     )
     monkeypatch.setenv("SAFE_SCRIPT_TEST_ALLOWED", "visible")
@@ -140,11 +140,15 @@ def test_silent_timeout_and_output_limit(tmp_path: Path) -> None:
     workspace.mkdir()
     _script(scripts, "quiet.sh", "sleep 5\n")
     _script(scripts, "loud.sh", "printf 'abcdefghijklmnop'\n")
-    _, _, timeout_tool = _agent(workspace, SafeScripts(scripts, timeout_s=0.15))
+    _, _, timeout_tool = _agent(
+        workspace, SafeScripts(scripts_dir=scripts, timeout_s=0.15)
+    )
     started = time.monotonic()
     assert timeout_tool(RunShellScriptInput(script="quiet.sh"), []).status == "timeout"
     assert time.monotonic() - started < 3
-    _, _, limited_tool = _agent(workspace, SafeScripts(scripts, max_output_bytes=8))
+    _, _, limited_tool = _agent(
+        workspace, SafeScripts(scripts_dir=scripts, max_output_bytes=8)
+    )
     limited = limited_tool(RunShellScriptInput(script="loud.sh"), [])
     assert (limited.status, limited.output) == ("output_limit", "abcdefgh")
 
@@ -157,7 +161,9 @@ def test_utf8_output_at_byte_limit(tmp_path: Path, limit: int) -> None:
     _script(scripts, "unicode.sh", f"printf '{content}'\n")
     events = []
     _, _, tool = _agent(
-        workspace, SafeScripts(scripts, max_output_bytes=limit), sink=events.append
+        workspace,
+        SafeScripts(scripts_dir=scripts, max_output_bytes=limit),
+        sink=events.append,
     )
 
     result = tool(RunShellScriptInput(script="unicode.sh"), [])
@@ -175,7 +181,7 @@ def test_utf8_output_at_byte_limit(tmp_path: Path, limit: int) -> None:
 def test_startup_failure_releases_execution_gate(tmp_path: Path) -> None:
     workspace, scripts = tmp_path / "workspace", tmp_path / "installed"
     _script(scripts, "done.sh", "echo done\n")
-    _, _, tool = _agent(workspace, SafeScripts(scripts))
+    _, _, tool = _agent(workspace, SafeScripts(scripts_dir=scripts))
 
     assert tool(RunShellScriptInput(script="done.sh"), []).status == "failed"
     workspace.mkdir()
@@ -190,7 +196,7 @@ def test_timeout_stops_background_child(tmp_path: Path) -> None:
         "children.sh",
         "(sleep 0.5; echo leaked > child-marker.txt) &\nwait\n",
     )
-    _, _, tool = _agent(workspace, SafeScripts(scripts, timeout_s=0.1))
+    _, _, tool = _agent(workspace, SafeScripts(scripts_dir=scripts, timeout_s=0.1))
     assert tool(RunShellScriptInput(script="children.sh"), []).status == "timeout"
     time.sleep(0.6)
     assert not (workspace / "child-marker.txt").exists()
@@ -204,7 +210,7 @@ def test_success_stops_detached_background_child(tmp_path: Path) -> None:
         "children.sh",
         "(sleep 0.5; echo leaked > child-marker.txt) >/dev/null 2>&1 &\necho done\n",
     )
-    _, _, tool = _agent(workspace, SafeScripts(scripts))
+    _, _, tool = _agent(workspace, SafeScripts(scripts_dir=scripts))
     assert tool(RunShellScriptInput(script="children.sh"), []).status == "success"
     time.sleep(0.6)
     assert not (workspace / "child-marker.txt").exists()
@@ -221,7 +227,7 @@ def test_cancellation_releases_shared_execution_gate(tmp_path: Path) -> None:
         if isinstance(event, ScriptOutputEvent) and "ready" in event.content:
             started.set()
 
-    capability = SafeScripts(scripts)
+    capability = SafeScripts(scripts_dir=scripts)
     _, first, first_tool = _agent(workspace, capability, sink=sink)
     _, _, second_tool = _agent(workspace, capability)
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -243,7 +249,7 @@ def test_cancellation_after_script_closes_output(tmp_path: Path) -> None:
         "wait.sh",
         "exec >/dev/null 2>&1\nprintf ready > ready.txt\nexec sleep 10\n",
     )
-    _, agent, tool = _agent(workspace, SafeScripts(scripts, timeout_s=5))
+    _, agent, tool = _agent(workspace, SafeScripts(scripts_dir=scripts, timeout_s=5))
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(tool, RunShellScriptInput(script="wait.sh"), [])
@@ -261,7 +267,7 @@ def test_script_tool_runs_in_real_agent_with_mock_endpoint(tmp_path: Path) -> No
     workspace.mkdir()
     _script(scripts, "greet.sh", "echo hello-from-script\n")
     events = []
-    definition, _, _ = _agent(workspace, SafeScripts(scripts))
+    definition, _, _ = _agent(workspace, SafeScripts(scripts_dir=scripts))
     definition.set_agent_endpoint(
         MockLLMEndpoint(
             [
@@ -354,7 +360,7 @@ def test_local_sink_failure_cleans_up_before_releasing_the_execution_gate(
 ):
     _script(tmp_path, "ready.sh", "echo ready\nsleep 10\n")
     _script(tmp_path, "done.sh", "echo done\n")
-    capability = SafeScripts(tmp_path)
+    capability = SafeScripts(scripts_dir=tmp_path)
 
     def sink(event):
         if isinstance(event, ScriptOutputEvent):
@@ -380,5 +386,7 @@ def test_long_description_lines_keep_the_existing_strip_and_truncate_behavior(
     tmp_path, body, expected
 ):
     _script(tmp_path, "description.sh", body)
-    listed = _agent(tmp_path, SafeScripts(tmp_path))[2](RunShellScriptInput(), [])
+    listed = _agent(tmp_path, SafeScripts(scripts_dir=tmp_path))[2](
+        RunShellScriptInput(), []
+    )
     assert listed.scripts[0].description == expected

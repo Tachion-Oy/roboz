@@ -3,13 +3,13 @@ from typing import assert_type
 
 from roboz import Agent
 from roboz.shed.sandbox import Sandbox
-from roboz.deployment import AgentCapability, DeployableAgent
+from roboz.deployment import Capability, DeployableAgent
 
 
 def inspect(
     child: DeployableAgent,
     background: DeployableAgent,
-    capability: AgentCapability,
+    capability: Capability,
 ) -> None:
     parent = DeployableAgent(
         name="parent",

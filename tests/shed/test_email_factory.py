@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,7 +8,13 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 from roboz.agent import AgentMode
-from roboz.deployment import DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    SkillLabel,
+    SkillLoading,
+    ToolLabel,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.shed.capabilities import Email
 from roboz.shed.identifiers import (
@@ -24,6 +31,7 @@ from roboz.shed.models import (
     PermissionRule,
 )
 from roboz.shed.skills.email_tools.prompts import INSTRUCTIONS as EMAIL_INSTRUCTIONS
+from roboz.shed.skills import email_skill
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.tools.email import (
     DownloadedEmailAttachment,
@@ -270,7 +278,7 @@ def test_email_capability_binds_permissions_and_fresh_cancellation(tmp_path):
     definition = DeployableAgent(
         name="email",
         system_prompt="Use the configured email tools.",
-        default_capabilities=(Email(provider),),
+        capabilities=(Email(service=provider),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     sandbox = Sandbox(tmp_path / "sandbox", scope="one")
@@ -278,10 +286,14 @@ def test_email_capability_binds_permissions_and_fresh_cancellation(tmp_path):
     first, _ = definition.build()
     sandbox.configure_scope("two")
     second, _ = definition.build()
-    first_tools = {tool.name: tool for tool in first.tools}
-    second_tools = {tool.name: tool for tool in second.tools}
+    (first_skill,) = first.auto_loaded_skills
+    (second_skill,) = second.auto_loaded_skills
+    first_tools = {tool.name: tool for tool in first_skill.tools}
+    second_tools = {tool.name: tool for tool in second_skill.tools}
 
-    _, guarded, result = _run_chain(first.tools, _input(attachment_paths=[str(source)]))
+    _, guarded, result = _run_chain(
+        first_skill.tools, _input(attachment_paths=[str(source)])
+    )
     assert guarded.status == GuardStatus.DENIED and result is None
     assert not provider.draft_requests
 
@@ -293,11 +305,54 @@ def test_email_capability_binds_permissions_and_fresh_cancellation(tmp_path):
     assert len(provider.search_requests) == 1
 
 
+@pytest.mark.parametrize("loading", [SkillLoading.ON_DEMAND, SkillLoading.AUTOMATIC])
+def test_email_preserves_its_label_and_loads_guidance_with_tools(tmp_path, loading):
+    label = SkillLabel("mail", selectable=True)
+    provider = _FakeMailboxService()
+    capability = Email(service=provider, label=label)
+    definition = DeployableAgent(
+        name="email",
+        system_prompt="Work with email.",
+        capabilities=(capability, Capability(label=ToolLabel("stop"), value=stop)),
+    )
+    responses = [
+        {
+            "action": SEARCH_EMAIL_TOOL_NAME,
+            "rationale": "Find mail",
+            "mailbox": "inbox",
+        },
+        {"action": "stop", "rationale": "Done", "value": "done"},
+    ]
+    if loading is SkillLoading.ON_DEMAND:
+        responses.insert(0, {"action": email_skill.name, "rationale": "Load email"})
+    definition.set_agent_endpoint(MockLLMEndpoint(responses))
+    definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))
+    definition.set_capability_selection({"mail": loading})
+    runtime, _ = definition.build()
+    (skill,) = (
+        runtime.skills
+        if loading is SkillLoading.ON_DEMAND
+        else runtime.auto_loaded_skills
+    )
+    assert skill.instructions == email_skill.instructions
+    assert SEARCH_EMAIL_TOOL_NAME in {tool.name for tool in skill.tools}
+    result, messages = runtime.invoke()
+    assert result.value == "done" and len(provider.search_requests) == 1
+    assert any(
+        skill.instructions in json.loads(message.content).get("value", "")
+        for message in messages
+        if message.role.value == "user"
+    )
+    assert capability.label is label and label.loading is SkillLoading.ON_DEMAND
+    assert not email_skill.tools
+
+
 def test_email_rebuild_binds_downloads_to_each_selected_project(tmp_path):
     provider = _FakeMailboxService()
     definition = DeployableAgent(
-        name="email", system_prompt="Download attachments.",
-        default_capabilities=(Email(provider),),
+        name="email",
+        system_prompt="Download attachments.",
+        capabilities=(Email(service=provider),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     sandbox = Sandbox(tmp_path / "sandbox", scope="one")
@@ -308,12 +363,13 @@ def test_email_rebuild_binds_downloads_to_each_selected_project(tmp_path):
     for project in ("one", "two"):
         (sandbox.projects_dir / project).mkdir(parents=True)
     for agent, own, other in ((first, "one", "two"), (second, "two", "one")):
+        (skill,) = agent.auto_loaded_skills
         index = next(
             index
-            for index, tool in enumerate(agent.tools)
+            for index, tool in enumerate(skill.tools)
             if tool.name == DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME
         )
-        chain = agent.tools[index : index + 3]
+        chain = skill.tools[index : index + 3]
         destination = sandbox.projects_dir / own / "notes.txt"
         _, guarded, result = _run_chain(
             chain,
@@ -570,20 +626,24 @@ def test_email_result_preserves_filesystem_approval_reply(
     elif operation == "reply":
         chain = tools[-3:]
         payload = CreateReplyDraft(
-            source_message_ref="source", body_text="Thanks", attachment_paths=["notes.txt"]
+            source_message_ref="source",
+            body_text="Thanks",
+            attachment_paths=["notes.txt"],
         )
         method = "create_reply_draft"
     else:
         index = next(
-            i for i, tool in enumerate(tools)
+            i
+            for i, tool in enumerate(tools)
             if tool.name == DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME
         )
-        chain = tools[index:index + 3]
+        chain = tools[index : index + 3]
         payload = DownloadEmailAttachment(
             attachment_ref="attachment", destination_path="new.txt"
         )
         method = "download_attachment"
     if provider_fails:
+
         def fail(*args, **kwargs):
             raise EmailProviderError("provider unavailable")
 
@@ -603,7 +663,9 @@ def test_work_with_email_schema_rejects_more_than_ten_attachments() -> None:
         _input(attachment_paths=[f"f{i}.pdf" for i in range(11)])
 
 
-def test_email_checks_all_attachment_policies_before_any_approval(tmp_path: Path) -> None:
+def test_email_checks_all_attachment_policies_before_any_approval(
+    tmp_path: Path,
+) -> None:
     for name in ("first.pdf", "denied.pdf"):
         (tmp_path / name).write_bytes(b"attachment")
     provider = _FakeDraftService()
@@ -855,7 +917,8 @@ def test_user_authored_email_reads_without_prompt(tmp_path: Path, mailbox: str) 
 
 @pytest.mark.parametrize("existing", [False, True])
 def test_download_email_attachment_uses_guarded_context_base(
-    tmp_path: Path, existing: bool,
+    tmp_path: Path,
+    existing: bool,
 ) -> None:
     provider = _FakeMailboxService()
     tools = _mailbox_tools(tmp_path, provider)
@@ -988,8 +1051,11 @@ def test_email_dependencies_are_inspected_without_mailbox_work_then_monitored(tm
         for resource in tool.copy().external_dependencies():
             assert resource is service
     agent = Agent(
-        name="email_worker", mode=AgentMode.DETERMINISTIC, agent_endpoint=None,
-        default_tools=(stop,), tools=tools,
+        name="email_worker",
+        mode=AgentMode.DETERMINISTIC,
+        agent_endpoint=None,
+        default_tools=(stop,),
+        tools=tools,
     )
     assert agent.external_dependencies() == (service,)
     assert agent.external_dependencies()[0] is service
@@ -1002,7 +1068,12 @@ def test_email_dependencies_are_inspected_without_mailbox_work_then_monitored(tm
     assert service.probe_calls == 1
     assert service.kind is ExternalDependencyKind.NETWORK_SERVICE
     assert monitor.records()[0].status is DependencyStatus.AVAILABLE
-    assert service.draft_requests == service.search_requests == service.reply_requests == []
+    assert (
+        service.draft_requests
+        == service.search_requests
+        == service.reply_requests
+        == []
+    )
     assert service.read_requests == service.download_requests == []
 
 
@@ -1034,4 +1105,6 @@ def test_email_service_requires_identity_metadata_and_mailbox_operations():
 @pytest.mark.parametrize("service", [object(), ExecutableDependency("python")])
 def test_email_builder_requires_the_complete_service_contract(tmp_path, service):
     with pytest.raises(TypeError, match="EmailService"):
-        get_work_with_email(service=service, base=tmp_path, default_verdict=ActionVerdict.deny)
+        get_work_with_email(
+            service=service, base=tmp_path, default_verdict=ActionVerdict.deny
+        )

@@ -83,7 +83,7 @@ def _librarian(sandbox, names, *, endpoint, capabilities):
         description=LIBRARIAN_AGENT_DESCRIPTION,
         mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
-        default_capabilities=capabilities,
+        capabilities=capabilities,
     )
     definition.set_agent_endpoint(endpoint)
     definition.set_attributes(
@@ -434,9 +434,7 @@ def test_all_watched_workers_finish_before_final_maintenance(
     monkeypatch.setattr(
         sleep_module,
         "sleep",
-        lambda _seconds: _complete_source_run(
-            second, final_fact="Second worker fact."
-        ),
+        lambda _seconds: _complete_source_run(second, final_fact="Second worker fact."),
     )
 
     result, _ = agent.invoke()

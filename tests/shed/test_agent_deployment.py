@@ -6,7 +6,11 @@ from roboz.shed.sandbox import Sandbox
 from roboz.models import Empty
 from roboz.tools import stop
 from roboz.agent import run_background_agent
-from roboz.deployment import Capability, DeployableAgent
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
@@ -15,7 +19,7 @@ def _specialist(name, nested_agents=()):
     definition = DeployableAgent(
         name=name,
         system_prompt="Be a specialist.",
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
         nested_agents=nested_agents,
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))

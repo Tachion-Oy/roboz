@@ -32,7 +32,7 @@ def librarian(
         description=LIBRARIAN_AGENT_DESCRIPTION,
         mode=AgentMode.DETERMINISTIC,
         automatic_tool_prompt=False,
-        default_capabilities=(
+        capabilities=(
             ConversationSnapshots(),
             MemoryConsolidation(),
             ArtifactRetention(),

@@ -23,7 +23,10 @@ def configure(
         sandbox,
         endpoint_getter=getter,
         memory_endpoint=memory,
-        additional_capabilities=(Email(email), SafeScripts(scripts_dir)),
+        additional_capabilities=(
+            Email(service=email),
+            SafeScripts(scripts_dir=scripts_dir),
+        ),
         specialists=(),
         event_sinks=(sink,),
     )

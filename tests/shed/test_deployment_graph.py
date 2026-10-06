@@ -1,3 +1,8 @@
+from roboz.deployment import (
+    Capability,
+    DeployableAgent,
+    ToolLabel,
+)
 import pytest
 
 from roboz.shed.sandbox import Sandbox
@@ -5,7 +10,6 @@ from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Stop
 from roboz.tools import stop
 from roboz import tool
-from roboz.deployment import Capability, DeployableAgent
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import default_event_sinks
 
@@ -16,7 +20,7 @@ def _definition(name, nested_agents=(), background_agents=()):
         system_prompt="Complete the task.",
         nested_agents=nested_agents,
         background_agents=background_agents,
-        default_capabilities=(Capability(tools=(stop,)),),
+        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     return definition
@@ -30,7 +34,10 @@ def test_child_slot_selects_invocation_behavior(background):
     threads = []
     pipes = []
 
-    class Work:
+    class Work(Capability):
+        def __init__(self):
+            super().__init__(label=ToolLabel("work", default=True))
+
         @property
         def required_attributes(self):
             return {}
@@ -46,13 +53,13 @@ def test_child_slot_selects_invocation_behavior(background):
                     assert release.wait(2)
                 return Stop(value="finished")
 
-            return Capability(default_tools=(work,))
+            return (work,)
 
     child = DeployableAgent(
         name="worker",
         description="Run the worker.",
         mode=AgentMode.DETERMINISTIC,
-        default_capabilities=(Work(),),
+        capabilities=(Work(),),
     )
     definition = _definition(
         "root",
@@ -98,8 +105,9 @@ def test_child_slot_selects_invocation_behavior(background):
 def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path):
     pipes = {}
 
-    class RecordPipe:
+    class RecordPipe(Capability):
         def __init__(self, name):
+            super().__init__(label=ToolLabel("record_pipe"))
             self.name = name
 
         @property
@@ -108,7 +116,7 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
 
         def build(self, agent, pipe):
             pipes[self.name] = pipe
-            return Capability(tools=(stop,))
+            return (stop,)
 
     def node(name, nested_agents=(), background_agents=()):
         definition = DeployableAgent(
@@ -116,7 +124,7 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
             system_prompt="Complete the task.",
             nested_agents=nested_agents,
             background_agents=background_agents,
-            default_capabilities=(RecordPipe(name),),
+            capabilities=(RecordPipe(name),),
         )
         definition.set_agent_endpoint(MockLLMEndpoint([]))
         return definition
@@ -127,7 +135,9 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
         background_agents=(node("nested"),),
     )
     child = node("child", background_agents=(background,))
-    definition = node("root", nested_agents=(child,), background_agents=(node("other"),))
+    definition = node(
+        "root", nested_agents=(child,), background_agents=(node("other"),)
+    )
     definition.set_initial_messages(("existing",))
     caller_events = []
     sandbox = Sandbox(tmp_path)

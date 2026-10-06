@@ -4,7 +4,11 @@ from collections.abc import Callable
 from typing import assert_type
 
 from roboz import Agent, Skill, Tool, factory
-from roboz.deployment import Capability
+from roboz.deployment import (
+    Capability,
+    SkillLabel,
+    SkillLoading,
+)
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Message, Str
 from roboz.shed.skills import FilesystemContext, filesystem_skill
@@ -22,7 +26,9 @@ def build_tools(ctx: PrefixContext) -> list[Tool | list[Tool]]:
 
 
 make_skill = Skill.factory(
-    name="prefix", description="Prefix text", instructions="Use the prefix tool.",
+    name="prefix",
+    description="Prefix text",
+    instructions="Use the prefix tool.",
     build_tools=build_tools,
 )
 assert_type(make_skill, Callable[[PrefixContext], Skill])
@@ -34,7 +40,9 @@ def bind(ctx: FilesystemContext) -> None:
     skill = filesystem_skill(ctx)
     assert_type(skill, Skill)
     Agent(
-        name="files", system_prompt="Work on files.",
-        agent_endpoint=MockLLMEndpoint([]), skills=[skill],
+        name="files",
+        system_prompt="Work on files.",
+        agent_endpoint=MockLLMEndpoint([]),
+        skills=[skill],
     )
-    Capability(auto_loaded_skills=(skill,))
+    Capability(label=SkillLabel("skill", loading=SkillLoading.AUTOMATIC), value=skill)
