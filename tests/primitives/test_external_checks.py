@@ -43,9 +43,9 @@ def test_executable_checks_current_resolution_without_caching(monkeypatch):
 
     monkeypatch.setattr("shutil.which", which)
     program = ExecutableDependency("program")
-    assert program.check() is False
+    assert program.check() is not None
     available = True
-    assert program.check() is True
+    assert program.check() is None
     assert resolutions == ["program", "program"]
 
 
@@ -79,9 +79,9 @@ def test_endpoint_checks_model_discovery_without_generating_or_caching(endpoint_
     client = discovery_client(models)
     endpoint = endpoint_class(client=client, api_name="test", model_name="model")
     assert models.timeouts == []
-    assert endpoint.check() is True
+    assert endpoint.check() is None
     models.response = {"data": [{"id": "another-model"}]}
-    assert endpoint.check() is False
+    assert endpoint.check() is not None
     assert models.timeouts == [10.0, 10.0]
 
 
@@ -92,7 +92,7 @@ def test_endpoint_check_recognizes_the_existing_canonical_route_name():
         api_name="test",
         model_name="provider/model:nitro",
     )
-    assert endpoint.check() is True
+    assert endpoint.check() is None
 
 
 @pytest.mark.parametrize(
@@ -105,19 +105,20 @@ def test_endpoint_check_rejects_malformed_discovery_responses(response):
         api_name="test",
         model_name="model",
     )
-    with pytest.raises(TypeError, match="model discovery"):
-        endpoint.check()
+    failure = endpoint.check()
+    assert failure is not None
+    assert "model discovery" in failure.message
 
 
-def test_endpoint_check_propagates_provider_errors_unchanged():
+def test_endpoint_check_returns_provider_error_message():
     error = ConnectionError("scripted provider failure")
     models = ModelListing(error)
     endpoint = LLMEndpoint(
         client=discovery_client(models), api_name="test", model_name="model"
     )
-    with pytest.raises(ConnectionError) as failure:
-        endpoint.check()
-    assert failure.value is error
+    failure = endpoint.check()
+    assert failure is not None
+    assert failure.message == "ConnectionError: scripted provider failure"
 
 
 def test_binding_copying_and_inspection_do_not_check_endpoint_availability():
@@ -170,5 +171,5 @@ def test_openai_sdk_check_uses_authenticated_model_discovery(endpoint_class):
         endpoint = endpoint_class(client=client, api_name="test", model_name="model")
         assert endpoint.external_dependencies()[0] is endpoint
         assert requests == []
-        assert endpoint.check() is True
+        assert endpoint.check() is None
         assert len(requests) == 1

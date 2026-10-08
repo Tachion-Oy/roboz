@@ -3,6 +3,8 @@
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 
+from roboz.dependencies import DependencyFailure
+
 from ..contracts import (
     DownloadedEmailAttachment,
     EmailDraftRequest,
@@ -79,6 +81,19 @@ class ProtonBridgeEmailService(EmailService):
             "port": str(self._settings.imap_port),
             "tls_mode": self._settings.tls_mode.value,
         }
+
+    def check(self) -> DependencyFailure | None:
+        """Check Bridge access while redacting explicitly configured credentials."""
+        settings = None
+        try:
+            settings = self._settings
+            self.probe()
+            return None
+        except Exception as error:
+            secrets = () if settings is None else (
+                settings.username.get_secret_value(), settings.password.get_secret_value()
+            )
+            return DependencyFailure.from_exception(error, secrets=secrets)
 
     def probe(self) -> dict[str, object]:
         """Authenticate and discover special mailboxes without changing mail."""

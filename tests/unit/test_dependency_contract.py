@@ -43,13 +43,13 @@ def test_resource_owns_its_check_and_discovery_never_runs_it():
 
         def check(self):
             calls.append(self)
-            return True
+            return None
 
     resource = Resource()
     assert dedupe_external_dependencies((resource, resource)) == (resource,)
     assert resource.external_dependencies()[0] is resource
     assert calls == []
-    assert resource.check() is True
+    assert resource.check() is None
     assert calls == [resource]
 
 

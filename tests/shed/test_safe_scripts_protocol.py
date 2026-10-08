@@ -179,5 +179,5 @@ def test_malformed_terminal_frame_preserves_the_transcript():
 
 def test_health_check_accepts_matching_protocol_with_a_different_package_version():
     with fake_helper([]) as (path, received):
-        assert ScriptSocketDependency(path).check()
+        assert ScriptSocketDependency(path).check() is None
     assert received == [b""]

@@ -1080,17 +1080,18 @@ def test_email_dependencies_are_inspected_without_mailbox_work_then_monitored(tm
 @pytest.mark.parametrize("result", [False, [], "available"])
 def test_email_check_rejects_invalid_probe_results(result):
     service = _ProbeService(result=result)
-    with pytest.raises(TypeError, match="probe.*dictionary"):
-        service.check()
+    failure = service.check()
+    assert failure is not None
+    assert "EmailService.probe() must return a dictionary" in failure.message
     assert service.probe_calls == 1
 
 
 def test_email_check_propagates_probe_failure():
     error = ConnectionError("service unavailable")
     service = _ProbeService(error=error)
-    with pytest.raises(ConnectionError) as raised:
-        service.check()
-    assert raised.value is error
+    failure = service.check()
+    assert failure is not None
+    assert failure.message == "ConnectionError: service unavailable"
     assert service.probe_calls == 1
 
 
