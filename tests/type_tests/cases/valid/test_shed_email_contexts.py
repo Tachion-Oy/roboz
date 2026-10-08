@@ -36,7 +36,7 @@ from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.shed.models import ActionVerdict
 from roboz import Factory, Tool
 from roboz.models import Str
-from roboz.dependencies import ExternalDependency
+from roboz.dependencies import DependencyFailure, ExternalDependency
 
 assert_type(search_email, Factory[SearchEmail, Str, EmailContext])
 assert_type(read_email, Factory[ReadEmail, Str, EmailContext])
@@ -62,7 +62,7 @@ def bind(service: EmailService, base: Path) -> None:
         service=service, is_cancelled=lambda: False, timeout_s=30, pipe=None
     )
     assert_type(context.service, EmailService)
-    assert_type(context.service.check(), bool)
+    assert_type(context.service.check(), DependencyFailure | None)
     assert_type(context.external_dependencies(), tuple[ExternalDependency, ...])
     assert_type(search_email(context), Tool[SearchEmail, Str])
     assert_type(

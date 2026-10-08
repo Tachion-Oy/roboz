@@ -6,6 +6,11 @@
   `system_prompt`, `mode`, `automatic_tool_prompt`, `agent_endpoint`, and
   `initial_messages` with writable attributes. Existing reads and configuration
   methods remain supported; `set_attributes()` still protects structural fields.
+- Breaking: external dependency `check()` now returns `None` on success or
+  `DependencyFailure(reason_code, message)`. Each resource implements public
+  `check()` and supplies its diagnosis; callers use `check() is None`. Preserve
+  redacted error causes in health records and log failure changes centrally,
+  including script helper connection and protocol failures.
 
 ## 0.6.1a1 - 2026-10-06
 

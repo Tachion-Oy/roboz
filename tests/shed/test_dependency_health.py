@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 from roboz.shed.dependency_health import (
-    DependencyCheckResult,
+    DependencyFailure,
     DependencyHealthMonitor,
     DependencyReasonCode,
     DependencyStatus,
@@ -24,7 +24,7 @@ from roboz.dependencies import (
 
 
 class _Resource(ExternalDependency):
-    def __init__(self, name, checker=lambda _: True):
+    def __init__(self, name, checker=lambda _: None):
         self.name = name
         self.checker = checker
 
@@ -39,13 +39,13 @@ class _Resource(ExternalDependency):
     def redacted_metadata(self):
         return {"executable": self.name}
 
-    def check(self) -> bool:
+    def check(self) -> DependencyFailure | None:
         return self.checker(self)
 
 
 def test_monitor_keeps_first_resource_without_checking_during_construction():
     calls = []
-    first = _Resource("same", lambda item: calls.append(item) or True)
+    first = _Resource("same", lambda item: calls.append(item))
     duplicate = _Resource("same", lambda _: pytest.fail("duplicate was checked"))
     monitor = DependencyHealthMonitor([first, duplicate])
     assert calls == []
@@ -54,8 +54,8 @@ def test_monitor_keeps_first_resource_without_checking_during_construction():
     assert calls == [first]
 
 
-@pytest.mark.parametrize("invalid", [1, None, {}, DependencyCheckResult.success()])
-def test_resource_checks_must_return_a_boolean(invalid):
+@pytest.mark.parametrize("invalid", [True, False, 1, {}])
+def test_resource_checks_reject_boolean_and_untyped_results(invalid):
     dependency = _Resource("invalid", lambda _: invalid)
     assert check_dependency(dependency).reason_code is DependencyReasonCode.PROTOCOL_ERROR
 
@@ -66,7 +66,7 @@ def test_monitor_rejects_non_resource_entries():
 
 
 def test_executable_checker_found_missing_and_non_executable(tmp_path: Path) -> None:
-    assert check_dependency(ExecutableDependency(sys.executable)).available
+    assert check_dependency(ExecutableDependency(sys.executable)) is None
     missing = check_dependency(ExecutableDependency("definitely-not-an-executable"))
     assert missing.reason_code is DependencyReasonCode.NOT_FOUND
 
@@ -161,7 +161,7 @@ def test_model_checker_uses_only_discovery_and_recognizes_route_suffix() -> None
         model="provider/model:nitro", ids=["provider/model"]
     )
     result = check_dependency(dependency)
-    assert result.available
+    assert result is None
     assert calls == [("models.list", 10.0)]
 
 
@@ -196,8 +196,8 @@ def test_stable_exception_reason_mapping(error: Exception, reason) -> None:
 def test_multiple_model_endpoints_are_checked_independently() -> None:
     first, first_calls = _endpoint(model="one")
     second, second_calls = _endpoint(model="two")
-    assert check_dependency(first).available
-    assert check_dependency(second).available
+    assert check_dependency(first) is None
+    assert check_dependency(second) is None
     assert first_calls == [("models.list", 10.0)]
     assert second_calls == [("models.list", 10.0)]
 
@@ -216,9 +216,9 @@ class _ProbeProvider(ExternalDependency):
     def kind(self) -> ExternalDependencyKind:
         return ExternalDependencyKind.NETWORK_SERVICE
 
-    def check(self) -> bool:
+    def check(self) -> DependencyFailure | None:
         self.probe()
-        return True
+        return None
 
     def redacted_metadata(self):
         return {"provider": "probe", "password": "must-not-leak"}
@@ -249,7 +249,7 @@ class _ProbeProvider(ExternalDependency):
 
 def test_network_checker_uses_only_the_service_owned_read_only_probe() -> None:
     provider = _ProbeProvider()
-    assert check_dependency(provider).available
+    assert check_dependency(provider) is None
     assert provider.probe_calls == 1
     assert provider.create_calls == 0
 
@@ -291,7 +291,7 @@ def test_health_monitor_initial_pending_success_and_no_overlap() -> None:
         calls += 1
         entered.set()
         release.wait(timeout=5)
-        return True
+        return None
 
     dependency = _Resource("bash", checker)
     monitor = DependencyHealthMonitor(
@@ -336,7 +336,7 @@ def test_health_monitor_enforces_four_check_concurrency() -> None:
         release.wait(timeout=5)
         with lock:
             active -= 1
-        return True
+        return None
 
     dependencies = [_Resource(f"command-{index}", checker) for index in range(6)]
     monitor = DependencyHealthMonitor(
@@ -368,13 +368,13 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
         def checker(dependency):
             nonlocal calls
             calls += 1
-            return True
+            return None
 
         def wall_clock():
             nonlocal clock_calls
             clock_calls += 1
             if failure == "record" and clock_calls == 1:
-                raise ValueError("private diagnostic payload")
+                raise ValueError("scheduler failed; token=private-diagnostic-payload")
             return 1_000.0
 
         async def sleep(delay):
@@ -382,7 +382,7 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
             sleep_calls += 1
             iterations.put_nowait(delay)
             if failure == "scheduler_sleep" and sleep_calls == 1:
-                raise ValueError("private diagnostic payload")
+                raise ValueError("scheduler failed; token=private-diagnostic-payload")
             await resume.wait()
             resume.clear()
 
@@ -412,8 +412,8 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
         assert iterations.empty()
 
     asyncio.run(exercise())
-    assert "Dependency health iteration failed (protocol_error)" in caplog.text
-    assert "private diagnostic payload" not in caplog.text
+    assert "Dependency health iteration failed: ValueError: scheduler failed" in caplog.text
+    assert "private-diagnostic-payload" not in caplog.text
 
 
 def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
@@ -429,7 +429,7 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
             assert release.wait(timeout=5)
         else:
             second_entered.set()
-        return True
+        return None
 
     async def exercise():
         dependencies = [_Resource("first", checker), _Resource("second", checker)]
@@ -453,3 +453,56 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
             await monitor.stop()
 
     asyncio.run(exercise())
+
+
+def test_monitor_logs_changes_and_returns_the_same_diagnostic(caplog):
+    error = ConnectionRefusedError(111, "Connection refused")
+
+    def checker(_):
+        if error is not None:
+            raise error
+        return None
+
+    monitor = DependencyHealthMonitor([_Resource("service", checker)])
+
+    async def exercise():
+        nonlocal error
+        await monitor.run_once()
+        failure = monitor.records()[0]
+        assert failure.message == "ConnectionRefusedError: [Errno 111] Connection refused"
+        await monitor.run_once()
+        error = TimeoutError("timed out")
+        await monitor.run_once()
+        error = None
+        await monitor.run_once()
+        recovered = monitor.records()[0]
+        assert recovered.message is None and recovered.reason_code is None
+        assert recovered.status is DependencyStatus.AVAILABLE
+
+    with caplog.at_level("DEBUG", logger="roboz.shed.dependency_health"):
+        asyncio.run(exercise())
+    records = [r for r in caplog.records if r.name == "roboz.shed.dependency_health"]
+    assert [r.levelname for r in records] == ["WARNING", "DEBUG", "WARNING", "INFO"]
+    assert records[0].roboz_data["diagnostic"] in records[0].message
+    assert records[0].roboz_data["dependency_id"] == "executable:service"
+
+
+@pytest.mark.parametrize("kind", list(ExternalDependencyKind))
+def test_monitor_preserves_resource_owned_failure_for_every_category(kind):
+    failure = DependencyFailure(
+        DependencyReasonCode.CHECK_FAILED, "Custom dependency: required index is rebuilding"
+    )
+
+    class Resource(_Resource):
+        @property
+        def kind(self):
+            return kind
+
+    resource = Resource("custom", lambda _: failure)
+    assert resource.check() is failure
+    assert check_dependency(resource) is failure
+    monitor = DependencyHealthMonitor([resource])
+    asyncio.run(monitor.run_once())
+    record = monitor.records()[0]
+    assert record.reason_code is failure.reason_code
+    assert record.message == failure.message

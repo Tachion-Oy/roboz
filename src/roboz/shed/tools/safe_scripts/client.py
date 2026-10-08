@@ -7,7 +7,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
-from roboz.dependencies import ExternalDependency, ExternalDependencyKind
+from roboz.dependencies import DependencyFailure, ExternalDependency, ExternalDependencyKind
 
 from .protocol import (
     CLEANUP_DELIVERY_ALLOWANCE_S,
@@ -55,17 +55,17 @@ class ScriptSocketDependency(ExternalDependency):
         """Report the configured socket location."""
         return {"socket_path": str(self.socket_path)}
 
-    def check(self) -> bool:
-        """Check compatibility without discovering or executing scripts."""
-        require_linux_transport()
+    def check(self) -> DependencyFailure | None:
+        """Return connection or handshake diagnostics without executing scripts."""
         try:
+            require_linux_transport()
             with socket.socket(socket.AF_UNIX) as connection:
                 connection.settimeout(HANDSHAKE_TIMEOUT_S)
                 connection.connect(str(self.socket_path))
                 _greeting(FrameReader(connection), lambda: None)
-            return True
-        except (OSError, ValueError):
-            return False
+            return None
+        except Exception as error:
+            return DependencyFailure.from_exception(error)
 
 
 def _events(

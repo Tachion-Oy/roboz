@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import assert_type
 
 from roboz.shed.dependency_health import (
-    DependencyCheckResult,
+    DependencyFailure,
     DependencyHealthMonitor,
     DependencyRecord,
     check_dependency,
@@ -27,7 +27,7 @@ def inspect(
     assert_type(resources, tuple[ExternalDependency, ...])
     source: HasExternalDependencies = definition
     assert_type(source.external_dependencies(), tuple[ExternalDependency, ...])
-    assert_type(check_dependency(endpoint), DependencyCheckResult)
+    assert_type(check_dependency(endpoint), DependencyFailure | None)
     monitor = DependencyHealthMonitor((*resources, *selectable, transcription))
     assert_type(monitor.records(), list[DependencyRecord])
     assert_type(monitor.record(endpoint.dependency_id), DependencyRecord | None)

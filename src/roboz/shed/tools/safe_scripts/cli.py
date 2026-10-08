@@ -80,7 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _serve(args, parser)
     if not _linux_available():
         return 1
-    if ScriptSocketDependency(args.socket).check():
+    if ScriptSocketDependency(args.socket).check() is None:
         return 0
     print("Host script service is unavailable or incompatible", file=sys.stderr)
     return 1

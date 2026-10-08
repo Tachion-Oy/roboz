@@ -98,10 +98,10 @@ def test_command_serves_policy_and_removes_socket_on_shutdown(tmp_path: Path) ->
         deadline = time.monotonic() + 5
         dependency = ScriptSocketDependency(socket)
         while process.poll() is None and time.monotonic() < deadline:
-            if dependency.check():
+            if dependency.check() is None:
                 break
             time.sleep(0.02)
-        assert dependency.check(), (
+        assert dependency.check() is None, (
             process.communicate(timeout=3)[1] if process.poll() is not None else ""
         )
         checked = subprocess.run(

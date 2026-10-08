@@ -4,53 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import ssl
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 
 from pydantic import BaseModel
 from roboz.dependencies import (
+    DependencyFailure,
+    DependencyReasonCode,
     ExternalDependency,
     ExternalDependencyKind,
     dedupe_external_dependencies,
+    reason_code_for_exception,
 )
+from roboz.runtime._logging import log_with_data
 
 logger = logging.getLogger(__name__)
-
-
-class DependencyReasonCode(StrEnum):
-    """Stable, sanitized categories for operational failures."""
-
-    NOT_FOUND = "not_found"
-    MISSING_CREDENTIALS = "missing_credentials"
-    AUTHENTICATION_FAILED = "authentication_failed"
-    CONNECTION_FAILED = "connection_failed"
-    TLS_FAILED = "tls_failed"
-    TIMEOUT = "timeout"
-    PROTOCOL_ERROR = "protocol_error"
-    MODEL_UNAVAILABLE = "model_unavailable"
-    CHECK_FAILED = "check_failed"
-
-
-@dataclass(frozen=True)
-class DependencyCheckResult:
-    """The result of a safe dependency probe, without provider error payloads."""
-
-    available: bool
-    reason_code: DependencyReasonCode | None = None
-
-    @classmethod
-    def success(cls) -> DependencyCheckResult:
-        """Return an available result."""
-        return cls(available=True)
-
-    @classmethod
-    def failure(cls, reason_code: DependencyReasonCode) -> DependencyCheckResult:
-        """Return an unavailable result with a sanitized reason."""
-        return cls(available=False, reason_code=reason_code)
 
 
 class DependencyStatus(StrEnum):
@@ -71,6 +41,7 @@ class DependencyRecord(BaseModel):
     checked_at: datetime | None = None
     latency_ms: float | None = None
     reason_code: DependencyReasonCode | None = None
+    message: str | None = None
 
 
 class DependencyHealthMonitor:
@@ -109,7 +80,7 @@ class DependencyHealthMonitor:
         self._monotonic = monotonic
         self._sleep = sleep
         self._semaphore = asyncio.Semaphore(max_concurrency)
-        self._inflight: dict[str, asyncio.Task[DependencyCheckResult]] = {}
+        self._inflight: dict[str, asyncio.Task[DependencyFailure | None]] = {}
         self._scheduler: asyncio.Task[None] | None = None
 
     def records(self) -> list[DependencyRecord]:
@@ -169,9 +140,11 @@ class DependencyHealthMonitor:
     @staticmethod
     def _log_iteration_failure(error: BaseException) -> None:
         """Report a scheduler failure without exposing provider exception payloads."""
-        logger.warning(
-            "Dependency health iteration failed (%s).",
-            reason_code_for_exception(error).value,
+        failure = DependencyFailure.from_exception(error)
+        log_with_data(
+            logger, logging.ERROR,
+            f"Dependency health iteration failed: {failure.message}",
+            {"reason_code": failure.reason_code.value, "diagnostic": failure.message},
         )
 
     async def _observe(self, dependency_id: str) -> None:
@@ -186,9 +159,12 @@ class DependencyHealthMonitor:
         try:
             result = await asyncio.wait_for(asyncio.shield(task), self._timeout_s)
         except TimeoutError:
-            result = DependencyCheckResult.failure(DependencyReasonCode.TIMEOUT)
+            result = DependencyFailure(
+                DependencyReasonCode.TIMEOUT,
+                f"Dependency check timed out after {self._timeout_s:g} seconds",
+            )
         except Exception as exc:
-            result = DependencyCheckResult.failure(reason_code_for_exception(exc))
+            result = DependencyFailure.from_exception(exc)
         finally:
             if task.done() and self._inflight.get(dependency_id) is task:
                 self._inflight.pop(dependency_id, None)
@@ -198,28 +174,53 @@ class DependencyHealthMonitor:
                         dependency_id, completed
                     )
                 )
-        self._records[dependency_id] = self._records[dependency_id].model_copy(
+        previous = self._records[dependency_id]
+        record = previous.model_copy(
             update={
                 "status": (
                     DependencyStatus.AVAILABLE
-                    if result.available
+                    if result is None
                     else DependencyStatus.UNAVAILABLE
                 ),
                 "checked_at": datetime.fromtimestamp(
                     self._wall_clock(), tz=timezone.utc
                 ),
                 "latency_ms": round(max(0.0, self._monotonic() - started) * 1000.0, 3),
-                "reason_code": result.reason_code,
+                "reason_code": None if result is None else result.reason_code,
+                "message": None if result is None else result.message,
             }
         )
 
-    async def _run_check(self, dependency_id: str) -> DependencyCheckResult:
+        self._records[dependency_id] = record
+        changed = (previous.status, previous.reason_code, previous.message) != (
+            record.status, record.reason_code, record.message
+        )
+        level = logging.DEBUG
+        if changed and record.status is DependencyStatus.UNAVAILABLE:
+            level = logging.WARNING
+        elif previous.status is DependencyStatus.UNAVAILABLE and result is None:
+            level = logging.INFO
+        log_with_data(
+            logger, level,
+            f"Dependency {dependency_id} {record.status}"
+            + (f": {record.message}" if record.message else ""),
+            {
+                "dependency_id": dependency_id,
+                "status": record.status.value,
+                "checked_at": record.checked_at.isoformat() if record.checked_at else None,
+                "latency_ms": record.latency_ms,
+                "reason_code": record.reason_code.value if record.reason_code else None,
+                "diagnostic": record.message,
+            },
+        )
+
+    async def _run_check(self, dependency_id: str) -> DependencyFailure | None:
         dependency = self._dependencies[dependency_id]
         async with self._semaphore:
             return await asyncio.to_thread(check_dependency, dependency)
 
     def _clear_inflight(
-        self, dependency_id: str, task: asyncio.Task[DependencyCheckResult]
+        self, dependency_id: str, task: asyncio.Task[DependencyFailure | None]
     ) -> None:
         if not task.cancelled():
             task.exception()
@@ -227,68 +228,15 @@ class DependencyHealthMonitor:
             self._inflight.pop(dependency_id, None)
 
 
-def check_dependency(dependency: ExternalDependency) -> DependencyCheckResult:
-    """Run the resource's synchronous check and return a sanitized observation.
-
-    Return success only for ``True``. Map ``False`` to model-unavailable for
-    model endpoints or not-found for other resources. Invalid return values
-    produce protocol-error; provider exceptions retain only their reason code.
-    The resource owns availability checking and any initialization it requires.
-    """
+def check_dependency(dependency: ExternalDependency) -> DependencyFailure | None:
+    """Return the resource-owned diagnostic, or None when available."""
     try:
-        available = dependency.check()
-        if not isinstance(available, bool):
-            return DependencyCheckResult.failure(DependencyReasonCode.PROTOCOL_ERROR)
-        if available:
-            return DependencyCheckResult.success()
-        reason = (
-            DependencyReasonCode.MODEL_UNAVAILABLE
-            if dependency.kind is ExternalDependencyKind.MODEL_ENDPOINT
-            else DependencyReasonCode.NOT_FOUND
-        )
-        return DependencyCheckResult.failure(reason)
+        result = dependency.check()
+        if result is not None and not isinstance(result, DependencyFailure):
+            raise TypeError("ExternalDependency.check() must return DependencyFailure or None")
+        return result
     except Exception as exc:
-        return DependencyCheckResult.failure(reason_code_for_exception(exc))
-
-
-def reason_code_for_exception(exc: BaseException) -> DependencyReasonCode:
-    """Map provider and transport failures to a sanitized reason code."""
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
-        return DependencyReasonCode.TIMEOUT
-    if isinstance(exc, ssl.SSLError):
-        return DependencyReasonCode.TLS_FAILED
-    status_code = getattr(exc, "status_code", None)
-    response = getattr(exc, "response", None)
-    if status_code is None and response is not None:
-        status_code = getattr(response, "status_code", None)
-    if status_code in {401, 403}:
-        return DependencyReasonCode.AUTHENTICATION_FAILED
-    name = type(exc).__name__.lower()
-    message = str(exc).lower()
-    if "timeout" in name or "timed out" in message:
-        return DependencyReasonCode.TIMEOUT
-    if "ssl" in name or "tls" in name or "certificate" in message:
-        return DependencyReasonCode.TLS_FAILED
-    if (
-        (message.startswith("set ") and "api_key" in message)
-        or "not found in environment" in message
-        or "not configured" in message
-        or "missing" in message
-        and ("key" in message or "credential" in message)
-    ):
-        return DependencyReasonCode.MISSING_CREDENTIALS
-    if (
-        "authentication" in name
-        or "auth" in name
-        or "authentication" in message
-        or "credentials" in message
-    ):
-        return DependencyReasonCode.AUTHENTICATION_FAILED
-    if isinstance(exc, (ConnectionError, OSError)) or "connection" in name:
-        return DependencyReasonCode.CONNECTION_FAILED
-    if isinstance(exc, (TypeError, ValueError, AttributeError)):
-        return DependencyReasonCode.PROTOCOL_ERROR
-    return DependencyReasonCode.CHECK_FAILED
+        return DependencyFailure.from_exception(exc)
 
 
 _METADATA_KEYS: Mapping[ExternalDependencyKind, frozenset[str]] = {
@@ -318,7 +266,7 @@ def _sanitize_metadata(dependency: ExternalDependency) -> dict[str, str]:
 
 
 __all__ = [
-    "DependencyCheckResult",
+    "DependencyFailure",
     "DependencyHealthMonitor",
     "DependencyReasonCode",
     "DependencyRecord",

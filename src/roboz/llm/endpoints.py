@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field, WithJsonSchema, field_validator
 
 from roboz.models import Message, Role
 from roboz.tooling.context import HasExternalDependencies, Materializable
-from roboz.dependencies import ExternalDependency, ExternalDependencyKind
+from roboz.dependencies import (
+    DependencyFailure,
+    DependencyReasonCode,
+    ExternalDependency,
+    ExternalDependencyKind,
+)
 from roboz.llm.openai_compatible import (
     OpenAICompatibleChatClient,
     OpenAICompatibleModelsClient,
@@ -52,30 +57,40 @@ def copy_request_options(extra_body: Mapping[str, object]) -> RequestOptions:
 
 def _check_openai_compatible_model(
     client: OpenAICompatibleModelsClient, model_name: str
-) -> bool:
-    """Query an OpenAI-compatible client's model listing without generating output.
+) -> DependencyFailure | None:
+    """Check model discovery, returning this provider's absence or error diagnosis.
 
     Match the configured model or its canonical name before a route suffix.
-    Preserve the existing model-discovery probe's ten-second request timeout.
-    Provider errors propagate; malformed model listings raise ``TypeError``.
+    Make only the existing model-discovery request with a ten-second timeout.
     """
-    response = client.models.list(timeout=10.0)
-    data = (
-        response.get("data")
-        if isinstance(response, dict)
-        else getattr(response, "data", None)
-    )
-    if not isinstance(data, (list, tuple)):
-        raise TypeError("model discovery response must contain a data list")
-    model_ids: set[str] = set()
-    for item in data:
-        model_id = (
-            item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+    try:
+        response = client.models.list(timeout=10.0)
+        data = (
+            response.get("data")
+            if isinstance(response, dict)
+            else getattr(response, "data", None)
         )
-        if not isinstance(model_id, str):
-            raise TypeError("model discovery entries must have string IDs")
-        model_ids.add(model_id)
-    return model_name in model_ids or model_name.split(":", 1)[0] in model_ids
+        if not isinstance(data, (list, tuple)):
+            raise TypeError("model discovery response must contain a data list")
+        model_ids: set[str] = set()
+        for item in data:
+            model_id = (
+                item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+            )
+            if not isinstance(model_id, str):
+                raise TypeError("model discovery entries must have string IDs")
+            model_ids.add(model_id)
+        if model_name in model_ids or model_name.split(":", 1)[0] in model_ids:
+            return None
+        return DependencyFailure(
+            DependencyReasonCode.MODEL_UNAVAILABLE,
+            f"Configured model was not found in the provider's model listing: {model_name}",
+        )
+    except Exception as error:
+        key = getattr(client, "api_key", None)
+        return DependencyFailure.from_exception(
+            error, secrets=(key,) if isinstance(key, str) else ()
+        )
 
 
 class LLMPricing(BaseModel):
@@ -196,13 +211,8 @@ class LLMEndpoint(BaseModel, ExternalDependency):
             self.client.materialize()
         return self
 
-    def check(self) -> bool:
-        """Confirm this model appears in an OpenAI-compatible model listing.
-
-        Make a model-discovery request with a ten-second timeout; generate no
-        completion or transcription. Return ``False`` for an absent model.
-        Authentication, transport, and malformed-response errors propagate.
-        """
+    def check(self) -> DependencyFailure | None:
+        """Return a model-discovery diagnosis without generating output."""
         return _check_openai_compatible_model(self.client, self.model_name)
 
     def redacted_metadata(self) -> Mapping[str, str]:
@@ -403,13 +413,8 @@ class TranscriptionEndpoint(BaseModel, ExternalDependency):
             self.client.materialize()
         return self
 
-    def check(self) -> bool:
-        """Confirm this model appears in an OpenAI-compatible model listing.
-
-        Make a model-discovery request with a ten-second timeout; generate no
-        completion or transcription. Return ``False`` for an absent model.
-        Authentication, transport, and malformed-response errors propagate.
-        """
+    def check(self) -> DependencyFailure | None:
+        """Return a model-discovery diagnosis without generating output."""
         return _check_openai_compatible_model(self.client, self.model_name)
 
     def redacted_metadata(self) -> Mapping[str, str]:

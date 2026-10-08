@@ -82,6 +82,6 @@ def test_executable_dependency_resolves_current_python():
     }
     assert isinstance(dependency.resolve(), Path)
     assert dependency.require().exists()
-    assert dependency.check()
+    assert dependency.check() is None
     with pytest.raises(ValueError, match="executable must be non-empty"):
         ExecutableDependency(" ")

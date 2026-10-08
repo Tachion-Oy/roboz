@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
-from roboz.dependencies import ExternalDependency, ExternalDependencyKind
+from roboz.dependencies import DependencyFailure, ExternalDependency, ExternalDependencyKind
 
 
 class EmailMailbox(StrEnum):
@@ -195,12 +195,15 @@ class EmailService(ExternalDependency):
         """Return the network-service category for email providers."""
         return ExternalDependencyKind.NETWORK_SERVICE
 
-    def check(self) -> bool:
-        """Confirm availability through the read-only probe; propagate failures."""
-        result = self.probe()
-        if not isinstance(result, dict):
-            raise TypeError("EmailService.probe() must return a dictionary")
-        return True
+    def check(self) -> DependencyFailure | None:
+        """Return the read-only email probe's diagnosis, or None when available."""
+        try:
+            result = self.probe()
+            if not isinstance(result, dict):
+                raise TypeError("EmailService.probe() must return a dictionary")
+            return None
+        except Exception as error:
+            return DependencyFailure.from_exception(error)
 
     @abstractmethod
     def create_draft(

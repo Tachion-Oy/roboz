@@ -578,7 +578,7 @@ def test_decrypted_credentials_and_factory_dependency(tmp_path, monkeypatch, cli
         for tool in tools
         for resource in tool.external_dependencies()
     )
-    assert provider.check() and client.closed
+    assert provider.check() is None and client.closed
     assert "bridge-password" not in str(provider.redacted_metadata())
 
 
@@ -591,8 +591,8 @@ def test_environment_settings_are_resolved_at_use_and_not_retained(client, monke
     )
     assert provider.external_dependencies() == (provider,)
     assert provider.redacted_metadata() == {"provider": "proton_bridge"}
-    with pytest.raises(EmailProviderError, match=prefix):
-        provider.check()
+    failure = provider.check()
+    assert failure is not None and prefix in failure.message
     for name, value in {
         "IMAP_HOST": "127.0.0.1",
         "IMAP_PORT": "1143",
@@ -604,11 +604,27 @@ def test_environment_settings_are_resolved_at_use_and_not_retained(client, monke
     }.items():
         monkeypatch.setenv(prefix + name, value)
     assert ProtonBridgeSettings.from_env(prefix) == settings()
-    assert provider.check()
+    assert provider.check() is None
     monkeypatch.setenv(prefix + "PASSWORD_SECRET", "roboz:v1:opaque")
-    with pytest.raises(EmailProviderError, match=prefix) as error:
-        provider.check()
-    assert "roboz:v1:opaque" not in str(error.value)
+    failure = provider.check()
+    assert failure is not None and prefix in failure.message
+    assert "roboz:v1:opaque" not in failure.message
     monkeypatch.delenv(prefix + "PASSWORD_SECRET")
-    with pytest.raises(EmailProviderError, match=prefix):
-        provider.check()
+    failure = provider.check()
+    assert failure is not None and prefix in failure.message
+
+
+def test_bridge_check_preserves_connection_cause_and_redacts_explicit_credentials():
+    def refused(configured, context):
+        raise ConnectionRefusedError(
+            111, "Connection refused for bridge-user using bridge-password"
+        )
+
+    provider = ProtonBridgeEmailService(settings(), client_factory=refused)
+    failure = provider.check()
+    assert failure is not None
+    assert failure.reason_code == "connection_failed"
+    assert "Unable to communicate with Proton Mail Bridge" in failure.message
+    assert "ConnectionRefusedError: [Errno 111] Connection refused" in failure.message
+    assert "bridge-user" not in failure.message
+    assert "bridge-password" not in failure.message

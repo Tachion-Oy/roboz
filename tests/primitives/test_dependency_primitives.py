@@ -14,6 +14,7 @@ from roboz.tooling import HasExternalDependencies
 from roboz.models import Empty, Invoke, Message, Str
 from roboz import factory, tool
 from roboz.dependencies import (
+    DependencyFailure,
     ExecutableDependency,
     ExternalDependency,
     ExternalDependencyKind,
@@ -22,8 +23,8 @@ from roboz.dependencies import (
 
 
 class IdentityOnly(ExternalDependency):
-    def check(self) -> bool:
-        return True
+    def check(self) -> DependencyFailure | None:
+        return None
 
     @property
     def dependency_id(self) -> str:
@@ -45,8 +46,8 @@ class MissingKind(IdentityOnly):
 class SearchIndex(ExternalDependency):
     name: str
 
-    def check(self) -> bool:
-        return True
+    def check(self) -> DependencyFailure | None:
+        return None
 
     @property
     def dependency_id(self) -> str:

@@ -84,8 +84,8 @@ def test_inspection_is_lazy_and_credentials_are_redacted(monkeypatch):
     assert agent.external_dependencies() == (endpoint,)
     assert isinstance(endpoint, LLMEndpoint)
     assert callable(endpoint.materialize)
-    with pytest.raises(ValueError, match="OPENROUTER_API_KEY_SECRET"):
-        endpoint.check()
+    failure = endpoint.check()
+    assert failure is not None and "OPENROUTER_API_KEY_SECRET" in failure.message
 
 
 @pytest.mark.parametrize("stream", [False, True])
@@ -484,8 +484,8 @@ def test_close_is_shared_idempotent_and_does_not_reopen(sdk_http, used):
     endpoint.client.close()
     assert len(clients) == int(used)
     assert all(client.is_closed() for client in clients)
-    with pytest.raises(RuntimeError, match="closed"):
-        endpoint.check()
+    failure = endpoint.check()
+    assert failure is not None and "closed" in failure.message
     assert len(clients) == int(used) and not requests
 
 
@@ -517,8 +517,8 @@ def test_direct_binding_inspection_and_check_use_the_same_endpoint(sdk_http, cha
     assert bound(Str(value="describe"), []).value == "custom"
     assert len(clients) == 1 and not requests
     assert endpoint.materialize() is endpoint
-    assert endpoint.check() is True
-    assert endpoint.check() is True
+    assert endpoint.check() is None
+    assert endpoint.check() is None
     assert len(clients) == 1 and len(requests) == 2
 
 

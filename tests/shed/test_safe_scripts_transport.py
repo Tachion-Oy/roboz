@@ -47,7 +47,7 @@ def test_remote_discovery_execution_streaming_environment_and_schema(host, monke
         assert tool.OutputModel == local.OutputModel == ShellScriptResult
         dependencies = definition.external_dependencies()
         assert [dep.dependency_id for dep in dependencies] == [f"script_socket:{path}"]
-        assert dependencies[0].check()
+        assert dependencies[0].check() is None
         listed = tool(RunShellScriptInput(), [])
         assert [(entry.script, entry.description) for entry in listed.scripts] == [
             ("report.sh", "Host report.")
@@ -183,7 +183,7 @@ def test_helper_disappearance_returns_transport_failure(host):
         _, _, tool = _remote_tool(path)
         process.terminate()
         process.wait(timeout=4)
-        assert not ScriptSocketDependency(path).check()
+        assert ScriptSocketDependency(path).check() is not None
         result = tool(RunShellScriptInput(), [])
         assert result.status == "failed" and "transport failure" in result.output
 
@@ -194,7 +194,7 @@ def test_health_handshake_runs_no_scripts_or_discovery(host):
     with start() as (path, _):
         # Even an unreadable entrypoint cannot affect handshake health.
         (scripts / "not-readable.sh").chmod(0)
-        assert ScriptSocketDependency(path).check()
+        assert ScriptSocketDependency(path).check() is None
         assert not (workspace / "invoked").exists()
 
 
@@ -314,7 +314,7 @@ def test_protocol_mismatch_fails_without_sending_execution(tmp_path, override):
             helper = Thread(target=fake_helper)
             helper.start()
             try:
-                assert not ScriptSocketDependency(path).check()
+                assert ScriptSocketDependency(path).check() is not None
                 _, _, tool = _remote_tool(path)
                 result = tool(RunShellScriptInput(script="effect.sh"), [])
                 assert (
@@ -351,7 +351,7 @@ def test_health_check_times_out_when_helper_never_sends_handshake():
             listener.bind(str(path))
             listener.listen()
             started = time.monotonic()
-            assert not ScriptSocketDependency(path).check()
+            assert ScriptSocketDependency(path).check() is not None
             assert time.monotonic() - started < 4
             # The peer sees no script request, even after a failed handshake.
             with listener.accept()[0] as connection:
@@ -365,7 +365,7 @@ def test_oversized_remote_request_fails_before_execution(host):
         result = tool(RunShellScriptInput(script="x" * 524_288 + ".sh"), [])
         assert result.status == "failed"
         assert "transport limit" in result.output
-        assert ScriptSocketDependency(path).check()
+        assert ScriptSocketDependency(path).check() is None
 
 
 def test_thousand_script_catalogue_matches_local_and_remote_results(host):
@@ -420,7 +420,7 @@ def test_discovery_delivery_cancellation_joins_connection_handlers(host, action)
                 _wait_until(
                     lambda: len(list(Path(f"/proc/{process.pid}/task").iterdir())) == 1
                 )
-                assert ScriptSocketDependency(path).check()
+                assert ScriptSocketDependency(path).check() is None
             else:
                 process.send_signal(signal.SIGTERM)
                 assert process.wait(timeout=4) == 0

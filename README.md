@@ -346,6 +346,21 @@ the model endpoints, event sinks, lifecycle, and filesystem layout.
 - `roboz.shed.sandbox` defines filesystem scopes and tool permission policies.
 - `roboz.shed.dependency_health` checks configured external resources.
 
+External resources implement the public `ExternalDependency.check()` method:
+return `None` on success or a `DependencyFailure` with `reason_code` and a readable,
+credential-redacted `message`. Each resource owns its failure explanation. Use
+`DependencyFailure.from_exception(error, secrets=...)` to retain linked causes
+while redacting explicitly configured credentials. The result and formatting
+utilities live with the contract in `roboz.dependencies`.
+
+This replaces the former boolean return value; callers use
+`resource.check() is None` to test availability. The shared monitor consumes each
+resource's result without choosing messages based on its category.
+
+The health monitor includes the same message in its cached records and technical
+logs. New or changed failures log at warning level, recovery at info, and repeated
+observations at debug. Applications retain ownership of logging handlers.
+
 Shed permission policies guard Shed tools. They are not an operating-system
 sandbox.
 

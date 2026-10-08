@@ -44,6 +44,11 @@ class _DeferredOpenAIClient:
         return self
 
     @property
+    def api_key(self) -> str | None:
+        """Expose an already-loaded key to dependency diagnostic redaction only."""
+        return self._client.api_key if self._client is not None else None
+
+    @property
     def models(self) -> "Models":
         return self._get_client().models
 

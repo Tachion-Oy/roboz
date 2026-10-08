@@ -90,7 +90,7 @@ def host(tmp_path):
             try:
                 _wait_until(lambda: path.exists() or process.poll() is not None)
                 assert process.poll() is None, process.communicate()[1].decode()
-                assert ScriptSocketDependency(path).check()
+                assert ScriptSocketDependency(path).check() is None
                 yield path, process
             finally:
                 if process.poll() is None:
