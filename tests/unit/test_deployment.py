@@ -141,6 +141,108 @@ def test_duplicate_names_fail_before_building_capabilities_or_sinks():
         root.build(event_sink_factory=unexpected)
 
 
+def test_background_cycle_fails_before_build_and_in_foreground_name_queries():
+    root = _definition("root")
+    background = _definition("background", nested_agents=(root,))
+    root.add_background_agents(background)
+
+    with pytest.raises(ValueError, match="cycles"):
+        root.agent_names(include_background=False)
+    with pytest.raises(ValueError, match="cycles"):
+        root.build(event_sink_factory=lambda name: pytest.fail("allocated sinks"))
+
+
+def test_reusing_a_child_across_branches_is_a_duplicate_name():
+    child = _definition("child")
+    root = _definition("root", nested_agents=(child,), background_agents=(child,))
+
+    with pytest.raises(ValueError, match="agent names must be unique"):
+        root.validate()
+
+
+@pytest.mark.parametrize("children", ["nested_agents", "background_agents"])
+def test_invalid_child_additions_leave_existing_children_unchanged(children):
+    existing = _definition("existing")
+    root = _definition("root", **{children: (existing,)})
+
+    with pytest.raises(TypeError, match="child definitions"):
+        getattr(root, f"add_{children}")(_definition("valid"), object())
+
+    assert getattr(root, children) == (existing,)
+
+
+@pytest.mark.parametrize(
+    "label, value, error, message",
+    [
+        (SkillLabel("bad"), stop, TypeError, "a SkillLabel requires a Skill"),
+        (
+            ToolLabel("bad"),
+            Skill(name="skill", description="Skill", instructions="Help."),
+            TypeError,
+            "a ToolLabel requires a Tool or tool chain",
+        ),
+        (
+            ToolLabel("bad"),
+            (stop, object()),
+            TypeError,
+            "a ToolLabel requires a Tool or tool chain",
+        ),
+        (
+            ToolLabel("bad", default=True),
+            (),
+            ValueError,
+            "a default tool capability requires a chain root",
+        ),
+    ],
+)
+def test_supplied_and_built_payloads_use_the_same_validation(
+    label, value, error, message
+):
+    with pytest.raises(error, match=message):
+        Capability(label=label, value=value)
+
+    class Invalid(Capability):
+        def build(self, agent, pipe):
+            return (value,)
+
+    definition = _definition("invalid", capabilities=(Invalid(label=label),))
+    with pytest.raises(error, match=message):
+        definition.build()
+
+
+def test_builder_cannot_return_an_unbound_value():
+    class Unbound(Capability):
+        def build(self, agent, pipe):
+            return (None,)
+
+    definition = _definition(
+        "invalid", capabilities=(Unbound(label=ToolLabel("unbound")),)
+    )
+    with pytest.raises(TypeError, match="must return bound tool or skill capabilities"):
+        definition.build()
+
+
+def test_builder_returning_no_values_still_configures_the_runtime_pipe():
+    events = []
+
+    class ConfigurePipe(Capability):
+        def build(self, agent, pipe):
+            pipe.add_sink(events.append)
+            return ()
+
+    definition = _definition(
+        "configured",
+        capabilities=(
+            ConfigurePipe(label=ToolLabel("configure_pipe", default=True)),
+            Capability(label=ToolLabel("stop", default=True), value=stop),
+        ),
+    )
+    runtime, _ = definition.build()
+
+    assert events.append in runtime.pipe.event_sinks
+    assert runtime.default_tools == [stop]
+
+
 def test_build_returns_fresh_nested_background_handles():
     nested = _definition("nested")
     background = _definition("background", background_agents=(nested,))
@@ -226,6 +328,29 @@ def test_configuration_can_be_copied_and_unpickled():
         assert restored.capability_selection == {}
         restored.set_capability_selection(None)
         assert definition.capability_selection == {}
+
+
+def test_build_uses_updated_configuration():
+    definition = _definition("original")
+    endpoint = MockLLMEndpoint([])
+
+    definition.name = "updated"
+    definition.description = "Updated description."
+    definition.system_prompt = "Use the updated configuration."
+    definition.mode = AgentMode.AUTONOMOUS
+    definition.automatic_tool_prompt = False
+    definition.agent_endpoint = endpoint
+    definition.initial_messages = ("Updated context.",)
+
+    agent, _ = definition.build()
+
+    assert agent.name == "updated"
+    assert agent.description == "Updated description."
+    assert agent.system_prompt == "Use the updated configuration."
+    assert agent.mode is AgentMode.AUTONOMOUS
+    assert agent.automatic_tool_prompt is False
+    assert agent.agent_endpoint is endpoint
+    assert agent.initial_messages == ("Updated context.",)
 
 
 def test_agent_modes_are_string_valued_enums():
