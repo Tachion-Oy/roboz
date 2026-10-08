@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0a1 - 2026-10-09
+
 - Replace the read-only `DeployableAgent` properties `name`, `description`,
   `system_prompt`, `mode`, `automatic_tool_prompt`, `agent_endpoint`, and
   `initial_messages` with writable attributes. Existing reads and configuration
