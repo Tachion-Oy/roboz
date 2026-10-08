@@ -274,6 +274,14 @@ agent.set_capability_selection({"guide": SkillLoading.ON_DEMAND})
 runtime, background_agents = agent.build()
 ```
 
+The configuration fields `name`, `description`, `system_prompt`, `mode`,
+`automatic_tool_prompt`, `agent_endpoint`, and `initial_messages` are writable
+attributes. Assign an `AgentMode` to `mode` and a tuple of paths or strings to
+`initial_messages`. The existing `set_agent_endpoint()` and
+`set_initial_messages()` methods remain available; the latter accepts any
+sequence and stores a tuple. `set_attributes()` is for capability-specific
+configuration and cannot overwrite these structural fields.
+
 Labels are immutable typed values. Their `name` is unique within an owning
 agent; `selectable=False` makes the declared capability fixed. `ToolLabel`
 exposes a tool or intact chain; `default=True` adds its first tool to

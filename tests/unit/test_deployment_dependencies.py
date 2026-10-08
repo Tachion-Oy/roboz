@@ -87,10 +87,7 @@ def test_inspection_builds_all_agent_modes_without_invoking_or_materializing(tmp
     root.set_initial_messages((absent,))
 
     resources = root.external_dependencies()
-    assert {id(item) for item in resources} == {
-        id(item) for item in (*endpoints, program)
-    }
-    assert len(resources) == 5
+    assert resources == (endpoints[0], program, *endpoints[1:])
     assert received == [root, foreground]
     assert not absent.exists()
 
