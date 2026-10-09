@@ -38,12 +38,40 @@ def test_installed_contracts(consumer):
 
 def test_installed_script_service_command(consumer):
     _, python, root, env = consumer
-    command = [str(python), "-I", "-m", "roboz.shed.tools.safe_scripts"]
+    command = [str(python.with_name("roboz.exe" if sys.platform == "win32" else "roboz")), "scripts"]
     result = subprocess.run(
         [*command, "--help"], cwd=root, env=env, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
     assert "serve" in result.stdout and "check" in result.stdout
+
+
+def test_installed_cli_generates_importable_capabilities(consumer):
+    _, python, root, env = consumer
+    executable = python.with_name("roboz.exe" if sys.platform == "win32" else "roboz")
+    project = root / "local-examples"
+    project.mkdir()
+    for kind in ("tool", "skill"):
+        subprocess.run(
+            [str(executable), kind, "init"], cwd=project, env=env, check=True,
+        )
+    subprocess.run(
+        [str(python), "-I", "-c",
+         f"import sys; sys.path.insert(0, {str(project)!r})\n"
+         "from local.tools.simpsons_quotes import CAPABILITY as tool\n"
+         "from local.skills.simpsons_quotes_skill import CAPABILITY as skill\n"
+         "from roboz.models import Empty\n"
+         "from roboz.examples.simpsons_quotes import QUOTES\n"
+         "assert tool.value(Empty(), []).value in QUOTES\n"
+         "assert skill.value.tools[0](Empty(), []).value in QUOTES\n"
+         "assert skill.label.selectable and tool.label.selectable\n"],
+        cwd=project, env=env, check=True,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pyright", "--pythonpath", str(python),
+         str(project / "local")],
+        cwd=project, env=env, check=True,
+    )
 
 
 def test_installed_endpoint_types(consumer):
@@ -161,7 +189,7 @@ def test_installed_inventory_workflow(consumer, layout):
             if args[0] == "generate":
                 args = (*args, "--output", str(module))
         result = subprocess.run(
-            [str(python), "-I", "-m", "roboz.endpoints", "inventory", *args],
+            [str(python.with_name("roboz.exe" if sys.platform == "win32" else "roboz")), "inventory", *args],
             cwd=project,
             env=env,
             capture_output=True,

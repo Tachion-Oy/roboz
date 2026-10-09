@@ -41,6 +41,9 @@ dependencies = [
     "rich>=14.2.0",
 ]
 
+[project.scripts]
+roboz = "roboz.cli:main"
+
 [build-system]
 requires = ["hatchling>=1.32"]
 build-backend = "hatchling.build"

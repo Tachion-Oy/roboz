@@ -27,6 +27,8 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Why is this framework useful?](#why-is-this-framework-useful)
 - [Chains, factories, truncation and many endpoints](#chains-factories-truncation-and-many-endpoints)
 - [Try it out](#try-it-out)
+- [RoboZ CLI](#roboz-cli)
+  - [Create a local tool or skill](#create-a-local-tool-or-skill)
 - [Deployable agents and capabilities](#deployable-agents-and-capabilities)
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
@@ -245,6 +247,88 @@ or with pip, install RoboZ into the active environment first:
 python -m pip install roboz
 python -m roboz.examples.simple
 ```
+
+## RoboZ CLI
+
+Installing RoboZ provides the `roboz` executable. All terminal commands are
+implemented in `roboz.cli`:
+
+| Command | Purpose |
+| --- | --- |
+| `roboz inventory init` | Create editable model catalogue JSON. |
+| `roboz inventory generate` | Generate a typed catalogue from that JSON. |
+| `roboz env encrypt` | Encrypt secrets in a dotenv file. |
+| `roboz scripts serve` | Serve trusted host scripts on Linux. |
+| `roboz scripts check` | Check the host script service. |
+| `roboz tool init` | Create a tool wrapped as a capability. |
+| `roboz skill init` | Create a skill capability with an attached tool. |
+
+Use `roboz --help` or append `--help` to any command. In a uv project, prefix
+commands with `uv run --locked` to use the project's pinned RoboZ version.
+Successful commands exit with `0`, operational failures with `1`, invalid
+arguments with `2`, and keyboard interruption with `130`.
+
+The former `python -m roboz.endpoints` and
+`python -m roboz.shed.tools.safe_scripts` commands and their CLI modules have
+been removed. Update scripts to the commands above. For catalogues generated
+by the old CLI, keep `models.json`, remove only the generated Python file, and
+run `roboz inventory generate` to recreate it with the new header.
+
+### Create a local tool or skill
+
+Run either command from your application's repository root:
+
+```sh
+uv run --locked roboz tool init
+uv run --locked roboz skill init
+```
+
+Each command creates its destination and any missing parent directories:
+
+```text
+local/
+├── tools/simpsons_quotes/
+│   ├── __init__.py
+│   ├── tool.py
+│   └── requirements.txt
+└── skills/simpsons_quotes_skill/
+    ├── __init__.py
+    ├── tool.py
+    └── requirements.txt
+```
+
+Edit the implementation in `tool.py`. In `__init__.py`, the tool example imports
+that tool and wraps it in `CAPABILITY`; the skill example wraps its instructions
+and attached tool together. The examples return a Simpsons quote and stop the
+agent. They require no provider credentials or additional packages.
+
+Both capabilities are selectable. The tool declares `default=False`; changing
+it to `True` runs it before the model, which ends the run for this quote example.
+The skill declares `loading=SkillLoading.ON_DEMAND`; use `SkillLoading.AUTOMATIC`
+to load its instructions and tool immediately when selected. Set
+`selectable=False` for a fixed capability.
+
+Import capabilities directly into your application's deployment:
+
+```python
+from local.tools.simpsons_quotes import CAPABILITY as quote_tool
+from local.skills.simpsons_quotes_skill import CAPABILITY as quote_skill
+
+definition.add_capabilities(quote_tool, quote_skill)
+```
+
+The parent directories use Python namespace packages, so they need no
+registration files. Each example owns an initially empty `requirements.txt`;
+declare extra packages there and install them into the application environment
+before importing the capability. The generator only creates source files.
+Applications can discover these packages and install their requirements before
+importing each package's `CAPABILITY`.
+
+Use `--path local/tools/my_quotes` or `--path local/skills/my_guide` to choose a
+different destination. Its directory name must be a lowercase snake-case Python
+identifier and determines the generated names. Existing destinations are never
+overwritten. This repository ignores all of `/local/`; add that rule to your
+application's `.gitignore` too and back up private source separately.
 
 ## Deployable agents and capabilities
 
@@ -514,9 +598,9 @@ clients.
 Run these commands from the application project root:
 
 ```bash
-uv run python -m roboz.endpoints inventory init
+uv run roboz inventory init
 # Edit the generated models.json.
-uv run python -m roboz.endpoints inventory generate
+uv run roboz inventory generate
 ```
 
 For a src-layout project named `my-app`, this creates:
@@ -571,8 +655,8 @@ Use `--path` to choose another JSON location. `generate` creates `providers.py`
 beside that file unless `--output` selects another module:
 
 ```bash
-uv run python -m roboz.endpoints inventory init --path src/my_app/endpoints/models.json
-uv run python -m roboz.endpoints inventory generate --path src/my_app/endpoints/models.json
+uv run roboz inventory init --path src/my_app/endpoints/models.json
+uv run roboz inventory generate --path src/my_app/endpoints/models.json
 ```
 
 Create the parent Python package first, then reuse the same paths when
@@ -592,7 +676,7 @@ installed RoboZ version:
 `init` never overwrites JSON. `generate` replaces an existing Python file only
 when it carries the RoboZ generated-file marker.
 
-Run `python -m roboz.endpoints inventory <command> --help` for command options.
+Run `roboz inventory <command> --help` for command options.
 
 ## API key encryption
 
@@ -619,7 +703,7 @@ Keep using an ordinary `.env` file with entries such as
 the project directory:
 
 ```bash
-uv run python -m roboz.endpoints env encrypt
+uv run roboz env encrypt
 # Use --path another.env for a different file.
 ```
 
@@ -663,6 +747,7 @@ parent-shell copy or guarantee memory wiping.
 | Module | Provides |
 | --- | --- |
 | `roboz` | Agent, tool, factory, and skill authoring facade. |
+| `roboz.cli` | Central command parser and handlers for the `roboz` executable. |
 | `roboz.agent` | Agent implementations, nested agents, and background agents. |
 | `roboz.deployment` | Reusable agent definitions and capabilities. |
 | `roboz.llm` | Endpoint contracts, selection, calls, and request policies. |

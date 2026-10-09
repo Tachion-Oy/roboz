@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Breaking: consolidate inventory, encryption, and host-script commands in the
+  installed `roboz` executable and `roboz.cli` module. Remove the Endpoints and
+  SafeScripts CLI modules and their `python -m` entry points. Use `roboz inventory
+  init/generate`, `roboz env encrypt`, and `roboz scripts serve/check`.
+- Add `roboz tool init` and `roboz skill init` to create editable Simpsons quote
+  packages under ignored `local/tools/` and `local/skills/`. Each package defines
+  its selectable, on-demand `CAPABILITY` in `__init__.py` alongside `tool.py` and
+  its own requirements file. `--path` selects a different package destination;
+  existing destinations are never overwritten.
+- Generated endpoint catalogues now identify `roboz inventory` in their header.
+  To migrate, remove the old generated Python catalogue and regenerate it from
+  the existing `models.json`; preserve customized JSON and user-authored Python.
+
 ## 0.8.0rc1 - 2026-10-09
 
 - Breaking: move the Robozium deployment recipe and HUD guidance skill into

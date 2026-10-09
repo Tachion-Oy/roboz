@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environments and local configuration
 .venv/
+/local/
 venv/
 .env
 .env.*

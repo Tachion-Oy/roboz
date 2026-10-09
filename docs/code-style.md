@@ -22,6 +22,11 @@ SDKs. Shed must not import Endpoints or provider SDKs. Endpoint client
 construction remains deferred so importing the package performs no credential
 lookup or network I/O.
 
+The application entry point `roboz.cli` owns all terminal commands, argument
+parsing, prompts, and exit handling. Its handlers import domain functions when
+invoked; core and Shed modules must not import the CLI. Keep templates with the
+CLI's packaged resources and avoid alternate entry points or forwarding wrappers.
+
 When changing a public API, consider imports, signatures, typing, schemas,
 persisted data, prompts, defaults, and side effects. Breaking changes should be
 intentional and documented as described in [CONTRIBUTING.md](../CONTRIBUTING.md).

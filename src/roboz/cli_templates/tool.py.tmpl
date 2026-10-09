@@ -1,0 +1,13 @@
+"""An editable quote tool for the $name capability."""
+
+from random import choice
+
+from roboz import tool
+from roboz.examples.simpsons_quotes import QUOTES
+from roboz.models import Empty, Message, Stop
+
+
+@tool
+def get_$name(input: Empty, messages: list[Message]) -> Stop:
+    """Return a random Simpsons quote and then stop."""
+    return Stop(value=choice(QUOTES))

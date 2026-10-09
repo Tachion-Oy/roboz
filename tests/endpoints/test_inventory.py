@@ -9,7 +9,7 @@ import textwrap
 
 import pytest
 
-from roboz.endpoints import cli
+from roboz import cli
 from roboz.endpoints._inventory_codec import (
     bundled_inventory,
     document_from_inventory,
@@ -212,6 +212,21 @@ def test_failed_generated_replacement_preserves_output(project, monkeypatch):
     assert set(root.rglob("*")) == existing_files
 
 
+def test_concurrent_creation_preserves_output_and_cleans_temporary_files(project, monkeypatch):
+    root, _, module = project
+    existing_files = set(root.rglob("*"))
+    link = os.link
+
+    def create_before_publication(source, destination):
+        destination.write_text("# Created by another process\n")
+        link(source, destination)
+
+    monkeypatch.setattr(os, "link", create_before_publication)
+    assert cli.main(["inventory", "generate"]) == 1
+    assert module.read_text() == "# Created by another process\n"
+    assert set(root.rglob("*")) == existing_files | {module}
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -405,7 +420,7 @@ def test_commands_and_generated_inspection_need_no_sdk_or_credentials(tmp_path):
                 raise AssertionError('credential read')
             return original_get(name, *args)
         builtins.__import__, os.environ.get = guarded_import, guarded_get
-        from roboz.endpoints.cli import main
+        from roboz.cli import main
         assert main(['inventory', 'init']) == 0
         assert main(['inventory', 'generate']) == 0
         from model_catalogue import providers

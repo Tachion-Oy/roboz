@@ -14,7 +14,7 @@ from roboz.shed.tools.safe_scripts import (
     request_script,
 )
 
-COMMAND = (sys.executable, "-m", "roboz.shed.tools.safe_scripts")
+COMMAND = (str(Path(sys.executable).with_name("roboz.exe" if os.name == "nt" else "roboz")), "scripts")
 
 
 def test_command_help_and_argument_errors(tmp_path: Path) -> None:

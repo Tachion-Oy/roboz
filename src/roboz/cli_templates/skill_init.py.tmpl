@@ -1,0 +1,22 @@
+"""Expose $name as a selectable skill with its own quote tool."""
+
+from roboz import Skill
+from roboz.deployment import Capability, SkillLabel, SkillLoading
+
+from .tool import get_$name
+
+__all__ = ["CAPABILITY"]
+
+CAPABILITY = Capability(
+    label=SkillLabel(
+        "$name",
+        selectable=True,  # False makes this capability fixed.
+        loading=SkillLoading.ON_DEMAND,  # AUTOMATIC loads instructions and tools at startup.
+    ),
+    value=Skill(
+        name="$name",
+        description="Return a Simpsons quote.",
+        instructions="Use get_$name to return a random Simpsons quote and finish.",
+        tools=(get_$name,),
+    ),
+)
