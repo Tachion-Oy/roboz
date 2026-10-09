@@ -10,7 +10,6 @@ SEARCH_EMAIL_TOOL_NAME: Final[str] = "search_email"
 READ_EMAIL_TOOL_NAME: Final[str] = "read_email"
 DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME: Final[str] = "download_email_attachment"
 CREATE_REPLY_DRAFT_TOOL_NAME: Final[str] = "create_reply_draft"
-ROBOZIUM_SKILL_NAME: Final[str] = "robozium"
 FILESYSTEM_SKILL_NAME: Final[str] = "filesystem"
 EMAIL_TOOLS_SKILL_NAME: Final[str] = "email_tools"
 

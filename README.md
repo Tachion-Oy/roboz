@@ -334,9 +334,9 @@ There are no compatibility aliases, inferred names, or separate registry.
 
 `roboz.shed` provides reusable components built on the core primitives. Use an
 individual guarded file or email tool, add a capability to a
-`DeployableAgent`, start from the orchestrator and Librarian definitions, or use
-the Robozium recipe to assemble a persistent project agent. Applications own
-the model endpoints, event sinks, lifecycle, and filesystem layout.
+`DeployableAgent`, or start from the orchestrator and Librarian definitions.
+Applications own their deployment recipes, model endpoints, event sinks,
+lifecycle, and filesystem layout.
 
 - `roboz.shed.agents` contains the orchestrator and Librarian definitions.
 - `roboz.shed.capabilities` binds reusable behavior to agent configuration.
@@ -386,18 +386,11 @@ For a self-signed Bridge certificate, configure `certificate_sha256` or a truste
 `ca_file`. Pass the service to
 `get_work_with_email(service=..., ...)`.
 
-`roboz.shed.deployments.robozium(...)` returns a `DeployableAgent`. Its built-ins
-include fixed filesystem, stop, compactification, and Robozium guidance, plus
-selectable SafeScripts and email. Supply `email_service=...` and optionally
-`scripts_dir=...` or `script_socket=...`; scripts otherwise use the sandbox's
-read-only `safe-scripts` directory. Keep that directory outside agent-writable
-paths.
-
-Attach local additions with `definition.add_capabilities(...)`, apply
-`definition.set_capability_selection(...)`, then call `definition.build(...)`.
-This replaces the recipe's former `additional_capabilities` and `event_sinks`
-arguments and runtime tuple return. Supply event sinks and per-agent persistence
-through `build(event_sinks=..., event_sink_factory=...)`.
+Robozium's deployment recipe and HUD guidance live in the
+[Robozium repository](https://github.com/Tachion-Oy/robozium). Import the recipe
+from `robozium.hub.deployment` and its skill from `robozium.hub.skills`.
+The former `roboz.shed.deployments` and `roboz.shed.skills.robozium` modules
+have been removed, along with the `robozium` export from `roboz.shed.skills`.
 
 `Email` preserves its declared `SkillLabel` when building a complete skill with
 email instructions and tools. Its default label loads that skill automatically;
@@ -675,7 +668,7 @@ parent-shell copy or guarantee memory wiping.
 | `roboz.llm` | Endpoint contracts, selection, calls, and request policies. |
 | `roboz.models` | Typed messages and tool input/output models. |
 | `roboz.runtime` | Events, pipes, sinks, persistence, and observability. |
-| `roboz.shed` | Reusable capabilities, guarded tools, agents, and recipes. |
+| `roboz.shed` | Reusable capabilities, guarded tools, agents, and skills. |
 | `roboz.endpoints` | OpenAI-compatible adapters and typed model catalogues. |
 
 ## Robozium
