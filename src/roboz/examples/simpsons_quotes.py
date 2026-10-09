@@ -82,4 +82,5 @@ QUOTES: Final[list[str]] = [
     "It's a perfectly cromulent word.",
     "That's a problem for future Homer.",
     "Why, you little!",
+    "I'm learnding!",
 ]

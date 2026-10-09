@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-09
+
 - Breaking: consolidate inventory, encryption, and host-script commands in the
   installed `roboz` executable and `roboz.cli` module. Remove the Endpoints and
   SafeScripts CLI modules and their `python -m` entry points. Use `roboz inventory
