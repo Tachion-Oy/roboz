@@ -326,9 +326,12 @@ importing each package's `CAPABILITY`.
 
 Use `--path local/tools/my_quotes` or `--path local/skills/my_guide` to choose a
 different destination. Its directory name must be a lowercase snake-case Python
-identifier and determines the generated names. Existing destinations are never
-overwritten. This repository ignores all of `/local/`; add that rule to your
-application's `.gitignore` too and back up private source separately.
+identifier and determines the generated names. A destination directly under an
+import root must not reuse an importable module name such as `typing` or
+`pydantic`; place such a package under `local/tools` or `local/skills` instead.
+Existing destinations are never overwritten. This repository ignores all of
+`/local/`; add that rule to your application's `.gitignore` too and back up
+private source separately.
 
 ## Deployable agents and capabilities
 

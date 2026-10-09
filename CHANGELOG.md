@@ -10,7 +10,8 @@
   packages under ignored `local/tools/` and `local/skills/`. Each package defines
   its selectable, on-demand `CAPABILITY` in `__init__.py` alongside `tool.py` and
   its own requirements file. `--path` selects a different package destination;
-  existing destinations are never overwritten.
+  existing destinations are never overwritten, and top-level package names that
+  would shadow importable modules are rejected.
 - Generated endpoint catalogues now identify `roboz inventory` in their header.
   To migrate, remove the old generated Python catalogue and regenerate it from
   the existing `models.json`; preserve customized JSON and user-authored Python.

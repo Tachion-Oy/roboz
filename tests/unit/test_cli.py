@@ -92,6 +92,39 @@ def test_custom_destination_is_importable_and_preserves_existing_files(tmp_path,
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("name", ["typing", "random", "pathlib", "pydantic"])
+def test_top_level_destination_cannot_shadow_imports_in_a_fresh_process(
+    tmp_path, name,
+):
+    result = run_python(tmp_path, f"""
+        from pathlib import Path
+        from roboz.cli import main
+
+        assert main(["tool", "init", "--path", {name!r}]) == 1
+        assert not Path({name!r}).exists()
+    """)
+    assert result.returncode == 0, result.stderr
+    assert "conflicts with an importable top-level module" in result.stderr
+
+
+def test_nested_destination_can_share_a_top_level_module_name(tmp_path):
+    result = run_python(tmp_path, """
+        from roboz.cli import main
+
+        assert main(["tool", "init", "--path", "local/tools/typing"]) == 0
+        from local.tools.typing import CAPABILITY
+        assert CAPABILITY.label.name == "typing"
+    """)
+    assert result.returncode == 0, result.stderr
+
+
+def test_top_level_destination_cannot_shadow_a_sibling_module(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "quotes.py").write_text("# existing module\n")
+    assert cli.main(["skill", "init", "--path", "quotes"]) == 1
+    assert not (tmp_path / "quotes").exists()
+
+
 @pytest.mark.parametrize("name", ["bad-name", "class", "_private", "roboz", "MixedCase"])
 def test_invalid_package_names_create_nothing(tmp_path, name, capsys):
     path = tmp_path / "missing" / name

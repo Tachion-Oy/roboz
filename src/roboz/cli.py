@@ -2,7 +2,9 @@
 
 import argparse
 from getpass import getpass
+from importlib.machinery import PathFinder
 from importlib.resources import files
+from importlib.util import find_spec
 from keyword import iskeyword
 import os
 from pathlib import Path
@@ -302,6 +304,12 @@ def _init_capability(kind: str, path: Path) -> int:
         raise ValueError(f"{path}: choose a non-keyword package name other than roboz")
     if output.exists():
         raise ValueError(f"{path}: already exists")
+    import_roots = {Path.cwd().resolve(), *(Path(entry).resolve() for entry in sys.path if entry)}
+    if output.parent in import_roots and (
+        find_spec(name) is not None
+        or PathFinder.find_spec(name, [str(output.parent)]) is not None
+    ):
+        raise ValueError(f"{path}: {name!r} conflicts with an importable top-level module")
     templates = files("roboz").joinpath("cli_templates")
     sources = {
         "tool.py": "tool.py.tmpl",
