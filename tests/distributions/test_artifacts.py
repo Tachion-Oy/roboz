@@ -1,3 +1,4 @@
+from configparser import ConfigParser
 import email
 from pathlib import Path
 import tarfile
@@ -43,7 +44,7 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/shed/skills/filesystem/patch.py",
             "roboz/shed/tools/email/proton_bridge/service.py",
             "roboz/shed/tools/email/proton_bridge/models.py",
-            "roboz/endpoints/__main__.py",
+            "roboz/cli.py",
             "roboz/endpoints/adapters/openai_compatible.py",
             "roboz/endpoints/catalog.py",
             "roboz/endpoints/catalog.pyi",
@@ -53,13 +54,16 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert not any(name.endswith("/README.md") for name in names)
         for module in (
             "__init__",
-            "__main__",
-            "cli",
             "protocol",
             "client",
             "server",
         ):
             assert f"roboz/shed/tools/safe_scripts/{module}.py" in names
+        for package_path in ("roboz/endpoints", "roboz/shed/tools/safe_scripts"):
+            assert f"{package_path}/cli.py" not in names
+            assert f"{package_path}/__main__.py" not in names
+        for template in ("tool.py", "tool_init.py", "skill_init.py", "requirements.txt"):
+            assert f"roboz/cli_templates/{template}.tmpl" in names
         assert "roboz/shed/tools/safe_scripts.py" not in names
         assert "roboz/shed/tools/safe_scripts/execution.py" not in names
         assert "roboz/shed/tools/safe_scripts/contracts.py" not in names
@@ -93,7 +97,11 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert any(
             requirement.startswith("imapclient<5,>=4.1") for requirement in requirements
         )
-        assert not any(name.endswith("/entry_points.txt") for name in names)
+        entry_points = ConfigParser()
+        entry_points.read_string(archive.read(next(
+            name for name in names if name.endswith("/entry_points.txt")
+        )).decode())
+        assert dict(entry_points["console_scripts"]) == {"roboz": "roboz.cli:main"}
     with tarfile.open(sdist) as archive:
         paths = [Path(name).parts[1:] for name in archive.getnames()]
         assert [path for path in paths if path and path[-1] == "README.md"] == [

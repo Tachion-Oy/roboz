@@ -16,7 +16,7 @@ requires Bash and POSIX process groups and uses the application's privileges.
 Start one service in a dedicated host process:
 
 ```sh
-python -m roboz.shed.tools.safe_scripts serve \
+roboz scripts serve \
   --socket /run/user/1000/roboz-scripts/scripts.sock \
   --scripts /opt/trusted-scripts --cwd /srv/workspace
 ```
@@ -33,7 +33,7 @@ container. Script and working-directory paths are resolved on the host.
 Check the service without listing or running scripts:
 
 ```sh
-python -m roboz.shed.tools.safe_scripts check \
+roboz scripts check \
   --socket /run/user/1000/roboz-scripts/scripts.sock
 ```
 

@@ -1,0 +1,16 @@
+"""Expose $name as a selectable tool capability."""
+
+from roboz.deployment import Capability, ToolLabel
+
+from .tool import get_$name
+
+__all__ = ["CAPABILITY"]
+
+CAPABILITY = Capability(
+    label=ToolLabel(
+        "$name",
+        selectable=True,  # False makes this capability fixed.
+        default=False,  # True runs the tool before the model; this example stops the run.
+    ),
+    value=get_$name,
+)

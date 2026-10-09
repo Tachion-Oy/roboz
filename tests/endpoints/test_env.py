@@ -6,7 +6,7 @@ import pytest
 from dotenv import dotenv_values, load_dotenv
 
 from roboz.endpoints import encrypt_env, load_secrets
-from roboz.endpoints import cli
+from roboz import cli
 from roboz.endpoints.adapters.openai_compatible import chat_endpoint
 
 
