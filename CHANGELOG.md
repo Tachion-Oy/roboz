@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.8.0rc1 - 2026-10-09
+
+- Breaking: move the Robozium deployment recipe and HUD guidance skill into
+  the Robozium application. Import `robozium` from `robozium.hub.deployment`
+  and `robozium.hub.skills`, respectively. Remove `roboz.shed.deployments`,
+  the Robozium skill export, and `ROBOZIUM_SKILL_NAME` from Shed without
+  compatibility aliases. The orchestrator and Librarian remain in Shed.
+
 ## 0.7.0a1 - 2026-10-09
 
 - Replace the read-only `DeployableAgent` properties `name`, `description`,

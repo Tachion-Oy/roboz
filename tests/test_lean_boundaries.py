@@ -27,6 +27,8 @@ def test_removed_namespaces_are_absent() -> None:
     assert find_spec("roboz.tools.snapshot_conversations") is None
     assert find_spec("roboz.tools.compactification") is None
     assert find_spec("roboz.llm.providers") is None
+    assert find_spec("roboz.shed.deployments") is None
+    assert find_spec("roboz.shed.skills.robozium") is None
     assert find_spec("roboz_openai") is None
     assert find_spec("roboshed") is None
     assert find_spec("roboz_endpoints") is None

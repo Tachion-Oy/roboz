@@ -80,4 +80,5 @@ QUOTES: Final[list[str]] = [
     "In this house, we obey the laws of thermodynamics!",
     "It's a perfectly cromulent word.",
     "That's a problem for future Homer.",
+    "Why, you little!",
 ]
