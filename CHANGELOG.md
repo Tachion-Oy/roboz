@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.9.1 - 2026-10-10
+
+- Refresh the packaged README: remove the stale prerelease notice and show
+  supported Python versions from the PyPI badge.
+
 ## 0.9.0 - 2026-10-09
 
 - Breaking: consolidate inventory, encryption, and host-script commands in the

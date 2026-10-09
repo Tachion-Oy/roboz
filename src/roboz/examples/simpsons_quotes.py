@@ -84,4 +84,5 @@ QUOTES: Final[list[str]] = [
     "Why, you little!",
     "I'm learnding!",
     "I'm helping!",
+    "I used to be with it, but then they changed what 'it' was.",
 ]
