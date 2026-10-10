@@ -88,4 +88,5 @@ QUOTES: Final[list[str]] = [
     "Just because I don't care doesn't mean I don't understand.",
     "Mmm... floor pie.",
     "Mmm... sacrilicious.",
+    "I call the big one Bitey.",
 ]
