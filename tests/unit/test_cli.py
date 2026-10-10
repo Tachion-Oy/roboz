@@ -190,6 +190,6 @@ def test_interrupted_password_input_uses_common_exit_handling(
     def interrupted(_):
         raise error()
     monkeypatch.setattr(cli, "getpass", interrupted)
-    assert cli.main(["env", "encrypt", "--path", str(tmp_path / ".env")]) == expected
+    assert cli.main(["env", "encrypt", "--path", str(tmp_path / ".env"), "--secret", "KEY"]) == expected
     assert "Traceback" not in capsys.readouterr().err
     assert not (tmp_path / ".env.encrypt").exists()

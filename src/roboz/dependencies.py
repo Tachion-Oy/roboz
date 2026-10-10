@@ -209,7 +209,12 @@ def redact_dependency_message(message: str, *, secrets: Iterable[str] = ()) -> s
     values.update(
         value
         for name, value in os.environ.items()
-        if name.upper().endswith(("_SECRET", "_PASSWORD", "_API_KEY", "_TOKEN"))
+        if name.upper().endswith(("_ENCRYPTED", "_PASSWORD", "_API_KEY", "_TOKEN"))
+    )
+    values.update(
+        os.environ[name[:-len("_ENCRYPTED")]]
+        for name in os.environ
+        if name.endswith("_ENCRYPTED") and name[:-len("_ENCRYPTED")] in os.environ
     )
     for value in sorted((value for value in values if value), key=len, reverse=True):
         message = message.replace(value, "[redacted]")

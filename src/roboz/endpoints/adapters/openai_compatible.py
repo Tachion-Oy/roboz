@@ -84,7 +84,7 @@ class OpenAICompatibleAdapter:
         api_name: str = "openai",
         base_url: str = "https://api.openai.com/v1",
         api_key: str | None = None,
-        api_key_env: str = "OPENAI_API_KEY_SECRET",
+        api_key_env: str = "OPENAI_API_KEY",
         timeout_s: float = 60.0,
     ) -> None:
         """Store service settings without validation, SDK imports, or I/O.
@@ -211,7 +211,7 @@ def chat_endpoint(
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
-    api_key_env: str = "OPENAI_API_KEY_SECRET",
+    api_key_env: str = "OPENAI_API_KEY",
     timeout_s: float = 60.0,
     stream: bool = True,
     extra_body: RequestOptions | None = None,
@@ -241,7 +241,7 @@ def transcription_endpoint(
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
-    api_key_env: str = "OPENAI_API_KEY_SECRET",
+    api_key_env: str = "OPENAI_API_KEY",
     timeout_s: float = 60.0,
 ) -> TranscriptionEndpoint:
     """Describe an endpoint through a configured ``OpenAICompatibleAdapter``.

@@ -168,12 +168,13 @@ def _parser() -> argparse.ArgumentParser:
     environment = groups.add_parser("env", help="Manage encrypted dotenv secrets")
     env_commands = environment.add_subparsers(dest="command", required=True)
     encrypt_command = env_commands.add_parser(
-        "encrypt", help="Encrypt *_SECRET values in a dotenv file"
+        "encrypt", help="Encrypt selected variables in a dotenv file"
     )
     encrypt_command.add_argument(
         "--path", type=Path, default=Path(".env"),
         help="Plaintext source file (default: .env; output adds .encrypt)"
     )
+    encrypt_command.add_argument("--secret", action="append", required=True, help="Base name to encrypt (repeat for each secret)")
     inventory = groups.add_parser(
         "inventory",
         help="Initialize JSON and generate a typed endpoint catalogue",
@@ -251,7 +252,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _encrypt(path: Path) -> int:
+def _encrypt(path: Path, secret_names: list[str]) -> int:
     from roboz.endpoints.env import _PASSWORD_ENV, encrypt_env
 
     password = None
@@ -259,7 +260,7 @@ def _encrypt(path: Path) -> int:
         password = getpass("Encryption password: ")
         if password != getpass("Confirm password: "):
             raise ValueError("Passwords do not match")
-    output = encrypt_env(path, password=password)
+    output = encrypt_env(path, secret_names=secret_names, password=password)
     print(f"Encrypted secrets: {output}")
     return 0
 
@@ -342,7 +343,7 @@ def _init_capability(kind: str, path: Path) -> int:
 
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.group == "env":
-        return _encrypt(args.path)
+        return _encrypt(args.path, args.secret)
     if args.group == "scripts":
         return _scripts(args, parser)
     if args.group in {"tool", "skill"}:

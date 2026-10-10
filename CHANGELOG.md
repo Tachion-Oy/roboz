@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-10
+
+- Breaking: replace `_SECRET` with explicitly selected encryption and the stored `_ENCRYPTED` suffix. Providers and tools consume base names; no legacy aliases. Update the CLI with repeatable `--secret NAME` and add in-memory encryption, decryption, and dotenv serialization APIs.
+- Preserve manual `.env` and process overrides, atomically write encrypted files, and redact arbitrary decrypted names in dependency diagnostics.
+
 ## 0.10.0 - 2026-10-10
 
 - Breaking: move all Shed email capabilities, tools, contracts, provider, instructions, models, contexts, and identifiers to Robozify without aliases. Replace `roboz.shed.capabilities.Email` with `robozify.skills.email.Email`, `roboz.shed.tools.email` with `robozify.skills.email.tools`, and email skill imports with `robozify.skills.email.instructions`. Remove the direct `imapclient` dependency; applications using Proton Bridge install Robozify email requirements. Guarded filesystem and other Shed components remain available.

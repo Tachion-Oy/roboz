@@ -47,7 +47,7 @@ def test_check_preserves_wrapped_cause(cause, reason, detail):
 
 
 def test_diagnostic_redacts_credentials_but_keeps_error_text(monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY_SECRET", "synthetic-env-key")
+    monkeypatch.setenv("TEST_API_KEY", "synthetic-env-key")
     error = RuntimeError(
         "Connection refused; synthetic-env-key; explicit-password; "
         "Authorization: Bearer synthetic-bearer; password=synthetic-password; "
