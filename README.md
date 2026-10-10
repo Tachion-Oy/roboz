@@ -614,7 +614,7 @@ For example, a provider entry can contain:
 ```json
 "my_service": {
   "base_url": "https://models.example.com/v1",
-  "api_key_env": "MY_SERVICE_API_KEY_SECRET",
+  "api_key_env": "MY_SERVICE_API_KEY",
   "models": {
     "my_chat_model": {
       "model_id": "my-chat-model",
@@ -668,43 +668,20 @@ Run `roboz inventory <command> --help` for command options.
 
 ## API key encryption
 
-Credential integrations can import these public constants from
-`roboz.endpoints` or `roboz.endpoints.env`:
-
-```python
-from roboz.endpoints import (
-    DEFAULT_ENCRYPTED_ENV_PATH,  # Final[Path]: Path(".env.encrypt")
-    ENCRYPTED_NAMESPACE,  # Final[str]: "roboz:"
-    SECRET_SUFFIX,  # Final[str]: "_SECRET"
-)
-```
-
-`SECRET_SUFFIX` identifies secret variable names. `ENCRYPTED_NAMESPACE`
-identifies RoboZ ciphertext, including unsupported versions; the current
-format starts with `roboz:v1:`. `DEFAULT_ENCRYPTED_ENV_PATH` is the relative
-encrypted file path used by default loading. These constants describe the
-supported format and defaults; they are not configuration settings.
-
-Keep using an ordinary `.env` file with entries such as
-`MY_SERVICE_API_KEY_SECRET=...` or
-`PROTON_BRIDGE_PASSWORD_SECRET=...`. Encrypt its nonempty `_SECRET` values from
-the project directory:
+Tools and providers read ordinary names such as `OPENROUTER_API_KEY` and
+`PROTON_BRIDGE_PASSWORD`. Encryption adds `_ENCRYPTED` to stored names;
+unlocking restores the original name. Choose secrets explicitly, regardless
+of their name. `_ENCRYPTED` is reserved for storage.
 
 ```bash
-uv run roboz env encrypt
-# Use --path another.env for a different file.
+uv run roboz env encrypt --secret OPENROUTER_API_KEY --secret PROTON_BRIDGE_PASSWORD
+# --path another.env selects another plaintext source.
 ```
 
-The command asks for a hidden password twice, or consumes
-`ROBOZ_ENV_PASSWORD` from its process environment. It writes `.env.encrypt`
-beside the untouched `.env` source (or adds `.encrypt` to a custom path).
-The new file contains the parsed assignments with nonempty `_SECRET` values
-encrypted; comments and original formatting stay only in the source. You may
-delete the plaintext source after checking the result. Both files use dotenv
-syntax, so `python-dotenv` can parse the ciphertext but cannot decrypt it.
-Plaintext `.env` files continue to load without a password.
-
-An application can load secrets before starting an agent:
+The command prompts for a password twice (or consumes `ROBOZ_ENV_PASSWORD`).
+It atomically writes `.env.encrypt` beside the untouched source with owner-only
+permissions. Selected values use `roboz:v1:` ciphertext; ordinary settings stay
+plaintext. Remove the source yourself if you want only encrypted storage.
 
 ```python
 from getpass import getpass
@@ -713,22 +690,29 @@ from roboz.endpoints import load_secrets
 load_secrets(password=getpass("Secret password: "))
 ```
 
-With no path argument, `load_secrets()` prefers `.env.encrypt` and falls back
-to `.env`. Pass `path=` to choose a file explicitly. Endpoints also load missing
-keys when first used. For deferred loading, set
-`ROBOZ_ENV_PASSWORD` in the application's process environment. The loader
-consumes it only when encrypted secrets need decrypting; an explicit `api_key=`
-on the adapter takes precedence. All pending secrets are validated before any
-are added to `os.environ`. Existing usable environment keys take precedence
-over file values.
+The default loader reads `.env.encrypt`, with a manually maintained `.env`
+overriding it. Existing process values win, including explicit empty values.
+An explicit `path=` selects a file without the default `.env` overlay. Values
+are validated before any environment mutation. Endpoint credentials remain
+lazy; explicit adapter keys take precedence.
 
-Re-running encryption recreates `.env.encrypt` from the plaintext source. A
-wrong password or damaged ciphertext fails during loading without injecting
-pending keys. The command writes no password or private-key file. Keep the
-password outside the repository and retain it for future decryption. Loaded
-secrets remain available in the application's process environment. Consuming
-a password removes only this process's environment entry; it cannot erase a
-parent-shell copy or guarantee memory wiping.
+UIs can use `encrypt_env_values(values, secret_names=..., password=...)`,
+`decrypt_env_values(values, password=...)`, and `serialize_env(values)` directly
+in memory, with no plaintext files or process-environment side effects.
+`encrypt_env(path, secret_names=..., password=...)` is the file wrapper.
+Public constants are `ENCRYPTED_SUFFIX` (`"_ENCRYPTED"`),
+`ENCRYPTED_NAMESPACE` (`"roboz:"`), and `DEFAULT_ENCRYPTED_ENV_PATH`
+(`Path(".env.encrypt")`), exported by `roboz.endpoints` and its `env` module.
+
+### Migration from 0.10
+
+Replace provider and tool names ending in `_SECRET` with their base names in
+configuration, custom catalogues, and `.env.example` files. Replace the removed
+`SECRET_SUFFIX` import with `ENCRYPTED_SUFFIX` when inspecting stored entries.
+Recreate encrypted files using explicitly selected base names; old `_SECRET`
+ciphertext is rejected rather than silently treated as a credential. Recover
+old secrets using the previous release before upgrading if you need them.
+
 
 ## Module map
 

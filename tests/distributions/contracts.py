@@ -100,11 +100,11 @@ def test_public_credential_constants():
     from roboz.endpoints import (
         DEFAULT_ENCRYPTED_ENV_PATH,
         ENCRYPTED_NAMESPACE,
-        SECRET_SUFFIX,
+        ENCRYPTED_SUFFIX,
     )
     from roboz.endpoints import env
 
-    assert SECRET_SUFFIX == env.SECRET_SUFFIX == "_SECRET"
+    assert ENCRYPTED_SUFFIX == env.ENCRYPTED_SUFFIX == "_ENCRYPTED"
     assert ENCRYPTED_NAMESPACE == env.ENCRYPTED_NAMESPACE == "roboz:"
     assert DEFAULT_ENCRYPTED_ENV_PATH == env.DEFAULT_ENCRYPTED_ENV_PATH == Path(".env.encrypt")
 

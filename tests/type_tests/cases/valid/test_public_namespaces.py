@@ -5,14 +5,14 @@ import roboz as rz
 from roboz.endpoints import (
     DEFAULT_ENCRYPTED_ENV_PATH,
     ENCRYPTED_NAMESPACE,
-    SECRET_SUFFIX,
+    ENCRYPTED_SUFFIX,
 )
 from roboz.endpoints import env
 
-assert_type(SECRET_SUFFIX, str)
+assert_type(ENCRYPTED_SUFFIX, str)
 assert_type(ENCRYPTED_NAMESPACE, str)
 assert_type(DEFAULT_ENCRYPTED_ENV_PATH, Path)
-assert_type(env.SECRET_SUFFIX, str)
+assert_type(env.ENCRYPTED_SUFFIX, str)
 assert_type(env.ENCRYPTED_NAMESPACE, str)
 assert_type(env.DEFAULT_ENCRYPTED_ENV_PATH, Path)
 

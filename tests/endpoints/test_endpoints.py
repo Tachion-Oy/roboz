@@ -69,11 +69,11 @@ def test_catalogue_instances_keep_independent_configuration(sdk_http, provider_c
 
 
 def test_inspection_is_lazy_and_credentials_are_redacted(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY_SECRET", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     endpoint = chat_endpoint(
         api_name="openrouter",
         base_url="https://openrouter.ai/api/v1",
-        api_key_env="OPENROUTER_API_KEY_SECRET",
+        api_key_env="OPENROUTER_API_KEY",
         model="test/model",
         max_context_tokens=4096,
     )
@@ -85,7 +85,7 @@ def test_inspection_is_lazy_and_credentials_are_redacted(monkeypatch):
     assert isinstance(endpoint, LLMEndpoint)
     assert callable(endpoint.materialize)
     failure = endpoint.check()
-    assert failure is not None and "OPENROUTER_API_KEY_SECRET" in failure.message
+    assert failure is not None and "OPENROUTER_API_KEY" in failure.message
 
 
 @pytest.mark.parametrize("stream", [False, True])
@@ -161,7 +161,7 @@ def test_sdk_transport_and_policy_through_agent(monkeypatch, stream):
     endpoint = chat_endpoint(
         api_name="openrouter",
         base_url="https://openrouter.ai/api/v1",
-        api_key_env="OPENROUTER_API_KEY_SECRET",
+        api_key_env="OPENROUTER_API_KEY",
         model="test/model",
         max_context_tokens=4096,
         api_key="test-secret",
@@ -246,7 +246,7 @@ def test_adapter_reuses_service_settings_for_independent_lazy_endpoints(sdk_http
         api_name="custom",
         base_url="https://models.example.com/v1",
         api_key="explicit-secret",
-        api_key_env="UNUSED_API_KEY_SECRET",
+        api_key_env="UNUSED_API_KEY",
         timeout_s=12,
     )
     chat = adapter.chat_endpoint(
@@ -326,7 +326,7 @@ def test_catalogue_chat_transport(
     base_url,
     context,
 ):
-    monkeypatch.setenv(f"{api_name.upper()}_API_KEY_SECRET", "catalogue-secret")
+    monkeypatch.setenv(f"{api_name.upper()}_API_KEY", "catalogue-secret")
     usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
 
     def reply(request):
@@ -395,7 +395,7 @@ def test_groq_transcription_transport(monkeypatch, sdk_http):
     from email.parser import BytesParser
     from email.policy import default
 
-    monkeypatch.setenv("GROQ_API_KEY_SECRET", "groq-secret")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-secret")
     clients, requests = sdk_http(
         lambda _: httpx.Response(200, json={"text": " spoken words "})
     )
@@ -446,17 +446,17 @@ def test_groq_transcription_transport(monkeypatch, sdk_http):
 
 @pytest.mark.parametrize("chat", [False, True])
 def test_failed_credentials_can_be_retried(monkeypatch, sdk_http, chat):
-    monkeypatch.delenv("OPENAI_API_KEY_SECRET", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     clients, _ = sdk_http(lambda _: pytest.fail("unexpected request"))
     endpoint = (
         chat_endpoint(model="custom", max_context_tokens=123)
         if chat
         else transcription_endpoint(model="custom")
     )
-    with pytest.raises(ValueError, match="OPENAI_API_KEY_SECRET"):
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         endpoint.materialize()
     assert clients == []
-    monkeypatch.setenv("OPENAI_API_KEY_SECRET", "later-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "later-secret")
     with ThreadPoolExecutor(max_workers=4) as executor:
         resources = list(executor.map(lambda _: endpoint.materialize(), range(8)))
     assert all(resource is resources[0] for resource in resources)
