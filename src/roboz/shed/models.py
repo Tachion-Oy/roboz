@@ -62,27 +62,6 @@ class ApplyPatchReady(ToolValueBase):
     )
 
 
-class EmailReady(ToolValueBase):
-    """Validated email attachment payload ready for guarded READ execution."""
-
-    kind: Literal["email_ready"] = Field(default="email_ready")
-    attachment_path: str = Field(
-        ..., description="Absolute path of the file approved for attachment"
-    )
-    attachment_filename: str = Field(
-        ..., description="Filename presented to the email provider"
-    )
-
-
-class EmailAttachmentDownloadReady(ToolValueBase):
-    """Validated destination for one received-email attachment download."""
-
-    kind: Literal["email_attachment_download_ready"] = Field(
-        default="email_attachment_download_ready"
-    )
-    attachment_ref: str = Field(..., description="Opaque provider attachment reference")
-
-
 class ActionVerdict(StrEnum):
     """Permission decision applied by a matching guard rule."""
 

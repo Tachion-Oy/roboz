@@ -42,8 +42,6 @@ def test_package_contents_and_metadata(pytestconfig, package):
             "roboz/shed/skills/filesystem/prompts.py",
             "roboz/shed/skills/filesystem/cli.py",
             "roboz/shed/skills/filesystem/patch.py",
-            "roboz/shed/tools/email/proton_bridge/service.py",
-            "roboz/shed/tools/email/proton_bridge/models.py",
             "roboz/cli.py",
             "roboz/endpoints/adapters/openai_compatible.py",
             "roboz/endpoints/catalog.py",
@@ -94,8 +92,8 @@ def test_package_contents_and_metadata(pytestconfig, package):
         assert any(
             requirement.startswith("openai<4,>=2.8.1") for requirement in requirements
         )
-        assert any(
-            requirement.startswith("imapclient<5,>=4.1") for requirement in requirements
+        assert not any(
+            requirement.startswith("imapclient") for requirement in requirements
         )
         entry_points = ConfigParser()
         entry_points.read_string(archive.read(next(
@@ -126,15 +124,6 @@ def test_package_contents_and_metadata(pytestconfig, package):
                 "safe_scripts",
                 f"{module}.py",
             ) in paths
-        assert (
-            "src",
-            namespace,
-            "shed",
-            "tools",
-            "email",
-            "proton_bridge",
-            "service.py",
-        ) in paths
         assert ("src", namespace, "endpoints", "inventory.pyi") in paths
         assert all(not path or path[0] != "packages" for path in paths)
 

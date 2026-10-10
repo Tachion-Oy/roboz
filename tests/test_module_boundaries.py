@@ -40,7 +40,6 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
     names = {requirement.split(">=", 1)[0] for requirement in project["dependencies"]}
     assert names == {
         "cryptography",
-        "imapclient",
         "openai",
         "pydantic",
         "pygments",

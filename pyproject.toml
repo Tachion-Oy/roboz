@@ -1,6 +1,6 @@
 [project]
 name = "roboz"
-version = "0.9.1"
+version = "0.10.0"
 description = "Python framework for typed LLM agents with conditional tool chaining."
 readme = "README.md"
 authors = [{ name = "Tachion Oy" }]
@@ -33,7 +33,6 @@ classifiers = [
 ]
 dependencies = [
     "cryptography>=50.0.1",
-    "imapclient>=4.1,<5",
     "openai>=2.8.1,<4",
     "pydantic>=2.12.4",
     "pygments>=2.20.0",

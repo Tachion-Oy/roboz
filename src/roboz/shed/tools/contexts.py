@@ -16,7 +16,6 @@ from roboz.tooling.context import HasExternalDependencies
 
 if TYPE_CHECKING:
     from roboz.shed.tools.runner import ExecutableCommandCatalog
-    from roboz.shed.tools.email.contracts import EmailService
 
 
 DEFAULT_MAX_CHARS_TOLERANCE_PERCENT: Final[float] = 15.0
@@ -138,18 +137,3 @@ class SleepBetweenRunsContext:
     is_cancelled: Callable[[], bool] | None = None
     conversation_root: Path | None = None
     agent_names: set[str] = field(default_factory=set)
-
-
-@dataclass(frozen=True, kw_only=True)
-class EmailContext(HasExternalDependencies):
-    """Email service, caller-owned controls, and inbox confirmation policy."""
-
-    service: EmailService
-    is_cancelled: Callable[[], bool]
-    timeout_s: float
-    pipe: EventPipe | None
-    prompt_before_inbox_read: bool = False
-
-    def external_dependencies(self) -> tuple[ExternalDependency, ...]:
-        """Report the email service without probing or accessing a mailbox."""
-        return self.service.external_dependencies()

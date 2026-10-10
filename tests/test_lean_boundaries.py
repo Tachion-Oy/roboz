@@ -73,7 +73,6 @@ def test_distribution_dependency_set_has_no_extras() -> None:
     }
     assert names == {
         "cryptography",
-        "imapclient",
         "openai",
         "pydantic",
         "pygments",
