@@ -89,4 +89,5 @@ QUOTES: Final[list[str]] = [
     "Mmm... floor pie.",
     "Mmm... sacrilicious.",
     "I call the big one Bitey.",
+    "Stupid babies need the most attention.",
 ]
