@@ -5,13 +5,7 @@ from typing import Final
 RUN_FILE_COMMAND_TOOL_NAME: Final[str] = "run_file_command"
 CONTINUE_FILE_COMMAND_TOOL_NAME: Final[str] = "continue_file_command"
 APPLY_PATCH_TOOL_NAME: Final[str] = "apply_patch"
-CREATE_EMAIL_DRAFT_TOOL_NAME: Final[str] = "create_email_draft"
-SEARCH_EMAIL_TOOL_NAME: Final[str] = "search_email"
-READ_EMAIL_TOOL_NAME: Final[str] = "read_email"
-DOWNLOAD_EMAIL_ATTACHMENT_TOOL_NAME: Final[str] = "download_email_attachment"
-CREATE_REPLY_DRAFT_TOOL_NAME: Final[str] = "create_reply_draft"
 FILESYSTEM_SKILL_NAME: Final[str] = "filesystem"
-EMAIL_TOOLS_SKILL_NAME: Final[str] = "email_tools"
 
 COMPACTIFY_MESSAGES_TOOL_NAME: Final[str] = "compactify_messages_when_needed"
 

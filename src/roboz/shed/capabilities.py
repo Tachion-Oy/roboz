@@ -16,7 +16,7 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import FilesystemContext, email_skill, filesystem_skill
+from roboz.shed.skills import FilesystemContext, filesystem_skill
 from roboz.shed.tools import get_compactify_messages_when_needed_tool
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
@@ -30,8 +30,6 @@ from roboz.shed.tools.contexts import (
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
 )
-from roboz.shed.tools.email import EmailService, get_work_with_email
-from roboz.shed.tools.email.factory import DEFAULT_EMAIL_OPERATION_TIMEOUT_S
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
 from roboz.shed.tools.safe_scripts import (
@@ -133,45 +131,6 @@ _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)
 _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
     "agent_endpoint": _ENDPOINT_TYPES,
 }
-
-
-class Email(Capability):
-    """Bind email guidance and tools as one complete skill.
-
-    Supply a configured service, such as ProtonBridgeEmailService. Credential
-    loading belongs to the application; building does not contact the provider.
-    """
-
-    def __init__(
-        self,
-        *,
-        label: SkillLabel = SkillLabel("email", loading=SkillLoading.AUTOMATIC),
-        service: EmailService,
-        timeout_s: float = DEFAULT_EMAIL_OPERATION_TIMEOUT_S,
-        prompt_before_inbox_read: bool = False,
-    ) -> None:
-        """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
-        self.service = service
-        self.timeout_s = timeout_s
-        self.prompt_before_inbox_read = prompt_before_inbox_read
-
-    @property
-    def required_attributes(self) -> RequiredAttributes:
-        """Require the sandbox for draft attachments and downloaded files."""
-        return {"sandbox": Sandbox}
-
-    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Skill, ...]:
-        """Bind the existing email factory and its guidance to this agent's pipe."""
-        sandbox = cast(Sandbox, agent.sandbox)
-        tools = get_work_with_email(
-            service=self.service,
-            **sandbox.permissions().tool_options(pipe),
-            is_cancelled=lambda: pipe.cancelled,
-            timeout_s=self.timeout_s,
-            prompt_before_inbox_read=self.prompt_before_inbox_read,
-        )
-        return (email_skill.copy(tools=tools),)
 
 
 class Filesystem(Capability):

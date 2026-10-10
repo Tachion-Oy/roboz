@@ -57,7 +57,7 @@ In the usual approach an agent is presented each tool separately in their system
 ### Deterministic chains
 The philosophy in RoboZ is that often workflows are mostly deterministic and only on occasion does one need to call an llm. For example in RoboZ an agent would trigger the "ask Bob if they want to have lunch" tool and all subsequent steps come by way of chaining: each tool can be chained to other tools upstream where their outputs are passed down the chain. Each link/edge may introduce a True/False condition, in our case the condition is if Bob is interested in having lunch with us at all. If he is not, RoboZ allows for the chain to break and returns back to the default tool, which for an agentic process is usually "ask the llm what to do next". The default mode is that chained tools are not presented to the agent, they are thus *passive* or in other words their role is strictly in forming deterministic workflows and they cannot be invoked.
 
-Chaining also provides a permission guard for tool calls. CLI commands, patches, and email attachments share the same permission checks. A denied operation cannot execute; a CLI sequence can continue to an independently guarded fallback.
+Chaining also provides a permission guard for tool calls. CLI commands and patches share the same permission checks. A denied operation cannot execute; a CLI sequence can continue to an independently guarded fallback.
 
 
 ## Start here: Agent with a tool
@@ -419,14 +419,14 @@ There are no compatibility aliases, inferred names, or separate registry.
 ## Shed
 
 `roboz.shed` provides reusable components built on the core primitives. Use an
-individual guarded file or email tool, add a capability to a
+individual guarded file tool, add a capability to a
 `DeployableAgent`, or start from the orchestrator and Librarian definitions.
 Applications own their deployment recipes, model endpoints, event sinks,
 lifecycle, and filesystem layout.
 
 - `roboz.shed.agents` contains the orchestrator and Librarian definitions.
 - `roboz.shed.capabilities` binds reusable behavior to agent configuration.
-- `roboz.shed.tools` contains guarded file commands, patching, email contracts,
+- `roboz.shed.tools` contains guarded file commands, patching,
   conversation compaction, snapshots, memory consolidation, and retention.
 - `roboz.shed.skills` supplies reusable instructions and complete tool bundles.
 - `roboz.shed.sandbox` defines filesystem scopes and tool permission policies.
@@ -460,27 +460,13 @@ call skill factories when runtime configuration is available; agents accept the
 resulting skills, not the factories. Optional `depends_on` accepts an already
 constructed prerequisite skill.
 
-`roboz.shed.tools.email.proton_bridge` provides `ProtonBridgeEmailService`
-and `ProtonBridgeSettings`. Supply explicit IMAP settings and Bridge-generated
-credentials, decrypted before construction. A settings callable may instead
-resolve current credentials when an operation runs; inspection does not call it.
-`ProtonBridgeSettings.from_env(prefix="PROTON_BRIDGE_")` reads the current
-environment. Pass it as the settings callable to defer loading. A custom prefix
-keeps application-specific names in the application; parsing and validation stay
-with the provider settings.
-For a self-signed Bridge certificate, configure `certificate_sha256` or a trusted
-`ca_file`. Pass the service to
-`get_work_with_email(service=..., ...)`.
+Email and timesheet capabilities now live in [Robozify](https://github.com/Tachion-Oy/robozify). Replace `roboz.shed.capabilities.Email` with `robozify.skills.email.Email`, `roboz.shed.tools.email` with `robozify.skills.email.tools`, and `roboz.shed.skills.email_tools` with `robozify.skills.email.instructions`. Email contexts, models, and identifiers moved to their corresponding `robozify.skills.email` modules. Install the `skills/email/requirements.txt` dependencies when using Proton Bridge.
 
 Robozium's deployment recipe and HUD guidance live in the
 [Robozium repository](https://github.com/Tachion-Oy/robozium). Import the recipe
 from `robozium.hub.deployment` and its skill from `robozium.hub.skills`.
 The former `roboz.shed.deployments` and `roboz.shed.skills.robozium` modules
 have been removed, along with the `robozium` export from `roboz.shed.skills`.
-
-`Email` preserves its declared `SkillLabel` when building a complete skill with
-email instructions and tools. Its default label loads that skill automatically;
-a selectable label lets the owning agent choose on-demand loading or disable it.
 
 For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 [SafeScripts guide](docs/safe-scripts.md) for helper setup and execution policy.

@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import assert_type
 
 from roboz.shed.models import ApplyPatch, GuardFileSingle, GuardFilesResult, Operation
-from roboz.shed.tools.email.inputs import CreateEmailDraft
 from roboz.shed.tools.guard import guard_items
 
 from roboz.shed.tools import GuardContext
@@ -20,12 +19,4 @@ def typed_guard(ctx: GuardContext) -> None:
         original_input=ApplyPatch(path="a", old_string="", new_string="b"),
         ctx=ctx,
     )
-    email_result = guard_items(
-        items_to_guard=items,
-        original_input=CreateEmailDraft(
-            to=["a@example.com"], subject="Hi", body_text="Hi"
-        ),
-        ctx=ctx,
-    )
     assert_type(file_result, GuardFilesResult[ApplyPatch, Str])
-    assert_type(email_result, GuardFilesResult[CreateEmailDraft, Str])

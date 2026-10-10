@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-10-10
+
+- Breaking: move all Shed email capabilities, tools, contracts, provider, instructions, models, contexts, and identifiers to Robozify without aliases. Replace `roboz.shed.capabilities.Email` with `robozify.skills.email.Email`, `roboz.shed.tools.email` with `robozify.skills.email.tools`, and email skill imports with `robozify.skills.email.instructions`. Remove the direct `imapclient` dependency; applications using Proton Bridge install Robozify email requirements. Guarded filesystem and other Shed components remain available.
+
 ## 0.9.1 - 2026-10-10
 
 - Refresh the packaged README: remove the stale prerelease notice and show

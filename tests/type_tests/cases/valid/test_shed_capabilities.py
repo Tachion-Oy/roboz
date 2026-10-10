@@ -8,14 +8,12 @@ from roboz.shed.capabilities import (
     ArtifactRetention,
     Compactification,
     ConversationSnapshots,
-    Email,
     Filesystem,
     MaintenanceCadence,
     MemoryConsolidation,
     SafeScripts,
 )
 from roboz.shed.sandbox import Sandbox
-from roboz.shed.tools.email import EmailService
 from roboz import Agent, Skill, Tool
 from roboz.dependencies import ExternalDependency
 from roboz.deployment import Capability, DeployableAgent
@@ -24,10 +22,9 @@ from roboz.runtime import EventPipe
 
 
 def compose(
-    sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe, service: EmailService
+    sandbox: Sandbox, endpoint: EndpointLike, pipe: EventPipe
 ) -> None:
     capabilities: tuple[Capability, ...] = (
-        Email(service=service),
         Filesystem(),
         Compactification(endpoint=endpoint),
         ConversationSnapshots(endpoint=endpoint),
