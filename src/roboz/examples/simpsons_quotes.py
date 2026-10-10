@@ -87,4 +87,5 @@ QUOTES: Final[list[str]] = [
     "I used to be with it, but then they changed what 'it' was.",
     "Just because I don't care doesn't mean I don't understand.",
     "Mmm... floor pie.",
+    "Mmm... sacrilicious.",
 ]
