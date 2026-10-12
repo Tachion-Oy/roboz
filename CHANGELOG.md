@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add the `Pdf` capability with one guarded `process_pdf` tool for reading PDF
+  text with page ranges and bounded output. Images are ignored; no OCR is performed.
+
 ## 0.11.0 - 2026-10-10
 
 - Breaking: replace `_SECRET` with explicitly selected encryption and the stored `_ENCRYPTED` suffix. Providers and tools consume base names; no legacy aliases. Update the CLI with repeatable `--secret NAME` and add in-memory encryption, decryption, and dotenv serialization APIs.

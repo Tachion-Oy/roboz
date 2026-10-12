@@ -9,6 +9,7 @@ from roboz.shed.capabilities import (
     Compactification,
     ConversationSnapshots,
     Filesystem,
+    Pdf,
     MaintenanceCadence,
     MemoryConsolidation,
     SafeScripts,
@@ -26,6 +27,7 @@ def compose(
 ) -> None:
     capabilities: tuple[Capability, ...] = (
         Filesystem(),
+        Pdf(),
         Compactification(endpoint=endpoint),
         ConversationSnapshots(endpoint=endpoint),
         MemoryConsolidation(endpoint=endpoint),

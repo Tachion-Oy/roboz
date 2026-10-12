@@ -76,6 +76,7 @@ def test_distribution_dependency_set_has_no_extras() -> None:
         "openai",
         "pydantic",
         "pygments",
+        "pypdf",
         "python-dotenv",
         "rich",
     }

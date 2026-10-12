@@ -549,6 +549,25 @@ contain the full option allowlist and describe command-specific operand ordering
 and restrictions. Its [patch instructions](src/roboz/shed/skills/filesystem/patch.py)
 cover literal replacements and choosing between patches and full-file rewrites.
 
+### PDF reading
+
+Add `Pdf()` from `roboz.shed.capabilities` to a deployment with a configured
+`sandbox`. It loads the guarded `process_pdf` reader:
+
+```json
+{"action": "process_pdf", "rationale": "Read the report", "path": "report.pdf", "start_page": 1, "end_page": 3}
+```
+
+Reading uses pypdf, includes page numbers, and limits the combined text output.
+Use smaller page ranges when output is truncated. Images are ignored and no OCR
+is performed; an existing OCR text layer can be read. Encrypted PDFs require a
+decrypted copy.
+
+`Pdf(label=SkillLabel("pdf"))` offers the skill on demand. Direct compositions
+can use `pdf_skill(PdfContext(...))` from
+`roboz.shed.skills`, or `get_pdf_tool(ctx)` from `roboz.shed.tools.pdf` for the
+guarded tool chain. `PdfContext` takes `permissions` and `pipe`.
+
 ## Endpoints and model catalogues
 
 `roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`

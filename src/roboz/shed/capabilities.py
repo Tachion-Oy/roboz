@@ -16,7 +16,7 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import FilesystemContext, filesystem_skill
+from roboz.shed.skills import FilesystemContext, filesystem_skill, PdfContext, pdf_skill
 from roboz.shed.tools import get_compactify_messages_when_needed_tool
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
@@ -160,6 +160,27 @@ class Filesystem(Capability):
             FilesystemContext(permissions=sandbox.permissions(), pipe=pipe)
         )
         return (skill,)
+
+
+class Pdf(Capability):
+    """Bind PDF reading as a guarded skill."""
+
+    def __init__(
+        self, *,
+        label: SkillLabel = SkillLabel("pdf", loading=SkillLoading.AUTOMATIC),
+    ) -> None:
+        """Keep configuration for fresh runtime bindings on each build."""
+        super().__init__(label=label)
+
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the owning agent's configured sandbox."""
+        return {"sandbox": Sandbox}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Skill, ...]:
+        """Bind PDF reading to the owner's file permissions."""
+        sandbox = cast(Sandbox, agent.sandbox)
+        return (pdf_skill(PdfContext(sandbox.permissions(), pipe)),)
 
 
 class Compactification(Capability):
