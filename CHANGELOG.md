@@ -3,8 +3,7 @@
 ## Unreleased
 
 - Add the `Pdf` capability with one guarded `process_pdf` tool for reading PDF
-  text and creating PDFs from HTML or Office documents using LibreOffice.
-  Creation disables linked resources and macros; reading does not perform OCR.
+  text with page ranges and bounded output. Images are ignored; no OCR is performed.
 
 ## 0.11.0 - 2026-10-10
 
