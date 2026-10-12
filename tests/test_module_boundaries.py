@@ -43,6 +43,7 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
         "openai",
         "pydantic",
         "pygments",
+        "pypdf",
         "python-dotenv",
         "rich",
     }

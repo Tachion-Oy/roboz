@@ -549,6 +549,38 @@ contain the full option allowlist and describe command-specific operand ordering
 and restrictions. Its [patch instructions](src/roboz/shed/skills/filesystem/patch.py)
 cover literal replacements and choosing between patches and full-file rewrites.
 
+### PDF reading and creation
+
+Add `Pdf()` from `roboz.shed.capabilities` to a deployment with a configured
+`sandbox`. It loads one `process_pdf` tool for both operations:
+
+```json
+{"action": "process_pdf", "rationale": "Read the report", "operation": "read", "path": "report.pdf", "start_page": 1, "end_page": 3}
+```
+
+```json
+{"action": "process_pdf", "rationale": "Create the report", "operation": "create", "path": "report.html", "output_path": "report.pdf"}
+```
+
+Reading uses pypdf, includes page numbers, and limits the combined text output.
+Use smaller page ranges when output is truncated. Images are ignored and no OCR
+is performed; an existing OCR text layer can be read. Encrypted PDFs require a
+decrypted copy.
+
+Creation accepts HTML, DOCX/ODT, XLSX/ODS, and PPTX/ODP. Use `Filesystem()` to
+write HTML when authoring a new document. Install LibreOffice Writer, Calc,
+and Impress for the corresponding source formats. External resource loading
+and macros are disabled; use embedded resources. The output directory must
+exist. Replacing a PDF requires `overwrite: true` and READ/CREATE/DELETE
+permissions on the destination. Conversion failures preserve existing output.
+
+`Pdf(libreoffice="/path/to/soffice", timeout_s=120)` configures the converter.
+Reading works without LibreOffice. `Pdf(label=SkillLabel("pdf"))` offers the
+skill on demand. Direct compositions can use `pdf_skill(PdfContext(...))` from
+`roboz.shed.skills`, or `get_pdf_tool(ctx)` from `roboz.shed.tools.pdf` for the
+guarded tool chain. `PdfContext` takes `permissions` and `pipe`, with optional
+`libreoffice=ExecutableDependency(...)` and `timeout_s`.
+
 ## Endpoints and model catalogues
 
 `roboz.endpoints` builds concrete `LLMEndpoint` and `TranscriptionEndpoint`

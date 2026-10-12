@@ -16,7 +16,8 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import FilesystemContext, filesystem_skill
+from roboz.shed.skills import FilesystemContext, filesystem_skill, PdfContext, pdf_skill
+from roboz.dependencies import ExecutableDependency
 from roboz.shed.tools import get_compactify_messages_when_needed_tool
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
@@ -160,6 +161,35 @@ class Filesystem(Capability):
             FilesystemContext(permissions=sandbox.permissions(), pipe=pipe)
         )
         return (skill,)
+
+
+class Pdf(Capability):
+    """Bind PDF reading and creation as one guarded skill."""
+
+    def __init__(
+        self, *,
+        label: SkillLabel = SkillLabel("pdf", loading=SkillLoading.AUTOMATIC),
+        libreoffice: str = "libreoffice",
+        timeout_s: float = 120.0,
+    ) -> None:
+        """Configure the converter; read operations work without LibreOffice."""
+        super().__init__(label=label)
+        self.libreoffice = ExecutableDependency(libreoffice)
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError("timeout_s must be finite and positive")
+        self.timeout_s = timeout_s
+
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the owning agent's configured sandbox."""
+        return {"sandbox": Sandbox}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Skill, ...]:
+        """Bind both PDF operations to the owner's file permissions."""
+        sandbox = cast(Sandbox, agent.sandbox)
+        return (pdf_skill(PdfContext(
+            sandbox.permissions(), pipe, self.libreoffice, self.timeout_s,
+        )),)
 
 
 class Compactification(Capability):
