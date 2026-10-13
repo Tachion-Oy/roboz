@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
+    ExternalCallTimeoutError,
     LLMAuthError,
     LLMCallCancelledError,
     LLMCallInterruptedError,
@@ -30,7 +31,7 @@ from roboz.llm._diagnostics import (
 )
 from roboz.llm._retry import RetryState, run_with_retry
 from roboz.llm.binding import LLMTelemetryDict
-from roboz.llm.calls import _call_chat_completion, call_llm_api, call_transcription_api
+from roboz.llm.calls import _LLMCallRunner, call_llm_api, call_transcription_api
 from roboz.llm.completion import (
     _parse_response,
     _reprompt_on_error,
@@ -46,6 +47,7 @@ from roboz.llm.endpoints import (
 )
 from roboz.llm.prompts import ACTION_FIX_PROMPT, JSON_FIX_PROMPT, PYDANTIC_FIX_PROMPT
 from roboz.models import Empty, Message, Role, Str
+from roboz.models._schema import messages_scrubber
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime._external import (
     ControlSignal,
@@ -845,7 +847,8 @@ def test_stream_retains_dict_usage_when_a_later_chunk_has_none() -> None:
 
 
 def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
-    signal = ControlSignal()
+    pipe = EventPipe()
+    pipe.initialize(dry_run=False, agent_name="agent")
 
     class ClosableStream:
         def __init__(self) -> None:
@@ -853,7 +856,7 @@ def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
 
         def __iter__(self):
             yield _stream_chunk("before-cancel")
-            signal.set()
+            pipe.cancel()
             yield _stream_chunk("after-cancel")
 
         def close(self) -> None:
@@ -867,12 +870,20 @@ def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
     )
     deltas: list[str] = []
 
-    result = _call_chat_completion(
+    runner = _LLMCallRunner(
         endpoint,
-        request={},
+        [],
+        messages_scrubber=messages_scrubber,
         on_delta=deltas.append,
-        control_signals=(signal,),
+        pipe=pipe,
+        timeout_s=None,
+        max_attempts=1,
+        retry_base_delay_s=0,
+        retry_max_delay_s=0,
+        start_replacement_stream=None,
     )
+    runner._request = runner._chat_completion_request()
+    result = runner._call_chat_completion()
 
     assert result.content == "before-cancel"
     assert deltas == ["before-cancel"]
@@ -1170,12 +1181,20 @@ def test_stream_delta_gate_stays_closed_after_interrupt_signal_clears() -> None:
         output_format="json",
     )
 
-    _call_chat_completion(
+    runner = _LLMCallRunner(
         endpoint,
-        request={},
+        [],
+        messages_scrubber=messages_scrubber,
         on_delta=deltas.append,
-        control_signals=pipe.control_signals,
+        pipe=pipe,
+        timeout_s=None,
+        max_attempts=1,
+        retry_base_delay_s=0,
+        retry_max_delay_s=0,
+        start_replacement_stream=None,
     )
+    runner._request = runner._chat_completion_request()
+    runner._call_chat_completion()
 
     assert deltas == ["before-interrupt"]
 
@@ -1948,9 +1967,8 @@ def test_call_llm_api_does_not_retry_non_retryable_error() -> None:
     class ProviderAuthError(Exception):
         status_code = 401
 
-    client = _ScriptedLLMClient(
-        [ProviderAuthError("bad key"), _completion_response('{"arg":"ok"}')]
-    )
+    provider_error = ProviderAuthError("bad key")
+    client = _ScriptedLLMClient([provider_error, _completion_response('{"arg":"ok"}')])
     endpoint = LLMEndpoint(
         client=client,
         model_name="fake-model",
@@ -1959,7 +1977,7 @@ def test_call_llm_api_does_not_retry_non_retryable_error() -> None:
         stream=False,
     )
 
-    with pytest.raises(LLMAuthError):
+    with pytest.raises(LLMAuthError) as raised:
         call_llm_api(
             endpoint,
             [Message(role=Role.USER, content="hello")],
@@ -1969,6 +1987,111 @@ def test_call_llm_api_does_not_retry_non_retryable_error() -> None:
         )
 
     assert len(client.chat.completions.calls) == 1
+    assert raised.value.__cause__ is provider_error
+
+
+@pytest.mark.parametrize("error_type", [LLMCallCancelledError, LLMProviderRequestError])
+@pytest.mark.parametrize("use_mock", [False, True])
+def test_call_llm_api_preserves_typed_errors_and_their_cause(error_type, use_mock):
+    cause = RuntimeError("original cause")
+    error = error_type("already classified")
+    error.__cause__ = cause
+    endpoint = (
+        MockLLMEndpoint([error])
+        if use_mock
+        else LLMEndpoint(
+            client=_ScriptedLLMClient([error]),
+            model_name="fake-model", api_name="fake", stream=False,
+        )
+    )
+
+    with pytest.raises(error_type) as raised:
+        call_llm_api(endpoint, [Message(role=Role.USER, content="hello")])
+
+    assert raised.value is error
+    assert raised.value.__cause__ is cause
+
+
+def test_call_llm_api_timeout_is_reported_without_retrying():
+    release = Event()
+    finished = Event()
+    requests = []
+
+    class SlowChatCompletions:
+        def create(self, **request):
+            requests.append(request)
+            try:
+                assert release.wait(timeout=2)
+                return _completion_response("late response")
+            finally:
+                finished.set()
+
+    endpoint = LLMEndpoint(
+        client=SimpleNamespace(
+            models=_UnusedModels(), close=_unused_close,
+            chat=SimpleNamespace(completions=SlowChatCompletions()),
+        ),
+        model_name="fake-model", api_name="fake", stream=False,
+    )
+    events = []
+    pipe = EventPipe(event_sinks=(events.append,))
+    pipe.initialize(dry_run=False, agent_name="agent")
+    try:
+        with pytest.raises(LLMCallTimeoutError) as raised:
+            call_llm_api(
+                endpoint, [Message(role=Role.USER, content="hello")],
+                timeout_s=0.05, max_attempts=3, pipe=pipe,
+            )
+    finally:
+        release.set()
+        assert finished.wait(timeout=2)
+
+    assert len(requests) == 1
+    assert isinstance(raised.value.__cause__, ExternalCallTimeoutError)
+    llm_events = [
+        event for event in events
+        if isinstance(event, RuntimeEvent) and event.category == "llm"
+    ]
+    assert [event.kind for event in llm_events] == ["started", "timed_out"]
+    assert len({event.data["call_id"] for event in llm_events}) == 1
+
+
+@pytest.mark.parametrize(
+    "action,error_type,terminal_kind",
+    [
+        ("cancel", LLMCallCancelledError, "cancelled"),
+        ("interrupt", LLMCallInterruptedError, "interrupted"),
+    ],
+)
+def test_call_llm_api_reports_control_signals_during_retry_backoff(
+    action, error_type, terminal_kind,
+):
+    client = _ScriptedLLMClient([
+        MockProviderError("slow down", status_code=429), _completion_response("unused"),
+    ])
+    endpoint = LLMEndpoint(
+        client=client, model_name="fake-model", api_name="fake", stream=False,
+    )
+    events = []
+    pipe = EventPipe()
+    pipe.initialize(dry_run=False, agent_name="agent")
+
+    def stop_on_retry(event):
+        if isinstance(event, RuntimeEvent) and event.category == "llm":
+            events.append(event)
+            if event.kind == "retrying":
+                getattr(pipe, action)()
+
+    pipe.add_sink(stop_on_retry)
+    with pytest.raises(error_type):
+        call_llm_api(
+            endpoint, [Message(role=Role.USER, content="hello")], pipe=pipe,
+            retry_base_delay_s=0.01, retry_max_delay_s=0.01,
+        )
+
+    assert len(client.chat.completions.calls) == 1
+    assert [event.kind for event in events] == ["started", "retrying", terminal_kind]
+    assert len({event.data["call_id"] for event in events}) == 1
 
 
 def test_call_llm_api_mock_endpoint_bypasses_retry() -> None:
