@@ -626,6 +626,11 @@ reply, usage = call_llm_api(
 result = Str(value="Chart generated.", images=[image])
 ```
 
+The `images` field is visible in tool-input and structured-output schemas.
+Model-generated tool calls retain image arguments in their JSON text. Tool
+results carry images as message attachments without duplicating them in the
+result's JSON text.
+
 Use HTTP(S) URLs, base64 image data URLs, or
 `Image.from_bytes(data, media_type="image/png")`. Byte inputs support PNG, JPEG,
 WebP, and GIF. RoboZ checks the source and encoding without fetching URLs or

@@ -77,8 +77,6 @@ def messages_scrubber(messages: list[Message]):
     )
     if not allowed:
         raise ValueError(f"No allowed fields in message schema {Message=}")
-    # Attachments are hidden from tool schemas but belong in message payloads.
-    allowed.add("images")
     return [
         {
             k: v

@@ -121,7 +121,7 @@ class Image(BaseModel):
 
 
 class AgentBaseModel(BaseModel):
-    """Base metadata carried by values moving through an agent run."""
+    """Common fields carried by values moving through an agent run."""
 
     truncation: TruncationSpec = Field(default=DEFAULT)
     images: list[Image] = Field(default_factory=list, repr=False)

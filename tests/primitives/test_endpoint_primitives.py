@@ -244,6 +244,61 @@ def test_mock_endpoint_checks_images_before_consuming_script():
     assert call_llm_api(endpoint, messages)[0] == "description"
 
 
+@pytest.mark.parametrize("is_mock", [False, True])
+def test_custom_scrubber_can_remove_images_before_validation(is_mock):
+    client = ScriptedClient()
+    response = '{"value": "configured endpoint output"}'
+    endpoint = (
+        MockLLMEndpoint([response]) if is_mock else
+        LLMEndpoint(client=client, api_name="test", model_name="text")
+    )
+    image = Image(url="https://example.com/private.png")
+    message = Message(role=Role.ERROR, content="Redacted", images=[image])
+    scrubbed_roles = []
+
+    def scrub(messages):
+        records = messages_scrubber(messages)
+        for record in records:
+            scrubbed_roles.append(record["role"])
+            record.pop("images", None)
+        return records
+
+    assert call_llm_api(endpoint, [message], messages_scrubber=scrub)[0] == response
+    assert scrubbed_roles == ["user"]
+    assert message.images == [image]
+    if isinstance(endpoint, MockLLMEndpoint):
+        assert endpoint.mock_responses == []
+    else:
+        assert client.chat_requests[0]["messages"] == [{"role": "user", "content": "Redacted"}]
+
+
+@pytest.mark.parametrize("is_mock", [False, True])
+@pytest.mark.parametrize("accepts_images", [False, True])
+def test_custom_scrubber_images_are_validated_before_call(is_mock, accepts_images):
+    client = ScriptedClient()
+    endpoint = (
+        MockLLMEndpoint(["unused"], accepts_images=accepts_images) if is_mock else
+        LLMEndpoint(
+            client=client, api_name="test", model_name="chat", accepts_images=accepts_images,
+        )
+    )
+
+    def scrub(messages):
+        records = messages_scrubber(messages)
+        records[0]["images"] = [{"url": "https://example.com/chart.png"}]
+        records[0]["role"] = "assistant" if accepts_images else "user"
+        return records
+
+    error = "user message" if accepts_images else "does not accept images"
+    with pytest.raises(LLMImageInputError, match=error):
+        call_llm_api(
+            endpoint, [Message(role=Role.USER, content="Describe")], messages_scrubber=scrub,
+        )
+    assert client.chat_requests == []
+    if isinstance(endpoint, MockLLMEndpoint):
+        assert endpoint.mock_responses == ["unused"]
+
+
 def test_transcription_endpoint_can_be_a_direct_context():
     @factory
     def transcribe_sample(

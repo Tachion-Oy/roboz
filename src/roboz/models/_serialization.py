@@ -34,10 +34,13 @@ def get_finalized_message(
     *,
     message_kind: MessageKind | None = None,
 ) -> Message:
-    dump = output.model_dump(
-        mode="json", exclude=set(extract_fields_and_type_names()[0])
-    )
-    if get_role(output) == Role.USER:
+    """Serialize tool calls as JSON and move tool-result images into attachments."""
+    role = get_role(output)
+    excluded_fields = set(extract_fields_and_type_names()[0])
+    if role == Role.USER or not output.images:
+        excluded_fields.add("images")
+    dump = output.model_dump(mode="json", exclude=excluded_fields)
+    if role == Role.USER:
         injected_payload = {}
         if caller is not None:
             injected_payload[BaseNames.CALLER_FIELD] = caller.name
@@ -46,9 +49,9 @@ def get_finalized_message(
         message_kind if message_kind is not None else output.message_kind
     )
     return Message(
-        role=get_role(output),
+        role=role,
         content=json.dumps(dump, ensure_ascii=False),
-        images=output.images,
+        images=output.images if role == Role.USER else [],
         truncation=output.truncation,
         message_kind=resolved_message_kind,
         **output.model_dump(

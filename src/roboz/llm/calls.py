@@ -300,8 +300,12 @@ class _LLMCallRunner:
 
     def _chat_completion_messages(self) -> list[dict]:
         """Encode each scrubbed record using only its own text and attachments."""
-        assert isinstance(self._endpoint, LLMEndpoint)
-        records = self._messages_scrubber(self._endpoint.message_mapper(self._messages))
+        mapper = (
+            role_to_user_mapper
+            if isinstance(self._endpoint, MockLLMEndpoint)
+            else self._endpoint.message_mapper
+        )
+        records = self._messages_scrubber(mapper(self._messages))
         messages = []
         for record in records:
             payload = record.copy()
@@ -339,8 +343,7 @@ class _LLMCallRunner:
     def _call_mock_llm_api(self) -> _ChatCompletionResult:
         assert isinstance(self._endpoint, MockLLMEndpoint)
         self._raise_for_mock_control_signal()
-        for message in role_to_user_mapper(self._messages):
-            self._validate_image_message(message.role, bool(message.images))
+        self._chat_completion_messages()
         if not self._endpoint.mock_responses:
             raise RuntimeError("Mock script exhausted before stop")
         mock_response = self._endpoint.mock_responses.pop(0)

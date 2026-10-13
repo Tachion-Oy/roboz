@@ -7,9 +7,10 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from roboz import Agent, tool
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
-from roboz.llm.endpoints import role_to_user_mapper
-from roboz.models import Image, Message, MessageKind, Role, Str
+from roboz.llm.endpoints import MockLLMEndpoint, role_to_user_mapper
+from roboz.models import Empty, Image, Message, MessageKind, Role, Str
 from roboz.models._schema import messages_scrubber, schema_scrubber
 from roboz.models._serialization import get_finalized_message
 from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
@@ -18,6 +19,7 @@ from roboz.runtime.persistence import (
     logged_row_to_message,
     message_to_logged_row,
 )
+from roboz.tools import stop
 
 
 def test_image_bytes_encode_with_the_declared_mime_type():
@@ -46,12 +48,48 @@ def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     assert mapped == message
     assert mapped.images == [image]
     assert json.loads(mapped.content) == {"value": "A chart"}
-    assert "images" not in schema_scrubber(Str.model_json_schema())["properties"]
+    assert "images" in schema_scrubber(Str.model_json_schema())["properties"]
     assert messages_scrubber([mapped]) == [{
         "role": "user", "content": message.content, "images": [{"url": image.url}],
     }]
     error = message.model_copy(update={"role": Role.ERROR})
     assert role_to_user_mapper([error])[0] == message
+
+
+def test_agent_can_pass_image_arguments_and_continue_after_tool_result():
+    image = Image(url="https://example.com/chart.png")
+    received = []
+
+    @tool
+    def inspect_image(input: Empty, messages: list[Message]) -> Str:
+        """Inspect the supplied images."""
+        received.extend(input.images)
+        return Str(value="A chart", images=input.images)
+
+    invocation = {
+        "action": "inspect_image", "rationale": "Inspect the chart",
+        "images": [image.model_dump(mode="json", exclude_none=True)],
+    }
+    endpoint = MockLLMEndpoint([
+        invocation,
+        {"action": "stop", "rationale": "Done", "value": "Finished"},
+    ], accepts_images=True)
+    agent = Agent(
+        name="image_arguments", tools=[inspect_image, stop],
+        system_prompt="Inspect the chart and stop.", agent_endpoint=endpoint,
+    )
+
+    result, messages = agent.invoke(dry_run=True)
+
+    assert result.value == "Finished"
+    assert received == [image]
+    assistant = next(message for message in messages if message.role == Role.ASSISTANT)
+    assert json.loads(assistant.content)["images"][0]["url"] == image.url
+    assert assistant.images == []
+    tool_result = next(message for message in messages if message.images)
+    assert tool_result.role == Role.USER
+    assert tool_result.images == [image]
+    assert "images" not in json.loads(tool_result.content)
 
 
 @pytest.mark.parametrize("severity", list(Severity))
