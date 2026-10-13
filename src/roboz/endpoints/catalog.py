@@ -10,9 +10,9 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Self
 
-from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 from roboz.endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
 from roboz.endpoints.specs import ChatModelSpec, ModelSpec
+from roboz.llm import LLMEndpoint, TranscriptionEndpoint
 
 
 class Catalog[Spec: ModelSpec]:
@@ -60,25 +60,25 @@ class Catalog[Spec: ModelSpec]:
             stream=stream,
         )
 
-    def __getattr__(
-        self, name: str
-    ) -> LLMEndpoint | TranscriptionEndpoint:
+    def __getattr__(self, name: str) -> LLMEndpoint | TranscriptionEndpoint:
         """Select and cache a concrete endpoint according to its model specification."""
         try:
             model = self.models_by_attribute[name]
         except KeyError:
             raise AttributeError(name) from None
         with self._lock:
-            if name not in self.__dict__:
-                if isinstance(model, ChatModelSpec):
-                    dependency = self._adapter.chat_endpoint(
-                        model=model.model_id,
-                        max_context_tokens=model.max_context_tokens,
-                        stream=self._stream,
-                    )
-                else:
-                    dependency = self._adapter.transcription_endpoint(model=model.model_id)
-                self.__dict__[name] = dependency
+            if name in self.__dict__:
+                return self.__dict__[name]
+            if isinstance(model, ChatModelSpec):
+                dependency = self._adapter.chat_endpoint(
+                    model=model.model_id,
+                    max_context_tokens=model.max_context_tokens,
+                    accepts_images=model.accepts_images,
+                    stream=self._stream,
+                )
+            else:
+                dependency = self._adapter.transcription_endpoint(model=model.model_id)
+            self.__dict__[name] = dependency
             return self.__dict__[name]
 
     def __dir__(self) -> list[str]:

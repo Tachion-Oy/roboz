@@ -162,6 +162,7 @@ class OpenAICompatibleAdapter:
         *,
         model: str,
         max_context_tokens: int,
+        accepts_images: bool = False,
         stream: bool = True,
         extra_body: RequestOptions | None = None,
     ) -> LLMEndpoint:
@@ -180,6 +181,7 @@ class OpenAICompatibleAdapter:
             model_name=model,
             api_name=self._api_name,
             max_context_tokens=max_context_tokens,
+            accepts_images=accepts_images,
             stream=stream,
             extra_body=extra_body,
         )
@@ -208,6 +210,7 @@ def chat_endpoint(
     *,
     model: str,
     max_context_tokens: int,
+    accepts_images: bool = False,
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
@@ -230,6 +233,7 @@ def chat_endpoint(
     ).chat_endpoint(
         model=model,
         max_context_tokens=max_context_tokens,
+        accepts_images=accepts_images,
         stream=stream,
         extra_body=extra_body,
     )

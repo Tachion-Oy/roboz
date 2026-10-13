@@ -6,7 +6,7 @@ from openai import OpenAI
 
 from roboz.tooling import HasExternalDependencies
 from roboz import Factory, Tool, factory
-from roboz.models import Message, Str
+from roboz.models import Image, Message, Role, Str
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
@@ -26,6 +26,7 @@ def describe_model(input: Str, messages: list[Message], ctx: LLMEndpoint) -> Str
     assert_type(resolve_endpoint(ctx).model_name, str)
     assert_type(ctx.temperature, float)
     assert_type(ctx.max_context_tokens, int)
+    assert_type(ctx.accepts_images, bool)
     assert_type(ctx.kind, ExternalDependencyKind)
     return Str(value=f"{resolve_endpoint(ctx).model_name}: {input.value}")
 
@@ -49,8 +50,14 @@ def describe_script(input: Str, messages: list[Message], ctx: EndpointLike) -> S
 
 
 endpoint = LLMEndpoint(
-    client=OpenAI(api_key="type-test-only"), api_name="test", model_name="chat"
+    client=OpenAI(api_key="type-test-only"), api_name="test", model_name="chat",
+    accepts_images=True,
 )
+image = Image.from_bytes(b"bytes", media_type="image/png", detail="high")
+assert_type(image, Image)
+assert_type(Message(role=Role.USER, content="Describe", images=[image]).images, list[Image])
+assert_type(Str(value="Screenshot", images=[image]).images, list[Image])
+assert_type(MockLLMEndpoint([], accepts_images=True).accepts_images, bool)
 transcription = TranscriptionEndpoint(
     client=OpenAI(api_key="type-test-only"), api_name="test", model_name="speech"
 )

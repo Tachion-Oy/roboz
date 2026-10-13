@@ -123,9 +123,9 @@ def role_to_user_mapper(
     renamed_messages: list[Message] = []
     for m in messages:
         if m.role in mapped_roles:
-            renamed_messages.append(Message(role=Role.USER, content=m.content))
+            renamed_messages.append(m.model_copy(update={"role": Role.USER}))
             continue
-        renamed_messages.append(Message(role=m.role, content=m.content))
+        renamed_messages.append(m.model_copy())
     return renamed_messages
 
 
@@ -137,6 +137,9 @@ class LLMEndpoint(BaseModel, ExternalDependency):
     client: Annotated[OpenAICompatibleChatClient, WithJsonSchema({})]
     model_name: str = Field(
         ..., description="The specific model identifier, e.g., 'gpt-4-turbo'."
+    )
+    accepts_images: bool = Field(
+        default=False, description="Whether this model route accepts image inputs."
     )
     api_name: str = Field(..., description="A unique name for this API configuration.")
     temperature: float = Field(
@@ -282,6 +285,7 @@ class MockLLMEndpoint:
         max_context_tokens: int = 128_000,
         api_name: str = "mock",
         model_name: str = "mock",
+        accepts_images: bool = False,
     ):
         """Initialize scripted responses, preserving text and JSON-encoding objects."""
         self.mock_responses: list[str | Exception] = [
@@ -290,6 +294,7 @@ class MockLLMEndpoint:
         self.max_context_tokens = max_context_tokens
         self.api_name = api_name
         self.model_name = model_name
+        self.accepts_images = accepts_images
         self.rate_limit_error: type[Exception] = Exception
         self.context_length_error: type[Exception] = Exception
 

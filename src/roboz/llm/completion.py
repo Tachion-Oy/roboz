@@ -13,6 +13,7 @@ from pydantic import BaseModel, ValidationError
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
+    LLMImageInputError,
     LLMOutputFormatError,
     NonexistentTool,
 )
@@ -217,6 +218,7 @@ def get_completion(
             KeyboardInterrupt,
             ExternalCallCancelledError,
             ExternalCallInterruptedError,
+            LLMImageInputError,
         ):
             raise
         except Exception as e:

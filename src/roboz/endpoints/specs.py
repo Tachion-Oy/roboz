@@ -11,6 +11,7 @@ class ChatModelSpec:
     endpoint_type: ClassVar[Literal["llm"]] = "llm"
     model_id: str
     max_context_tokens: int
+    accepts_images: bool = False
 
     def __post_init__(self) -> None:
         """Require a nonblank model ID and a positive context limit."""

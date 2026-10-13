@@ -33,6 +33,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
   - [Guarded file CLI](#guarded-file-cli)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
   - [Use the bundled examples](#use-the-bundled-examples)
+  - [Include images](#include-images)
   - [Create a project catalogue](#create-a-project-catalogue)
   - [Restore the bundled examples](#restore-the-bundled-examples)
 - [API key encryption](#api-key-encryption)
@@ -581,6 +582,51 @@ The bundled declarations are shipped with RoboZ, so an editor can complete
 provider and model attributes without loading credentials or constructing SDK
 clients.
 
+### Include images
+
+Configure `accepts_images=True` on an `LLMEndpoint`, `ChatModelSpec`, or
+`chat_endpoint(...)` when that model route supports image inputs. The default
+is `False`; capability configuration does not perform model discovery.
+
+```python
+from roboz.endpoints.adapters.openai_compatible import chat_endpoint
+from roboz.llm import get_completion
+from roboz.models import Image, Message, Role
+
+endpoint = chat_endpoint(
+    model="your-vision-model",
+    max_context_tokens=128_000,
+    accepts_images=True,
+)
+reply = get_completion(
+    messages=[Message(
+        role=Role.USER,
+        content="Describe this image.",
+        images=[Image(url="https://example.com/photo.png")],
+    )],
+    endpoint=endpoint,
+)
+```
+
+For local bytes, use `Image.from_bytes(image_bytes, media_type="image/png")`.
+Supported MIME types are PNG, JPEG, WebP, and GIF; supply non-animated GIFs.
+Image validation checks URL/base64 syntax, without reading files, fetching URLs,
+or validating image pixels. Optional `detail` accepts `auto`, `low`, `high`, or
+`original`; support and limits depend on the provider and model.
+
+`Message.content` remains text. Attach any number of images through `images`,
+subject to provider limits. Typed tool outputs also accept `images=[...]`;
+finalization transfers them to the message separately from its JSON text.
+The existing Chat Completions call sends text first, then image parts. Images
+require user messages after role mapping. Unsupported models or roles raise
+`LLMImageInputError` before the provider call, without completion retries.
+
+`LIGHT` truncation preserves complete images; `STUB` removes attachments and
+`REMOVE` drops the whole message. `estimate_conversation_tokens` estimates only
+text; image input usage comes from the provider. Text-only compaction reports
+`blocked` if it would discard images. Persisted conversations include attachments
+in format 4, while existing format-3 records remain readable.
+
 ### Create a project catalogue
 
 Run these commands from the application project root:
@@ -638,6 +684,8 @@ Python identifiers. Chat models are typed as `LLMEndpoint`; transcription
 models are typed as `TranscriptionEndpoint`. Regenerate after every JSON change
 so runtime behavior and editor completion stay in sync. Chat models require
 `max_context_tokens`; transcription models do not accept it.
+Chat model records may also set `"accepts_images": true`; omitted values default
+to `false`.
 
 Use `--path` to choose another JSON location. `generate` creates `providers.py`
 beside that file unless `--output` selects another module:

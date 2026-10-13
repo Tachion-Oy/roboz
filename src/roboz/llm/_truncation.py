@@ -109,7 +109,14 @@ def get_truncated_messages_for_context(
         content = truncate_content(message.content, selected.severity)
         if content is None:
             continue
-        result.append(message.model_copy(update={"content": content}))
+        result.append(
+            message.model_copy(
+                update={
+                    "content": content,
+                    "images": [] if selected.severity == Severity.STUB else message.images,
+                }
+            )
+        )
     return result
 
 
@@ -117,7 +124,7 @@ _ESTIMATED_CHARS_PER_TOKEN = 4
 
 
 def estimate_conversation_tokens(messages: list[Message]) -> int:
-    """Rough token count from context-truncated messages; not billing-accurate."""
+    """Estimate text tokens after truncation; excludes image tokens and billing rules."""
     return sum(
         math.ceil(len(message.content) / _ESTIMATED_CHARS_PER_TOKEN)
         for message in get_truncated_messages_for_context(messages)

@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roboz.models import Message, MessageKind, Role
+from roboz.models import Image, Message, MessageKind, Role
 from roboz.runtime.observability import (
     RuntimeEventCategory,
     RuntimeEventKind,
@@ -47,6 +47,7 @@ class LoggedMessageRow(BaseModel):
     created_at: str
     role: Role
     content: str
+    images: list[Image] = Field(default_factory=list, repr=False)
     truncation: TruncationSpec
     message_kind: MessageKind | None = None
     endpoint: str | None = None
@@ -76,7 +77,7 @@ class ConversationRun(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[3] = 3
+    schema_version: Literal[3, 4] = 4
     conversation_id: str
     agent_name: str
     parent_conversation_id: str | None = None
@@ -112,6 +113,7 @@ def message_to_logged_row(
         created_at=utc_iso_z(created_at),
         role=message.role,
         content=message.content,
+        images=message.images,
         truncation=message.truncation,
         message_kind=message.message_kind,
         endpoint=message.endpoint,
@@ -126,6 +128,7 @@ def logged_row_to_message(row: LoggedMessageRow) -> Message:
     return Message(
         role=row.role,
         content=row.content,
+        images=row.images,
         truncation=row.truncation,
         message_kind=row.message_kind,
         endpoint=row.endpoint,

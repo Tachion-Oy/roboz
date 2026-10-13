@@ -65,6 +65,10 @@ class LLMClientError(LLMError):
     """The used client lacks features made use in the code."""
 
 
+class LLMImageInputError(LLMError):
+    """Image inputs are incompatible with the selected model or message role."""
+
+
 class RateLimitExceededError(LLMRateLimitExceededError):
     """Raised when there is not enough funds for API call."""
 
@@ -107,6 +111,7 @@ __all__ = [
     "LLMClientError",
     "LLMContextLimitExceededError",
     "LLMError",
+    "LLMImageInputError",
     "LLMInsufficientFundsError",
     "LLMOutputFormatError",
     "LLMProviderRequestError",

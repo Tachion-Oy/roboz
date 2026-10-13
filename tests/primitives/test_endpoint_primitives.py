@@ -5,12 +5,15 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from roboz.models import Message, Role, Str
+from roboz.models import Image, Message, Role, Str
+from roboz.models.truncation import NO_MESSAGE
+from roboz.exceptions import LLMImageInputError
 from roboz import factory
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
     LLMEndpoint,
+    LLMEndpointRoute,
     MockLLMEndpoint,
     MockTranscriptionEndpoint,
     ModelSelector,
@@ -23,6 +26,7 @@ from roboz.llm import (
     with_request_options,
 )
 from roboz.llm.binding import resolve_transcription_endpoint
+from roboz.models._schema import messages_scrubber
 
 
 class ScriptedClient:
@@ -45,6 +49,16 @@ class ScriptedClient:
 
     def complete(self, **request):
         self.chat_requests.append(request)
+        if request.get("stream"):
+            return iter([
+                SimpleNamespace(
+                    choices=[SimpleNamespace(
+                        delta=SimpleNamespace(content="image description"),
+                        finish_reason="stop",
+                    )],
+                    usage=None,
+                )
+            ])
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
@@ -96,6 +110,116 @@ def test_concrete_endpoint_drives_factory_execution_and_inspection():
     assert client.chat_requests[0]["messages"] == [
         {"role": "user", "content": "Summarize this."},
     ]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_image_parts_reach_the_client_in_streaming_and_non_streaming_calls(stream):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    images = [
+        Image(url="https://example.com/chart.png"),
+        Image.from_bytes(b"bytes", media_type="image/jpeg", detail="low"),
+    ]
+    deltas = []
+    text, _ = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="Compare", images=images)],
+        on_delta=deltas.append if stream else None,
+    )
+    assert client.chat_requests[0]["messages"] == [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Compare"},
+            {"type": "image_url", "image_url": {"url": images[0].url}},
+            {"type": "image_url", "image_url": {"url": images[1].url, "detail": "low"}},
+        ],
+    }]
+    assert text
+    if stream:
+        assert deltas == [text]
+
+
+def test_image_request_preserves_custom_scrubber_text():
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    image = Image(url="https://example.com/chart.png")
+
+    def redact_text(messages):
+        scrubbed = messages_scrubber(messages)
+        for payload in scrubbed:
+            payload["content"] = "[redacted]"
+        return scrubbed
+
+    call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="Sensitive text", images=[image])],
+        messages_scrubber=redact_text,
+    )
+    assert client.chat_requests[0]["messages"] == [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "[redacted]"},
+            {"type": "image_url", "image_url": {"url": image.url}},
+        ],
+    }]
+
+
+def test_selected_model_image_support_is_checked_without_completion_retries():
+    client = ScriptedClient()
+    vision = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    text = LLMEndpoint(client=client, api_name="test", model_name="text")
+    selector = ModelSelector({"vision": vision, "text": text}, default=vision)
+    route = LLMEndpointRoute(lambda: selector.selected_endpoint)
+    messages = [Message(
+        role=Role.USER, content="Describe", images=[Image(url="https://example.com/a.png")],
+    )]
+    assert get_completion(messages=messages, endpoint=route, LlmOutputModel=Str)["value"]
+    selector.select(text.dependency_id)
+    attempts = []
+    with pytest.raises(LLMImageInputError, match="test/text does not accept images"):
+        get_completion(
+            messages=messages, endpoint=route, LlmOutputModel=Str,
+            on_attempt_start=lambda: attempts.append(1),
+        )
+    assert attempts == [1]
+    assert len(client.chat_requests) == 1
+
+
+@pytest.mark.parametrize("role", [Role.SYSTEM, Role.ASSISTANT])
+def test_image_inputs_reject_unsupported_message_roles(role):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    with pytest.raises(LLMImageInputError, match="user message"):
+        call_llm_api(endpoint, [Message(
+            role=role, content="Image", images=[Image(url="https://example.com/a.png")],
+        )])
+    assert client.chat_requests == []
+
+
+def test_mock_image_support_and_truncation_use_the_same_capability_contract():
+    message = Message(
+        role=Role.USER, content="Image", images=[Image(url="https://example.com/a.png")],
+    )
+    mock = MockLLMEndpoint(["accepted"])
+    with pytest.raises(LLMImageInputError):
+        get_completion(messages=[message], endpoint=mock)
+    assert mock.mock_responses == ["accepted"]
+    mock.accepts_images = True
+    assert get_completion(messages=[message], endpoint=mock) == "accepted"
+
+    text_only = MockLLMEndpoint(["text only"])
+    assert get_completion(messages=[
+        Message(role=Role.USER, content="Continue"),
+        message.model_copy(update={"truncation": NO_MESSAGE}),
+    ], endpoint=text_only) == "text only"
 
 
 def test_transcription_endpoint_can_be_a_direct_context():

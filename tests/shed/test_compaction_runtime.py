@@ -88,6 +88,22 @@ def test_threshold_boundary(tokens, status):
     assert len(endpoint.mock_responses) == (1 if status == "ok" else 0)
 
 
+def test_images_are_preserved_when_text_only_compaction_is_blocked():
+    from roboz.models import Image
+
+    endpoint = MockLLMEndpoint([], max_context_tokens=1000)
+    tool = get_compactify_messages_when_needed_tool(endpoint=endpoint)
+    messages = [Message(
+        role=Role.USER,
+        content="s" * 4000,
+        images=[Image(url="https://example.com/chart.png")],
+    )]
+    original = list(messages)
+    output = tool(input=All(), messages=messages)
+    assert output.status == "blocked"
+    assert messages == original
+
+
 def test_bootstrap_only_is_blocked_without_calling_provider():
     endpoint = MockLLMEndpoint([], max_context_tokens=1000)
     tool = get_compactify_messages_when_needed_tool(endpoint=endpoint)

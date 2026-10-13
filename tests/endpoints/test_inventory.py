@@ -83,6 +83,7 @@ def test_generated_catalogue_has_custom_runtime_and_type_declarations(project):
         "model_id": "new/chat",
         "endpoint_type": "llm",
         "max_context_tokens": 456,
+        "accepts_images": True,
     }
     document["providers"]["my_service"] = copy.deepcopy(
         document["providers"]["groq"]
@@ -106,6 +107,8 @@ def test_generated_catalogue_has_custom_runtime_and_type_declarations(project):
         from roboz.endpoints.inventory import groq as bundled
         assert not hasattr(bundled, 'new_chat')
         assert groq.new_chat.dependency_id == 'model:groq:new/chat'
+        assert groq.new_chat.accepts_images is True
+        assert my_service.configured().new_chat.accepts_images is True
         assert my_service.new_chat is my_service.new_chat
         assert my_service.configured().new_chat is not my_service.new_chat
         assert my_service.whisper_large_v3_turbo.redacted_metadata()['endpoint_type'] == 'transcription'
@@ -479,6 +482,7 @@ def test_version_one_defaults_and_model_records_remain_compatible():
     exported = document_from_inventory(decoded)
     expected = copy.deepcopy(document)
     expected["providers"]["example"].update(timeout_s=60.0, stream=True)
+    expected["providers"]["example"]["models"]["chat"]["accepts_images"] = False
     assert exported == expected
     assert parse_document(exported) == decoded
 

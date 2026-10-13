@@ -69,6 +69,16 @@ def test_inventory_and_discovery():
         openrouter.models[0].model_id = "changed"
 
 
+@pytest.mark.parametrize("accepts_images", [False, True])
+def test_catalogue_preserves_model_image_capability(accepts_images):
+    catalogue = Catalog(
+        adapter=OpenAICompatibleAdapter(),
+        models={"chat": ChatModelSpec("test/chat", 123, accepts_images=accepts_images)},
+    )
+    endpoint = getattr(catalogue.configured(), "chat")
+    assert endpoint.accepts_images is accepts_images
+
+
 @pytest.mark.parametrize(
     "provider_class,attribute",
     [

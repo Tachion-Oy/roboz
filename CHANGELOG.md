@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add typed `Image` attachments to messages and tool outputs, with explicit
+  `accepts_images` model configuration and OpenAI-compatible request serialization.
+  Conversation format 4 persists images and reads existing format-3 records.
+  Text-only compaction leaves image-bearing history intact and reports blocked.
+
 ## 0.11.0 - 2026-10-10
 
 - Breaking: replace `_SECRET` with explicitly selected encryption and the stored `_ENCRYPTED` suffix. Providers and tools consume base names; no legacy aliases. Update the CLI with repeatable `--secret NAME` and add in-memory encryption, decryption, and dotenv serialization APIs.

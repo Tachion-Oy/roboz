@@ -160,7 +160,8 @@ def compactify_messages_when_needed(
         max_tokens=max_tokens,
         compactions=compactions,
     )
-    if prefix_len >= len(messages):
+    if prefix_len >= len(messages) or any(m.images for m in messages[prefix_len:]):
+        # The text-only summary cannot preserve image context.
         return blocked
     skill_message = ctx.skill_message.strip()
     if not skill_message:

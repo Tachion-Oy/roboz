@@ -11,7 +11,7 @@ from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from uuid import uuid4
 
 from roboz.exceptions import *  # noqa: F403
-from roboz.models import Message
+from roboz.models import Message, Role
 from roboz.models._telemetry import LLMTelemetry
 from roboz.runtime.observability import (
     LifecycleKind,
@@ -49,6 +49,7 @@ from roboz.llm.endpoints import (
     RequestOptions,
     TranscriptionEndpoint,
     TranscriptionEndpointLike,
+    role_to_user_mapper,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ _JSON_OUTPUT_FORMAT: Final[str] = "json"
 _JSON_OBJECT_RESPONSE_TYPE: Final[Literal["json_object"]] = "json_object"
 _TEXT_RESPONSE_TYPE: Final[Literal["text"]] = "text"
 _MESSAGE_COUNT_KEY: Final[str] = "message_count"
+_IMAGE_COUNT_KEY: Final[str] = "image_count"
 _MESSAGE_CHARS_KEY: Final[str] = "message_chars"
 _OUTPUT_FORMAT_KEY: Final[str] = "output_format"
 _STREAM_KEY: Final[str] = "stream"
@@ -168,6 +170,7 @@ def call_llm_api(
     started_message = f"LLM call started: {endpoint.api_name}/{endpoint.model_name}"
     started_data = event_data | {
         _MESSAGE_COUNT_KEY: len(messages),
+        _IMAGE_COUNT_KEY: sum(len(message.images) for message in messages),
         _MESSAGE_CHARS_KEY: sum(len(message.content) for message in messages),
         _OUTPUT_FORMAT_KEY: getattr(
             endpoint, _OUTPUT_FORMAT_KEY, _MOCK_OUTPUT_FORMAT
@@ -188,6 +191,7 @@ def call_llm_api(
     )
 
     try:
+        messages = _prepare_chat_messages(endpoint, messages)
         if is_mock:
             result = _call_mock_llm_api(endpoint, on_delta, signals)
         else:
@@ -477,11 +481,43 @@ def _delta_gate(
     return gate
 
 
+def _prepare_chat_messages(
+    endpoint: LLMEndpoint | MockLLMEndpoint,
+    messages: list[Message],
+) -> list[Message]:
+    """Apply the endpoint's role mapping and validate image inputs."""
+    messages = (
+        role_to_user_mapper(messages)
+        if isinstance(endpoint, MockLLMEndpoint)
+        else endpoint.message_mapper(messages)
+    )
+    for message in messages:
+        if not message.images:
+            continue
+        if not endpoint.accepts_images:
+            raise LLMImageInputError(
+                f"Model {endpoint.api_name}/{endpoint.model_name} does not accept images"
+            )
+        if message.role != Role.USER:
+            raise LLMImageInputError("Image inputs require a user message")
+    return messages
+
+
 def _chat_completion_request(
     endpoint: LLMEndpoint,
     messages: list[Message],
     messages_scrubber: Callable[[list[Message]], list[dict]],
 ) -> ChaCompletionRequest:
+    scrubbed = messages_scrubber(messages)
+    for message, payload in zip(messages, scrubbed):
+        if message.images:
+            payload["content"] = [
+                {"type": "text", "text": payload["content"]},
+                *(
+                    {"type": "image_url", "image_url": image.model_dump(exclude_none=True)}
+                    for image in message.images
+                ),
+            ]
     response_format: OpenAIResponseFormat = (
         {"type": "json_object"}
         if endpoint.output_format == _JSON_OUTPUT_FORMAT
@@ -489,7 +525,7 @@ def _chat_completion_request(
     )
     request = ChaCompletionRequest(
         model=endpoint.model_name,
-        messages=messages_scrubber(endpoint.message_mapper(messages)),
+        messages=scrubbed,
         temperature=endpoint.temperature,
         response_format=response_format,
     )
