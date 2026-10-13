@@ -6,6 +6,8 @@
   `accepts_images` model configuration and OpenAI-compatible request serialization.
   Conversation format 4 persists images and reads existing format-3 records.
   Text-only compaction leaves image-bearing history intact and reports blocked.
+- Add the `Pdf` capability with one guarded `process_pdf` tool for reading PDF
+  text with page ranges and bounded output. Images are ignored; no OCR is performed.
 
 ## 0.11.0 - 2026-10-10
 

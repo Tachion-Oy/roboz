@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import pkgutil
 import sys
+from typing import cast
 
 CASE = os.environ["ROBOZ_INSTALL_CASE"]
 PACKAGES = {
@@ -16,6 +17,7 @@ PACKAGES = {
 def test_all_modules_and_required_dependencies_are_installed():
     for name in PACKAGES:
         module = importlib.import_module(name)
+        assert module.__file__ is not None
         assert (
             Path(module.__file__).resolve().is_relative_to(Path(sys.prefix).resolve())
         )
@@ -24,6 +26,7 @@ def test_all_modules_and_required_dependencies_are_installed():
     assert find_spec("roboz_openai") is None
     dependencies = {
         "openai": True,
+        "pypdf": True,
         "imapclient": False,
         "pydantic_settings": False,
         "fastapi": False,
@@ -44,6 +47,7 @@ def test_core_dependency_and_agent_contracts():
     from roboz.agent.prompt_llm_tool import prompt_llm as prompt_factory
     from roboz.dependencies import ExecutableDependency, dedupe_external_dependencies
     from roboz.llm import LLMEndpoint, LLMEndpointRoute, ModelSelector, MockLLMEndpoint
+    from roboz.llm.openai_compatible import OpenAICompatibleChatClient
     from roboz.tools import stop
 
     assert PromptLLMContext is PromptContext
@@ -62,12 +66,12 @@ def test_core_dependency_and_agent_contracts():
         raise AssertionError("Selection must not construct clients")
 
     model = LLMEndpoint(
-        client=SimpleNamespace(
+        client=cast(OpenAICompatibleChatClient, SimpleNamespace(
             chat=object(),
             models=object(),
             close=unexpected_resolution,
             materialize=unexpected_resolution,
-        ),
+        )),
         api_name="test",
         model_name="one",
     )

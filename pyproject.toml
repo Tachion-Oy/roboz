@@ -36,6 +36,7 @@ dependencies = [
     "openai>=2.8.1,<4",
     "pydantic>=2.12.4",
     "pygments>=2.20.0",
+    "pypdf>=6.20.0,<7",
     "python-dotenv>=1.2.2",
     "rich>=14.2.0",
 ]
