@@ -94,4 +94,5 @@ QUOTES: Final[list[str]] = [
     "I am so smart! S-M-R-T! I mean S-M-A-R-T!",
     "To start, press any key. Where’s the any key?",
     "No TV and no beer make Homer something something...",
+    "Don't blame me, I voted for Kodos.",
 ]
