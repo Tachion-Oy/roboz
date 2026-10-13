@@ -600,6 +600,54 @@ The bundled declarations are shipped with RoboZ, so an editor can complete
 provider and model attributes without loading credentials or constructing SDK
 clients.
 
+### Image inputs
+
+Set `accepts_images=True` on an image-capable endpoint or its `ChatModelSpec`.
+The default is `False`; existing catalogue routes are not inferred to support
+images. Project catalogue JSON accepts the same optional boolean.
+
+```python
+from roboz.endpoints.adapters.openai_compatible import chat_endpoint
+from roboz.llm import call_llm_api
+from roboz.models import Image, Message, Role, Str
+
+endpoint = chat_endpoint(
+    model="your-vision-model",
+    max_context_tokens=128_000,
+    accepts_images=True,
+)
+image = Image(url="https://example.com/chart.png", detail="high")
+reply, usage = call_llm_api(
+    endpoint,
+    [Message(role=Role.USER, content="Describe this chart.", images=[image])],
+)
+
+# Tool results carry attachments through normal message finalization too.
+result = Str(value="Chart generated.", images=[image])
+```
+
+Use HTTP(S) URLs, base64 image data URLs, or
+`Image.from_bytes(data, media_type="image/png")`. Byte inputs support PNG, JPEG,
+WebP, and GIF. RoboZ checks the source and encoding without fetching URLs or
+decoding pixels; provider format, size, and detail limits still apply. Image
+inputs require a user role after message mapping and scrubbing. Text-only
+requests retain their existing shape, and streaming uses the same image input
+format as non-streaming calls.
+
+Custom `messages_scrubber` callbacks receive typed messages and return records
+with `role`, `content`, and optional `images`. The built-in scrubber retains each
+attachment on its own record. Keep `images` when filtering or reordering records;
+remove the field to redact attachments. The caller constructs API content parts
+from those returned records only.
+
+Persisted conversations retain attachments. LIGHT truncation leaves image data
+intact; STUB removes attachments and REMOVE drops the whole message. Context
+token estimates count text only. Compaction and memory snapshots use image URLs
+or numbered embedded-image markers as text, without sending images to summary
+models. Snapshot source metadata identifies the conversation and message sequence.
+Memory consolidation handles those references as ordinary text; summaries can
+discard them under their usual relevance rules.
+
 ### Create a project catalogue
 
 Run these commands from the application project root:

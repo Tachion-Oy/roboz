@@ -63,10 +63,21 @@ def test_inventory_and_discovery():
             "endpoint_type": spec.endpoint_type,
         }
         assert "materialized" not in endpoint.__dict__
+        if isinstance(spec, ChatModelSpec):
+            assert endpoint.accepts_images == spec.accepts_images
     with pytest.raises(TypeError):
         openrouter.models_by_attribute["new"] = ChatModelSpec("new", 1)
     with pytest.raises(FrozenInstanceError):
         openrouter.models[0].model_id = "changed"
+
+
+def test_catalogue_forwards_image_capability_without_materializing_client():
+    catalog = Catalog(
+        adapter=OpenAICompatibleAdapter(),
+        models={"vision": ChatModelSpec("vision", 1000, accepts_images=True)},
+    )
+    assert catalog.vision.accepts_images is True
+    assert catalog.configured().vision.accepts_images is True
 
 
 @pytest.mark.parametrize(

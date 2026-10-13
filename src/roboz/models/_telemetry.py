@@ -2,12 +2,13 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roboz.models.core import MessageKind
+from roboz.models.core import Image, MessageKind
 from roboz.models.truncation import TruncationSpec
 
 
 class NonAgentFacingFields(BaseModel):
     truncation: TruncationSpec = Field(...)
+    images: list[Image] = Field(default_factory=list)
     message_kind: MessageKind | None = None
     endpoint: str | None = None
     model: str | None = None

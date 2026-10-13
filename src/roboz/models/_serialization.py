@@ -48,6 +48,7 @@ def get_finalized_message(
     return Message(
         role=get_role(output),
         content=json.dumps(dump, ensure_ascii=False),
+        images=output.images,
         truncation=output.truncation,
         message_kind=resolved_message_kind,
         **output.model_dump(

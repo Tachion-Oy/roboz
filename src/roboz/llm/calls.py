@@ -11,7 +11,7 @@ from typing import Final, Literal, NotRequired, TypedDict, cast
 from uuid import uuid4
 
 from roboz.exceptions import *  # noqa: F403
-from roboz.models import Message
+from roboz.models import Image, Message, Role
 from roboz.models._telemetry import LLMTelemetry
 from roboz.runtime.observability import (
     LifecycleKind,
@@ -49,6 +49,7 @@ from roboz.llm.endpoints import (
     RequestOptions,
     TranscriptionEndpoint,
     TranscriptionEndpointLike,
+    role_to_user_mapper,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,9 +290,7 @@ class _LLMCallRunner:
         )
         request = ChaCompletionRequest(
             model=self._endpoint.model_name,
-            messages=self._messages_scrubber(
-                self._endpoint.message_mapper(self._messages)
-            ),
+            messages=self._chat_completion_messages(),
             temperature=self._endpoint.temperature,
             response_format=response_format,
         )
@@ -299,9 +298,49 @@ class _LLMCallRunner:
             request[_EXTRA_BODY_FIELD] = self._endpoint.extra_body
         return request
 
+    def _chat_completion_messages(self) -> list[dict]:
+        """Encode each scrubbed record using only its own text and attachments."""
+        assert isinstance(self._endpoint, LLMEndpoint)
+        records = self._messages_scrubber(self._endpoint.message_mapper(self._messages))
+        messages = []
+        for record in records:
+            payload = record.copy()
+            images = payload.pop("images", [])
+            self._validate_image_message(payload.get("role"), bool(images))
+            if images:
+                if not isinstance(payload.get("content"), str):
+                    raise LLMImageInputError("Image message content must be text")
+                payload["content"] = [
+                    {"type": "text", "text": payload["content"]},
+                    *(
+                        {
+                            "type": "image_url",
+                            "image_url": Image.model_validate(image).model_dump(
+                                exclude_none=True
+                            ),
+                        }
+                        for image in images
+                    ),
+                ]
+            messages.append(payload)
+        return messages
+
+    def _validate_image_message(self, role: str | None, has_images: bool) -> None:
+        if not has_images:
+            return
+        if not self._endpoint.accepts_images:
+            raise LLMImageInputError(
+                f"Model {self._endpoint.api_name}/{self._endpoint.model_name} "
+                "does not accept images"
+            )
+        if role != Role.USER:
+            raise LLMImageInputError("Image inputs require a user message")
+
     def _call_mock_llm_api(self) -> _ChatCompletionResult:
         assert isinstance(self._endpoint, MockLLMEndpoint)
         self._raise_for_mock_control_signal()
+        for message in role_to_user_mapper(self._messages):
+            self._validate_image_message(message.role, bool(message.images))
         if not self._endpoint.mock_responses:
             raise RuntimeError("Mock script exhausted before stop")
         mock_response = self._endpoint.mock_responses.pop(0)
@@ -590,6 +629,11 @@ def call_llm_api(
 
     ``timeout_s`` bounds each attempt, not the whole call: a call retried after a rate
     limit gets a fresh deadline for the next attempt.
+
+    Custom ``messages_scrubber`` callbacks own their output records, including
+    the optional generic ``images`` field. Retain that field to send attachments;
+    omit it to remove them. Records may be filtered or reordered. Image content
+    parts are constructed from each returned record only, after scrubbing.
     """
     return _LLMCallRunner(
         endpoint,

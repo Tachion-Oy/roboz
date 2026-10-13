@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from roboz.shed.tools import SnapshotConversationsContext
+from roboz.shed.tools import ConsolidateMemoryContext, SnapshotConversationsContext, consolidate_memory
 from roboz.shed.tools import snapshot_conversations
 from roboz.shed.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
@@ -20,7 +20,8 @@ from roboz.shed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import MockLLMEndpoint
-from roboz.models import DEFAULT, BaseNames, Empty, Message, MessageKind, Role
+from roboz.models import DEFAULT, NO_MESSAGE, BaseNames, Empty, Image, Message, MessageKind, Role
+from roboz.runtime.events import MessageEvent
 from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import (
     ConversationRun,
@@ -103,6 +104,51 @@ def _ctx(
         max_chars=_MAX_CHARS,
         pipe=pipe,
     )
+
+
+def test_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
+    conversation_root = tmp_path / "runs"
+    snapshot_root = tmp_path / "snapshots"
+    embedded = Image.from_bytes(b"image bytes", media_type="image/png")
+    row = _row(sequence=1, created_at=datetime.now(timezone.utc), content="")
+    row.images = [Image(url="https://example.com/chart.png"), embedded]
+    hidden = row.model_copy(update={"sequence": 2, "truncation": NO_MESSAGE})
+    hidden.images = [Image(url="https://example.com/hidden.png")]
+    _write_run(conversation_root, rows=[row, hidden])
+    snapshot = "Chart attached: conversation-1, sequence=1, image 2 (embedded)."
+    endpoint = MockLLMEndpoint([{"value": snapshot}, {"value": "Remember the chart reference."}])
+    events = []
+    pipe = EventPipe(event_sinks=(events.append,))
+    ctx = _ctx(conversation_root=conversation_root, snapshot_root=snapshot_root,
+               endpoint=endpoint, pipe=pipe)
+
+    result = snapshot_conversations(ctx)(Empty(), [])
+    assert "created=1" in result.value
+    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
+    source = next(message.content for message in prompts if "## Source conversation" in message.content)
+    assert "Conversation: conversation-1" in source
+    assert "sequence=1" in source
+    assert "[image 1: https://example.com/chart.png]" in source
+    assert "[image 2: embedded image; data in original message]" in source
+    assert embedded.url not in source
+    assert "hidden.png" not in source
+    assert all(not message.images for message in prompts)
+    artifact = next(snapshot_root.rglob("*.md"))
+    assert parse_snapshot_document(artifact.read_text()).covered_through_sequence == 2
+
+    events.clear()
+    memory_ctx = ConsolidateMemoryContext(
+        endpoint=endpoint, conversation_root=conversation_root,
+        snapshot_root=snapshot_root, memory_root=tmp_path / "memory", pipe=pipe,
+        agent_names={_DEFAULT_AGENT}, min_pending_snapshots=1,
+        max_pending_age_seconds=3600, max_chars=_MAX_CHARS,
+    )
+    result = consolidate_memory(memory_ctx)(Empty(), [])
+    assert "consolidated=1" in result.value
+    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
+    assert any(snapshot in message.content for message in prompts)
+    assert all(not message.images and embedded.url not in message.content for message in prompts)
+    assert "Remember the chart reference." in next(memory_ctx.memory_root.glob("*.md")).read_text()
 
 
 def test_snapshot_writes_append_only_artifact_with_structured_log(

@@ -15,6 +15,7 @@ from roboz.shed.tools._snapshot_metadata import (
 from roboz.shed.tools.compactification import (
     summarize_conversation_segment,
 )
+from roboz.shed.tools.compactification.summarize import conversation_text
 from roboz.shed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboz.shed.tools.memory_files import (
     JSON_SUFFIX,
@@ -117,12 +118,6 @@ def _normalize_temporal_messages(
     return normalized
 
 
-def _conversation_text(messages: list[Message]) -> str:
-    return "\n\n".join(
-        f"## {message.role.value.upper()}\n{message.content}" for message in messages
-    )
-
-
 def _snapshot_mode(status: RunStatus) -> SnapshotMode:
     if status is RunStatus.COMPLETED:
         return SnapshotMode.TERMINAL_COMPLETED
@@ -151,7 +146,7 @@ def _summary_input(
     )
     if previous_snapshot is None:
         return (
-            source + "## New conversation segment\n\n" + _conversation_text(uncovered)
+            source + "## New conversation segment\n\n" + conversation_text(uncovered)
         )
     recorded_at = (
         previous_snapshot_time.isoformat()
@@ -162,7 +157,7 @@ def _summary_input(
         source + f"## Previous snapshot (recorded_at={recorded_at})\n\n"
         f"{previous_snapshot.strip()}\n\n"
         "## New conversation segment\n\n"
-        f"{_conversation_text(uncovered)}"
+        f"{conversation_text(uncovered)}"
     )
 
 

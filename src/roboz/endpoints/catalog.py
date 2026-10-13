@@ -74,6 +74,7 @@ class Catalog[Spec: ModelSpec]:
                     dependency = self._adapter.chat_endpoint(
                         model=model.model_id,
                         max_context_tokens=model.max_context_tokens,
+                        accepts_images=model.accepts_images,
                         stream=self._stream,
                     )
                 else:

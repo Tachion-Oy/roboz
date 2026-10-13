@@ -5,12 +5,15 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from roboz.models import Message, Role, Str
+from roboz.models import Image, Message, Role, Str
+from roboz.models._schema import messages_scrubber
+from roboz.exceptions import LLMImageInputError
 from roboz import factory
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
     LLMEndpoint,
+    LLMEndpointRoute,
     MockLLMEndpoint,
     MockTranscriptionEndpoint,
     ModelSelector,
@@ -45,6 +48,16 @@ class ScriptedClient:
 
     def complete(self, **request):
         self.chat_requests.append(request)
+        if request.get("stream"):
+            return iter([
+                SimpleNamespace(
+                    choices=[SimpleNamespace(
+                        delta=SimpleNamespace(content="image description"),
+                        finish_reason="stop",
+                    )],
+                    usage=None,
+                ),
+            ])
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
@@ -96,6 +109,139 @@ def test_concrete_endpoint_drives_factory_execution_and_inspection():
     assert client.chat_requests[0]["messages"] == [
         {"role": "user", "content": "Summarize this."},
     ]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_image_parts_reach_the_client_without_mutating_messages(stream):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    images = [
+        Image(url="https://example.com/chart.png"),
+        Image.from_bytes(b"bytes", media_type="image/jpeg", detail="low"),
+    ]
+    message = Message(role=Role.USER, content="Compare", images=images)
+    call_llm_api(endpoint, [message], on_delta=(lambda _: None) if stream else None)
+
+    assert client.chat_requests[0].get("stream", False) is stream
+    assert client.chat_requests[0]["messages"] == [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Compare"},
+            {"type": "image_url", "image_url": {"url": images[0].url}},
+            {"type": "image_url", "image_url": {"url": images[1].url, "detail": "low"}},
+        ],
+    }]
+    assert message.content == "Compare"
+    assert message.images == images
+
+
+@pytest.mark.parametrize("transform", ["drop_system", "drop_image", "reorder", "redact"])
+def test_custom_scrubbers_keep_images_with_their_own_records(transform):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    image = Image(url="https://example.com/private.png")
+    messages = [
+        Message(role=Role.SYSTEM, content="Instructions"),
+        Message(role=Role.USER, content="Private chart", images=[image]),
+        Message(role=Role.USER, content="Public text"),
+    ]
+    returned = []
+
+    def scrub(items):
+        records = messages_scrubber(items)
+        if transform == "drop_system":
+            records = records[1:]
+        elif transform == "drop_image":
+            records.pop(1)
+        elif transform == "reorder":
+            records = records[1:] + records[:1]
+        else:
+            records[1].pop("images")
+            records[1]["content"] = "Redacted"
+        returned.extend(records)
+        return records
+
+    call_llm_api(endpoint, messages, messages_scrubber=scrub)
+    sent = client.chat_requests[0]["messages"]
+    assert len(sent) == len(returned)
+    for record, payload in zip(returned, sent, strict=True):
+        assert payload["role"] == record["role"]
+        if record.get("images"):
+            assert payload["content"] == [
+                {"type": "text", "text": record["content"]},
+                {"type": "image_url", "image_url": {"url": image.url}},
+            ]
+        else:
+            assert payload == record
+    assert all(isinstance(record["content"], str) for record in returned)
+    assert sum(bool(record.get("images")) for record in returned) == (
+        0 if transform in {"drop_image", "redact"} else 1
+    )
+    assert messages[1].images == [image]
+
+
+def test_mapper_can_remove_an_image_before_capability_validation():
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="text",
+        message_mapper=lambda messages: [messages[1]],
+    )
+    call_llm_api(endpoint, [
+        Message(role=Role.USER, content="Private", images=[Image(url="https://example.com/a.png")]),
+        Message(role=Role.USER, content="Public"),
+    ])
+    assert client.chat_requests[0]["messages"] == [{"role": "user", "content": "Public"}]
+
+
+def test_selected_model_image_support_is_checked_without_completion_retries():
+    client = ScriptedClient()
+    vision = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    text = vision.model_copy(update={"model_name": "text", "accepts_images": False})
+    selector = ModelSelector({"vision": vision, "text": text}, default=vision)
+    message = Message(
+        role=Role.USER, content="Describe", images=[Image(url="https://example.com/a.png")],
+    )
+    selector.select(text.dependency_id)
+    attempts = []
+    with pytest.raises(LLMImageInputError, match="test/text does not accept images"):
+        get_completion(
+            messages=[message],
+            endpoint=LLMEndpointRoute(lambda: selector.selected_endpoint),
+            LlmOutputModel=Str,
+            on_attempt_start=lambda: attempts.append(True),
+        )
+    assert attempts == [True]
+    assert client.chat_requests == []
+
+
+@pytest.mark.parametrize("role", [Role.SYSTEM, Role.ASSISTANT])
+def test_images_require_an_outgoing_user_role(role):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+        message_mapper=lambda messages: [messages[0].model_copy(update={"role": role})],
+    )
+    with pytest.raises(LLMImageInputError, match="user message"):
+        call_llm_api(endpoint, [Message(
+            role=Role.USER, content="Describe", images=[Image(url="https://example.com/a.png")],
+        )])
+    assert client.chat_requests == []
+
+
+def test_mock_endpoint_checks_images_before_consuming_script():
+    endpoint = MockLLMEndpoint(["description"])
+    messages = [Message(role=Role.USER, content="", images=[Image(url="https://example.com/a.png")])]
+    with pytest.raises(LLMImageInputError):
+        call_llm_api(endpoint, messages)
+    assert endpoint.mock_responses == ["description"]
+    endpoint.accepts_images = True
+    assert call_llm_api(endpoint, messages)[0] == "description"
 
 
 def test_transcription_endpoint_can_be_a_direct_context():

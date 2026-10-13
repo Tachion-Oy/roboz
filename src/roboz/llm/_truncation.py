@@ -83,6 +83,21 @@ def truncate_content_for_context(content: str, severity: Severity) -> str | None
     return content
 
 
+def _truncate_message_for_context(
+    message: Message,
+    severity: Severity,
+    truncate_content: Callable[[str, Severity], str | None],
+) -> Message | None:
+    """Apply truncation to one message's text and attachments together."""
+    content = truncate_content(message.content, severity)
+    if content is None:
+        return None
+    update: dict[str, object] = {"content": content}
+    if severity == Severity.STUB:
+        update["images"] = []
+    return message.model_copy(update=update)
+
+
 def get_truncated_messages_for_context(
     messages: list[Message],
     select_rule: Callable[[int, TruncationSpec], Truncation | None] = select_truncation,
@@ -90,7 +105,7 @@ def get_truncated_messages_for_context(
         [str, Severity], str | None
     ] = truncate_content_for_context,
 ) -> list[Message]:
-    """Build messages for LLM context, applying rule selection and content truncation.
+    """Select truncation rules by message age and collect the surviving messages.
 
     Injecting callables allows decoupled testing and custom strategies while preserving
     prior behavior through defaults.
@@ -106,10 +121,11 @@ def get_truncated_messages_for_context(
         if selected is None:
             result.append(message)
             continue
-        content = truncate_content(message.content, selected.severity)
-        if content is None:
-            continue
-        result.append(message.model_copy(update={"content": content}))
+        truncated = _truncate_message_for_context(
+            message, selected.severity, truncate_content
+        )
+        if truncated is not None:
+            result.append(truncated)
     return result
 
 
@@ -117,7 +133,7 @@ _ESTIMATED_CHARS_PER_TOKEN = 4
 
 
 def estimate_conversation_tokens(messages: list[Message]) -> int:
-    """Rough token count from context-truncated messages; not billing-accurate."""
+    """Estimate text tokens after context truncation; image tokens are not counted."""
     return sum(
         math.ceil(len(message.content) / _ESTIMATED_CHARS_PER_TOKEN)
         for message in get_truncated_messages_for_context(messages)
