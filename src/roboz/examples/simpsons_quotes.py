@@ -98,4 +98,5 @@ QUOTES: Final[list[str]] = [
     "Let the bears pay the bear tax. I pay the Homer tax.",
     "Facts are meaningless. You could use facts to prove anything that's even remotely true!",
     "Oh, they have the Internet on computers now!",
+    "Up and at them!",
 ]
