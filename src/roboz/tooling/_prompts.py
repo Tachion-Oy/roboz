@@ -8,7 +8,6 @@ from pydantic import ConfigDict, create_model
 
 from roboz.llm.prompts import JSON_OUTPUT_SELF_CHECK, JSON_STRING_ESCAPING_RULES
 from roboz.models import BaseNames, Int, Message, Str
-from roboz.models._schema import schema_scrubber
 from roboz.tooling.core import Tool
 from roboz.tooling.decorators import tool
 
@@ -90,7 +89,7 @@ def _get_tool_call_schema(tool: Tool) -> dict:
         action=(Literal[tool.name], ...),
         rationale=(str, ...),
     )
-    return schema_scrubber(ToolCallModel.model_json_schema())
+    return ToolCallModel.model_json_schema()
 
 
 def _get_single_instruction(tool: Tool) -> str:

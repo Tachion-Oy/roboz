@@ -1,14 +1,10 @@
-"""Unit tests for schema scrubbing and agent-facing surface verification.
+"""Agent schemas and messages expose payloads while retaining runtime metadata."""
 
-Tests derive expectations from NonAgentFacingFields via extract_fields_and_type_names().
-They use real Pydantic models. No hardcoded field names—if you change what's excluded,
-tests adapt automatically.
-"""
-
+from datetime import datetime, timezone
 import json
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -16,18 +12,21 @@ from roboz.models import (
     AgentBaseModel,
     Empty,
     Image,
+    Invoke,
     Message,
     MessageKind,
+    Role,
     Stop,
     Str,
 )
-from roboz.models._schema import (
-    extract_fields_and_type_names,
-    messages_scrubber,
-    schema_scrubber,
-)
+from roboz.models._schema import messages_scrubber
 from roboz.models._serialization import get_finalized_message
-from roboz.models._telemetry import NonAgentFacingFields
+from roboz.models.truncation import Truncation
+from roboz.runtime.persistence import (
+    LoggedMessageRow,
+    logged_row_to_message,
+    message_to_logged_row,
+)
 from roboz.tooling._prompts import _get_tool_call_schema, example_tool
 from roboz.tooling.decorators import tool
 
@@ -38,90 +37,62 @@ def schema_scrub_test_tool(input: Empty, messages: list[Message]) -> Str:
     return Str(value="ok")
 
 
-# ---------- A. extract_fields_and_type_names ----------
+@pytest.mark.parametrize("model, properties", [
+    (AgentBaseModel, set()),
+    (Empty, set()),
+    (Stop, {"value"}),
+    (Message, {"role", "content", "images"}),
+])
+def test_direct_model_schema_excludes_runtime_metadata(model, properties):
+    schema = model.model_json_schema()
+
+    assert set(schema["properties"]) == properties
+    assert set(schema.get("required", [])) <= properties
+    assert {"Truncation", "Severity", "MessageKind"}.isdisjoint(schema.get("$defs", {}))
 
 
-def test_extract_fields_and_type_names_derives_from_exclusion_class():
-    """Default extraction exactly matches explicit NonAgentFacingFields extraction."""
+def test_tool_schema_retains_types_shared_by_payload_and_runtime_metadata():
+    class PolicyInput(Empty):
+        policy: Truncation
+        category: MessageKind
 
-    expected_schema = NonAgentFacingFields.model_json_schema()
-    expected_fields = frozenset(expected_schema.get("properties", {}).keys())
-    expected_fields_explicit, expected_defs_explicit = extract_fields_and_type_names(
-        NonAgentFacingFields
-    )
+    @tool
+    def inspect_policy(input: PolicyInput, messages: list[Message]) -> Str:
+        """Inspect the supplied policy and category."""
+        return Str(value="ok")
 
-    fields, defs = extract_fields_and_type_names()
-    assert fields == expected_fields
-    assert fields == expected_fields_explicit
-    assert defs == expected_defs_explicit
+    schema = _get_tool_call_schema(inspect_policy)
 
-
-def test_extract_fields_includes_dataclass_field_types_for_truncation():
-    """Truncation dataclass yields Severity (etc.) so $defs can be scrubbed with truncation."""
-    _, defs = extract_fields_and_type_names()
-    assert "Severity" in defs
-
-
-def test_image_field_is_agent_facing_in_agent_base_model():
-    assert set(AgentBaseModel.model_fields) - set(NonAgentFacingFields.model_fields) == {
-        "images"
+    assert set(schema["properties"]) == {"policy", "category", "action", "rationale"}
+    assert schema["properties"]["policy"] == {"$ref": "#/$defs/Truncation"}
+    assert schema["properties"]["category"] == {"$ref": "#/$defs/MessageKind"}
+    assert schema["$defs"]["Truncation"]["properties"]["severity"] == {
+        "$ref": "#/$defs/Severity"
     }
+    assert schema["$defs"]["MessageKind"]["enum"] == list(MessageKind)
+    assert schema["$defs"]["Severity"]["enum"] == [1, 2, 3]
 
 
-# ---------- B. scrub_schema_for_agent ----------
+@pytest.mark.parametrize("model", [AgentBaseModel, Empty, Str])
+def test_inherited_attachments_are_not_advertised_in_model_schemas(model):
+    assert "images" in model.model_fields
+    schema = model.model_json_schema()
+    assert "images" not in schema.get("properties", {})
+    assert "Image" not in schema.get("$defs", {})
 
 
-def test_scrub_schema_removes_excluded_fields_from_model_schema():
-    """Scrubbed schema excludes whatever NonAgentFacingFields declares. Uses real model."""
-    schema = Empty.model_json_schema()
-    excluded_fields, excluded_defs = extract_fields_and_type_names()
-
-    result = schema_scrubber(schema)
-
-    for f in excluded_fields:
-        assert f not in result.get("properties", {})
-        assert f not in result.get("required", [])
-    for d in excluded_defs:
-        assert d not in result.get("$defs", {})
-
-
-def test_scrub_schema_removes_empty_defs():
-    """When all $defs are scrubbed, the $defs key is removed entirely."""
-    _, excluded_defs = extract_fields_and_type_names()
-    if not excluded_defs:
-        return  # Nothing to scrub
-    schema = NonAgentFacingFields.model_json_schema()
-    result = schema_scrubber(schema)
-    assert "$defs" not in result
-
-
-def test_scrub_schema_preserves_non_excluded_fields():
-    """Fields not in exclusion spec remain intact. Uses real model (Stop)."""
-    schema = Stop.model_json_schema()
-    excluded_fields, _ = extract_fields_and_type_names()
-    original_props = set(schema.get("properties", {}).keys())
-    expected_remaining = original_props - excluded_fields
-
-    result = schema_scrubber(schema)
-    result_props = set(result.get("properties", {}).keys())
-
-    assert expected_remaining <= result_props
-    for f in excluded_fields:
-        assert f not in result_props
-
-
-def test_scrub_schema_preserves_explicit_image_field_definition():
+def test_schema_preserves_explicit_image_field_definition():
     class PhotoInput(Empty):
         photo: Image
 
-    schema = schema_scrubber(PhotoInput.model_json_schema())
+    schema = PhotoInput.model_json_schema()
 
-    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+    assert "images" not in schema["properties"]
     assert schema["properties"]["photo"] == {"$ref": "#/$defs/Image"}
     assert schema["$defs"]["Image"] == Image.model_json_schema()
 
 
-def test_scrub_schema_preserves_image_definition_in_recursive_payload():
+def test_schema_preserves_image_definition_in_recursive_payload():
     class PhotoAlbum(BaseModel):
         photo: Image
         related: "PhotoAlbum | None" = None
@@ -129,7 +100,7 @@ def test_scrub_schema_preserves_image_definition_in_recursive_payload():
     class PhotoInput(Empty):
         albums: list[PhotoAlbum]
 
-    schema = schema_scrubber(PhotoInput.model_json_schema())
+    schema = PhotoInput.model_json_schema()
 
     assert schema["properties"]["albums"]["items"] == {"$ref": "#/$defs/PhotoAlbum"}
     album = schema["$defs"]["PhotoAlbum"]["properties"]
@@ -138,40 +109,69 @@ def test_scrub_schema_preserves_image_definition_in_recursive_payload():
     assert schema["$defs"]["Image"] == Image.model_json_schema()
 
 
-# ---------- C. Agent-facing surface: prompts ----------
+def test_tool_input_can_explicitly_declare_and_inherit_image_arguments():
+    class ImagesInput(Empty):
+        images: list[Image] = Field(...)
 
+    class SpecializedImagesInput(ImagesInput):
+        pass
 
-def test_tool_schema_excludes_declared_fields():
-    """Tool call schema does not contain any excluded fields. Uses real tool."""
-    schema = _get_tool_call_schema(example_tool)
-    excluded_fields, _ = extract_fields_and_type_names()
+    @tool
+    def inspect_images(input: SpecializedImagesInput, messages: list[Message]) -> Str:
+        """Inspect the supplied images."""
+        return Str(value="Inspected", images=input.images)
 
-    for f in excluded_fields:
-        assert f not in schema.get("properties", {})
+    schema = _get_tool_call_schema(inspect_images)
+
     assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+    assert "images" in schema["required"]
     assert schema["$defs"]["Image"] == Image.model_json_schema()
 
 
-def test_output_schema_excludes_declared_fields():
-    """Output schema does not contain any excluded fields. Uses real model (Empty)."""
-    schema = schema_scrubber(Empty.model_json_schema())
-    excluded_fields, _ = extract_fields_and_type_names()
+def test_tool_schema_exposes_only_invocation_arguments():
+    schema = _get_tool_call_schema(example_tool)
 
-    for f in excluded_fields:
-        assert f not in schema.get("properties", {})
+    assert set(schema["properties"]) == {"action", "rationale", "value"}
+    assert "$defs" not in schema
 
 
-# ---------- D. Agent-facing surface: message content ----------
-
-
-def test_formatted_output_message_excludes_declared_fields():
-    """Finalized message content does not contain any excluded fields. Uses real model (Stop)."""
-    output = Stop(value="done")
+@pytest.mark.parametrize("model, payload, role", [
+    (Invoke, {"action": "example_tool", "rationale": "Check", "value": 0}, Role.ASSISTANT),
+    (Str, {"value": "ok"}, Role.USER),
+    (Stop, {"value": "done"}, Role.USER),
+])
+def test_populated_runtime_metadata_survives_storage_but_stays_out_of_agent_payloads(
+    model, payload, role,
+):
+    metadata = {
+        "truncation": [{"threshold": 0, "severity": 1}, {"threshold": 5, "severity": 2}],
+        "message_kind": "user_notification",
+        "endpoint": "test-endpoint",
+        "model": "test-model",
+        "token_input": 0,
+        "token_output": 42,
+    }
+    output = model.model_validate(payload | metadata)
     message = get_finalized_message(output, schema_scrub_test_tool)
-    content = json.loads(message.content)
-    excluded_fields, _ = extract_fields_and_type_names()
-    for f in excluded_fields:
-        assert f not in content
+    expected_payload = payload if role == Role.ASSISTANT else {
+        "caller": schema_scrub_test_tool.name, **payload,
+    }
+
+    assert json.loads(message.content) == expected_payload
+    assert message.model_dump(mode="json") == {
+        "role": role, "content": message.content, "images": [], **metadata,
+    }
+    assert messages_scrubber([message]) == [{
+        "role": role, "content": message.content, "images": [],
+    }]
+    assert Message.model_validate_json(message.model_dump_json()) == message
+
+    row = message_to_logged_row(
+        message, message_id="message", sequence=1,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    restored = LoggedMessageRow.model_validate_json(row.model_dump_json())
+    assert logged_row_to_message(restored) == message
 
 
 def test_finalized_message_preserves_unicode_and_json_escaping() -> None:
@@ -210,7 +210,7 @@ def test_message_kind_is_not_agent_facing_in_scrubbed_messages():
     assert message.message_kind == MessageKind.STARTUP_CONTEXT
 
     scrubbed = messages_scrubber([message])
-    assert scrubbed == [{"role": "user", "content": message.content}]
+    assert scrubbed == [{"role": "user", "content": message.content, "images": []}]
     assert "message_kind" not in scrubbed[0]
 
 
@@ -232,7 +232,7 @@ def test_message_kind_rejects_unknown_strings() -> None:
         Str.model_validate({"value": "routine", "message_kind": "unknown_kind"})
 
 
-def test_full_system_prompt_excludes_declared_fields_and_defs():
+def test_full_system_prompt_excludes_runtime_fields_and_defs():
     """Full system prompt generated via Agent init does not expose excluded schema fields/defs."""
     agent = Agent(
         name="schema_scrub_agent",
@@ -244,12 +244,12 @@ def test_full_system_prompt_excludes_declared_fields_and_defs():
         initial_messages=None,
     )
     prompt = agent.full_system_prompt
-    excluded_fields, excluded_defs = extract_fields_and_type_names()
 
     assert prompt
-    for f in excluded_fields:
+    assert "images" not in prompt
+    for f in ("truncation", "message_kind", "endpoint", "model", "token_input", "token_output"):
         assert f"'{f}':" not in prompt
         assert f'"{f}":' not in prompt
-    for d in excluded_defs:
+    for d in ("Truncation", "Severity", "MessageKind"):
         assert f"'{d}':" not in prompt
         assert f'"{d}":' not in prompt

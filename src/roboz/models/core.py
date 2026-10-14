@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Final, Literal, Self
+from typing import Annotated, Final, Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
+from roboz.models._fields import RuntimeOnly
 from roboz.models.truncation import DEFAULT, TruncationSpec
 
 
@@ -121,15 +123,19 @@ class Image(BaseModel):
 
 
 class AgentBaseModel(BaseModel):
-    """Common fields carried by values moving through an agent run."""
+    """Common fields carried by values moving through an agent run.
 
-    truncation: TruncationSpec = Field(default=DEFAULT)
-    images: list[Image] = Field(default_factory=list, repr=False)
-    message_kind: MessageKind | None = None
-    endpoint: str | None = None
-    model: str | None = None
-    token_input: int | None = None
-    token_output: int | None = None
+    Inherited images carry runtime attachments. An input or structured-output
+    model must redeclare the field to expose it as a model-facing argument.
+    """
+
+    truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
+    images: SkipJsonSchema[list[Image]] = Field(default_factory=list, repr=False)
+    message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
+    endpoint: Annotated[str | None, RuntimeOnly()] = None
+    model: Annotated[str | None, RuntimeOnly()] = None
+    token_input: Annotated[int | None, RuntimeOnly()] = None
+    token_output: Annotated[int | None, RuntimeOnly()] = None
 
 
 class Empty(AgentBaseModel):
@@ -222,9 +228,9 @@ class Message(BaseModel):
     role: Role = Field(...)
     content: str = Field(...)
     images: list[Image] = Field(default_factory=list, repr=False)
-    truncation: TruncationSpec = Field(default=DEFAULT)
-    message_kind: MessageKind | None = None
-    endpoint: str | None = None
-    model: str | None = None
-    token_input: int | None = None
-    token_output: int | None = None
+    truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
+    message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
+    endpoint: Annotated[str | None, RuntimeOnly()] = None
+    model: Annotated[str | None, RuntimeOnly()] = None
+    token_input: Annotated[int | None, RuntimeOnly()] = None
+    token_output: Annotated[int | None, RuntimeOnly()] = None

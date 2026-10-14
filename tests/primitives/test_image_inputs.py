@@ -3,15 +3,16 @@
 import base64
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from roboz import Agent, tool
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
 from roboz.llm.endpoints import MockLLMEndpoint, role_to_user_mapper
-from roboz.models import Empty, Image, Message, MessageKind, Role, Str
-from roboz.models._schema import messages_scrubber, schema_scrubber
+from roboz.models import Empty, Image, Invoke, Message, MessageKind, Role, Str
+from roboz.models._schema import messages_scrubber
 from roboz.models._serialization import get_finalized_message
 from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
 from roboz.runtime.persistence import (
@@ -19,6 +20,7 @@ from roboz.runtime.persistence import (
     logged_row_to_message,
     message_to_logged_row,
 )
+from roboz.runtime.sinks import PersistenceSink
 from roboz.tools import stop
 
 
@@ -48,7 +50,7 @@ def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     assert mapped == message
     assert mapped.images == [image]
     assert json.loads(mapped.content) == {"value": "A chart"}
-    assert "images" in schema_scrubber(Str.model_json_schema())["properties"]
+    assert "images" not in Str.model_json_schema()["properties"]
     assert messages_scrubber([mapped]) == [{
         "role": "user", "content": message.content, "images": [{"url": image.url}],
     }]
@@ -56,12 +58,40 @@ def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     assert role_to_user_mapper([error])[0] == message
 
 
-def test_agent_can_pass_image_arguments_and_continue_after_tool_result():
+@pytest.mark.parametrize("image_arguments", [
+    {},
+    {"images": []},
+    {"images": [{"url": "https://example.com/chart.png"}]},
+])
+def test_invocation_payload_preserves_supplied_arguments_without_attachments(image_arguments):
+    payload = {
+        "action": "inspect_image", "rationale": "Inspect the chart",
+        "options": {"caption": None, "labels": []}, **image_arguments,
+    }
+    invocation = Invoke.model_validate({
+        **payload, "endpoint": "test", "token_input": 5,
+        "message_kind": MessageKind.USER_NOTIFICATION,
+    })
+
+    message = get_finalized_message(invocation)
+
+    assert message.role == Role.ASSISTANT
+    assert message.images == []
+    assert json.loads(message.content) == payload
+    assert message.endpoint == "test"
+    assert message.token_input == 5
+    assert message.message_kind == MessageKind.USER_NOTIFICATION
+
+
+def test_agent_can_pass_image_arguments_and_continue_after_tool_result(tmp_path: Path):
     image = Image(url="https://example.com/chart.png")
     received = []
 
+    class ImageInput(Empty):
+        images: list[Image] = Field(...)
+
     @tool
-    def inspect_image(input: Empty, messages: list[Message]) -> Str:
+    def inspect_image(input: ImageInput, messages: list[Message]) -> Str:
         """Inspect the supplied images."""
         received.extend(input.images)
         return Str(value="A chart", images=input.images)
@@ -74,22 +104,33 @@ def test_agent_can_pass_image_arguments_and_continue_after_tool_result():
         invocation,
         {"action": "stop", "rationale": "Done", "value": "Finished"},
     ], accepts_images=True)
+    sink = PersistenceSink.for_path(tmp_path / "conversations")
     agent = Agent(
         name="image_arguments", tools=[inspect_image, stop],
         system_prompt="Inspect the chart and stop.", agent_endpoint=endpoint,
+        event_sinks=(sink,),
     )
 
-    result, messages = agent.invoke(dry_run=True)
+    result, messages = agent.invoke()
 
     assert result.value == "Finished"
     assert received == [image]
     assistant = next(message for message in messages if message.role == Role.ASSISTANT)
-    assert json.loads(assistant.content)["images"][0]["url"] == image.url
+    assert json.loads(assistant.content) == invocation
     assert assistant.images == []
     tool_result = next(message for message in messages if message.images)
     assert tool_result.role == Role.USER
     assert tool_result.images == [image]
     assert "images" not in json.loads(tool_result.content)
+
+    assert sink.conversations_location is not None
+    persisted = ConversationRun.model_validate_json(sink.conversations_location.read_text())
+    assistant_row = next(row for row in persisted.messages if row.role == Role.ASSISTANT)
+    assert assistant_row.content == assistant.content
+    assert assistant_row.images == []
+    assert json.loads(assistant_row.content) == invocation
+    result_row = next(row for row in persisted.messages if row.images)
+    assert logged_row_to_message(result_row) == tool_result
 
 
 @pytest.mark.parametrize("severity", list(Severity))
@@ -113,9 +154,10 @@ def test_truncation_keeps_or_removes_whole_images(severity):
     )
 
 
-def test_images_round_trip_through_persisted_messages_and_old_runs_load():
+@pytest.mark.parametrize("role", [Role.USER, Role.ASSISTANT])
+def test_images_round_trip_through_persisted_messages_and_old_runs_load(role):
     message = Message(
-        role=Role.USER, content="Inspect",
+        role=role, content="Inspect",
         images=[Image.from_bytes(b"bytes", media_type="image/webp")],
     )
     now = datetime.now(timezone.utc)

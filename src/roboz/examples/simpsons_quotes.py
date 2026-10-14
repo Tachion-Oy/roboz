@@ -96,4 +96,5 @@ QUOTES: Final[list[str]] = [
     "No TV and no beer make Homer something something...",
     "Don't blame me, I voted for Kodos.",
     "Let the bears pay the bear tax. I pay the Homer tax.",
+    "Facts are meaningless. You could use facts to prove anything that's even remotely true!",
 ]

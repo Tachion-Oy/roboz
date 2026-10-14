@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from typing import Final
 
 from roboz.models import Empty
-from roboz.models._schema import schema_scrubber
 
 JSON_FIX_PROMPT: Final[
     str
@@ -59,13 +58,13 @@ def get_basic_system_prompt(
         "## Output Pydantic model\n\nYour output "
         "must without exception follow the Pydantic schema"
     )
-    scrubbed_schema = schema_scrubber(OutputModel.model_json_schema())
+    schema = OutputModel.model_json_schema()
     parts = [
         system_prompt.strip(),
         STRUCTURED_JSON_OUTPUT_INSTRUCTIONS,
         JSON_STRING_ESCAPING_RULES,
         output_structure_instructions,
-        f"```json\n{json.dumps(scrubbed_schema, indent=2, ensure_ascii=False)}\n```",
+        f"```json\n{json.dumps(schema, indent=2, ensure_ascii=False)}\n```",
     ]
     if output_example is not None:
         OutputModel.model_validate(dict(output_example))
