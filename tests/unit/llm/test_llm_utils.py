@@ -890,6 +890,53 @@ def test_call_llm_api_closes_provider_stream_after_cancellation() -> None:
     assert stream.closed is True
 
 
+@pytest.mark.parametrize("use_mock", [False, True])
+@pytest.mark.parametrize(
+    "action,error_type,terminal_kind",
+    [
+        ("cancel", LLMCallCancelledError, "cancelled"),
+        ("interrupt", LLMCallInterruptedError, "interrupted"),
+    ],
+)
+def test_call_llm_api_reports_control_signal_from_final_delta(
+    use_mock, action, error_type, terminal_kind,
+) -> None:
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+
+    endpoint = (
+        MockLLMEndpoint(["complete"])
+        if use_mock
+        else LLMEndpoint(
+            client=_FakeLLMClient([_stream_chunk("complete")]),
+            model_name="fake-model",
+            api_name="fake",
+        )
+    )
+    deltas: list[str] = []
+
+    def signal_on_delta(delta: str) -> None:
+        deltas.append(delta)
+        getattr(pipe, action)()
+
+    with pytest.raises(error_type):
+        call_llm_api(
+            endpoint,
+            [Message(role=Role.USER, content="hello")],
+            on_delta=signal_on_delta,
+            pipe=pipe,
+        )
+
+    llm_events = [
+        event for event in events
+        if isinstance(event, RuntimeEvent) and event.category == "llm"
+    ]
+    assert deltas == ["complete"]
+    assert [event.kind for event in llm_events] == ["started", terminal_kind]
+
+
 def test_call_llm_api_persists_reasoning_only_stream_diagnostics_without_text(
     tmp_path,
 ) -> None:

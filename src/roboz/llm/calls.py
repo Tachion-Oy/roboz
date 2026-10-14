@@ -208,6 +208,8 @@ class _LLMCallRunner:
                     label=self._label,
                     prepare_retry=self._prepare_retry,
                 )
+            for signal in self._signals:
+                signal.raise_if_set()
         except Exception as exc:
             error = _classify_call_error(exc, self._endpoint)
             log_llm_failure(self._endpoint, self._call_id, self._started, error)

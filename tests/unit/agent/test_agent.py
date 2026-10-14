@@ -32,6 +32,7 @@ from roboz.models import (
 )
 from roboz.models.truncation import ERROR_RETRY, NO_MESSAGE, Severity
 from roboz.runtime import EventPipe, PersistenceSink, RuntimeEvent
+from roboz.runtime.events import MessageDeltaEvent, RunLifecycleEvent
 from roboz.skill.core import Skill
 from roboz.tooling.decorators import factory, tool
 from roboz.tools import stop, stop_after
@@ -311,6 +312,38 @@ def test_invoke_pipe_cancelled_between_tools_stops_before_next_tool(
     assert path is not None
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["status"] == "cancelled"
+
+
+def test_invoke_cancelled_during_message_stream_is_not_reported_as_success() -> None:
+    events: list[object] = []
+    agent: Agent
+
+    def cancel_on_delta(event: object) -> None:
+        events.append(event)
+        if isinstance(event, MessageDeltaEvent):
+            agent.pipe.cancel()
+
+    agent = Agent(
+        name="cancel_during_stream",
+        tools=[stop],
+        system_prompt="Stop immediately.",
+        event_sinks=(cancel_on_delta,),
+        agent_endpoint=MockLLMEndpoint(
+            [dict(action="stop", rationale="done", value="ok")]
+        ),
+        initial_messages=None,
+    )
+
+    agent.invoke()
+
+    lifecycle = [event for event in events if isinstance(event, RunLifecycleEvent)]
+    llm_events = [
+        event for event in events
+        if isinstance(event, RuntimeEvent) and event.category == "llm"
+    ]
+    assert any(isinstance(event, MessageDeltaEvent) for event in events)
+    assert lifecycle[-1].status == "cancelled"
+    assert [event.kind for event in llm_events] == ["started", "cancelled"]
 
 
 def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
