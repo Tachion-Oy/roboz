@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Report cancellation or interruption received during the final LLM response
+  delta before emitting success, including calls to mock endpoints.
+
 - Add image attachments to messages and tool results, with an explicit
   `accepts_images` model capability and OpenAI-compatible request formatting.
   Conversation files now use schema version 4 and still read version 3.
