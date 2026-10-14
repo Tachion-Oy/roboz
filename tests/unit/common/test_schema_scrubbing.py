@@ -11,6 +11,7 @@ from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import (
     AgentBaseModel,
     Empty,
+    GRADED,
     Image,
     Invoke,
     Message,
@@ -18,6 +19,7 @@ from roboz.models import (
     Role,
     Stop,
     Str,
+    TruncationSpec,
 )
 from roboz.models._schema import messages_scrubber
 from roboz.models._serialization import get_finalized_message
@@ -49,6 +51,70 @@ def test_direct_model_schema_excludes_runtime_metadata(model, properties):
     assert set(schema["properties"]) == properties
     assert set(schema.get("required", [])) <= properties
     assert {"Truncation", "Severity", "MessageKind"}.isdisjoint(schema.get("$defs", {}))
+
+
+def test_overridden_runtime_defaults_stay_hidden_in_tool_schemas():
+    class ConfiguredInput(Empty):
+        truncation: TruncationSpec = GRADED
+
+    class SpecializedInput(ConfiguredInput):
+        message_kind: MessageKind | None = Field(default=MessageKind.USER_NOTIFICATION)
+
+    @tool
+    def configured_tool(input: SpecializedInput, messages: list[Message]) -> Str:
+        """Return a result using the configured runtime defaults."""
+        return Str(value="ok")
+
+    schema = _get_tool_call_schema(configured_tool)
+
+    assert set(schema["properties"]) == {"action", "rationale"}
+    assert set(schema["required"]) == {"action", "rationale"}
+    assert "$defs" not in schema
+    assert SpecializedInput().truncation == GRADED
+    assert SpecializedInput().message_kind == MessageKind.USER_NOTIFICATION
+
+
+def test_overridden_metadata_defaults_stay_out_of_result_content():
+    class Notification(Str):
+        message_kind: MessageKind | None = MessageKind.USER_NOTIFICATION
+        token_input: int | None = 0
+
+    output = Notification(value="Hello")
+    message = get_finalized_message(output)
+
+    assert json.loads(message.content) == {"value": "Hello"}
+    assert message.message_kind == MessageKind.USER_NOTIFICATION
+    assert message.token_input == 0
+    assert output.model_dump(mode="json")["message_kind"] == "user_notification"
+    assert Message.model_validate_json(message.model_dump_json()) == message
+
+
+def test_overridden_message_defaults_remain_runtime_metadata():
+    class NotificationMessage(Message):
+        message_kind: MessageKind | None = MessageKind.USER_NOTIFICATION
+
+    message = NotificationMessage(role=Role.USER, content="Hello")
+
+    assert set(NotificationMessage.model_json_schema()["properties"]) == {
+        "role", "content", "images",
+    }
+    assert message.model_dump(mode="json")["message_kind"] == "user_notification"
+    assert messages_scrubber([message]) == [{
+        "role": "user", "content": "Hello", "images": [],
+    }]
+
+
+def test_runtime_classification_survives_deferred_annotation_resolution():
+    class Notification(Str):
+        message_kind: "NotificationKind | None" = MessageKind.USER_NOTIFICATION
+
+    NotificationKind = MessageKind
+    Notification.model_rebuild()
+    message = get_finalized_message(Notification(value="Hello"))
+
+    assert set(Notification.model_json_schema()["properties"]) == {"value"}
+    assert json.loads(message.content) == {"value": "Hello"}
+    assert message.message_kind == NotificationKind.USER_NOTIFICATION
 
 
 def test_tool_schema_retains_types_shared_by_payload_and_runtime_metadata():

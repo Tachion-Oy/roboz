@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
-from roboz.models._fields import RuntimeOnly
+from roboz.models._fields import RuntimeModel, RuntimeOnly
 from roboz.models.truncation import DEFAULT, TruncationSpec
 
 
@@ -122,7 +122,7 @@ class Image(BaseModel):
         )
 
 
-class AgentBaseModel(BaseModel):
+class AgentBaseModel(RuntimeModel):
     """Common fields carried by values moving through an agent run.
 
     Inherited images carry runtime attachments. An input or structured-output
@@ -220,7 +220,7 @@ class Invoke(AgentBaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class Message(BaseModel):
+class Message(RuntimeModel):
     """One typed conversation message and its runtime metadata."""
 
     model_config = ConfigDict(extra="forbid")
