@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import json
 
 import pytest
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -29,7 +29,11 @@ from roboz.runtime.persistence import (
     logged_row_to_message,
     message_to_logged_row,
 )
-from roboz.tooling._prompts import _get_tool_call_schema, example_tool
+from roboz.tooling._prompts import (
+    _get_tool_call_schema,
+    example_tool,
+    get_tool_instructions,
+)
 from roboz.tooling.decorators import tool
 
 
@@ -115,6 +119,85 @@ def test_runtime_classification_survives_deferred_annotation_resolution():
     assert set(Notification.model_json_schema()["properties"]) == {"value"}
     assert json.loads(message.content) == {"value": "Hello"}
     assert message.message_kind == NotificationKind.USER_NOTIFICATION
+
+
+def test_mutually_recursive_tool_models_hide_overridden_runtime_fields():
+    class Parent(Empty):
+        message_kind: MessageKind | None = MessageKind.USER_NOTIFICATION
+        child: "Child | None" = None
+
+    class Child(Empty):
+        parent: Parent | None = None
+
+    Parent.model_rebuild()
+
+    @tool
+    def inspect_family(input: Child, messages: list[Message]) -> Str:
+        """Inspect the supplied family tree."""
+        return Str(value="ok")
+
+    schema = _get_tool_call_schema(inspect_family)
+
+    assert set(schema["properties"]) == {"parent", "action", "rationale"}
+    assert set(schema["$defs"]) == {"Parent", "Child"}
+    assert set(schema["$defs"]["Parent"]["properties"]) == {"child"}
+    assert schema["$defs"]["Child"]["properties"]["parent"]["anyOf"] == [
+        {"$ref": "#/$defs/Parent"}, {"type": "null"},
+    ]
+    assert "message_kind" not in get_tool_instructions([inspect_family])
+
+
+@pytest.mark.parametrize("mode", ["validation", "serialization"])
+def test_runtime_schema_filter_preserves_payload_aliases_and_required_fields(mode):
+    class Categorized(Empty):
+        message_kind: MessageKind = Field(alias="runtime_kind")
+        category: MessageKind = Field(alias="message_kind")
+
+    schema = Categorized.model_json_schema(mode=mode)
+
+    assert set(schema["properties"]) == {"message_kind"}
+    assert schema["required"] == ["message_kind"]
+    assert schema["properties"]["message_kind"] == {"$ref": "#/$defs/MessageKind"}
+    assert Categorized.model_json_schema(mode=mode, by_alias=False)["required"] == [
+        "category",
+    ]
+    output = Categorized.model_validate({
+        "runtime_kind": "user_notification", "message_kind": "user_notification",
+    })
+    assert output.model_dump(mode="json")["message_kind"] == "user_notification"
+    assert json.loads(get_finalized_message(output).content) == {
+        "category": "user_notification",
+    }
+
+
+def test_runtime_schema_filter_preserves_model_validators():
+    class Notification(Str):
+        message_kind: MessageKind | None = MessageKind.USER_NOTIFICATION
+
+        @model_validator(mode="after")
+        def require_text(self):
+            if not self.value.strip():
+                raise ValueError("Notification requires text")
+            return self
+
+    assert set(Notification.model_json_schema()["properties"]) == {"value"}
+    assert Notification(value="Hello").message_kind == MessageKind.USER_NOTIFICATION
+    with pytest.raises(ValidationError, match="Notification requires text"):
+        Notification(value=" ")
+
+
+def test_generic_runtime_defaults_stay_out_of_schemas_and_payloads():
+    class Result[T](Empty):
+        message_kind: MessageKind | None = MessageKind.USER_NOTIFICATION
+        value: T
+
+    schema = Result[str].model_json_schema()
+    message = get_finalized_message(Result[str](value="Hello"))
+
+    assert set(schema["properties"]) == {"value"}
+    assert schema["properties"]["value"]["type"] == "string"
+    assert json.loads(message.content) == {"value": "Hello"}
+    assert message.message_kind == MessageKind.USER_NOTIFICATION
 
 
 def test_tool_schema_retains_types_shared_by_payload_and_runtime_metadata():
