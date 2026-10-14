@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.0a1 - 2026-10-14
+
 - Report cancellation or interruption received during the final LLM response
   delta before emitting success, including calls to mock endpoints.
 
