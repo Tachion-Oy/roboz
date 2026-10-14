@@ -126,7 +126,10 @@ def test_get_basic_system_prompt_uses_valid_schema_and_matching_example():
     ]
     schema, example = map(json.loads, json_blocks)
 
-    assert schema["properties"] == {"value": {"title": "Value", "type": "string"}}
+    assert set(schema["properties"]) == {"value", "images"}
+    assert schema["properties"]["value"] == {"title": "Value", "type": "string"}
+    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+    assert schema["$defs"]["Image"]["required"] == ["url"]
     assert schema["required"] == ["value"]
     assert example == {"value": "## Summary\n- Durable fact."}
     assert "'properties'" not in prompt

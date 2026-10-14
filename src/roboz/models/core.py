@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal, Self
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from roboz.models.truncation import DEFAULT, TruncationSpec
 
@@ -71,10 +73,58 @@ BOOTSTRAP_MESSAGE_KINDS: Final[frozenset[MessageKind]] = frozenset(
 )
 
 
+class Image(BaseModel):
+    """An HTTP(S) or base64 data URL supplied as an image input.
+
+    Validation checks the source and encoding without fetching URLs or decoding
+    image pixels. Supported formats and detail levels depend on the model.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    url: str = Field(repr=False)
+    detail: Literal["auto", "low", "high"] | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme in {"http", "https"} and parsed.hostname:
+            return value
+        header, _, encoded = value.partition(",")
+        if header in {
+            "data:image/png;base64",
+            "data:image/jpeg;base64",
+            "data:image/webp;base64",
+            "data:image/gif;base64",
+        } and encoded:
+            try:
+                base64.b64decode(encoded, validate=True)
+            except ValueError:
+                raise ValueError("Image data must use valid base64 encoding") from None
+            return value
+        raise ValueError("Image requires an HTTP(S) URL or a supported image data URL")
+
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        *,
+        media_type: str,
+        detail: Literal["auto", "low", "high"] | None = None,
+    ) -> Self:
+        """Encode caller-supplied bytes as a data URL with an explicit MIME type."""
+        return cls(
+            url=f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}",
+            detail=detail,
+        )
+
+
 class AgentBaseModel(BaseModel):
-    """Base metadata carried by values moving through an agent run."""
+    """Common fields carried by values moving through an agent run."""
 
     truncation: TruncationSpec = Field(default=DEFAULT)
+    images: list[Image] = Field(default_factory=list, repr=False)
     message_kind: MessageKind | None = None
     endpoint: str | None = None
     model: str | None = None
@@ -171,6 +221,7 @@ class Message(BaseModel):
 
     role: Role = Field(...)
     content: str = Field(...)
+    images: list[Image] = Field(default_factory=list, repr=False)
     truncation: TruncationSpec = Field(default=DEFAULT)
     message_kind: MessageKind | None = None
     endpoint: str | None = None

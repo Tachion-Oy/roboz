@@ -8,13 +8,14 @@ tests adapt automatically.
 import json
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import (
     AgentBaseModel,
     Empty,
+    Image,
     Message,
     MessageKind,
     Stop,
@@ -61,9 +62,10 @@ def test_extract_fields_includes_dataclass_field_types_for_truncation():
     assert "Severity" in defs
 
 
-def test_non_agent_facing_fields_stay_in_sync_with_agent_base_model():
-    """Internal scrub list must include all fields inherited by agent models."""
-    assert set(NonAgentFacingFields.model_fields) == set(AgentBaseModel.model_fields)
+def test_image_field_is_agent_facing_in_agent_base_model():
+    assert set(AgentBaseModel.model_fields) - set(NonAgentFacingFields.model_fields) == {
+        "images"
+    }
 
 
 # ---------- B. scrub_schema_for_agent ----------
@@ -88,15 +90,9 @@ def test_scrub_schema_removes_empty_defs():
     _, excluded_defs = extract_fields_and_type_names()
     if not excluded_defs:
         return  # Nothing to scrub
-    schema = Empty.model_json_schema()
+    schema = NonAgentFacingFields.model_json_schema()
     result = schema_scrubber(schema)
-    # Empty's schema has only defs for excluded types; after scrub, $defs is removed entirely
-    for d in excluded_defs:
-        assert d not in result.get("$defs", {})
-    # When all defs were excluded, the key is gone
-    original_defs = set(schema.get("$defs", {}).keys())
-    if original_defs and original_defs <= excluded_defs:
-        assert "$defs" not in result
+    assert "$defs" not in result
 
 
 def test_scrub_schema_preserves_non_excluded_fields():
@@ -114,6 +110,34 @@ def test_scrub_schema_preserves_non_excluded_fields():
         assert f not in result_props
 
 
+def test_scrub_schema_preserves_explicit_image_field_definition():
+    class PhotoInput(Empty):
+        photo: Image
+
+    schema = schema_scrubber(PhotoInput.model_json_schema())
+
+    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+    assert schema["properties"]["photo"] == {"$ref": "#/$defs/Image"}
+    assert schema["$defs"]["Image"] == Image.model_json_schema()
+
+
+def test_scrub_schema_preserves_image_definition_in_recursive_payload():
+    class PhotoAlbum(BaseModel):
+        photo: Image
+        related: "PhotoAlbum | None" = None
+
+    class PhotoInput(Empty):
+        albums: list[PhotoAlbum]
+
+    schema = schema_scrubber(PhotoInput.model_json_schema())
+
+    assert schema["properties"]["albums"]["items"] == {"$ref": "#/$defs/PhotoAlbum"}
+    album = schema["$defs"]["PhotoAlbum"]["properties"]
+    assert album["photo"] == {"$ref": "#/$defs/Image"}
+    assert {"$ref": "#/$defs/PhotoAlbum"} in album["related"]["anyOf"]
+    assert schema["$defs"]["Image"] == Image.model_json_schema()
+
+
 # ---------- C. Agent-facing surface: prompts ----------
 
 
@@ -124,6 +148,8 @@ def test_tool_schema_excludes_declared_fields():
 
     for f in excluded_fields:
         assert f not in schema.get("properties", {})
+    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+    assert schema["$defs"]["Image"] == Image.model_json_schema()
 
 
 def test_output_schema_excludes_declared_fields():

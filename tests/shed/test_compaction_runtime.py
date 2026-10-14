@@ -14,7 +14,7 @@ from roboz.shed.tools.compactification import (
 )
 from roboz.shed.tools.compactification.compactify_messages import CompactionState
 
-from roboz.models import All, Message, Role
+from roboz.models import All, Image, Message, Role
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
@@ -86,6 +86,27 @@ def test_threshold_boundary(tokens, status):
             tokens / 10
         )
     assert len(endpoint.mock_responses) == (1 if status == "ok" else 0)
+
+
+def test_compaction_summarizes_image_references_using_a_text_endpoint():
+    requests = []
+
+    def create(**request):
+        requests.append(request)
+        return _response("The chart was reviewed.")
+
+    messages = _messages()
+    embedded = Image.from_bytes(b"image bytes", media_type="image/png")
+    messages[0].images = [Image(url="https://example.com/chart.png"), embedded]
+    output = compactify_messages_when_needed(_ctx(_endpoint(create)))(All(), messages)
+
+    assert output.status == "compacted"
+    source = requests[0]["messages"][-1]["content"]
+    assert "[image 1: https://example.com/chart.png]" in source
+    assert "[image 2: embedded image; data in original message]" in source
+    assert embedded.url not in source
+    assert all(isinstance(message["content"], str) for message in requests[0]["messages"])
+    assert json.loads(messages[-1].content)["summary_markdown"] == "The chart was reviewed."
 
 
 def test_bootstrap_only_is_blocked_without_calling_provider():

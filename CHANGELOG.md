@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add image attachments to messages and tool results, with an explicit
+  `accepts_images` model capability and OpenAI-compatible request formatting.
+  Conversation files now use schema version 4 and still read version 3.
+  Snapshots and compaction summarize textual image references.
+
+- Keep `images` visible in model-facing schemas and preserve image arguments in
+  tool-call JSON. Apply custom message scrubbers before validating image inputs
+  on mock endpoints.
+
 - Add the `Pdf` capability with one guarded `process_pdf` tool for reading PDF
   text with page ranges and bounded output. Images are ignored; no OCR is performed.
 

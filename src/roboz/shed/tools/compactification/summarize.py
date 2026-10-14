@@ -42,6 +42,27 @@ _ATTEMPTS_KEY: Final[str] = "attempts"
 _SHORTEST_CHARS_KEY: Final[str] = "shortest_chars"
 
 
+def conversation_text(messages: list[Message]) -> str:
+    """Render summary input with image references, omitting embedded image data.
+
+    Image numbers are one-based within each message. Snapshot messages already
+    carry their persisted sequence, and the summary input identifies the run.
+    These references identify attachments; they do not describe their pixels.
+    """
+    sections = []
+    for message in messages:
+        lines = [f"## {message.role.value.upper()}", message.content]
+        for index, image in enumerate(message.images, start=1):
+            source = (
+                "embedded image; data in original message"
+                if image.url.startswith("data:")
+                else image.url
+            )
+            lines.append(f"[image {index}: {source}]")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
+
+
 def _validate_tolerance_percent(tolerance_percent: float) -> None:
     if (
         not math.isfinite(tolerance_percent)

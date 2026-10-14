@@ -479,8 +479,23 @@ def test_version_one_defaults_and_model_records_remain_compatible():
     exported = document_from_inventory(decoded)
     expected = copy.deepcopy(document)
     expected["providers"]["example"].update(timeout_s=60.0, stream=True)
+    expected["providers"]["example"]["models"]["chat"]["accepts_images"] = False
     assert exported == expected
     assert parse_document(exported) == decoded
+
+
+def test_image_capability_round_trips_through_inventory_and_generated_catalogue():
+    document = document_from_inventory(bundled_inventory())
+    models = document["providers"]["cerebras"]["models"]
+    models["gpt_oss_120b"]["accepts_images"] = True
+    inventory = parse_document(document)
+    assert document_from_inventory(inventory) == document
+    namespace = {}
+    exec(render_module(inventory), namespace)
+    assert namespace["cerebras"].gpt_oss_120b.accepts_images is True
+    models["gpt_oss_120b"]["accepts_images"] = "true"
+    with pytest.raises(ValueError, match="expected a boolean"):
+        parse_document(document)
 
 
 @pytest.mark.parametrize(

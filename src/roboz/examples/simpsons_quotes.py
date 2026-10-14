@@ -95,4 +95,5 @@ QUOTES: Final[list[str]] = [
     "To start, press any key. Where’s the any key?",
     "No TV and no beer make Homer something something...",
     "Don't blame me, I voted for Kodos.",
+    "Let the bears pay the bear tax. I pay the Homer tax.",
 ]

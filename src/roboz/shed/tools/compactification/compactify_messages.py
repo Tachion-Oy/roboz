@@ -26,7 +26,7 @@ from .prompts import (
     COMPACTIFICATION_CONTINUATION_SKILL_MESSAGE,
     COMPACTIFY_SYSTEM_PROMPT,
 )
-from .summarize import summarize_conversation_segment
+from .summarize import conversation_text, summarize_conversation_segment
 
 
 DEFAULT_THRESHOLD_PERCENT: Final[float] = 80.0
@@ -56,10 +56,6 @@ def _fmt_tokens(n: int) -> str:
 
 def _context_summary(consumed: int, max_tokens: int, percent_used: float) -> str:
     return f"{_fmt_tokens(consumed)} / {_fmt_tokens(max_tokens)} ({percent_used:.0f}%)"
-
-
-def _conversation_text(messages: list[Message]) -> str:
-    return "\n\n".join(f"## {m.role.value.upper()}\n{m.content}" for m in messages)
 
 
 def _bootstrap_prefix_len(messages: list[Message]) -> int:
@@ -183,7 +179,7 @@ def compactify_messages_when_needed(
         endpoint=endpoint_like,
         system_prompt=ctx.system_prompt,
         instructions=skill_message,
-        conversation=_conversation_text(messages[prefix_len:]),
+        conversation=conversation_text(messages[prefix_len:]),
         max_chars=max_chars,
         max_chars_tolerance_percent=0,
         pipe=ctx.pipe,

@@ -71,12 +71,17 @@ def schema_scrubber(
 
 
 def messages_scrubber(messages: list[Message]):
+    """Strip runtime metadata, retaining attachments on their own message record."""
     allowed = set(
         schema_scrubber(Message.model_json_schema()).get("properties", {}).keys()
     )
     if not allowed:
         raise ValueError(f"No allowed fields in message schema {Message=}")
     return [
-        {k: v for k, v in m.model_dump(mode="json").items() if k in allowed}
+        {
+            k: v
+            for k, v in m.model_dump(mode="json", exclude_none=True).items()
+            if k in allowed and (k != "images" or v)
+        }
         for m in messages
     ]
