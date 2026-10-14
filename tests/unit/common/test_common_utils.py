@@ -4,11 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from roboz.models._schema import (
-    extract_fields_and_type_names,
-    get_constituent_types,
-    schema_scrubber,
-)
+from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import camel_to_snake, reduce_escapes
 from roboz.runtime import Output, bind_output, get_bound_output, load_key, reset_output
 from roboz.runtime._paths import delete_agent_context, get_file_count
@@ -16,19 +12,6 @@ from roboz.runtime._paths import delete_agent_context, get_file_count
 
 class ExampleUnionModel(BaseModel):
     value: int | str
-
-
-class HiddenPayload(BaseModel):
-    secret: str
-
-
-class PublicPayload(BaseModel):
-    title: str
-    hidden: HiddenPayload
-
-
-class HiddenFieldModel(BaseModel):
-    hidden: HiddenPayload
 
 
 class EnvKey(StrEnum):
@@ -53,25 +36,6 @@ def test_get_constituent_types_handles_union_and_single_type() -> None:
     assert annotation is not None
     assert get_constituent_types(annotation) == (int, str)
     assert get_constituent_types(int) == (int,)
-
-
-def test_scrub_schema_for_agent_removes_internal_fields_and_defs() -> None:
-
-    cleaned = schema_scrubber(PublicPayload.model_json_schema(), HiddenFieldModel)
-
-    assert "hidden" in PublicPayload.model_json_schema()["properties"]
-    assert "$defs" in PublicPayload.model_json_schema()
-    assert "hidden" not in cleaned["properties"]
-    assert "$defs" not in cleaned
-    assert cleaned["required"] == ["title"]
-
-
-def test_extract_fields_and_type_names_uses_model_types() -> None:
-    fields, type_names = extract_fields_and_type_names(HiddenFieldModel)
-
-    assert fields == frozenset({"hidden"})
-    assert "HiddenPayload" in type_names
-    assert "hiddenpayload" in type_names
 
 
 def test_camel_to_snake_converts_common_cases() -> None:

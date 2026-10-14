@@ -3,10 +3,13 @@
 from typing import assert_type
 
 from openai import OpenAI
+from pydantic import Field
 
 from roboz.tooling import HasExternalDependencies
 from roboz import Factory, Tool, factory
-from roboz.models import Image, Message, Role, Str
+from roboz.models import (
+    AgentBaseModel, Empty, Image, Message, MessageKind, Role, Str, TruncationSpec,
+)
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
     EndpointLike,
@@ -19,6 +22,20 @@ from roboz.llm import (
     with_openrouter_policy,
     with_request_options,
 )
+
+
+class ImageInput(Empty):
+    images: list[Image] = Field(...)
+
+
+def inspect_runtime_metadata(output: AgentBaseModel, message: Message) -> None:
+    for value in (output, message):
+        assert_type(value.truncation, TruncationSpec)
+        assert_type(value.message_kind, MessageKind | None)
+        assert_type(value.endpoint, str | None)
+        assert_type(value.model, str | None)
+        assert_type(value.token_input, int | None)
+        assert_type(value.token_output, int | None)
 
 
 @factory
@@ -56,6 +73,7 @@ image = Image.from_bytes(b"image", media_type="image/png", detail="low")
 assert_type(image, Image)
 assert_type(Message(role=Role.USER, content="Describe", images=[image]).images, list[Image])
 assert_type(Str(value="A chart", images=[image]).images, list[Image])
+assert_type(ImageInput(images=[image]).images, list[Image])
 transcription = TranscriptionEndpoint(
     client=OpenAI(api_key="type-test-only"), api_name="test", model_name="speech"
 )

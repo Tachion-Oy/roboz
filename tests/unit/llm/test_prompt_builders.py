@@ -4,8 +4,7 @@ import json
 
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.llm import get_basic_system_prompt
-from roboz.models import BaseNames, Empty, Message, Str
-from roboz.models._schema import extract_fields_and_type_names
+from roboz.models import Empty, Message, Str
 from roboz.tooling._prompts import (
     example_skill_tool,
     example_tool,
@@ -26,17 +25,9 @@ def test_get_agentic_system_prompt_with_required_input():
     assert "example_tool" in prompt
     assert "## Available tools and skills" in prompt
 
-    excluded_fields, _ = extract_fields_and_type_names()
-    expected_fields = (
-        {
-            BaseNames.ACTION_FIELD.value,
-            BaseNames.RATIONALE_FIELD.value,
-        }
-        | set(example_tool.InputModel.model_fields)
-    ) - excluded_fields
-
-    for field_name in expected_fields:
+    for field_name in ("action", "rationale", "value"):
         assert field_name in prompt
+    assert "images" not in prompt
 
 
 def test_get_agentic_system_prompt_with_empty_input():
@@ -126,10 +117,9 @@ def test_get_basic_system_prompt_uses_valid_schema_and_matching_example():
     ]
     schema, example = map(json.loads, json_blocks)
 
-    assert set(schema["properties"]) == {"value", "images"}
+    assert set(schema["properties"]) == {"value"}
     assert schema["properties"]["value"] == {"title": "Value", "type": "string"}
-    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
-    assert schema["$defs"]["Image"]["required"] == ["url"]
+    assert "Image" not in schema.get("$defs", {})
     assert schema["required"] == ["value"]
     assert example == {"value": "## Summary\n- Durable fact."}
     assert "'properties'" not in prompt
@@ -176,13 +166,9 @@ def test_get_agentic_system_prompt_with_skills():
     )
     assert "example_tool" in prompt
     assert "test_skill" in prompt
-    fields, _ = extract_fields_and_type_names()
-    # "model" appears in prose (e.g. "pydantic model"); scrub check is substring-based.
-    skip_substring_scrub = frozenset({"model"})
-    for f in fields:
-        if f in skip_substring_scrub:
-            continue
-        assert f not in prompt.lower()
+    for field in ("truncation", "message_kind", "endpoint", "model", "token_input", "token_output"):
+        assert f"'{field}':" not in prompt
+        assert f'"{field}":' not in prompt
 
 
 def test_get_agentic_system_prompt_mentions_skills_are_per_run():

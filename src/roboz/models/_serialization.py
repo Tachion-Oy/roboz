@@ -6,9 +6,7 @@ import json
 import re
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
-from roboz.models._schema import extract_fields_and_type_names
+from roboz.models._fields import runtime_fields
 from roboz.models._telemetry import LLMTelemetry
 from roboz.models.core import BaseNames, Empty, Invoke, Message, MessageKind, Role, Stop
 
@@ -34,31 +32,35 @@ def get_finalized_message(
     *,
     message_kind: MessageKind | None = None,
 ) -> Message:
-    """Serialize tool calls as JSON and move tool-result images into attachments."""
-    role = get_role(output)
-    excluded_fields = set(extract_fields_and_type_names()[0])
-    if role == Role.USER or not output.images:
-        excluded_fields.add("images")
-    dump = output.model_dump(mode="json", exclude=excluded_fields)
-    if role == Role.USER:
-        injected_payload = {}
-        if caller is not None:
-            injected_payload[BaseNames.CALLER_FIELD] = caller.name
-        dump = injected_payload | dump
-    resolved_message_kind = (
-        message_kind if message_kind is not None else output.message_kind
-    )
-    return Message(
-        role=role,
-        content=json.dumps(dump, ensure_ascii=False),
-        images=output.images if role == Role.USER else [],
-        truncation=output.truncation,
-        message_kind=resolved_message_kind,
-        **output.model_dump(
-            include=set(LLMTelemetry.model_fields.keys()), mode="python"
+    """Record invocation arguments as JSON and attach images from tool results.
+
+    Invocation payloads retain supplied fields without inserting unset defaults.
+    Result images become message attachments instead of duplicated JSON text.
+    """
+    excluded_fields = runtime_fields(type(output))
+    metadata = {
+        "truncation": output.truncation,
+        "message_kind": (
+            message_kind if message_kind is not None else output.message_kind
         ),
+        **output.model_dump(include=set(LLMTelemetry.model_fields), mode="python"),
+    }
+    if isinstance(output, Invoke):
+        payload = output.model_dump(
+            mode="json", exclude=excluded_fields, exclude_unset=True
+        )
+        return Message(
+            role=Role.ASSISTANT,
+            content=json.dumps(payload, ensure_ascii=False),
+            **metadata,
+        )
+
+    payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
+    if caller is not None:
+        payload = {BaseNames.CALLER_FIELD: caller.name} | payload
+    return Message(
+        role=Role.USER,
+        content=json.dumps(payload, ensure_ascii=False),
+        images=output.images,
+        **metadata,
     )
-
-
-def get_role(output: BaseModel):
-    return Role.ASSISTANT if issubclass(type(output), Invoke) else Role.USER

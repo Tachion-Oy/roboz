@@ -626,10 +626,46 @@ reply, usage = call_llm_api(
 result = Str(value="Chart generated.", images=[image])
 ```
 
-The `images` field is visible in tool-input and structured-output schemas.
-Model-generated tool calls retain image arguments in their JSON text. Tool
+Inherited `images` are runtime attachments and are omitted from tool-input and
+structured-output schemas. The selected input model defines the arguments the
+model can supply. Declare an image argument explicitly to expose it:
+
+```python
+from pydantic import Field
+
+from roboz import tool
+from roboz.models import Empty, Image, Message, Str
+
+
+class InspectImageInput(Empty):
+    images: list[Image] = Field(...)
+
+
+@tool
+def inspect_image(input: InspectImageInput, messages: list[Message]) -> Str:
+    """Present the supplied images for visual inspection."""
+    return Str(value="Inspect these images.", images=input.images)
+```
+
+Image arguments can also use another name, such as `photo: Image`, or appear in
+nested input models. Structured-output models use the same explicit declaration.
+Tools using plain `Empty`, `Int`, or `Str` do not advertise an image argument.
+
+Model-generated tool calls retain their supplied arguments in the assistant
+message's JSON text, including explicitly supplied image arguments. Unset defaults
+are omitted, and the message's attachment list keeps its empty default. Tool
 results carry images as message attachments without duplicating them in the
-result's JSON text.
+result's JSON text. Persisted messages retain these same content and image fields.
+
+Runtime metadata (`truncation`, `message_kind`, `endpoint`, `model`, `token_input`,
+and `token_output`) is omitted directly by `model_json_schema()` on value and
+message models. It remains available on instances and in ordinary `model_dump()`
+and `model_dump_json()` output. Finalization keeps that metadata on `Message`,
+outside its JSON content, and outgoing provider records omit it.
+
+Migration: input models that relied on the inherited `images` argument must
+redeclare it as above to keep advertising it in model-facing schemas. Code that
+constructs tool results with `images=[...]` continues to work.
 
 Use HTTP(S) URLs, base64 image data URLs, or
 `Image.from_bytes(data, media_type="image/png")`. Byte inputs support PNG, JPEG,
@@ -641,9 +677,9 @@ format as non-streaming calls.
 
 Custom `messages_scrubber` callbacks receive typed messages and return records
 with `role`, `content`, and optional `images`. The built-in scrubber retains each
-attachment on its own record. Keep `images` when filtering or reordering records;
-remove the field to redact attachments. The caller constructs API content parts
-from those returned records only.
+message's `images` list, including empty lists. Keep `images` when filtering or
+reordering records; remove the field to redact attachments. The caller constructs
+API content parts from those returned records only.
 
 Persisted conversations retain attachments. LIGHT truncation leaves image data
 intact; STUB removes attachments and REMOVE drops the whole message. Context

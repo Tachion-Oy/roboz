@@ -7,9 +7,18 @@
   Conversation files now use schema version 4 and still read version 3.
   Snapshots and compaction summarize textual image references.
 
-- Keep `images` visible in model-facing schemas and preserve image arguments in
-  tool-call JSON. Apply custom message scrubbers before validating image inputs
-  on mock endpoints.
+- Expose image arguments in tool-input and structured-output schemas only when
+  their model explicitly declares them. Inherited `images` remain runtime result
+  attachments. Existing input models using that inherited argument must redeclare
+  it to keep advertising it. Assistant messages retain supplied invocation fields
+  in JSON text, including empty image arguments, without adding unset defaults or
+  message attachments.
+
+- Apply custom message scrubbers before validating image inputs on mock endpoints.
+
+- Omit runtime metadata directly from value and message JSON schemas using field
+  annotations. Validation, ordinary serialization, and persisted records retain
+  the metadata. Payload schemas retain definitions also used by runtime fields.
 
 - Add the `Pdf` capability with one guarded `process_pdf` tool for reading PDF
   text with page ranges and bounded output. Images are ignored; no OCR is performed.

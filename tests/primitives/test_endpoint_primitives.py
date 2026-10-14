@@ -176,7 +176,7 @@ def test_custom_scrubbers_keep_images_with_their_own_records(transform):
                 {"type": "image_url", "image_url": {"url": image.url}},
             ]
         else:
-            assert payload == record
+            assert payload == {"role": record["role"], "content": record["content"]}
     assert all(isinstance(record["content"], str) for record in returned)
     assert sum(bool(record.get("images")) for record in returned) == (
         0 if transform in {"drop_image", "redact"} else 1
