@@ -12,9 +12,9 @@ from roboz.models import Str
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.capabilities import Pdf
-from roboz.shed.models import GuardFilesResult, GuardStatus
+from roboz.shed.models import ActionVerdict, GuardFilesResult, GuardStatus
 from roboz.shed.sandbox import PermissionPolicy, Sandbox
-from roboz.shed.tools.pdf import PdfContext, PdfInput, get_pdf_tool
+from roboz.shed.tools.pdf import PdfInput, get_pdf_tool
 from roboz.tools import stop
 
 
@@ -44,12 +44,12 @@ def write_pdf(path, texts=("First page", "Finnish: ä ö Å"), *, encrypted=Fals
 
 
 @pytest.fixture
-def context(tmp_path):
-    return PdfContext(PermissionPolicy.local(tmp_path), EventPipe())
+def options(tmp_path):
+    return PermissionPolicy.local(tmp_path).tool_options(EventPipe())
 
 
-def invoke(context, **kwargs):
-    entry, guard, execute = get_pdf_tool(context)
+def invoke(options, **kwargs):
+    entry, guard, execute = get_pdf_tool(**options)
     prepared = entry(PdfInput(**kwargs), [])
     if not guard.chain_condition(prepared):
         return prepared
@@ -57,22 +57,30 @@ def invoke(context, **kwargs):
     return execute(permitted, []) if execute.chain_condition(permitted) else permitted
 
 
-def test_read_page_range(context, tmp_path):
+def test_read_page_range(options, tmp_path):
     write_pdf(tmp_path / "input.pdf")
-    result = invoke(context, path="input.pdf", start_page=2, end_page=2)
+    result = invoke(options, path="input.pdf", start_page=2, end_page=2)
     assert isinstance(result, Str)
     assert "2 pages" in result.value and "Page 2" in result.value
     assert "Finnish: ä ö Å" in result.value and "First page" not in result.value
 
 
-def test_read_image_only_page(context, tmp_path):
+def test_read_image_only_page(options, tmp_path):
     write_pdf(tmp_path / "scan.pdf", texts=(None,))
-    assert "No extractable text" in invoke(context, path="scan.pdf").value
+    assert "No extractable text" in invoke(options, path="scan.pdf").value
 
 
-def test_read_caps_combined_output(context, tmp_path):
+def test_standalone_reader_without_pipe(tmp_path):
+    write_pdf(tmp_path / "input.pdf")
+    result = invoke(
+        {"base": tmp_path, "default_verdict": ActionVerdict.allow}, path="input.pdf"
+    )
+    assert isinstance(result, Str) and "First page" in result.value
+
+
+def test_read_caps_combined_output(options, tmp_path):
     write_pdf(tmp_path / "large.pdf", texts=("x" * 25_000, "y" * 25_000))
-    result = invoke(context, path="large.pdf")
+    result = invoke(options, path="large.pdf")
     assert len(result.value) <= LIGHT_MAX_CHARS
     assert "Page 2" in result.value and "Text truncated" in result.value
 
@@ -80,21 +88,21 @@ def test_read_caps_combined_output(context, tmp_path):
 @pytest.mark.parametrize("kind,expected", [
     ("encrypted", "Encrypted PDFs"), ("invalid", "failed"), ("range", "Page range"),
 ])
-def test_read_errors_are_tool_results(context, tmp_path, kind, expected):
+def test_read_errors_are_tool_results(options, tmp_path, kind, expected):
     path = tmp_path / "input.pdf"
     if kind == "invalid":
         path.write_text("This is not a PDF")
     else:
         write_pdf(path, encrypted=kind == "encrypted")
-    result = invoke(context, path="input.pdf", end_page=3 if kind == "range" else None)
+    result = invoke(options, path="input.pdf", end_page=3 if kind == "range" else None)
     assert isinstance(result, Str) and expected in result.value
 
 
 def test_denied_paths_stop_before_execution(tmp_path):
     source = tmp_path / "input.pdf"
     source.write_text("This must not be parsed")
-    context = PdfContext(PermissionPolicy(base=tmp_path), EventPipe())
-    result = invoke(context, path=str(source))
+    options = PermissionPolicy(base=tmp_path).tool_options(EventPipe())
+    result = invoke(options, path=str(source))
     assert isinstance(result, GuardFilesResult) and result.status == GuardStatus.DENIED
 
 

@@ -16,7 +16,7 @@ from roboz.shed.identifiers import (
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
-from roboz.shed.skills import FilesystemContext, filesystem_skill, PdfContext, pdf_skill
+from roboz.shed.skills import FilesystemContext, filesystem_skill, pdf_skill
 from roboz.shed.tools import get_compactify_messages_when_needed_tool
 from roboz.shed.tools.compactification import (
     DEFAULT_MAX_CHARS_TOLERANCE_PERCENT,
@@ -134,7 +134,7 @@ _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
 
 
 class Filesystem(Capability):
-    """Bind guarded file commands and patches as one complete filesystem skill.
+    """Bind guarded commands, patches, and image reading as one filesystem skill.
 
     The skill label defaults to automatic loading. A selectable label also
     permits the owning agent to choose on-demand loading or disable the skill.
@@ -154,7 +154,7 @@ class Filesystem(Capability):
         return {"sandbox": Sandbox}
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Skill, ...]:
-        """Construct both tool chains with this agent's permissions and event pipe."""
+        """Construct all tool chains with this agent's permissions and event pipe."""
         sandbox = cast(Sandbox, agent.sandbox)
         skill = filesystem_skill(
             FilesystemContext(permissions=sandbox.permissions(), pipe=pipe)
@@ -180,7 +180,7 @@ class Pdf(Capability):
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Skill, ...]:
         """Bind PDF reading to the owner's file permissions."""
         sandbox = cast(Sandbox, agent.sandbox)
-        return (pdf_skill(PdfContext(sandbox.permissions(), pipe)),)
+        return (pdf_skill(**sandbox.permissions().tool_options(pipe)),)
 
 
 class Compactification(Capability):

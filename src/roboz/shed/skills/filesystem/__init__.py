@@ -10,6 +10,7 @@ from roboz.shed.identifiers import FILESYSTEM_SKILL_NAME
 from roboz.shed.sandbox import PermissionPolicy
 from roboz.shed.tools.apply_patch import get_apply_patch
 from roboz.shed.tools.cli_commands import get_run_file_command
+from roboz.shed.tools.images import get_read_images_tool
 
 from .prompts import DESCRIPTION, INSTRUCTIONS
 
@@ -24,7 +25,11 @@ class FilesystemContext:
 
 def _build_tools(ctx: FilesystemContext) -> list[Tool]:
     options = ctx.permissions.tool_options(ctx.pipe)
-    return [*get_run_file_command(**options), *get_apply_patch(**options)]
+    return [
+        *get_run_file_command(**options),
+        *get_apply_patch(**options),
+        *get_read_images_tool(**options),
+    ]
 
 
 filesystem_skill = Skill.factory(
