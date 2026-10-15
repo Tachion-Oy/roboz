@@ -348,7 +348,7 @@ def test_invoke_cancelled_during_message_stream_is_not_reported_as_success() -> 
 
 def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
     call_counts["raise_interrupted_once"].clear()
-    io = bind_user_io(["detour reply"])
+    io = bind_user_io([Str(value="detour reply")])
     agent = Agent(
         name="interrupt_resume_run",
         tools=[raise_interrupted_once, stop],
@@ -401,7 +401,7 @@ def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
 def test_invoke_provider_request_error_prompts_user_and_resumes(
     bind_user_io, tmp_path: Path
 ) -> None:
-    io = bind_user_io(["retry"])
+    io = bind_user_io([Str(value="retry")])
     sink = PersistenceSink.for_path(tmp_path)
     agent = Agent(
         name="provider_request_retry_run",

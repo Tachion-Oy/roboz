@@ -13,7 +13,7 @@ import pytest
 
 from roboz import Agent, runtime
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools.cli_commands import FileCommand, get_run_file_command
@@ -277,7 +277,7 @@ def test_deletion_permissions_and_approvals_complete_before_one_launch(
     def approve(message, **kwargs):
         assert launches == []
         prompts.append(message)
-        return "no" if decision == "decline" else "yes"
+        return Str(value="no" if decision == "decline" else "yes")
 
     def record(argv, **kwargs):
         launches.append(argv)

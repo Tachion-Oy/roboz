@@ -25,6 +25,7 @@ from roboz.deployment import (
 )
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink
+from roboz.models import Str
 
 
 def _build_with_persistence(
@@ -219,7 +220,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
 
         def request_input(self, message, timeout=None):
             self.prompts.append(message)
-            return next(self.answers)
+            return Str(value=next(self.answers))
 
         def notify(self, message):
             raise AssertionError("This scenario expects questions with replies")

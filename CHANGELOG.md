@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Breaking: remove inherited image fields from tool payloads. Use `StrImage`
+  instead of `Str(..., images=...)`, or declare `images: list[Image]` on custom
+  results. `Message.images` and its provider and persistence formats are unchanged.
+- Breaking: user-input adapters and `interact_with_user()` now return
+  `Str | StrImage | None`. Wrap text replies in `Str(value=...)`. Ordinary and
+  initial prompts preserve image replies; permission approvals use the reply's
+  text without propagating its images.
+
 ## 0.12.0a1 - 2026-10-14
 
 - Report cancellation or interruption received during the final LLM response

@@ -60,7 +60,7 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_yes_allows(
     )
     location = tmp_path / "shared" / "f.md"  # not created: skip overwrite sub-check
 
-    with patch("roboz.runtime.interact_with_user", return_value="yes") as prompt:
+    with patch("roboz.runtime.interact_with_user", return_value=Str(value="yes")) as prompt:
         result = guard_items(
             items_to_guard=[
                 GuardFileSingle(
@@ -89,7 +89,7 @@ def test_overlapping_allow_and_deny_allow_precedence_then_prompt_no_denies(
     )
     location = tmp_path / "shared" / "f.md"
 
-    with patch("roboz.runtime.interact_with_user", return_value="no"):
+    with patch("roboz.runtime.interact_with_user", return_value=Str(value="no")):
         result = guard_items(
             items_to_guard=[
                 GuardFileSingle(

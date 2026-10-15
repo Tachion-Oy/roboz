@@ -111,9 +111,9 @@ def _request_approvals(
         except (UserInputUnavailableError, RuntimeError, ValueError) as error:
             exchanges.append(f"Permission prompt: {prompt}\nApproval unavailable: {error}")
             return _denied(input, item, "\n".join(exchanges))
-        approved = reply is not None and reply.strip().lower() in ("y", "yes")
+        approved = reply is not None and reply.value.strip().lower() in ("y", "yes")
         reply_text = (
-            json.dumps(reply, ensure_ascii=False)
+            json.dumps(reply.value, ensure_ascii=False)
             if reply is not None
             else "(no reply received)"
         )

@@ -3,7 +3,7 @@ from roboz.shed.capabilities import Compactification
 from roboz.shed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
 from roboz.agent import AgentMode
-from roboz.models import All
+from roboz.models import All, Str
 from roboz.deployment import (
     DeployableAgent,
     ToolLabel,
@@ -163,7 +163,7 @@ def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
 
         def request_input(self, message, timeout=None):
             self.prompts.append(message)
-            return reply
+            return Str(value=reply)
 
         def notify(self, message):
             pytest.fail("Expected a confirmation request")

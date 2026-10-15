@@ -189,7 +189,7 @@ def test_patch_overwrite_requires_delete_approval(tmp_path: Path) -> None:
         ask_rules=[PermissionRule("file.txt", {Operation.DELETE})],
         pipe=EventPipe(),
     )
-    with patch("roboz.runtime.interact_with_user", return_value="no") as prompt:
+    with patch("roboz.runtime.interact_with_user", return_value=Str(value="no")) as prompt:
         result = guard(
             entry(
                 ApplyPatch(path="file.txt", old_string="before", new_string="after"), []

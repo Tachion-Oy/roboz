@@ -2,6 +2,8 @@
 
 import pytest
 
+from roboz.models import Str, StrImage
+
 from roboz.runtime.io import (
     bind_api_user_io,
     reset_api_user_io,
@@ -15,12 +17,12 @@ class FakeUserIO:
     (the host did not get a reply in time). Records prompts and forwarded timeouts.
     """
 
-    def __init__(self, replies: list[str | None]) -> None:
+    def __init__(self, replies: list[Str | StrImage | None]) -> None:
         self._replies = list(replies)
         self.prompts: list[str] = []
         self.timeouts: list[float | None] = []
 
-    def request_input(self, message: str, timeout: float | None = None) -> str | None:
+    def request_input(self, message: str, timeout: float | None = None) -> Str | StrImage | None:
         self.prompts.append(message)
         self.timeouts.append(timeout)
         return self._replies.pop(0)
@@ -34,7 +36,7 @@ def bind_user_io():
     """Factory: bind a ``FakeUserIO`` for ``Output.API``; reset on test teardown."""
     bound: list = []
 
-    def _bind(replies: list[str | None]) -> FakeUserIO:
+    def _bind(replies: list[Str | StrImage | None]) -> FakeUserIO:
         io = FakeUserIO(replies)
         bound.append(bind_api_user_io(io))
         return io

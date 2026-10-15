@@ -9,7 +9,6 @@ from typing import Annotated, Final, Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from pydantic.json_schema import SkipJsonSchema
 
 from roboz.models._fields import RuntimeModel, RuntimeOnly
 from roboz.models.truncation import DEFAULT, TruncationSpec
@@ -123,14 +122,9 @@ class Image(BaseModel):
 
 
 class AgentBaseModel(RuntimeModel):
-    """Common fields carried by values moving through an agent run.
-
-    Inherited images carry runtime attachments. An input or structured-output
-    model must redeclare the field to expose it as a model-facing argument.
-    """
+    """Runtime metadata shared by values moving through an agent run."""
 
     truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
-    images: SkipJsonSchema[list[Image]] = Field(default_factory=list, repr=False)
     message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
     endpoint: Annotated[str | None, RuntimeOnly()] = None
     model: Annotated[str | None, RuntimeOnly()] = None
@@ -174,6 +168,12 @@ class Str(Empty):
 
     value: str = Field(...)
     model_config = ConfigDict(extra="forbid")
+
+
+class StrImage(Str):
+    """Carry text and explicitly supplied image inputs."""
+
+    images: list[Image] = Field(..., repr=False)
 
 
 class Location(Empty):

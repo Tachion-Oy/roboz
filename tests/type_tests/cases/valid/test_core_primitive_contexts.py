@@ -4,7 +4,7 @@ from typing import assert_type
 
 from roboz import Agent, Factory, Tool
 from roboz.tooling import HasExternalDependencies
-from roboz.models import All, Empty, Invoke, Str
+from roboz.models import All, Empty, Invoke, Str, StrImage
 from roboz.tools import (
     PromptUser,
     message_user,
@@ -23,10 +23,10 @@ from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe
 
 
-assert_type(prompt_user, Factory[PromptUser, Str, str])
+assert_type(prompt_user, Factory[PromptUser, Str | StrImage, str])
 assert_type(message_user, Factory[Str, Str, str])
-assert_type(prompt_user_at_start, Factory[All, Str, str])
-assert_type(prompt_user("No reply"), Tool[PromptUser, Str])
+assert_type(prompt_user_at_start, Factory[All, Str | StrImage, str])
+assert_type(prompt_user("No reply"), Tool[PromptUser, Str | StrImage])
 assert_type(run_nested_agent, Factory[Empty, Str, Agent])
 assert_type(
     run_background_agent, Factory[Empty, BackgroundAgentStatus, BackgroundAgentContext]

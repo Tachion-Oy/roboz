@@ -9,7 +9,8 @@ import pytest
 
 from roboz import Agent
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Image, Role, Str, StrImage
+from roboz.models._serialization import get_finalized_message
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe, bind_api_user_io, reset_api_user_io
 from roboz.shed.models import ActionVerdict, ApplyPatch, Operation, PermissionRule
@@ -33,7 +34,7 @@ def replies():
             reply = next(remaining)
             if isinstance(reply, Exception):
                 raise reply
-            return reply
+            return Str(value=reply) if isinstance(reply, str) else reply
 
         bindings.append(bind_api_user_io(SimpleNamespace(request_input=request_input)))
         return prompts
@@ -266,6 +267,27 @@ def test_patch_report_retains_approval_on_success_and_failure(tmp_path, replies,
     assert prompts[0] in result.value
     assert 'User reply: " Yes "\nDecision: allowed' in result.value
     assert target.read_text() == ("after" if old == "before" else "before")
+
+
+@pytest.mark.parametrize("value,allowed", [("yes", True), ("no", False), ("", False)])
+def test_permission_uses_reply_text_without_propagating_images(tmp_path, replies, value, allowed):
+    image = Image.from_bytes(b"private image", media_type="image/png")
+    replies(StrImage(value=value, images=[image]))
+    target = tmp_path / "note"
+    target.write_text("before")
+    entry, guard, execute = get_apply_patch(
+        base=tmp_path, default_verdict=ActionVerdict.allow,
+        ask_rules=[PermissionRule("note", {Operation.DELETE})], pipe=EventPipe(),
+    )
+    result = execute(
+        guard(entry(ApplyPatch(path="note", old_string="before", new_string="after"), []), []),
+        [],
+    )
+    assert target.read_text() == ("after" if allowed else "before")
+    assert f"Decision: {'allowed' if allowed else 'denied'}" in result.value
+    message = get_finalized_message(result)
+    assert message.images == []
+    assert image.url not in message.content
 
 
 def test_explicit_private_read_denial_allows_move_without_read(tmp_path):

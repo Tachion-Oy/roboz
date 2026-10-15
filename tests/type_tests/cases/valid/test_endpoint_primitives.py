@@ -8,7 +8,7 @@ from pydantic import Field
 from roboz.tooling import HasExternalDependencies
 from roboz import Factory, Tool, factory
 from roboz.models import (
-    AgentBaseModel, Empty, Image, Message, MessageKind, Role, Str, TruncationSpec,
+    AgentBaseModel, Empty, Image, Message, MessageKind, Role, Str, StrImage, TruncationSpec,
 )
 from roboz.dependencies import ExternalDependency, ExternalDependencyKind
 from roboz.llm import (
@@ -72,7 +72,7 @@ endpoint = LLMEndpoint(
 image = Image.from_bytes(b"image", media_type="image/png", detail="low")
 assert_type(image, Image)
 assert_type(Message(role=Role.USER, content="Describe", images=[image]).images, list[Image])
-assert_type(Str(value="A chart", images=[image]).images, list[Image])
+assert_type(StrImage(value="A chart", images=[image]).images, list[Image])
 assert_type(ImageInput(images=[image]).images, list[Image])
 transcription = TranscriptionEndpoint(
     client=OpenAI(api_key="type-test-only"), api_name="test", model_name="speech"

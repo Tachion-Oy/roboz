@@ -2,13 +2,15 @@
 
 import json
 
+import httpx
 import pytest
+from openai import OpenAI
 
 from roboz.agent import get_active_agent_stack
 from roboz.agent.core import Agent, AgentMode
 from roboz.exceptions import UserInputUnavailableError
-from roboz.llm.endpoints import MockLLMEndpoint
-from roboz.models import Empty, Message, Role, Stop, Str
+from roboz.llm.endpoints import LLMEndpoint, MockLLMEndpoint
+from roboz.models import Empty, Image, Message, Role, Stop, Str, StrImage
 from roboz.runtime import (
     Output,
     bind_output,
@@ -33,8 +35,17 @@ def test_interact_with_user_cli_with_reply_reads_line(monkeypatch, capsys):
         out = interact_with_user("q?", True)
     finally:
         reset_output(token)
-    assert out == "typed\n"
+    assert out == Str(value="typed\n")
     assert "q?" in capsys.readouterr().out
+
+
+def test_interact_with_user_cli_timeout_remains_none(monkeypatch):
+    monkeypatch.setattr(utils.select, "select", lambda r, w, x, t: ([], [], []))
+    token = bind_output(Output.CLI)
+    try:
+        assert interact_with_user("Question?", True, timeout=0.01) is None
+    finally:
+        reset_output(token)
 
 
 def test_read_line_with_timeout_reads_when_stdin_ready(monkeypatch):
@@ -86,9 +97,74 @@ def test_interact_with_user_api_with_reply_requires_user_io():
 
 
 def test_interact_with_user_api_with_reply_uses_bound_user_io(bind_user_io):
-    io = bind_user_io(["answer"])
-    assert interact_with_user("question?", True) == "answer"
+    reply = Str(value="answer")
+    io = bind_user_io([reply])
+    assert interact_with_user("question?", True) is reply
     assert io.prompts == ["question?"]
+
+
+@pytest.mark.parametrize("images_first", [False, True])
+def test_typed_replies_reach_provider_through_initial_and_followup_prompts(
+    bind_user_io, images_first,
+):
+    images = [
+        Image.from_bytes(b"first image", media_type="image/png"),
+        Image.from_bytes(b"second image", media_type="image/jpeg"),
+    ]
+    text = Str(value="Text reply")
+    image_only = StrImage(value="", images=[images[0]])
+    replies = [image_only, text] if images_first else [text, image_only]
+    replies.append(StrImage(value="Compare these files", images=images))
+    io = bind_user_io(replies)
+    actions = iter([
+        {"action": "prompt_user", "rationale": "Ask", "value": "Next?"},
+        {"action": "prompt_user", "rationale": "Compare", "value": "More?"},
+        {"action": "stop", "rationale": "Done", "value": "Finished"},
+    ])
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "id": "typed-replies", "object": "chat.completion", "created": 0,
+            "model": "vision", "choices": [{
+                "index": 0, "finish_reason": "stop", "message": {
+                    "role": "assistant", "content": json.dumps(next(actions)),
+                },
+            }],
+        })
+
+    with OpenAI(
+        api_key="test-only", base_url="https://provider.test/v1",
+        http_client=httpx.Client(transport=httpx.MockTransport(respond)),
+    ) as client:
+        agent = Agent(
+            name="typed_replies", system_prompt="Inspect the replies and stop.",
+            tools=[stop], default_tools=[prompt_user_at_start("Start?")],
+            agent_endpoint=LLMEndpoint(
+                client=client, api_name="test", model_name="vision",
+                accepts_images=True, stream=False,
+            ),
+        )
+        result, messages = agent.invoke()
+
+    assert result.value == "Finished"
+    assert io.prompts == ["Start?", "Next?", "More?"]
+    assert len(requests) == 3
+    for index, reply in enumerate(replies):
+        message = requests[index]["messages"][-1]
+        assert message["role"] == "user"
+        content = message["content"]
+        if isinstance(reply, StrImage):
+            assert json.loads(content[0]["text"])["value"] == reply.value
+            assert [part["image_url"]["url"] for part in content[1:]] == [
+                image.url for image in reply.images
+            ]
+        else:
+            assert json.loads(content)["value"] == reply.value
+    image_messages = [message for message in messages if message.images]
+    assert [message.images for message in image_messages] == [[images[0]], images]
+    assert all(image.url not in message.content for message in messages for image in images)
 
 
 def test_interact_with_user_api_notify_uses_bound_user_io(bind_user_io):
@@ -140,7 +216,7 @@ def test_missing_sidecar_precedes_cli_output_and_read(monkeypatch, capsys):
 def test_missing_sidecar_rejects_all_direct_interaction_and_restores_context(
     bind_user_io,
 ):
-    io = bind_user_io(["answer"])
+    io = bind_user_io([Str(value="answer")])
     token = bind_output(None)
     try:
         with pytest.raises(UserInputUnavailableError):
@@ -150,7 +226,7 @@ def test_missing_sidecar_rejects_all_direct_interaction_and_restores_context(
     finally:
         reset_output(token)
 
-    assert interact_with_user("question", True) == "answer"
+    assert interact_with_user("question", True) == Str(value="answer")
     assert io.prompts == ["question"]
 
 
@@ -166,7 +242,7 @@ def test_autonomous_sidecar_mask_resets_when_finalization_fails(
     bind_user_io, monkeypatch
 ):
     outer_stack = get_active_agent_stack()
-    io = bind_user_io(["after failure"])
+    io = bind_user_io([Str(value="after failure")])
     agent = Agent(
         name="failing_finalization",
         mode=AgentMode.AUTONOMOUS,
@@ -186,7 +262,7 @@ def test_autonomous_sidecar_mask_resets_when_finalization_fails(
         agent.invoke()
 
     assert get_active_agent_stack() == outer_stack
-    assert interact_with_user("still available", True) == "after failure"
+    assert interact_with_user("still available", True) == Str(value="after failure")
     assert io.prompts == ["still available"]
 
 
@@ -211,7 +287,7 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
         agent_endpoint=endpoint,
         initial_messages=None,
     )
-    io = bind_user_io(["from user"])
+    io = bind_user_io([Str(value="from user")])
     output, messages = agent.invoke()
 
     assert isinstance(output, Stop)

@@ -58,9 +58,14 @@ def get_finalized_message(
     payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
     if caller is not None:
         payload = {BaseNames.CALLER_FIELD: caller.name} | payload
+    images = []
+    try:
+        images = getattr(output, "images")
+    except AttributeError:
+        pass
     return Message(
         role=Role.USER,
         content=json.dumps(payload, ensure_ascii=False),
-        images=output.images,
+        images=images,
         **metadata,
     )

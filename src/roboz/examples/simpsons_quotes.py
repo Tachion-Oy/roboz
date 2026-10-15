@@ -99,4 +99,5 @@ QUOTES: Final[list[str]] = [
     "Facts are meaningless. You could use facts to prove anything that's even remotely true!",
     "Oh, they have the Internet on computers now!",
     "Up and at them!",
+    "I wash myself with a rag on a stick.",
 ]

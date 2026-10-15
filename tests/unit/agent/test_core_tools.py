@@ -45,7 +45,7 @@ def test_prompt_user_at_start_skips_if_assistant_present():
 
 def test_prompt_user_at_start_returns_interaction_reply(bind_user_io):
     tool = prompt_user_at_start("m")
-    io = bind_user_io(["from user"])
+    io = bind_user_io([Str(value="from user")])
     out = tool(input=Str(value="question"), messages=[])
     assert out.value == "from user"
     assert io.prompts == ["m"]
@@ -88,7 +88,7 @@ def test_prompt_llm_does_not_emit_redundant_calling_llm_log(caplog):
 
 def test_prompt_user_returns_reply(bind_user_io):
     tool = prompt_user("continuing")
-    io = bind_user_io(["hi"])
+    io = bind_user_io([Str(value="hi")])
     out = tool(input=PromptUser(value="q?"), messages=[])
     assert out.value == "hi"
     assert io.prompts == ["q?"]
@@ -97,7 +97,7 @@ def test_prompt_user_returns_reply(bind_user_io):
 
 def test_prompt_user_forwards_timeout(bind_user_io):
     tool = prompt_user("continuing")
-    io = bind_user_io(["hi"])
+    io = bind_user_io([Str(value="hi")])
     out = tool(input=PromptUser(value="q?", timeout_seconds=0.5), messages=[])
     assert out.value == "hi"
     assert io.timeouts == [0.5]

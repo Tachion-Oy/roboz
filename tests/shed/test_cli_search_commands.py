@@ -269,9 +269,9 @@ def test_rg_denied_candidate_or_ignore_file_prevents_execution_and_approvals(
         calls.append(argv)
         return native_run(argv, **kwargs)
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return "yes"
+        return Str(value="yes")
 
     monkeypatch.setattr(subprocess, "run", run)
     monkeypatch.setattr(runtime, "interact_with_user", approve)
@@ -335,9 +335,9 @@ def test_rg_deduplicates_ignore_file_approval_across_operands(
     ignore.write_text("needle\n")
     prompts = []
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return reply
+        return Str(value=reply)
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     result = _invoke(

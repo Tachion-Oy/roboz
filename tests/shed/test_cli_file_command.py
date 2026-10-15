@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from roboz import Agent, runtime
 from roboz.agent import AgentMode
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import (
     ActionVerdict,
@@ -445,7 +445,10 @@ def test_user_decline_stops_the_chain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reply: str | None
 ) -> None:
     (tmp_path / "source").write_text("keep")
-    monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: reply)
+    monkeypatch.setattr(
+        runtime, "interact_with_user",
+        lambda *args, **kwargs: None if reply is None else Str(value=reply),
+    )
     tools = get_run_file_command(
         base=tmp_path,
         default_verdict=ActionVerdict.allow,
@@ -552,11 +555,11 @@ def test_each_overwrite_approval_controls_execution(
     (tmp_path / "target").write_text("old")
     prompts: list[str] = []
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
         if not accepted:
-            return "no"
-        return " YES\n" if command == "cp" else " y "
+            return Str(value="no")
+        return Str(value=" YES\n" if command == "cp" else " y ")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     tools = get_run_file_command(
@@ -613,9 +616,9 @@ def test_every_required_approval_must_succeed_before_execution(
     (tmp_path / "target").write_text("old")
     prompts: list[str] = []
 
-    def approve_first_only(message: str, *, with_reply: bool) -> str:
+    def approve_first_only(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return "yes" if len(prompts) == 1 else "no"
+        return Str(value="yes" if len(prompts) == 1 else "no")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve_first_only)
     tools = get_run_file_command(
@@ -647,9 +650,9 @@ def test_policy_precedence_does_not_bypass_approval(
     (tmp_path / "source").write_text("keep")
     prompts: list[str] = []
 
-    def decline(message: str, *, with_reply: bool) -> str:
+    def decline(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return "no"
+        return Str(value="no")
 
     monkeypatch.setattr(runtime, "interact_with_user", decline)
     rules = [PermissionRule(pattern="source", operations={Operation.READ})]
@@ -921,9 +924,9 @@ def test_recursive_force_copy_respects_nested_overwrite_approval(
     (tmp_path / "out/nested/file").write_text("old")
     prompts: list[str] = []
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return "yes" if accepted else "no"
+        return Str(value="yes" if accepted else "no")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     tools = get_run_file_command(
@@ -1429,7 +1432,7 @@ def test_pattern_force_transfer_requires_overwrite_approval(
 
     def approve(message: str, *, with_reply: bool):
         prompts.append(message)
-        return "yes" if accepted else "no"
+        return Str(value="yes" if accepted else "no")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     tools = get_run_file_command(

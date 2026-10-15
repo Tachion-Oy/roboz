@@ -8,7 +8,7 @@ import pytest
 
 from roboz import Agent, runtime
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools.cli_commands import (
@@ -188,10 +188,10 @@ def test_mkdir_approvals_are_deduplicated_and_complete_before_creation(
 ) -> None:
     prompts = []
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str | None:
         assert list(tmp_path.iterdir()) == []
         prompts.append(message)
-        return reply
+        return None if reply is None else Str(value=reply)
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     result = _invoke(
