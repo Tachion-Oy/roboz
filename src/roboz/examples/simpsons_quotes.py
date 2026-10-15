@@ -100,4 +100,5 @@ QUOTES: Final[list[str]] = [
     "Oh, they have the Internet on computers now!",
     "Up and at them!",
     "I wash myself with a rag on a stick.",
+    "I'm so hungry, I could eat at Arby's.",
 ]

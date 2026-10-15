@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.1a1 - 2026-10-15
+
 - Breaking: remove inherited image fields from tool payloads. Use `StrImage`
   instead of `Str(..., images=...)`, or declare `images: list[Image]` on custom
   results. `Message.images` and its provider and persistence formats are unchanged.
