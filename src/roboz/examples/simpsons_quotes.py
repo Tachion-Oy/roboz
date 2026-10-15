@@ -102,4 +102,5 @@ QUOTES: Final[list[str]] = [
     "I wash myself with a rag on a stick.",
     "I'm so hungry, I could eat at Arby's.",
     "Steamed hams!",
+    "I am evil Homer!",
 ]

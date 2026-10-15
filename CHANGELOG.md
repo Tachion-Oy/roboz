@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.0a1 - 2026-10-16
+
 - Add guarded batch image reading with `read_images`, included in the filesystem
   skill and available through `get_read_images_tool`. Each file receives its own
   READ checks; failed files are reported while successful images are returned
