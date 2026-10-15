@@ -11,7 +11,7 @@ class Replies:
         self.reply = reply
 
     def request_input(
-        self, message: str, timeout: float | None = None
+        self, message: str, timeout: float | None = None, *, accepts_images: bool = False
     ) -> Str | StrImage | None:
         return self.reply
 
@@ -20,8 +20,8 @@ class Replies:
 
 
 def inspect_reply(io: UserIO) -> None:
-    assert_type(io.request_input("Question?"), Str | StrImage | None)
-    assert_type(interact_with_user("Question?", True), Str | StrImage | None)
+    assert_type(io.request_input("Question?", accepts_images=True), Str | StrImage | None)
+    assert_type(interact_with_user("Question?", True, accepts_images=True), Str | StrImage | None)
 
 
 image = Image(url="https://example.com/chart.png")

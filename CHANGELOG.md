@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Breaking: API user-input adapters must accept the keyword-only
+  `accepts_images: bool = False` argument in `request_input`. Ordinary, initial,
+  interruption, and retry prompts explicitly allow images; permission prompts
+  remain text-only. Hosts must combine this prompt capability with the receiving
+  model's capability instead of inferring it from tool names or lifecycle events.
+
 ## 0.13.0a1 - 2026-10-16
 
 - Add guarded batch image reading with `read_images`, included in the filesystem

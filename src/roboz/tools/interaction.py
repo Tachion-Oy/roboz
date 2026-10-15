@@ -32,7 +32,7 @@ def prompt_user(input: PromptUser, messages: list[Message], ctx: str) -> Str | S
     indefinitely. A timed-out request continues with the configured fallback.
     """
     reply = interact_with_user(
-        input.value, with_reply=True, timeout=input.timeout_seconds
+        input.value, with_reply=True, timeout=input.timeout_seconds, accepts_images=True
     )
     return Str(value=ctx) if reply is None else reply
 
@@ -52,5 +52,5 @@ def prompt_user_at_start(input: All, messages: list[Message], ctx: str) -> Str |
     """
     if any([m.role == Role.ASSISTANT for m in messages]):
         return Str(value="", truncation=NO_MESSAGE)
-    reply = interact_with_user(ctx, with_reply=True)
+    reply = interact_with_user(ctx, with_reply=True, accepts_images=True)
     return Str(value=NO_REPLY) if reply is None else reply

@@ -367,6 +367,7 @@ def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
     assert output.value == "ok"
     assert call_counts["raise_interrupted_once"] == [1]
     assert io.prompts[-1] == INTERRUPT_PROMPT_TO_USER
+    assert io.image_capabilities == [True]
 
     structured_user_messages: list[tuple[int, Message, dict[str, object]]] = []
     for index, message in enumerate(messages):

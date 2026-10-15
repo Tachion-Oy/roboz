@@ -4,7 +4,7 @@ from roboz.runtime import UserIO
 
 
 class StringReplies:
-    def request_input(self, message: str, timeout: float | None = None) -> str | None:
+    def request_input(self, message: str, timeout: float | None = None, *, accepts_images: bool = False) -> str | None:
         return "answer"
 
     def notify(self, message: str) -> None:

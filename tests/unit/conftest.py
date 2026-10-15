@@ -21,10 +21,12 @@ class FakeUserIO:
         self._replies = list(replies)
         self.prompts: list[str] = []
         self.timeouts: list[float | None] = []
+        self.image_capabilities: list[bool] = []
 
-    def request_input(self, message: str, timeout: float | None = None) -> Str | StrImage | None:
+    def request_input(self, message: str, timeout: float | None = None, *, accepts_images: bool = False) -> Str | StrImage | None:
         self.prompts.append(message)
         self.timeouts.append(timeout)
+        self.image_capabilities.append(accepts_images)
         return self._replies.pop(0)
 
     def notify(self, message: str) -> None:
