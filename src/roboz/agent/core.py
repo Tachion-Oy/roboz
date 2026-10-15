@@ -46,7 +46,10 @@ from roboz.models import AgentMode, Empty, Invoke, Message, MessageKind, Role, S
 from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
 from roboz.runtime.events import EventSink
-from roboz.runtime.io import Output, bind_output, get_bound_output, reset_output
+from roboz.runtime.io import (
+    Output, bind_output, get_bound_output, reset_output,
+    bind_reply_capability, reset_reply_capability,
+)
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
@@ -653,6 +656,10 @@ class Agent(HasExternalDependencies):
         self._ephemeral_default_tools = []
         return None, Empty()
 
+    def _accepts_image_replies(self) -> bool:
+        endpoint = self.agent_endpoint
+        return endpoint is not None and resolve_endpoint(endpoint).accepts_images
+
     def invoke(
         self,
         *,
@@ -661,6 +668,7 @@ class Agent(HasExternalDependencies):
     ) -> tuple[Stop, list[Message]]:
         """Run the agent synchronously until it stops or is cancelled."""
         stack_token = None
+        reply_token = bind_reply_capability(self._accepts_image_replies)
         output_token = bind_output(
             get_bound_output(default=Output.CLI)
             if self.mode.allows_user_interaction
@@ -709,6 +717,7 @@ class Agent(HasExternalDependencies):
                 self.pipe.finalize_run(status=exit_status)
             finally:
                 reset_output(output_token)
+                reset_reply_capability(reply_token)
                 if stack_token is not None:
                     pop_active_agent(stack_token)
 

@@ -122,6 +122,22 @@ class Image(BaseModel):
         )
 
 
+class AttachmentMetadata(BaseModel):
+    """Host-owned provenance for an attachment, independent of its image payload.
+
+    A working path is a host-relative reference, not a promise that the file
+    still exists. Hosts validate paths and control the attachment lifetime.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    filename: str
+    media_type: str
+    size_bytes: int = Field(ge=0)
+    working_path: str
+
+
 class AgentBaseModel(RuntimeModel):
     """Common fields carried by values moving through an agent run.
 
@@ -131,6 +147,7 @@ class AgentBaseModel(RuntimeModel):
 
     truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
     images: SkipJsonSchema[list[Image]] = Field(default_factory=list, repr=False)
+    attachments: Annotated[list[AttachmentMetadata], RuntimeOnly()] = Field(default_factory=list)
     message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
     endpoint: Annotated[str | None, RuntimeOnly()] = None
     model: Annotated[str | None, RuntimeOnly()] = None
@@ -228,6 +245,7 @@ class Message(RuntimeModel):
     role: Role = Field(...)
     content: str = Field(...)
     images: list[Image] = Field(default_factory=list, repr=False)
+    attachments: Annotated[list[AttachmentMetadata], RuntimeOnly()] = Field(default_factory=list)
     truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
     message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
     endpoint: Annotated[str | None, RuntimeOnly()] = None

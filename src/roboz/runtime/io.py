@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import select
 import sys
+from collections.abc import Callable
 from contextvars import ContextVar, Token
+from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from roboz.exceptions import UserInputUnavailableError
+from roboz.models import AttachmentMetadata, Image
 
 
 class Output(Enum):
@@ -18,6 +21,15 @@ class Output(Enum):
     GUI = auto()
     BOT = auto()
     API = auto()
+
+
+@dataclass(frozen=True)
+class UserReply:
+    """A user response with ordered image inputs and host-owned provenance."""
+
+    content: str
+    images: list[Image] = field(default_factory=list, repr=False)
+    attachments: list[AttachmentMetadata] = field(default_factory=list)
 
 
 class UserIO(Protocol):
@@ -30,6 +42,57 @@ class UserIO(Protocol):
     def notify(self, message: str) -> None:
         """Show *message* without waiting for a reply."""
         ...
+
+
+@runtime_checkable
+class StructuredUserIO(UserIO, Protocol):
+    """Optional host support for image-bearing ordinary user replies.
+
+    Permission approvals keep using ``request_input``. The capability callback
+    resolves the receiving agent's current endpoint; hosts must recheck it when
+    committing a reply, under the same lock as their model selection.
+    """
+
+    def request_reply(
+        self,
+        message: str,
+        timeout: float | None = None,
+        *,
+        accepts_images: Callable[[], bool],
+    ) -> UserReply | None:
+        """Wait for a structured reply accepted by the receiving agent."""
+        ...
+
+
+def _no_image_replies() -> bool:
+    return False
+
+
+_reply_capability: ContextVar[Callable[[], bool]] = ContextVar(
+    "_reply_capability", default=_no_image_replies
+)
+
+
+def bind_reply_capability(capability: Callable[[], bool]) -> Token[Callable[[], bool]]:
+    """Bind the receiving agent's live image capability for ordinary prompts."""
+    return _reply_capability.set(capability)
+
+
+def reset_reply_capability(token: Token[Callable[[], bool]]) -> None:
+    """Restore the enclosing agent's reply capability."""
+    _reply_capability.reset(token)
+
+
+def request_user_reply(message: str, timeout: float | None = None) -> UserReply | None:
+    """Request an ordinary reply, falling back to legacy text-only interaction."""
+    if _require_bound_output() is Output.API:
+        user_io = _require_api_user_io()
+        if isinstance(user_io, StructuredUserIO):
+            return user_io.request_reply(
+                message, timeout, accepts_images=_reply_capability.get()
+            )
+    reply = interact_with_user(message, with_reply=True, timeout=timeout)
+    return None if reply is None else UserReply(content=reply)
 
 
 _current_api_user_io: ContextVar[UserIO | None] = ContextVar(

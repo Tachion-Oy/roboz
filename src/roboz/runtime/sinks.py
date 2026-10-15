@@ -106,6 +106,7 @@ class CliSink:
 
 PersistenceDetail = MessageEvent | RuntimeEvent
 PersistenceDetailPredicate = Callable[[PersistenceDetail], bool]
+MessageProjection = Callable[[Message], Message]
 
 
 class PersistenceSink:
@@ -116,12 +117,14 @@ class PersistenceSink:
         data_path: Path,
         *,
         detail_predicate: PersistenceDetailPredicate | None = None,
+        message_projection: MessageProjection | None = None,
     ):
         """Initialize a sink rooted at a directory with an optional detail filter."""
         if data_path.exists() and not data_path.is_dir():
             raise ValueError("data_path must be a folder")
         self._data_path = data_path
         self._detail_predicate = detail_predicate
+        self._message_projection = message_projection
         self.conversations_location: Path | None = None
         self._conversation_run: ConversationRun | None = None
 
@@ -131,12 +134,18 @@ class PersistenceSink:
         data_path: Path,
         *,
         detail_predicate: PersistenceDetailPredicate | None = None,
+        message_projection: MessageProjection | None = None,
     ) -> "PersistenceSink":
         """Create a sink, optionally filtering message/runtime details.
 
         Run lifecycle events always persist so status remains authoritative.
+        A message projection receives a deep copy, leaving live messages intact.
+        Without a projection, image payloads retain their existing persistence.
         """
-        return cls(data_path, detail_predicate=detail_predicate)
+        return cls(
+            data_path, detail_predicate=detail_predicate,
+            message_projection=message_projection,
+        )
 
     @property
     def data_path(self) -> Path:
@@ -193,8 +202,11 @@ class PersistenceSink:
         path = self.conversations_location
         if run is None or path is None:
             return
+        message = event.message
+        if self._message_projection is not None:
+            message = self._message_projection(message.model_copy(deep=True))
         row = message_to_logged_row(
-            event.message,
+            message,
             message_id=str(uuid4()),
             sequence=event.sequence,
             created_at=datetime.now(timezone.utc),
@@ -255,6 +267,7 @@ def default_event_sinks(
     data_path: Path | None = None,
     include_cli: bool = True,
     persistence_detail_predicate: PersistenceDetailPredicate | None = None,
+    persistence_message_projection: MessageProjection | None = None,
 ) -> tuple[EventSink, ...]:
     """Create the standard explicit sinks for an agent.
 
@@ -263,6 +276,8 @@ def default_event_sinks(
     infer them from ``Output`` or ``data_path``. The returned tuple is meant to be
     passed to ``Agent(event_sinks=...)``. ``persistence_detail_predicate`` applies
     only to message and runtime-event details, never run lifecycle events.
+    ``persistence_message_projection`` transforms a deep copy of each persisted
+    message; it never changes the live conversation or other sinks.
     """
     sinks: list[EventSink] = []
     if include_cli:
@@ -272,6 +287,7 @@ def default_event_sinks(
             PersistenceSink.for_path(
                 data_path,
                 detail_predicate=persistence_detail_predicate,
+                message_projection=persistence_message_projection,
             )
         )
     return tuple(sinks)

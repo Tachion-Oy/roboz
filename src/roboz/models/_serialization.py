@@ -56,11 +56,14 @@ def get_finalized_message(
         )
 
     payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
+    if output.attachments:
+        payload["attachments"] = [item.model_dump(mode="json") for item in output.attachments]
     if caller is not None:
         payload = {BaseNames.CALLER_FIELD: caller.name} | payload
     return Message(
         role=Role.USER,
         content=json.dumps(payload, ensure_ascii=False),
         images=output.images,
+        attachments=output.attachments,
         **metadata,
     )

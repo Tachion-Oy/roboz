@@ -311,6 +311,7 @@ class _LLMCallRunner:
         messages = []
         for record in records:
             payload = record.copy()
+            payload.pop("attachments", None)
             images = payload.pop("images", [])
             self._validate_image_message(payload.get("role"), bool(images))
             if images:

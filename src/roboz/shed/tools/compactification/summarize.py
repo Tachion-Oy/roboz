@@ -52,6 +52,12 @@ def conversation_text(messages: list[Message]) -> str:
     sections = []
     for message in messages:
         lines = [f"## {message.role.value.upper()}", message.content]
+        for attachment in message.attachments:
+            lines.append(
+                f"[attachment {attachment.id}: {attachment.filename}; "
+                f"working path: {attachment.working_path}; "
+                "availability depends on the host]"
+            )
         for index, image in enumerate(message.images, start=1):
             source = (
                 "embedded image; data in original message"

@@ -308,7 +308,7 @@ def test_populated_runtime_metadata_survives_storage_but_stays_out_of_agent_payl
 
     assert json.loads(message.content) == expected_payload
     assert message.model_dump(mode="json") == {
-        "role": role, "content": message.content, "images": [], **metadata,
+        "role": role, "content": message.content, "images": [], "attachments": [], **metadata,
     }
     assert messages_scrubber([message]) == [{
         "role": role, "content": message.content, "images": [],

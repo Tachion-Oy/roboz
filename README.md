@@ -689,6 +689,32 @@ models. Snapshot source metadata identifies the conversation and message sequenc
 Memory consolidation handles those references as ordinary text; summaries can
 discard them under their usual relevance rules.
 
+### Structured user replies and provenance
+
+API hosts can optionally implement `StructuredUserIO.request_reply(message,
+timeout=None, *, accepts_images)` alongside the existing `UserIO` methods.
+Return a `UserReply(content=..., images=[...], attachments=[...])` from
+`roboz.runtime`. Ordinary and initial user prompts preserve these fields in
+user-role messages, including image-only replies. Legacy adapters and CLI input
+remain text-only; permission approvals always call `request_input`.
+
+The `accepts_images` callback resolves the receiving agent's current endpoint,
+including nested agents. Hosts should check it before accepting uploads and
+again when committing a reply under their model-selection lock.
+`AttachmentMetadata` in `roboz.models` carries `id`, `filename`, `media_type`,
+`size_bytes`, and `working_path`, independently of image payloads. It survives
+message persistence and appears in tool-result text for file operations, but is
+not an extra provider request field. A historical path does not imply that the
+file or its pixels remain available.
+
+`PersistenceSink.for_path(..., message_projection=...)` optionally transforms a
+deep copy of each message before persistence. The equivalent convenience option
+is `default_event_sinks(..., persistence_message_projection=...)`. For example,
+`lambda message: message.model_copy(update={"images": []})` retains text and
+provenance without persisting image payloads. Without a projection, persistence
+continues to retain images. Summary inputs include attachment filenames and
+working paths without embedding image data.
+
 ### Create a project catalogue
 
 Run these commands from the application project root:

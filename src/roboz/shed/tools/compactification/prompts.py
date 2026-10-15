@@ -68,6 +68,9 @@ Preserve information that affects continuation:
   state and next actions.
 - Tool or nested agent outcomes only when they change what the next agent should
   believe or do.
+- Useful image attachment filenames and working paths so the agent can reread
+  available files. Preserve whether a file was explicitly saved; a historical
+  attachment reference does not guarantee that its temporary pixels still exist.
 
 Adapt to the task domain:
 

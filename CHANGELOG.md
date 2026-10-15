@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add optional structured user replies carrying images and typed attachment
+  provenance through initial and follow-up prompts. Permission approvals and
+  legacy host adapters remain text-only. Hosts receive the current receiving
+  agent's image capability, including nested agents and dynamic routes.
+- Add an optional persistence message projection operating on deep copies;
+  default persistence still retains image payloads. Summaries include attachment
+  filenames and working paths without embedding image data.
+
 ## 0.12.0a1 - 2026-10-14
 
 - Report cancellation or interruption received during the final LLM response

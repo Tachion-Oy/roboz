@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roboz.models import Image, Message, MessageKind, Role
+from roboz.models import AttachmentMetadata, Image, Message, MessageKind, Role
 from roboz.runtime.observability import (
     RuntimeEventCategory,
     RuntimeEventKind,
@@ -48,6 +48,7 @@ class LoggedMessageRow(BaseModel):
     role: Role
     content: str
     images: list[Image] = Field(default_factory=list, repr=False)
+    attachments: list[AttachmentMetadata] = Field(default_factory=list)
     truncation: TruncationSpec
     message_kind: MessageKind | None = None
     endpoint: str | None = None
@@ -114,6 +115,7 @@ def message_to_logged_row(
         role=message.role,
         content=message.content,
         images=message.images,
+        attachments=message.attachments,
         truncation=message.truncation,
         message_kind=message.message_kind,
         endpoint=message.endpoint,
@@ -129,6 +131,7 @@ def logged_row_to_message(row: LoggedMessageRow) -> Message:
         role=row.role,
         content=row.content,
         images=row.images,
+        attachments=row.attachments,
         truncation=row.truncation,
         message_kind=row.message_kind,
         endpoint=row.endpoint,
