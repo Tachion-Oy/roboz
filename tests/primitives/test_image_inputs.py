@@ -11,7 +11,7 @@ from pydantic import Field, ValidationError
 from roboz import Agent, tool
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
 from roboz.llm.endpoints import MockLLMEndpoint, role_to_user_mapper
-from roboz.models import Empty, Image, Invoke, Message, MessageKind, Role, Str
+from roboz.models import AgentMode, Empty, Image, Invoke, Message, MessageKind, Role, Stop, Str, StrImage
 from roboz.models._schema import messages_scrubber
 from roboz.models._serialization import get_finalized_message
 from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
@@ -43,7 +43,7 @@ def test_image_rejects_invalid_sources(url):
 
 def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     image = Image(url="https://example.com/chart.png")
-    output = Str(value="A chart", images=[image], message_kind=MessageKind.USER_NOTIFICATION)
+    output = StrImage(value="A chart", images=[image], message_kind=MessageKind.USER_NOTIFICATION)
     message = get_finalized_message(output)
     mapped = role_to_user_mapper([message])[0]
 
@@ -56,6 +56,68 @@ def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     }]
     error = message.model_copy(update={"role": Role.ERROR})
     assert role_to_user_mapper([error])[0] == message
+
+
+def test_text_and_image_results_have_explicit_contracts():
+    image = Image(url="https://example.com/chart.png")
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        Str(value="Text", images=[image])
+    with pytest.raises(ValidationError, match="Field required"):
+        StrImage(value="Missing images")
+    assert StrImage(value="", images=[]).images == []
+    assert image.url not in repr(StrImage(value="Chart", images=[image]))
+    schema = StrImage.model_json_schema()
+    assert set(schema["required"]) == {"value", "images"}
+    assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+
+
+def test_custom_result_can_declare_images_without_a_shared_image_base():
+    class ChartResult(Empty):
+        caption: str
+        images: list[Image]
+
+    image = Image(url="https://example.com/chart.png")
+    message = get_finalized_message(ChartResult(caption="Chart", images=[image]))
+    assert message.images == [image]
+    assert json.loads(message.content) == {"caption": "Chart"}
+
+
+@pytest.mark.parametrize("image_aware", [False, True])
+def test_chained_tools_receive_only_their_declared_image_fields(image_aware):
+    reply = StrImage(value="Chart", images=[Image(url="https://example.com/chart.png")])
+    received = []
+
+    @tool
+    def produce(input: Empty, messages: list[Message]) -> StrImage:
+        """Produce a chart."""
+        return reply
+
+    @tool(chained_to=produce)
+    def text_only(input: Str, messages: list[Message]) -> Stop:
+        """Read only the chart caption."""
+        received.append(input)
+        return Stop(value=input.value)
+
+    @tool(chained_to=produce)
+    def with_images(input: StrImage, messages: list[Message]) -> Stop:
+        """Read the chart and its caption."""
+        received.append(input)
+        return Stop(value=input.value)
+
+    agent = Agent(
+        name="image_chain", mode=AgentMode.DETERMINISTIC, agent_endpoint=None,
+        default_tools=[produce], tools=[with_images if image_aware else text_only],
+    )
+    result, messages = agent.invoke()
+    assert result.value == "Chart"
+    assert len(received) == 1
+    assert received[0] is not reply
+    if image_aware:
+        assert received[0].images == reply.images
+    else:
+        assert type(received[0]) is Str
+        assert not hasattr(received[0], "images")
+    assert next(message for message in messages if message.images).images == reply.images
 
 
 @pytest.mark.parametrize("image_arguments", [
@@ -91,10 +153,10 @@ def test_agent_can_pass_image_arguments_and_continue_after_tool_result(tmp_path:
         images: list[Image] = Field(...)
 
     @tool
-    def inspect_image(input: ImageInput, messages: list[Message]) -> Str:
+    def inspect_image(input: ImageInput, messages: list[Message]) -> StrImage:
         """Inspect the supplied images."""
         received.extend(input.images)
-        return Str(value="A chart", images=input.images)
+        return StrImage(value="A chart", images=input.images)
 
     invocation = {
         "action": "inspect_image", "rationale": "Inspect the chart",

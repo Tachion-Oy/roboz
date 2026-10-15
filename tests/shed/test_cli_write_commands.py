@@ -423,9 +423,9 @@ def test_repeated_tee_destinations_keep_native_append_and_deduplicate_approvals(
     (tmp_path / "target").write_text("old")
     prompts = []
 
-    def approve(message: str, *, with_reply: bool) -> str:
+    def approve(message: str, *, with_reply: bool) -> Str:
         prompts.append(message)
-        return "yes" if accepted else "no"
+        return Str(value="yes" if accepted else "no")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     result = _invoke(

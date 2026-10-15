@@ -9,6 +9,7 @@ from enum import Enum, auto
 from typing import Protocol
 
 from roboz.exceptions import UserInputUnavailableError
+from roboz.models import Str, StrImage
 
 
 class Output(Enum):
@@ -23,8 +24,10 @@ class Output(Enum):
 class UserIO(Protocol):
     """Host-provided user interaction for :class:`Output.API`."""
 
-    def request_input(self, message: str, timeout: float | None = None) -> str | None:
-        """Block until the user replies, or until *timeout* seconds elapse."""
+    def request_input(
+        self, message: str, timeout: float | None = None
+    ) -> Str | StrImage | None:
+        """Return a typed reply, or None when *timeout* seconds elapse."""
         ...
 
     def notify(self, message: str) -> None:
@@ -99,15 +102,16 @@ def _read_line_with_timeout(timeout: float | None) -> str | None:
 
 def interact_with_user(
     message: str, with_reply: bool, timeout: float | None = None
-) -> str | None:
-    """Send a host-routed message and optionally wait for a reply."""
+) -> Str | StrImage | None:
+    """Send a host-routed message and optionally wait for a typed reply."""
     output = _require_bound_output()
     match output:
         case Output.CLI:
             print(message)
             if not with_reply:
                 return None
-            return _read_line_with_timeout(timeout)
+            reply = _read_line_with_timeout(timeout)
+            return None if reply is None else Str(value=reply)
         case Output.API:
             user_io = _require_api_user_io()
             if with_reply:

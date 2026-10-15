@@ -125,7 +125,7 @@ def test_autonomous_background_agent_has_no_direct_interaction_sidecar(
     @tool
     def ask(input: Empty, messages: list[Message]) -> Str:
         reply = interact_with_user("question", with_reply=True)
-        return Str(value=reply or "")
+        return Str(value="") if reply is None else reply
 
     agent = Agent(
         name="autonomous_background",

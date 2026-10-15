@@ -354,7 +354,7 @@ def test_shared_writes_require_confirmation(tmp_path, monkeypatch, reply, expect
     def interact(message, *, with_reply):
         assert with_reply
         prompts.append(message)
-        return reply
+        return Str(value=reply)
 
     monkeypatch.setattr(runtime, "interact_with_user", interact)
     result = _guard(
@@ -382,7 +382,7 @@ def test_project_permission_paths_treat_globs_as_literal_names(
     monkeypatch.setattr(
         runtime,
         "interact_with_user",
-        lambda *args, **kwargs: prompts.append(args) or "yes",
+        lambda *args, **kwargs: Str(value=prompts.append(args) or "yes"),
     )
 
     sandbox = Sandbox(tmp_path, projects=projects, shared=shared)

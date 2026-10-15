@@ -609,7 +609,7 @@ images. Project catalogue JSON accepts the same optional boolean.
 ```python
 from roboz.endpoints.adapters.openai_compatible import chat_endpoint
 from roboz.llm import call_llm_api
-from roboz.models import Image, Message, Role, Str
+from roboz.models import Image, Message, Role, StrImage
 
 endpoint = chat_endpoint(
     model="your-vision-model",
@@ -623,18 +623,20 @@ reply, usage = call_llm_api(
 )
 
 # Tool results carry attachments through normal message finalization too.
-result = Str(value="Chart generated.", images=[image])
+result = StrImage(value="Chart generated.", images=[image])
 ```
 
-Inherited `images` are runtime attachments and are omitted from tool-input and
-structured-output schemas. The selected input model defines the arguments the
-model can supply. Declare an image argument explicitly to expose it:
+Tool payloads carry images only when their type declares them. `StrImage` extends
+`Str` with a required `images: list[Image]` field; an empty list is allowed.
+Custom result types can declare that field themselves. The selected input model
+defines the arguments the model can supply. Declare an image argument explicitly
+to expose it:
 
 ```python
 from pydantic import Field
 
 from roboz import tool
-from roboz.models import Empty, Image, Message, Str
+from roboz.models import Empty, Image, Message, StrImage
 
 
 class InspectImageInput(Empty):
@@ -642,14 +644,17 @@ class InspectImageInput(Empty):
 
 
 @tool
-def inspect_image(input: InspectImageInput, messages: list[Message]) -> Str:
+def inspect_image(input: InspectImageInput, messages: list[Message]) -> StrImage:
     """Present the supplied images for visual inspection."""
-    return Str(value="Inspect these images.", images=input.images)
+    return StrImage(value="Inspect these images.", images=input.images)
 ```
 
 Image arguments can also use another name, such as `photo: Image`, or appear in
 nested input models. Structured-output models use the same explicit declaration.
-Tools using plain `Empty`, `Int`, or `Str` do not advertise an image argument.
+Plain `Empty`, `Int`, and `Str` have no image field. A chained tool accepting `Str`
+receives the text from a `StrImage` result; a tool accepting `StrImage` receives
+the text and images. Images already recorded on a conversation message remain
+available to the LLM regardless of the next tool's input type.
 
 Model-generated tool calls retain their supplied arguments in the assistant
 message's JSON text, including explicitly supplied image arguments. Unset defaults
@@ -663,9 +668,28 @@ message models. It remains available on instances and in ordinary `model_dump()`
 and `model_dump_json()` output. Finalization keeps that metadata on `Message`,
 outside its JSON content, and outgoing provider records omit it.
 
-Migration: input models that relied on the inherited `images` argument must
-redeclare it as above to keep advertising it in model-facing schemas. Code that
-constructs tool results with `images=[...]` continues to work.
+`UserIO.request_input()` and `interact_with_user()` return `Str | StrImage | None`.
+Ordinary and initial prompt tools preserve the returned result, including its
+images. Host adapters supply typed replies:
+
+```python
+from roboz.models import Str, StrImage
+
+text_reply = Str(value="Describe the chart.")
+image_reply = StrImage(value="See the uploaded chart.", images=[image])
+image_only_reply = StrImage(value="", images=[image])
+```
+
+The CLI wraps input in `Str`; a timeout returns `None`. Notifications also return
+`None`. Permission approvals use only `reply.value`; images are ignored and are
+not carried into the permission result. Files and their lifetime belong to the
+host; filenames and file links can be included in the reply's `value`.
+
+Migration: replace `Str(value=..., images=...)` with `StrImage(value=..., images=...)`.
+Custom image input and result models must declare their image fields explicitly.
+Update host adapters from returning strings to returning `Str(value=...)`, and
+read text from `reply.value` when consuming a non-None reply. There is no legacy
+string-returning adapter path. `Image` and `Message.images` remain unchanged.
 
 Use HTTP(S) URLs, base64 image data URLs, or
 `Image.from_bytes(data, media_type="image/png")`. Byte inputs support PNG, JPEG,

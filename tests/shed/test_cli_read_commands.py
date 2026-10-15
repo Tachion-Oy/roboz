@@ -230,7 +230,7 @@ def test_read_approvals_are_deduplicated_and_follow_all_policy_checks(
 
     def approve(message, **kwargs):
         prompts.append(message)
-        return "yes"
+        return Str(value="yes")
 
     monkeypatch.setattr(runtime, "interact_with_user", approve)
     tools = get_run_file_command(
@@ -359,7 +359,7 @@ def test_failed_read_does_not_reuse_payload_and_fallback_runs(
         return run(argv, cwd=cwd, input=input, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", record)
-    monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: "no")
+    monkeypatch.setattr(runtime, "interact_with_user", lambda *args, **kwargs: Str(value="no"))
     rule = PermissionRule(pattern="secret", operations={Operation.READ})
     tools = get_run_file_command(
         base=tmp_path,

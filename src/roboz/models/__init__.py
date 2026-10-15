@@ -19,6 +19,7 @@ from roboz.models.core import (
     Stop,
     StopLocation,
     Str,
+    StrImage,
     Strs,
 )
 from roboz.models.messages import filter_messages
@@ -59,6 +60,7 @@ __all__ = [
     "Stop",
     "StopLocation",
     "Str",
+    "StrImage",
     "Strs",
     "AgentMode",
     "Truncation",

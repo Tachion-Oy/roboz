@@ -9,7 +9,7 @@ import pytest
 
 from roboz import Agent, runtime
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
 from roboz.shed.tools.cli_commands import FileCommand, get_run_file_command
@@ -122,7 +122,7 @@ def test_root_checks_and_approvals_complete_before_execution(
     def approve(message, **kwargs):
         assert launches == []
         prompts.append(message)
-        return "yes"
+        return Str(value="yes")
 
     def record(*args, **kwargs):
         launches.append(args)

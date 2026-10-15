@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from roboz import Agent, runtime
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Role
+from roboz.models import Role, Str
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
@@ -342,7 +342,7 @@ def test_denied_step_never_launches_and_fallback_is_guarded(
 
     def approve(message: str, **kwargs):
         prompts.append(message)
-        return "no" if "protected" in message else "yes"
+        return Str(value="no" if "protected" in message else "yes")
 
     def run(argv, *, cwd, input, **kwargs):
         launched.append(Path(argv[-1]).name)

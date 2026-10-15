@@ -2,7 +2,7 @@
 
 from pydantic import ConfigDict, Field
 
-from roboz.models import All, Message, Role, Str
+from roboz.models import All, Message, Role, Str, StrImage
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime.io import interact_with_user
 from roboz.tooling.decorators import factory
@@ -25,7 +25,7 @@ class PromptUser(Str):
 
 
 @factory
-def prompt_user(input: PromptUser, messages: list[Message], ctx: str) -> Str:
+def prompt_user(input: PromptUser, messages: list[Message], ctx: str) -> Str | StrImage:
     """Send the user a message and wait for their reply.
 
     Set a timeout only when the task requires a bounded wait; otherwise wait
@@ -34,9 +34,7 @@ def prompt_user(input: PromptUser, messages: list[Message], ctx: str) -> Str:
     reply = interact_with_user(
         input.value, with_reply=True, timeout=input.timeout_seconds
     )
-    if reply is None:
-        reply = ctx
-    return Str(value=reply)
+    return Str(value=ctx) if reply is None else reply
 
 
 @factory
@@ -47,7 +45,7 @@ def message_user(input: Str, messages: list[Message], ctx: str) -> Str:
 
 
 @factory
-def prompt_user_at_start(input: All, messages: list[Message], ctx: str) -> Str:
+def prompt_user_at_start(input: All, messages: list[Message], ctx: str) -> Str | StrImage:
     """Prompt the user only at the start of a conversation.
 
     Use this as a default tool when the agent needs an initial user response.
@@ -55,6 +53,4 @@ def prompt_user_at_start(input: All, messages: list[Message], ctx: str) -> Str:
     if any([m.role == Role.ASSISTANT for m in messages]):
         return Str(value="", truncation=NO_MESSAGE)
     reply = interact_with_user(ctx, with_reply=True)
-    if reply is None:
-        reply = NO_REPLY
-    return Str(value=reply)
+    return Str(value=NO_REPLY) if reply is None else reply

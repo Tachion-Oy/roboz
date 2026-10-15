@@ -13,12 +13,14 @@ from roboz.models import (
     Empty,
     GRADED,
     Image,
+    Int,
     Invoke,
     Message,
     MessageKind,
     Role,
     Stop,
     Str,
+    StrImage,
     TruncationSpec,
 )
 from roboz.models._schema import messages_scrubber
@@ -222,9 +224,9 @@ def test_tool_schema_retains_types_shared_by_payload_and_runtime_metadata():
     assert schema["$defs"]["Severity"]["enum"] == [1, 2, 3]
 
 
-@pytest.mark.parametrize("model", [AgentBaseModel, Empty, Str])
-def test_inherited_attachments_are_not_advertised_in_model_schemas(model):
-    assert "images" in model.model_fields
+@pytest.mark.parametrize("model", [AgentBaseModel, Empty, Str, Int, Stop])
+def test_plain_payloads_have_no_inherited_image_field(model):
+    assert "images" not in model.model_fields
     schema = model.model_json_schema()
     assert "images" not in schema.get("properties", {})
     assert "Image" not in schema.get("$defs", {})
@@ -266,9 +268,9 @@ def test_tool_input_can_explicitly_declare_and_inherit_image_arguments():
         pass
 
     @tool
-    def inspect_images(input: SpecializedImagesInput, messages: list[Message]) -> Str:
+    def inspect_images(input: SpecializedImagesInput, messages: list[Message]) -> StrImage:
         """Inspect the supplied images."""
-        return Str(value="Inspected", images=input.images)
+        return StrImage(value="Inspected", images=input.images)
 
     schema = _get_tool_call_schema(inspect_images)
 
