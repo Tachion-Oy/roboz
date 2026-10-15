@@ -29,7 +29,8 @@ def replies():
         remaining = iter(responses)
         prompts = []
 
-        def request_input(message, timeout=None):
+        def request_input(message, timeout=None, *, accepts_images=False):
+            assert accepts_images is False
             prompts.append(message)
             reply = next(remaining)
             if isinstance(reply, Exception):

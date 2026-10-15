@@ -20,7 +20,7 @@ from roboz.runtime import (
 )
 from roboz.runtime import io as utils
 from roboz.tooling.decorators import tool
-from roboz.tools import prompt_user_at_start, stop
+from roboz.tools import prompt_user, prompt_user_at_start, stop
 
 
 def test_interact_with_user_requires_bound_output():
@@ -82,6 +82,7 @@ def test_interact_with_user_api_forwards_timeout_and_returns_none_on_timeout(
     assert interact_with_user("question?", True, timeout=2.5) is None
     assert io.prompts == ["question?"]
     assert io.timeouts == [2.5]
+    assert io.image_capabilities == [False]
 
 
 def test_interact_with_user_api_with_reply_requires_user_io():
@@ -104,7 +105,7 @@ def test_interact_with_user_api_with_reply_uses_bound_user_io(bind_user_io):
 
 
 @pytest.mark.parametrize("images_first", [False, True])
-def test_typed_replies_reach_provider_through_initial_and_followup_prompts(
+def test_renamed_initial_and_followup_prompts_advertise_images_to_host(
     bind_user_io, images_first,
 ):
     images = [
@@ -117,8 +118,8 @@ def test_typed_replies_reach_provider_through_initial_and_followup_prompts(
     replies.append(StrImage(value="Compare these files", images=images))
     io = bind_user_io(replies)
     actions = iter([
-        {"action": "prompt_user", "rationale": "Ask", "value": "Next?"},
-        {"action": "prompt_user", "rationale": "Compare", "value": "More?"},
+        {"action": "ask_again", "rationale": "Ask", "value": "Next?"},
+        {"action": "ask_again", "rationale": "Compare", "value": "More?"},
         {"action": "stop", "rationale": "Done", "value": "Finished"},
     ])
     requests = []
@@ -140,7 +141,9 @@ def test_typed_replies_reach_provider_through_initial_and_followup_prompts(
     ) as client:
         agent = Agent(
             name="typed_replies", system_prompt="Inspect the replies and stop.",
-            tools=[stop], default_tools=[prompt_user_at_start("Start?")],
+            tools=[stop],
+            default_tools=[prompt_user_at_start("Start?").rename("begin")],
+            custom_prompt_user_tool=prompt_user("No reply").rename("ask_again"),
             agent_endpoint=LLMEndpoint(
                 client=client, api_name="test", model_name="vision",
                 accepts_images=True, stream=False,
@@ -150,6 +153,7 @@ def test_typed_replies_reach_provider_through_initial_and_followup_prompts(
 
     assert result.value == "Finished"
     assert io.prompts == ["Start?", "Next?", "More?"]
+    assert io.image_capabilities == [True, True, True]
     assert len(requests) == 3
     for index, reply in enumerate(replies):
         message = requests[index]["messages"][-1]

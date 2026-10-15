@@ -161,7 +161,7 @@ def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
         def __init__(self):
             self.prompts = []
 
-        def request_input(self, message, timeout=None):
+        def request_input(self, message, timeout=None, *, accepts_images=False):
             self.prompts.append(message)
             return Str(value=reply)
 

@@ -25,9 +25,18 @@ class UserIO(Protocol):
     """Host-provided user interaction for :class:`Output.API`."""
 
     def request_input(
-        self, message: str, timeout: float | None = None
+        self,
+        message: str,
+        timeout: float | None = None,
+        *,
+        accepts_images: bool = False,
     ) -> Str | StrImage | None:
-        """Return a typed reply, or None when *timeout* seconds elapse."""
+        """Return a typed reply, or None when *timeout* seconds elapse.
+
+        ``accepts_images`` declares whether this prompt can consume images.
+        Hosts must also check the receiving model before accepting an image.
+        Permission prompts and other text-only interactions leave it false.
+        """
         ...
 
     def notify(self, message: str) -> None:
@@ -101,9 +110,17 @@ def _read_line_with_timeout(timeout: float | None) -> str | None:
 
 
 def interact_with_user(
-    message: str, with_reply: bool, timeout: float | None = None
+    message: str,
+    with_reply: bool,
+    timeout: float | None = None,
+    *,
+    accepts_images: bool = False,
 ) -> Str | StrImage | None:
-    """Send a host-routed message and optionally wait for a typed reply."""
+    """Send a host-routed message and optionally wait for a typed reply.
+
+    Set ``accepts_images`` only when the caller can consume image replies.
+    This prompt capability does not override the receiving model's capabilities.
+    """
     output = _require_bound_output()
     match output:
         case Output.CLI:
@@ -115,7 +132,9 @@ def interact_with_user(
         case Output.API:
             user_io = _require_api_user_io()
             if with_reply:
-                return user_io.request_input(message, timeout)
+                return user_io.request_input(
+                    message, timeout, accepts_images=accepts_images
+                )
             user_io.notify(message)
             return None
         case _:

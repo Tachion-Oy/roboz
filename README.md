@@ -122,6 +122,17 @@ An agent is a loop that calls tools. Everything is defined as a tool: Skills,  b
 
 The traditional agentic approach is then a special case of a RoboZ agent if one just has the `prompt_llm` as the default with no chaining. An `AgentMode.DETERMINISTIC` agent has no `prompt_llm`; its default tools perform tasks directly, allowing deterministic branching through chaining. This is useful for a background agent that performs periodic maintenance work. `AgentMode.STEERABLE` agents may ask the user for input, while `AgentMode.AUTONOMOUS` agents cannot.
 
+### API user input
+
+Hosts bind a `roboz.runtime.UserIO` adapter with `bind_api_user_io`. Its
+`request_input(message, timeout=None, *, accepts_images=False)` method returns
+`Str`, `StrImage`, or `None` for a timeout. The keyword describes what the prompt
+can consume; hosts must also check the receiving model's image capability.
+Ordinary, initial, interruption, and retry prompts pass `accepts_images=True`.
+Permission prompts use the text-only default. Custom conversational tools may
+opt in through `interact_with_user(..., accepts_images=True)`, independent of
+the tool's name or lifecycle events.
+
 ## Why is this framework useful?
 ### Tool Chaining
 This may be used to reduce the number of llm calls, leading to a speed increase, lower cost and fewer AI errors. It also provides a useful way of introducing a guard layer for tool calls, which can be used to restrict agentic actions.

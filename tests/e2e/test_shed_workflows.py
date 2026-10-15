@@ -218,7 +218,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
             self.prompts = []
             self.answers = iter(("Do another task.", "Stop the session."))
 
-        def request_input(self, message, timeout=None):
+        def request_input(self, message, timeout=None, *, accepts_images=False):
             self.prompts.append(message)
             return Str(value=next(self.answers))
 
