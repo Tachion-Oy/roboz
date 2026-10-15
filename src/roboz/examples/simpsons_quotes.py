@@ -104,4 +104,5 @@ QUOTES: Final[list[str]] = [
     "Steamed hams!",
     "I am evil Homer!",
     "To the Simpsonmobile!",
+    "I'm in danger.",
 ]

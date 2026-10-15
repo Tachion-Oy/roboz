@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.1a1 - 2026-10-16
+
 - Breaking: API user-input adapters must accept the keyword-only
   `accepts_images: bool = False` argument in `request_input`. Ordinary, initial,
   interruption, and retry prompts explicitly allow images; permission prompts
