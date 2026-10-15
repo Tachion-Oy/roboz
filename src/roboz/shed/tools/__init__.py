@@ -16,6 +16,7 @@ from .runner import ExecutableCommandCatalog
 from .cli_commands import get_run_file_command
 from .compactification import get_compactify_messages_when_needed_tool
 from .consolidate_memory import consolidate_memory
+from .images import ReadImagesInput, get_read_images_tool
 from .purge_files import purge_files, purge_files_by_threshold
 from .sleep_between_runs import sleep_between_runs
 from .stop_when_watched_agents_inactive import stop_when_watched_agents_inactive
@@ -36,10 +37,12 @@ __all__ = [
     "SleepBetweenRunsContext",
     "StopWhenWatchedAgentsInactiveContext",
     "SnapshotMode",
+    "ReadImagesInput",
     "consolidate_memory",
     "get_apply_patch",
     "get_compactify_messages_when_needed_tool",
     "get_run_file_command",
+    "get_read_images_tool",
     "purge_files",
     "purge_files_by_threshold",
     "sleep_between_runs",

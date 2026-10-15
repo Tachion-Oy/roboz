@@ -1,6 +1,9 @@
-"""The filesystem skill owns both guarded tool chains and their activation."""
+"""The filesystem skill owns its guarded tool chains and their activation."""
 
+import base64
 import json
+
+import pytest
 
 from roboz import Agent
 from roboz.deployment import (
@@ -45,11 +48,12 @@ def test_loading_filesystem_exposes_commands_and_patches_together(tmp_path):
             ]
         ),
     )
-    assert not {"run_file_command", "apply_patch"} & {
+    assert not {"run_file_command", "apply_patch", "read_images"} & {
         tool.name for tool in agent.active_tools.values()
     }
     assert "## File CLI" not in agent.full_system_prompt
     assert "## File editing" not in agent.full_system_prompt
+    assert "## Image reading" not in agent.full_system_prompt
     dependencies = agent.external_dependencies()
     assert any(
         dependency.dependency_id == "executable:cat" for dependency in dependencies
@@ -66,7 +70,8 @@ def test_loading_filesystem_exposes_commands_and_patches_together(tmp_path):
         output["value"] for output in outputs if output.get("caller") == "filesystem"
     )
     assert "## File CLI" in loaded and "## File editing" in loaded
-    assert {"run_file_command", "apply_patch"} <= {
+    assert "## Image reading" in loaded
+    assert {"run_file_command", "apply_patch", "read_images"} <= {
         tool.name for tool in agent.active_tools.values()
     }
     assert all(tool.chained_to for tool in agent.passive_tools.values())
@@ -79,20 +84,24 @@ def test_loading_filesystem_exposes_commands_and_patches_together(tmp_path):
     assert (tmp_path / "note.txt").read_text() == "new content"
 
 
-def test_filesystem_capability_keeps_tools_and_guidance_for_on_demand_loading(tmp_path):
+@pytest.mark.parametrize("on_demand", [False, True])
+def test_filesystem_capability_keeps_tools_and_guidance(tmp_path, on_demand):
+    image_bytes = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+    (tmp_path / "image.gif").write_bytes(image_bytes)
     definition = DeployableAgent(
         name="files",
         system_prompt="Work on files.",
         capabilities=(
             Capability(label=ToolLabel("stop"), value=stop),
-            Filesystem(label=SkillLabel("filesystem")),
+            Filesystem(label=SkillLabel("filesystem")) if on_demand else Filesystem(),
         ),
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))
     definition.set_agent_endpoint(
         MockLLMEndpoint(
             [
-                {"action": "filesystem", "rationale": "Load filesystem tools"},
+                *([{"action": "filesystem", "rationale": "Load filesystem tools"}]
+                  if on_demand else []),
                 {
                     "action": "apply_patch",
                     "rationale": "Create a file",
@@ -105,16 +114,21 @@ def test_filesystem_capability_keeps_tools_and_guidance_for_on_demand_loading(tm
                     "rationale": "Read the file",
                     "value": [["cat", "CMD"], ["projects/project/note.txt", "PTH"]],
                 },
+                {"action": "read_images", "rationale": "Inspect", "paths": ["image.gif"]},
                 {"action": "stop", "rationale": "Done", "value": "done"},
-            ]
+            ],
+            accepts_images=True,
         )
     )
     agent, _ = definition.build()
-    assert not {"run_file_command", "apply_patch"} & {
-        tool.name for tool in agent.active_tools.values()
-    }
-    assert [skill.name for skill in agent.skills] == ["filesystem"]
-    assert not agent.auto_loaded_skills
+    if on_demand:
+        assert not {"run_file_command", "apply_patch", "read_images"} & {
+            tool.name for tool in agent.active_tools.values()
+        }
+        assert [skill.name for skill in agent.skills] == ["filesystem"]
+        assert not agent.auto_loaded_skills
+    else:
+        assert [skill.name for skill in agent.auto_loaded_skills] == ["filesystem"]
 
     _, messages = agent.invoke()
     outputs = [
@@ -122,11 +136,13 @@ def test_filesystem_capability_keeps_tools_and_guidance_for_on_demand_loading(tm
         for message in messages
         if message.role.value == "user"
     ]
-    loaded = next(
-        output["value"] for output in outputs if output.get("caller") == "filesystem"
-    )
-    assert "## File CLI" in loaded and "## File editing" in loaded
-    assert {"run_file_command", "apply_patch"} <= {
+    if on_demand:
+        loaded = next(
+            output["value"] for output in outputs if output.get("caller") == "filesystem"
+        )
+        assert "## File CLI" in loaded and "## File editing" in loaded
+        assert "## Image reading" in loaded
+    assert {"run_file_command", "apply_patch", "read_images"} <= {
         tool.name for tool in agent.active_tools.values()
     }
     assert "content" in next(
@@ -135,3 +151,6 @@ def test_filesystem_capability_keeps_tools_and_guidance_for_on_demand_loading(tm
         if output.get("caller") == "execute_file_command"
     )
     assert (tmp_path / "projects/project/note.txt").read_text() == "content"
+    images = [image for message in messages for image in message.images]
+    assert len(images) == 1
+    assert base64.b64decode(images[0].url.partition(",")[2]) == image_bytes

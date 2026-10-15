@@ -31,6 +31,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Deployable agents and capabilities](#deployable-agents-and-capabilities)
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
+  - [Image reading](#image-reading)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
   - [Use the bundled examples](#use-the-bundled-examples)
   - [Create a project catalogue](#create-a-project-catalogue)
@@ -478,7 +479,8 @@ For Linux host execution, use `SafeScripts(socket_path=...)`. See the
 The file-command tool supports `cp`, `mv`, `pwd`, `cat`, `head`, `tail`, `wc`,
 `tee`, `touch`, `mkdir`, `grep`, `rg`, `ls`, `find`, `diff`, `gio trash`, and
 `rm`. The `Filesystem` capability bundles these commands, the `apply_patch`
-literal-replacement tool, and their instructions into one `filesystem` skill.
+literal-replacement tool, the `read_images` reader, and their instructions into
+one `filesystem` skill.
 You can also construct the complete skill directly:
 
 ```python
@@ -505,18 +507,18 @@ file_skill = filesystem_skill(FilesystemContext(permissions=permissions, pipe=pi
 
 Pass `file_skill` in the agent's `auto_loaded_skills` for startup activation,
 or `skills` for on-demand activation, and pass `pipe` as its `event_pipe`. The
-skill already contains both tool chains. `Filesystem()` derives the policy and
+skill already contains all three tool chains. `Filesystem()` derives the policy and
 pipe from its owning deployment and registers the complete skill automatically.
 `Filesystem(label=SkillLabel("filesystem"))` offers the complete skill for
 on-demand activation: loading it makes both its instructions and tool chains available.
-The standalone `get_run_file_command` and `get_apply_patch` builders remain
-available for tool-only compositions.
+The standalone `get_run_file_command`, `get_apply_patch`, and
+`get_read_images_tool` builders remain available for tool-only compositions.
 
 Migration: replace `FileCommands()` and `FileEditing()` with a single
 `Filesystem()`. Replace the `cli_skill` and `file_editing` instruction objects
 with `filesystem_skill(ctx)` and remove separately registered file tools from
-that composition. The skill action is now `filesystem`; tool actions remain
-`run_file_command` and `apply_patch`.
+that composition. The skill action is now `filesystem`; tool actions are
+`run_file_command`, `apply_patch`, and `read_images`.
 
 `run_file_command` takes one ordered `value` array of `[value, tag]` pairs:
 `CMD` for commands, `FLG` for flags, `ARG` for argument values, `PTH` for paths,
@@ -549,6 +551,46 @@ contain the full option allowlist and describe command-specific operand ordering
 and restrictions. Its [patch instructions](src/roboz/shed/skills/filesystem/patch.py)
 cover literal replacements and choosing between patches and full-file rewrites.
 
+### Image reading
+
+The filesystem skill includes `read_images` for visual inspection of local PNG,
+JPEG, WebP, and GIF files. Use an image-capable endpoint configured with
+`accepts_images=True`, and request multiple files together:
+
+```json
+{"action": "read_images", "rationale": "Compare the charts", "paths": ["before.png", "after.png"], "detail": "high"}
+```
+
+The nonempty `paths` list accepts relative or absolute file paths without globs
+or symlinks. Each file receives an independent READ permission check and any
+required approval before its contents are opened. Denied, missing, unsupported,
+or unreadable files are reported while the batch continues. One final report
+maps successful paths to numbered image attachments, preserving request order
+and duplicate entries. The batch needs no intervening model calls.
+
+Optional `detail` applies to every image: `auto`, `low`, or `high`; omitting it
+uses the model default. File signatures identify the format. Original bytes are
+attached without decoding, resizing, conversion, or pixel validation; provider
+format and size limits still apply.
+
+For a standalone tool composition:
+
+```python
+from pathlib import Path
+
+from roboz.runtime import EventPipe
+from roboz.shed.sandbox import PermissionPolicy
+from roboz.shed.tools import get_read_images_tool
+
+pipe = EventPipe()
+permissions = PermissionPolicy.local(Path.cwd())
+image_tools = get_read_images_tool(**permissions.tool_options(pipe))
+```
+
+Pass `image_tools` in the agent's `tools` and `pipe` as its `event_pipe`. Only
+`read_images` is exposed to the model; guarding, execution, and continuation are
+automatic chained steps.
+
 ### PDF reading
 
 Add `Pdf()` from `roboz.shed.capabilities` to a deployment with a configured
@@ -564,9 +606,15 @@ is performed; an existing OCR text layer can be read. Encrypted PDFs require a
 decrypted copy.
 
 `Pdf(label=SkillLabel("pdf"))` offers the skill on demand. Direct compositions
-can use `pdf_skill(PdfContext(...))` from
-`roboz.shed.skills`, or `get_pdf_tool(ctx)` from `roboz.shed.tools.pdf` for the
-guarded tool chain. `PdfContext` takes `permissions` and `pipe`.
+can use `pdf_skill(**permissions.tool_options(pipe))` from
+`roboz.shed.skills`, or `get_pdf_tool(**permissions.tool_options(pipe))` from
+`roboz.shed.tools.pdf` for the guarded tool chain. Both reader builders accept
+the same keyword-only `base`, `default_verdict`, `allow_rules`, `deny_rules`,
+`ask_rules`, `takes_precedence`, and optional `pipe` as the other file tools.
+
+Migration: replace `get_pdf_tool(ctx)` and `pdf_skill(ctx)` with
+`get_pdf_tool(**permissions.tool_options(pipe))` and
+`pdf_skill(**permissions.tool_options(pipe))`. `PdfContext` has been removed.
 
 ## Endpoints and model catalogues
 

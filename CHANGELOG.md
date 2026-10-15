@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add guarded batch image reading with `read_images`, included in the filesystem
+  skill and available through `get_read_images_tool`. Each file receives its own
+  READ checks; failed files are reported while successful images are returned
+  together in request order, with optional shared detail.
+
+- Make the image and PDF tool builders accept the same keyword-only permission
+  options as the other guarded file tools. Replace `get_pdf_tool(ctx)` and
+  `pdf_skill(ctx)` with `get_pdf_tool(**permissions.tool_options(pipe))` and
+  `pdf_skill(**permissions.tool_options(pipe))`. Remove `PdfContext`.
+
 ## 0.12.1a1 - 2026-10-15
 
 - Breaking: remove inherited image fields from tool payloads. Use `StrImage`
