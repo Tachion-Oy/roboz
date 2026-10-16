@@ -21,6 +21,7 @@ from roboz.shed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import MockLLMEndpoint
 from roboz.models import DEFAULT, NO_MESSAGE, BaseNames, Empty, Image, Message, MessageKind, Role
+from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
 from roboz.runtime.events import MessageEvent
 from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import (
@@ -106,17 +107,23 @@ def _ctx(
     )
 
 
-def test_new_logs_preserve_image_only_upload_names_in_snapshots(tmp_path):
+@pytest.mark.parametrize("severity", [None, *Severity])
+def test_new_logs_preserve_names_for_visible_attachments(tmp_path, severity):
     conversation_root = tmp_path / "runs"
     image = Image.from_bytes(b"image bytes", media_type="image/png", name="budget-chart.png")
     row = message_to_logged_row(
-        Message(role=Role.USER, content="", images=[image]),
+        Message(
+            role=Role.USER, images=[image],
+            content="" if severity is None else "x" * (LIGHT_MAX_CHARS + 100),
+            truncation=DEFAULT if severity is None else Truncation(threshold=1, severity=severity),
+        ),
         message_id="m-1", sequence=1, created_at=datetime.now(timezone.utc),
     )
     hidden = row.model_copy(update={
         "sequence": 2, "truncation": NO_MESSAGE, "image_names": ["hidden.png"],
     })
-    path = _write_run(conversation_root, rows=[row, hidden])
+    last = _row(sequence=3, created_at=datetime.now(timezone.utc), content="End of conversation.")
+    path = _write_run(conversation_root, rows=[row, hidden, last])
     assert json.loads(path.read_text())["messages"][0]["image_names"] == ["budget-chart.png"]
     assert image.url not in path.read_text()
     events = []
@@ -131,8 +138,8 @@ def test_new_logs_preserve_image_only_upload_names_in_snapshots(tmp_path):
     assert "created=1" in result.value
     prompts = [event.message for event in events if isinstance(event, MessageEvent)]
     source = next(message.content for message in prompts if "## Source conversation" in message.content)
-    assert "sequence=1" in source
-    assert "[image 1: budget-chart.png]" in source
+    assert ("[image 1: budget-chart.png]" in source) == (severity in (None, Severity.LIGHT))
+    assert "x" * (LIGHT_MAX_CHARS + 100) not in source
     assert "hidden.png" not in source
     assert all(not message.images and image.url not in message.content for message in prompts)
 
