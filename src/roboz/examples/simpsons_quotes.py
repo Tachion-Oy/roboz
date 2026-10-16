@@ -107,4 +107,5 @@ QUOTES: Final[list[str]] = [
     "I'm in danger.",
     "It tastes like burning.",
     "Worst day of your life so far.",
+    "I was elected to lead, not to read.",
 ]

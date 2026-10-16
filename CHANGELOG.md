@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.2a1 - 2026-10-17
+
 - Handle image input errors through the existing request-recovery flow. Hosts
   only need to enforce the prompt's `accepts_images` flag.
 
