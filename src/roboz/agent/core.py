@@ -32,6 +32,7 @@ from roboz.dependencies import (
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
+    LLMImageInputError,
     LLMProviderRequestError,
     StopAgent,
 )
@@ -581,7 +582,7 @@ class Agent(HasExternalDependencies):
             tool = self.get_next_tool(tool, output)
             self.pipe.raise_if_cancelled()
             tool_output = self._tool_invocations.invoke(tool, output, self.messages)
-        except LLMProviderRequestError as error:
+        except (LLMProviderRequestError, LLMImageInputError) as error:
             if not self.mode.allows_user_interaction:
                 raise
             return self._handle_provider_request_error(error)
@@ -635,7 +636,7 @@ class Agent(HasExternalDependencies):
         return None, Empty()
 
     def _handle_provider_request_error(
-        self, error: LLMProviderRequestError
+        self, error: LLMProviderRequestError | LLMImageInputError
     ) -> tuple[None, Empty]:
         logger.info(
             "Recoverable provider request failure in agent '%s': %s",

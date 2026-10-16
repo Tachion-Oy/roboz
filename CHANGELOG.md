@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Handle image input errors through the existing request-recovery flow. Hosts
+  only need to enforce the prompt's `accepts_images` flag.
+
 - Store attachment names in conversation logs instead of image payloads. Add
   optional `Image.name` metadata, populated automatically by local image reads.
   Memory snapshots retain the saved names as text references. Existing logs
