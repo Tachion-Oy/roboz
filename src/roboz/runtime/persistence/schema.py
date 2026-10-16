@@ -47,7 +47,9 @@ class LoggedMessageRow(BaseModel):
     created_at: str
     role: Role
     content: str
-    images: list[Image] = Field(default_factory=list, repr=False)
+    # Read attachments from older logs, but never write their payloads.
+    images: list[Image] = Field(default_factory=list, repr=False, exclude=True)
+    image_names: list[str] = Field(default_factory=list)
     truncation: TruncationSpec
     message_kind: MessageKind | None = None
     endpoint: str | None = None
@@ -113,7 +115,10 @@ def message_to_logged_row(
         created_at=utc_iso_z(created_at),
         role=message.role,
         content=message.content,
-        images=message.images,
+        image_names=[
+            image.filename or f"image-{index}"
+            for index, image in enumerate(message.images, start=1)
+        ],
         truncation=message.truncation,
         message_kind=message.message_kind,
         endpoint=message.endpoint,

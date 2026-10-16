@@ -322,7 +322,7 @@ class _LLMCallRunner:
                         {
                             "type": "image_url",
                             "image_url": Image.model_validate(image).model_dump(
-                                exclude_none=True
+                                include={"url", "detail"}, exclude_none=True
                             ),
                         }
                         for image in images

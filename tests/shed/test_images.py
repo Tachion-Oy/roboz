@@ -47,7 +47,7 @@ def invoke(options, paths, *, detail=None, tools=None):
     return result, messages
 
 
-def test_batch_delivers_ordered_images_once_and_persists_no_intermediate_bytes(
+def test_batch_delivers_ordered_images_once_and_persists_only_names(
     options, tmp_path,
 ):
     (tmp_path / "first.gif").write_bytes(GIF)
@@ -61,8 +61,11 @@ def test_batch_delivers_ordered_images_once_and_persists_no_intermediate_bytes(
         detail="high", tools=tools,
     )
     expected = [
-        Image.from_bytes(data, media_type=media_type, detail="high")
-        for data, media_type in [(GIF, "image/gif"), (png, "image/png"), (GIF, "image/gif")]
+        Image.from_bytes(data, media_type=media_type, name=name, detail="high")
+        for data, media_type, name in [
+            (GIF, "image/gif", "first.gif"), (png, "image/png", "second.png"),
+            (GIF, "image/gif", "first.gif"),
+        ]
     ]
     assert result.images == expected
     report = json.loads(result.content)["value"]
@@ -75,9 +78,14 @@ def test_batch_delivers_ordered_images_once_and_persists_no_intermediate_bytes(
     assert [m for m in messages if m.images] == [result]
     assert all("base64," not in m.content for m in messages)
     assert sink.conversations_location is not None
-    persisted = ConversationRun.model_validate_json(sink.conversations_location.read_text())
-    assert [row.images for row in persisted.messages if row.images] == [expected]
-    assert all("base64," not in row.content for row in persisted.messages)
+    serialized = sink.conversations_location.read_text()
+    persisted = ConversationRun.model_validate_json(serialized)
+    assert [row.image_names for row in persisted.messages if row.image_names] == [
+        ["first.gif", "second.png", "first.gif"],
+    ]
+    assert all(not row.images for row in persisted.messages)
+    assert "base64," not in serialized
+    assert all(image.url not in serialized for image in expected)
 
 
 def test_reusing_tools_starts_a_fresh_batch(options, tmp_path):
@@ -85,7 +93,7 @@ def test_reusing_tools_starts_a_fresh_batch(options, tmp_path):
     tools = get_read_images_tool(**options)
     invoke(options, ["image.gif", "image.gif"], detail="high", tools=tools)
     fresh, _ = invoke(options, ["image.gif"], tools=tools)
-    assert fresh.images == [Image.from_bytes(GIF, media_type="image/gif")]
+    assert fresh.images == [Image.from_bytes(GIF, media_type="image/gif", name="image.gif")]
     assert "Read 1 of 1 images" in json.loads(fresh.content)["value"]
 
 
@@ -100,7 +108,7 @@ def test_format_uses_signature_and_keeps_original_bytes(options, tmp_path, data,
     # Signature identification deliberately does not decode image pixels.
     (tmp_path / "unknown.bin").write_bytes(data)
     result, _ = invoke(options, ["unknown.bin"])
-    assert result.images == [Image.from_bytes(data, media_type=media_type)]
+    assert result.images == [Image.from_bytes(data, media_type=media_type, name="unknown.bin")]
 
 
 def test_mixed_batch_does_not_open_denied_files_and_continues(tmp_path, monkeypatch):
@@ -133,7 +141,7 @@ def test_mixed_batch_does_not_open_denied_files_and_continues(tmp_path, monkeypa
         ])
     assert opened == ["invalid.png", "unreadable.gif", "allowed.gif"]
     assert prompt.call_count == 3
-    assert result.images == [Image.from_bytes(GIF, media_type="image/gif")]
+    assert result.images == [Image.from_bytes(GIF, media_type="image/gif", name="allowed.gif")]
     report = json.loads(result.content)["value"]
     assert "Read 1 of 6 images" in report
     assert "Denied read:" in report
@@ -166,7 +174,7 @@ def test_standalone_reader_without_pipe_fails_closed_for_approvals(tmp_path, ask
         assert result.images == []
         assert "Approval unavailable" in json.loads(result.content)["value"]
     else:
-        assert result.images == [Image.from_bytes(GIF, media_type="image/gif")]
+        assert result.images == [Image.from_bytes(GIF, media_type="image/gif", name="image.gif")]
 
 
 @pytest.mark.parametrize("path,expected", [
@@ -179,7 +187,7 @@ def test_path_restrictions_report_failure_and_continue(options, tmp_path, path, 
     (tmp_path / "folder").mkdir()
     result, _ = invoke(options, [path, "image.gif"])
     assert expected in json.loads(result.content)["value"]
-    assert result.images == [Image.from_bytes(GIF, media_type="image/gif")]
+    assert result.images == [Image.from_bytes(GIF, media_type="image/gif", name="image.gif")]
 
 
 def test_cancellation_between_images_prevents_the_next_read(options, tmp_path):

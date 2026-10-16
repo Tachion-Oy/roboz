@@ -32,7 +32,9 @@ from roboz.shed.tools.snapshot_conversation_prompts import (
 from roboz.shed.tools.snapshot_normalize import normalize_messages_for_snapshot
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
-from roboz.models import NO_MESSAGE, All, Message, Str
+from roboz.llm._truncation import select_truncation
+from roboz.models import NO_MESSAGE, NO_TRUNCATION, All, Message, Role, Str
+from roboz.models.truncation import Severity
 from roboz.runtime import log_with_data
 from roboz.runtime.persistence import (
     ConversationRun,
@@ -96,8 +98,8 @@ def _persisted_snapshot_covers(path: Path, *, sequence: int) -> bool:
 def _normalize_temporal_messages(
     rows: list[LoggedMessageRow], *, agent_name: str, agent_description: str | None
 ) -> list[Message]:
-    """Normalize rows while retaining chronological identity in visible text."""
-    normalized: list[Message] = []
+    """Normalize and truncate bodies before adding identity and image references."""
+    pending: list[tuple[LoggedMessageRow, Message]] = []
     for row in rows:
         messages = normalize_messages_for_snapshot(
             [logged_row_to_message(row)],
@@ -105,13 +107,28 @@ def _normalize_temporal_messages(
             agent_description=agent_description,
         )
         for message in messages:
+            pending.append((row, message))
+    normalized: list[Message] = []
+    for index, (row, message) in enumerate(pending):
+        selected = select_truncation(len(pending) - index - 1, message.truncation)
+        image_names = row.image_names
+        if message.role != Role.SYSTEM and selected is not None and selected.severity == Severity.STUB:
+            image_names = []
+        for visible in get_truncated_messages_for_context(
+            [message], select_rule=lambda _distance, _rules: selected
+        ):
             normalized.append(
-                message.model_copy(
+                visible.model_copy(
                     update={
                         "content": (
                             f"[sequence={row.sequence} created_at={row.created_at}]\n"
-                            f"{message.content}"
-                        )
+                            f"{visible.content}"
+                            + "".join(
+                                f"\n[image {index}: {name}]"
+                                for index, name in enumerate(image_names, start=1)
+                            )
+                        ),
+                        "truncation": NO_TRUNCATION,
                     }
                 )
             )
@@ -188,12 +205,11 @@ def _snapshot_one_run(
     if not uncovered_rows:
         return False
     covered_through_sequence = max(row.sequence for row in uncovered_rows)
-    normalized = _normalize_temporal_messages(
+    visible_messages = _normalize_temporal_messages(
         uncovered_rows,
         agent_name=run.agent_name,
         agent_description=run.metadata.agent_description,
     )
-    visible_messages = get_truncated_messages_for_context(normalized)
     new_tokens = estimate_conversation_tokens(visible_messages)
     if not _should_snapshot(run=run, threshold=threshold, new_tokens=new_tokens):
         return False

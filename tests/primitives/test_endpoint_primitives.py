@@ -119,7 +119,7 @@ def test_image_parts_reach_the_client_without_mutating_messages(stream):
     )
     images = [
         Image(url="https://example.com/chart.png"),
-        Image.from_bytes(b"bytes", media_type="image/jpeg", detail="low"),
+        Image.from_bytes(b"bytes", media_type="image/jpeg", name="photo.jpg", detail="low"),
     ]
     message = Message(role=Role.USER, content="Compare", images=images)
     call_llm_api(endpoint, [message], on_delta=(lambda _: None) if stream else None)

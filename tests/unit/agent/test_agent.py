@@ -15,6 +15,7 @@ from roboz.exceptions import (
     ExternalCallInterruptedError,
     LLMAuthError,
     LLMCallCancelledError,
+    LLMImageInputError,
     LLMProviderUnavailableError,
     StopAgent,
 )
@@ -434,6 +435,28 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
     )
     assert failure["level"] == "warning"
     assert failure["data"]["error_kind"] == "auth"
+
+
+@pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])
+def test_image_input_error_follows_existing_request_recovery(bind_user_io, mode):
+    io = bind_user_io([Str(value="retry")])
+    agent = Agent(
+        name="image_request_recovery", mode=mode,
+        system_prompt="Complete the task.", tools=[stop],
+        agent_endpoint=MockLLMEndpoint([
+            LLMImageInputError("Model does not accept images"),
+            {"action": "stop", "rationale": "done", "value": "ok"},
+        ]),
+    )
+
+    if mode is AgentMode.AUTONOMOUS:
+        with pytest.raises(LLMImageInputError):
+            agent.invoke()
+        assert io.prompts == []
+    else:
+        output, _ = agent.invoke()
+        assert output.value == "ok"
+        assert io.prompts == [LLM_PROVIDER_REQUEST_RETRY_PROMPT]
 
 
 def test_invoke_provider_5xx_remains_terminal_failure(tmp_path: Path) -> None:

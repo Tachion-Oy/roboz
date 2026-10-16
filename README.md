@@ -127,7 +127,7 @@ The traditional agentic approach is then a special case of a RoboZ agent if one 
 Hosts bind a `roboz.runtime.UserIO` adapter with `bind_api_user_io`. Its
 `request_input(message, timeout=None, *, accepts_images=False)` method returns
 `Str`, `StrImage`, or `None` for a timeout. The keyword describes what the prompt
-can consume; hosts must also check the receiving model's image capability.
+can consume; RoboZ checks model compatibility when making the LLM call.
 Ordinary, initial, interruption, and retry prompts pass `accepts_images=True`.
 Permission prompts use the text-only default. Custom conversational tools may
 opt in through `interact_with_user(..., accepts_images=True)`, independent of
@@ -719,7 +719,8 @@ Model-generated tool calls retain their supplied arguments in the assistant
 message's JSON text, including explicitly supplied image arguments. Unset defaults
 are omitted, and the message's attachment list keeps its empty default. Tool
 results carry images as message attachments without duplicating them in the
-result's JSON text. Persisted messages retain these same content and image fields.
+result's JSON text. Persisted messages retain the content and store attachment
+names in `image_names`, without saving the image payloads.
 
 Runtime metadata (`truncation`, `message_kind`, `endpoint`, `model`, `token_input`,
 and `token_output`) is omitted directly by `model_json_schema()` on value and
@@ -752,8 +753,11 @@ string-returning adapter path. `Image` and `Message.images` remain unchanged.
 
 Use HTTP(S) URLs, base64 image data URLs, or
 `Image.from_bytes(data, media_type="image/png")`. Byte inputs support PNG, JPEG,
-WebP, and GIF. RoboZ checks the source and encoding without fetching URLs or
-decoding pixels; provider format, size, and detail limits still apply. Image
+WebP, and GIF. Supply `name="chart.png"` to identify an upload in logs; local image
+reads supply the filename automatically. Unnamed images use the URL filename or
+a numbered fallback such as `image-1`. RoboZ checks the source and encoding
+without fetching URLs or decoding pixels; provider format, size, and detail
+limits still apply. Image
 inputs require a user role after message mapping and scrubbing. Text-only
 requests retain their existing shape, and streaming uses the same image input
 format as non-streaming calls.
@@ -764,11 +768,14 @@ message's `images` list, including empty lists. Keep `images` when filtering or
 reordering records; remove the field to redact attachments. The caller constructs
 API content parts from those returned records only.
 
-Persisted conversations retain attachments. LIGHT truncation leaves image data
-intact; STUB removes attachments and REMOVE drops the whole message. Context
-token estimates count text only. Compaction and memory snapshots use image URLs
-or numbered embedded-image markers as text, without sending images to summary
-models. Snapshot source metadata identifies the conversation and message sequence.
+New conversation logs retain image names only and cannot restore attachments;
+existing logs remain readable and are not rewritten. In live conversations,
+LIGHT truncation leaves image data intact; STUB removes attachments and REMOVE
+drops the whole message. Context token estimates count text only. Compaction and
+memory snapshots of older logs use image URLs or numbered embedded-image markers
+as text, without sending images to summary models. Snapshot source metadata
+identifies the conversation and message sequence. Snapshots of new logs render
+the saved image names as text references.
 Memory consolidation handles those references as ordinary text; summaries can
 discard them under their usual relevance rules.
 

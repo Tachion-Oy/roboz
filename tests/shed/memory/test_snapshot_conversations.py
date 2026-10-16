@@ -21,6 +21,7 @@ from roboz.shed.tools.memory_files import TIMESTAMP_STEM_FORMAT
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import MockLLMEndpoint
 from roboz.models import DEFAULT, NO_MESSAGE, BaseNames, Empty, Image, Message, MessageKind, Role
+from roboz.models.truncation import LIGHT_MAX_CHARS, Severity, Truncation
 from roboz.runtime.events import MessageEvent
 from roboz.runtime import LOG_DATA_ATTRIBUTE, EventPipe
 from roboz.runtime.persistence import (
@@ -106,7 +107,44 @@ def _ctx(
     )
 
 
-def test_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
+@pytest.mark.parametrize("severity", [None, *Severity])
+def test_new_logs_preserve_names_for_visible_attachments(tmp_path, severity):
+    conversation_root = tmp_path / "runs"
+    image = Image.from_bytes(b"image bytes", media_type="image/png", name="budget-chart.png")
+    row = message_to_logged_row(
+        Message(
+            role=Role.USER, images=[image],
+            content="" if severity is None else "x" * (LIGHT_MAX_CHARS + 100),
+            truncation=DEFAULT if severity is None else Truncation(threshold=1, severity=severity),
+        ),
+        message_id="m-1", sequence=1, created_at=datetime.now(timezone.utc),
+    )
+    hidden = row.model_copy(update={
+        "sequence": 2, "truncation": NO_MESSAGE, "image_names": ["hidden.png"],
+    })
+    last = _row(sequence=3, created_at=datetime.now(timezone.utc), content="End of conversation.")
+    path = _write_run(conversation_root, rows=[row, hidden, last])
+    assert json.loads(path.read_text())["messages"][0]["image_names"] == ["budget-chart.png"]
+    assert image.url not in path.read_text()
+    events = []
+    ctx = _ctx(
+        conversation_root=conversation_root, snapshot_root=tmp_path / "snapshots",
+        endpoint=MockLLMEndpoint([{"value": "The budget chart was attached."}]),
+        pipe=EventPipe(event_sinks=(events.append,)),
+    )
+
+    result = snapshot_conversations(ctx)(Empty(), [])
+
+    assert "created=1" in result.value
+    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
+    source = next(message.content for message in prompts if "## Source conversation" in message.content)
+    assert ("[image 1: budget-chart.png]" in source) == (severity in (None, Severity.LIGHT))
+    assert "x" * (LIGHT_MAX_CHARS + 100) not in source
+    assert "hidden.png" not in source
+    assert all(not message.images and image.url not in message.content for message in prompts)
+
+
+def test_legacy_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
     conversation_root = tmp_path / "runs"
     snapshot_root = tmp_path / "snapshots"
     embedded = Image.from_bytes(b"image bytes", media_type="image/png")
@@ -114,7 +152,12 @@ def test_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
     row.images = [Image(url="https://example.com/chart.png"), embedded]
     hidden = row.model_copy(update={"sequence": 2, "truncation": NO_MESSAGE})
     hidden.images = [Image(url="https://example.com/hidden.png")]
-    _write_run(conversation_root, rows=[row, hidden])
+    path = _write_run(conversation_root, rows=[row, hidden])
+    legacy = json.loads(path.read_text())
+    for payload, source_row in zip(legacy["messages"], [row, hidden], strict=True):
+        del payload["image_names"]
+        payload["images"] = [image.model_dump() for image in source_row.images]
+    path.write_text(json.dumps(legacy))
     snapshot = "Chart attached: conversation-1, sequence=1, image 2 (embedded)."
     endpoint = MockLLMEndpoint([{"value": snapshot}, {"value": "Remember the chart reference."}])
     events = []
