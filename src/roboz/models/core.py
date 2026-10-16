@@ -79,12 +79,23 @@ class Image(BaseModel):
 
     Validation checks the source and encoding without fetching URLs or decoding
     image pixels. Supported formats and detail levels depend on the model.
+    The optional name identifies the image in conversation logs.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
 
     url: str = Field(repr=False)
+    name: str | None = None
     detail: Literal["auto", "low", "high"] | None = None
+
+    @property
+    def filename(self) -> str | None:
+        """Return the basename of the supplied name or URL, when available."""
+        if self.name:
+            return Path(self.name).name or None
+        if self.url.startswith("data:"):
+            return None
+        return Path(urlsplit(self.url).path).name or None
 
     @field_validator("url")
     @classmethod
@@ -112,11 +123,13 @@ class Image(BaseModel):
         data: bytes,
         *,
         media_type: str,
+        name: str | None = None,
         detail: Literal["auto", "low", "high"] | None = None,
     ) -> Self:
         """Encode caller-supplied bytes as a data URL with an explicit MIME type."""
         return cls(
             url=f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}",
+            name=name,
             detail=detail,
         )
 

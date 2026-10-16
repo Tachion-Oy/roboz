@@ -121,7 +121,8 @@ def execute_read_image(
             if ctx.pipe is not None:
                 ctx.pipe.raise_if_cancelled()
             attachment = Image.from_bytes(
-                data, media_type=_media_type(data), detail=request.detail
+                data, media_type=_media_type(data), name=source.value.name,
+                detail=request.detail,
             )
         except (OSError, ValueError) as error:
             outcome = f"Image read failed: {error}"

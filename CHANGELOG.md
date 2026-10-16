@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Store attachment names in conversation logs instead of image payloads. Add
+  optional `Image.name` metadata, populated automatically by local image reads.
+  Existing logs remain readable; live image inputs are unchanged.
+
 ## 0.13.1a1 - 2026-10-16
 
 - Breaking: API user-input adapters must accept the keyword-only

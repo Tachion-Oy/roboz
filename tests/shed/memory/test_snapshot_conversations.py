@@ -106,7 +106,7 @@ def _ctx(
     )
 
 
-def test_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
+def test_legacy_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
     conversation_root = tmp_path / "runs"
     snapshot_root = tmp_path / "snapshots"
     embedded = Image.from_bytes(b"image bytes", media_type="image/png")
@@ -114,7 +114,12 @@ def test_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
     row.images = [Image(url="https://example.com/chart.png"), embedded]
     hidden = row.model_copy(update={"sequence": 2, "truncation": NO_MESSAGE})
     hidden.images = [Image(url="https://example.com/hidden.png")]
-    _write_run(conversation_root, rows=[row, hidden])
+    path = _write_run(conversation_root, rows=[row, hidden])
+    legacy = json.loads(path.read_text())
+    for payload, source_row in zip(legacy["messages"], [row, hidden], strict=True):
+        del payload["image_names"]
+        payload["images"] = [image.model_dump() for image in source_row.images]
+    path.write_text(json.dumps(legacy))
     snapshot = "Chart attached: conversation-1, sequence=1, image 2 (embedded)."
     endpoint = MockLLMEndpoint([{"value": snapshot}, {"value": "Remember the chart reference."}])
     events = []

@@ -191,8 +191,9 @@ def test_agent_can_pass_image_arguments_and_continue_after_tool_result(tmp_path:
     assert assistant_row.content == assistant.content
     assert assistant_row.images == []
     assert json.loads(assistant_row.content) == invocation
-    result_row = next(row for row in persisted.messages if row.images)
-    assert logged_row_to_message(result_row) == tool_result
+    result_row = next(row for row in persisted.messages if row.image_names)
+    assert result_row.image_names == ["chart.png"]
+    assert logged_row_to_message(result_row) == tool_result.model_copy(update={"images": []})
 
 
 @pytest.mark.parametrize("severity", list(Severity))
@@ -217,21 +218,37 @@ def test_truncation_keeps_or_removes_whole_images(severity):
 
 
 @pytest.mark.parametrize("role", [Role.USER, Role.ASSISTANT])
-def test_images_round_trip_through_persisted_messages_and_old_runs_load(role):
+def test_image_logs_store_only_names_and_old_runs_load(role):
     message = Message(
         role=role, content="Inspect",
-        images=[Image.from_bytes(b"bytes", media_type="image/webp")],
+        images=[
+            Image.from_bytes(b"named bytes", media_type="image/png", name="uploads/chart.png"),
+            Image(url="https://example.com/photos/chart.jpg?token=secret"),
+            Image.from_bytes(b"unnamed bytes", media_type="image/webp"),
+        ],
     )
+    original = message.model_copy(deep=True)
     now = datetime.now(timezone.utc)
     row = message_to_logged_row(message, message_id="message", sequence=1, created_at=now)
     run = ConversationRun(
         conversation_id="run", agent_name="test", started_at=now.isoformat(), messages=[row]
     )
-    restored = ConversationRun.model_validate_json(run.model_dump_json())
+    serialized = run.model_dump_json()
+    assert "base64," not in serialized
+    assert all(image.url not in serialized for image in message.images)
+    assert "images" not in json.loads(serialized)["messages"][0]
+    assert message == original
+    restored = ConversationRun.model_validate_json(serialized)
     assert restored.schema_version == 4
-    assert logged_row_to_message(restored.messages[0]) == message
+    assert restored.messages[0].image_names == ["chart.png", "chart.jpg", "image-3"]
+    assert logged_row_to_message(restored.messages[0]) == message.model_copy(update={"images": []})
 
     legacy = run.model_dump(mode="json")
+    del legacy["messages"][0]["image_names"]
+    legacy["messages"][0]["images"] = [image.model_dump() for image in message.images]
+    restored_legacy = ConversationRun.model_validate(legacy)
+    assert logged_row_to_message(restored_legacy.messages[0]) == message
+    assert "base64," not in restored_legacy.model_dump_json()
     legacy["schema_version"] = 3
     del legacy["messages"][0]["images"]
     restored_legacy = ConversationRun.model_validate(legacy)
