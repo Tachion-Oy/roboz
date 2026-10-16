@@ -774,7 +774,8 @@ LIGHT truncation leaves image data intact; STUB removes attachments and REMOVE
 drops the whole message. Context token estimates count text only. Compaction and
 memory snapshots of older logs use image URLs or numbered embedded-image markers
 as text, without sending images to summary models. Snapshot source metadata
-identifies the conversation and message sequence.
+identifies the conversation and message sequence. Snapshots of new logs render
+the saved image names as text references.
 Memory consolidation handles those references as ordinary text; summaries can
 discard them under their usual relevance rules.
 

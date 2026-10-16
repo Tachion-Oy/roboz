@@ -111,6 +111,10 @@ def _normalize_temporal_messages(
                         "content": (
                             f"[sequence={row.sequence} created_at={row.created_at}]\n"
                             f"{message.content}"
+                            + "".join(
+                                f"\n[image {index}: {name}]"
+                                for index, name in enumerate(row.image_names, start=1)
+                            )
                         )
                     }
                 )

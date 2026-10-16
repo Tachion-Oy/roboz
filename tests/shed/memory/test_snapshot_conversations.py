@@ -106,6 +106,37 @@ def _ctx(
     )
 
 
+def test_new_logs_preserve_image_only_upload_names_in_snapshots(tmp_path):
+    conversation_root = tmp_path / "runs"
+    image = Image.from_bytes(b"image bytes", media_type="image/png", name="budget-chart.png")
+    row = message_to_logged_row(
+        Message(role=Role.USER, content="", images=[image]),
+        message_id="m-1", sequence=1, created_at=datetime.now(timezone.utc),
+    )
+    hidden = row.model_copy(update={
+        "sequence": 2, "truncation": NO_MESSAGE, "image_names": ["hidden.png"],
+    })
+    path = _write_run(conversation_root, rows=[row, hidden])
+    assert json.loads(path.read_text())["messages"][0]["image_names"] == ["budget-chart.png"]
+    assert image.url not in path.read_text()
+    events = []
+    ctx = _ctx(
+        conversation_root=conversation_root, snapshot_root=tmp_path / "snapshots",
+        endpoint=MockLLMEndpoint([{"value": "The budget chart was attached."}]),
+        pipe=EventPipe(event_sinks=(events.append,)),
+    )
+
+    result = snapshot_conversations(ctx)(Empty(), [])
+
+    assert "created=1" in result.value
+    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
+    source = next(message.content for message in prompts if "## Source conversation" in message.content)
+    assert "sequence=1" in source
+    assert "[image 1: budget-chart.png]" in source
+    assert "hidden.png" not in source
+    assert all(not message.images and image.url not in message.content for message in prompts)
+
+
 def test_legacy_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
     conversation_root = tmp_path / "runs"
     snapshot_root = tmp_path / "snapshots"
