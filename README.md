@@ -127,7 +127,7 @@ The traditional agentic approach is then a special case of a RoboZ agent if one 
 Hosts bind a `roboz.runtime.UserIO` adapter with `bind_api_user_io`. Its
 `request_input(message, timeout=None, *, accepts_images=False)` method returns
 `Str`, `StrImage`, or `None` for a timeout. The keyword describes what the prompt
-can consume; hosts must also check the receiving model's image capability.
+can consume; RoboZ checks model compatibility when making the LLM call.
 Ordinary, initial, interruption, and retry prompts pass `accepts_images=True`.
 Permission prompts use the text-only default. Custom conversational tools may
 opt in through `interact_with_user(..., accepts_images=True)`, independent of

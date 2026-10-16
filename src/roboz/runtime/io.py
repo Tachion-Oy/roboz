@@ -34,7 +34,7 @@ class UserIO(Protocol):
         """Return a typed reply, or None when *timeout* seconds elapse.
 
         ``accepts_images`` declares whether this prompt can consume images.
-        Hosts must also check the receiving model before accepting an image.
+        RoboZ checks model compatibility when making the LLM call.
         Permission prompts and other text-only interactions leave it false.
         """
         ...
