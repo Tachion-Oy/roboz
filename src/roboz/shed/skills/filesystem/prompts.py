@@ -34,6 +34,10 @@ its read permissions and any required approval. Failed or denied files are
 reported, and the batch continues. The final report maps successful paths to
 numbered image attachments in request order.
 
+If the selected model cannot read images, explain that an image-capable model
+is needed and continue with text. Do not retry the same image request until the
+model changes, and do not infer the contents of omitted images from filenames.
+
 The optional `detail` setting applies to the whole batch: `auto`, `low`, or
 `high`. Omit it for the model default. Images retain their original bytes;
 provider format and size limits still apply.

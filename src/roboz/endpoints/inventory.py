@@ -24,7 +24,7 @@ CATALOGS = {
             ),
             models={
                 "z_ai__glm_5_3": ChatModelSpec("z-ai/glm-5.3", 1_310_720),
-                "z_ai__glm_5_3_flash": ChatModelSpec("z-ai/glm-5.3-flash", 1_310_720),
+                "z_ai__glm_5_3_flash": ChatModelSpec("z-ai/glm-5.3-flash", 1_310_720, accepts_images=True),
             },
         ),
         Catalog(
