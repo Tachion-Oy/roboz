@@ -97,6 +97,11 @@ _TEMPERATURE_FIELD: Final[str] = "temperature"
 _LANGUAGE_FIELD: Final[str] = "language"
 _PROMPT_FIELD: Final[str] = "prompt"
 _MILLISECONDS_PER_SECOND: Final[int] = 1_000
+_MAX_REQUEST_IMAGES: Final[int] = 8
+_IMAGE_WINDOW_OMISSION_REASON: Final[str] = (
+    f"Older images omitted; only the latest {_MAX_REQUEST_IMAGES} "
+    "images are included. Omitted images:"
+)
 _IMAGE_NAME_MAX_CHARS: Final[int] = 256
 _IMAGE_OMISSION_MAX_CHARS: Final[int] = 2_048
 _TOKEN_SUMMARY_FIELDS: Final[tuple[tuple[str, str], ...]] = (
@@ -158,9 +163,9 @@ class _TranscriptionRequest(TypedDict):
     prompt: NotRequired[str]
 
 
-def _image_omission_note(images: list[dict]) -> str:
+def _image_omission_note(images: list[dict], *, reason: str) -> str:
     """Bound synthesized references, including escaping and the remaining count."""
-    prefix = "\n[Images omitted because this model cannot read images: "
+    prefix = f"\n[{reason} "
     suffix = ". Use the conversation text; do not infer image contents.]"
     # Reserve room for a remainder count even when the next name does not fit.
     remaining_chars = (
@@ -183,12 +188,27 @@ def _image_omission_note(images: list[dict]) -> str:
     return prefix + ", ".join(references) + suffix
 
 
+def _omit_older_images(
+    payload: dict, images: list[dict], images_to_omit: int
+) -> tuple[list[dict], int]:
+    """Add references to an outgoing payload and return images and budget left."""
+    omitted_count = min(len(images), images_to_omit)
+    payload["content"] += _image_omission_note(
+        images[:omitted_count], reason=_IMAGE_WINDOW_OMISSION_REASON
+    )
+    return images[omitted_count:], images_to_omit - omitted_count
+
+
 def _encode_image_messages(
     records: list[dict], *, accepts_images: bool
 ) -> tuple[list[dict], bool]:
-    """Encode scrubbed attachments for the destination without changing records."""
+    """Encode records without mutation and report capability-based omissions."""
     messages = []
-    omitted = False
+    unsupported_images_omitted = False
+    images_to_omit = (
+        max(0, sum(len(record.get("images", [])) for record in records) - _MAX_REQUEST_IMAGES)
+        if accepts_images else 0
+    )
     for record in records:
         payload = record.copy()
         images = payload.pop("images", [])
@@ -197,12 +217,16 @@ def _encode_image_messages(
                 "Message text must be a string; use an empty string for image-only messages."
             )
         if images and not accepts_images:
-            payload["content"] += _image_omission_note(images)
+            payload["content"] += _image_omission_note(
+                images, reason="Images omitted because this model cannot read images:"
+            )
             images = []
-            omitted = True
+            unsupported_images_omitted = True
+        if images and payload.get("role") != Role.USER:
+            raise LLMImageInputError("Image inputs require a user message")
+        if images and images_to_omit:
+            images, images_to_omit = _omit_older_images(payload, images, images_to_omit)
         if images:
-            if payload.get("role") != Role.USER:
-                raise LLMImageInputError("Image inputs require a user message")
             payload["content"] = [
                 {"type": "text", "text": payload["content"]},
                 *(
@@ -216,7 +240,7 @@ def _encode_image_messages(
                 ),
             ]
         messages.append(payload)
-    return messages, omitted
+    return messages, unsupported_images_omitted
 
 
 class _LLMCallRunner:
@@ -378,14 +402,14 @@ class _LLMCallRunner:
             message.model_copy(deep=True) for message in self._messages
         ]
         records = self._messages_scrubber(mapper(outgoing))
-        messages, omitted = _encode_image_messages(
+        messages, unsupported_images_omitted = _encode_image_messages(
             records, accepts_images=self._endpoint.accepts_images
         )
         if self._pipe is not None and self._notify_image_omission:
             self._pipe.report_image_omission(
                 endpoint=self._endpoint.api_name,
                 model=self._endpoint.model_name,
-                omitted=omitted,
+                omitted=unsupported_images_omitted,
             )
         return messages
 
@@ -688,13 +712,17 @@ def call_llm_api(
     the optional generic ``images`` field. Retain that field to send attachments;
     omit it to remove them. Records may be filtered or reordered. Image content
     parts are constructed from each returned record only, after scrubbing.
-    The mapper and scrubber receive detached messages. A destination without
-    image support receives text and filename references instead of attachments;
-    original history remains available for later requests to a vision model.
+    The mapper and scrubber receive detached messages. Vision requests include
+    only the latest eight images in the resulting message and attachment order.
+    Older attachments become bounded filename references while their message
+    text is retained. A destination without image support receives text and
+    filename references instead of any attachments. Neither the returned records
+    nor the original history is mutated.
     Set ``notify_image_omission=True`` with ``pipe`` for the agent's main
-    conversation requests. This reports changes in omission as information.
+    conversation requests. This reports capability-based omissions as information;
+    the eight-image limit does not trigger a capability notice.
     Helper calls leave that conversation's notice state untouched by default;
-    their images are still filtered according to their destination's capabilities.
+    the same capability filtering and eight-image limit apply to their requests.
     """
     return _LLMCallRunner(
         endpoint,

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.14.0rc1 - 2026-10-17
+
+- Include only the latest eight images in each vision-model request, selected
+  after message mapping and scrubbing. Replace older attachments with bounded
+  filename references while preserving message text and the original history.
+
 ## 0.14.0a1 - 2026-10-17
 
 - Treat unsupported image input as an informational outcome: Read Images

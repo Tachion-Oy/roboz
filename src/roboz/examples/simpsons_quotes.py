@@ -109,4 +109,5 @@ QUOTES: Final[list[str]] = [
     "Worst day of your life so far.",
     "I was elected to lead, not to read.",
     "I was saying Boo-urns.",
+    "I sleep in a big bed with my wife.",
 ]
