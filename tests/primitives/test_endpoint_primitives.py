@@ -1,6 +1,7 @@
 """Concrete endpoint contexts and calls without agents, catalogs, or credentials."""
 
 import logging
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -142,6 +143,100 @@ def test_image_parts_reach_the_client_without_mutating_messages(stream, text):
     assert message.images == images
 
 
+@pytest.mark.parametrize("image_count, retained_counts", [
+    (7, [2, 3, 2]),
+    (8, [2, 3, 3]),
+    (12, [0, 1, 7]),
+    (16, [0, 0, 8]),
+])
+def test_requests_keep_only_the_latest_eight_images(image_count, retained_counts):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+    )
+    images = [Image(url=f"https://example.com/chart-{i}.png") for i in range(image_count)]
+    history = [
+        Message(role=Role.USER, content="", images=images[:2]),
+        Message(role=Role.ASSISTANT, content="Text between batches"),
+        Message(role=Role.USER, content="Second batch", images=images[2:5]),
+        Message(role=Role.USER, content="", images=images[5:]),
+    ]
+    original = deepcopy(history)
+
+    call_llm_api(endpoint, history)
+
+    sent = client.chat_requests[0]["messages"]
+    assert [message["role"] for message in sent] == [message.role for message in history]
+    assert sent[1] == {"role": "assistant", "content": "Text between batches"}
+    sent_urls = []
+    for index, retained in zip([0, 2, 3], retained_counts, strict=True):
+        content = sent[index]["content"]
+        if retained:
+            assert len(content) == retained + 1
+            sent_urls.extend(part["image_url"]["url"] for part in content[1:])
+            text = content[0]["text"]
+        else:
+            assert isinstance(content, str)
+            text = content
+        message = history[index]
+        omitted = message.images[:len(message.images) - retained]
+        if omitted:
+            assert text.startswith(message.content + "\n")
+            note = text[len(message.content):]
+            assert "Older images omitted; only the latest 8 images are included." in note
+            assert "do not infer image contents" in note
+            assert "cannot read images" not in note
+            assert len(note) <= 2_048
+            for image in omitted:
+                assert f'"{image.filename}"' in note
+        else:
+            assert text == message.content
+    assert sent_urls == [image.url for image in images[-8:]]
+    assert history == original
+
+
+def test_latest_images_follow_mapper_and_scrubber_output_without_mutation():
+    client = ScriptedClient()
+    images = [Image(url=f"https://example.com/chart-{i}.png") for i in range(12)]
+    history = [
+        Message(role=Role.USER, content=f"Batch {i}", images=images[i * 3:(i + 1) * 3])
+        for i in range(4)
+    ]
+    original = deepcopy(history)
+    returned = []
+    snapshot = []
+    added = Image(url="https://example.com/added.png")
+
+    def mapper(messages):
+        return messages[2::-1]
+
+    def scrub(messages):
+        records = messages_scrubber(messages)
+        records[0]["images"].pop(0)
+        records[0]["images"].append(added.model_dump(mode="json", exclude_none=True))
+        returned.extend(records)
+        snapshot.extend(deepcopy(records))
+        return records
+
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="vision", accepts_images=True,
+        message_mapper=mapper,
+    )
+    call_llm_api(endpoint, history, messages_scrubber=scrub)
+
+    sent = client.chat_requests[0]["messages"]
+    assert len(sent) == 3
+    assert [
+        part["image_url"]["url"] for message in sent for part in message["content"][1:]
+    ] == [images[8].url, added.url, *[images[i].url for i in [3, 4, 5, 0, 1, 2]]]
+    assert sent[0]["content"][0]["text"].startswith("Batch 2\n")
+    assert '"chart-7.png"' in sent[0]["content"][0]["text"]
+    assert sent[1]["content"][0]["text"] == "Batch 1"
+    assert sent[2]["content"][0]["text"] == "Batch 0"
+    assert returned == snapshot
+    assert history == original
+
+
 @pytest.mark.parametrize("transform", ["drop_system", "drop_image", "reorder", "redact"])
 def test_custom_scrubbers_keep_images_with_their_own_records(transform):
     client = ScriptedClient()
@@ -229,28 +324,43 @@ def test_selected_model_omits_images_without_completion_retries():
     assert len(message.images) == 1
 
 
+@pytest.mark.parametrize("accepts_images", [False, True])
 @pytest.mark.parametrize("names", [
     ["x" * 120_000 + ".png"],
     [f"chart-{index}.png" for index in range(5_000)],
     ["\x01" * 1_000 + str(index) + ".png" for index in range(100)],
 ])
-def test_omission_references_have_a_total_budget_without_changing_history(names):
+def test_omission_references_have_a_total_budget_without_changing_history(names, accepts_images):
     client = ScriptedClient()
-    endpoint = LLMEndpoint(client=client, api_name="test", model_name="text")
+    endpoint = LLMEndpoint(
+        client=client, api_name="test", model_name="chat", accepts_images=accepts_images,
+    )
+    retained = (
+        [Image(url=f"https://example.com/retained-{i}.png") for i in range(8)]
+        if accepts_images else []
+    )
     message = Message(
         role=Role.USER, content="t" * (LIGHT_MAX_CHARS + 10),
-        images=[Image(url="https://example.com/chart.png", name=name) for name in names],
+        images=[Image(url="https://example.com/chart.png", name=name) for name in names] + retained,
     )
     original = message.model_copy(deep=True)
 
     get_completion(endpoint=endpoint, messages=[message])
 
     sent = client.chat_requests[0]["messages"][0]["content"]
+    if accepts_images:
+        assert [part["image_url"]["url"] for part in sent[1:]] == [image.url for image in retained]
+        sent = sent[0]["text"]
     truncated_text = "t" * LIGHT_MAX_CHARS + "..."
     assert sent.startswith(truncated_text)
     note = sent[len(truncated_text):]
     assert len(note) <= 2_048
-    assert "Images omitted" in note and "do not infer image contents" in note
+    assert "do not infer image contents" in note
+    if accepts_images:
+        assert "Older images omitted; only the latest 8 images are included." in note
+        assert "cannot read images" not in note
+    else:
+        assert "Images omitted because this model cannot read images" in note
     if len(names) > 1:
         assert "more images" in note
     assert message == original
@@ -354,6 +464,7 @@ def test_model_switches_filter_and_restore_history_and_notify_only_on_change(cap
     images = [
         Image.from_bytes(b"private pixels", media_type="image/png", name="first.png"),
         Image(url="https://example.com/second.jpg?secret=private"),
+        *[Image(url=f"https://example.com/recent-{i}.png") for i in range(8)],
     ]
     history = [Message(role=Role.USER, content="Keep this text", images=images)]
     original = history[0].model_copy(deep=True)
@@ -362,10 +473,12 @@ def test_model_switches_filter_and_restore_history_and_notify_only_on_change(cap
         call_llm_api(endpoint, history, pipe=pipe, notify_image_omission=True)
         sent = client.chat_requests[-1]["messages"][0]["content"]
         if selected.accepts_images:
-            assert sent == [
-                {"type": "text", "text": original.content},
-                *[{"type": "image_url", "image_url": {"url": image.url}} for image in images],
+            assert sent[1:] == [
+                {"type": "image_url", "image_url": {"url": image.url}} for image in images[-8:]
             ]
+            assert sent[0]["text"].startswith(original.content + "\n")
+            assert "Older images omitted; only the latest 8 images are included." in sent[0]["text"]
+            assert "first.png" in sent[0]["text"] and "second.jpg" in sent[0]["text"]
         else:
             assert isinstance(sent, str) and sent.startswith(original.content)
             assert "first.png" in sent and "second.jpg" in sent
