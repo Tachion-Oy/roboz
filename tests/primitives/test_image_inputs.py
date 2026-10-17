@@ -9,6 +9,7 @@ import pytest
 from pydantic import Field, ValidationError
 
 from roboz import Agent, tool
+from roboz.agent.prompt_llm_tool import PromptLLMContext, prompt_llm
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
 from roboz.llm.endpoints import MockLLMEndpoint, role_to_user_mapper
 from roboz.models import AgentMode, Empty, Image, Invoke, Message, MessageKind, Role, Stop, Str, StrImage
@@ -21,6 +22,9 @@ from roboz.runtime.persistence import (
     message_to_logged_row,
 )
 from roboz.runtime.sinks import PersistenceSink
+from roboz.runtime import EventPipe
+from roboz.runtime.events import RuntimeEvent
+from roboz.shed.tools.compactification.summarize import summarize_conversation_segment
 from roboz.tools import stop
 
 
@@ -69,6 +73,59 @@ def test_text_and_image_results_have_explicit_contracts():
     schema = StrImage.model_json_schema()
     assert set(schema["required"]) == {"value", "images"}
     assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
+
+
+@pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])
+def test_text_model_completes_with_historical_images_without_recovery(mode):
+    image = Image.from_bytes(b"historical pixels", media_type="image/png", name="old.png")
+
+    @tool
+    def load_history(input: Empty, messages: list[Message]) -> StrImage:
+        """Restore an earlier image and its text."""
+        return StrImage(value="Keep my text", images=[image])
+
+    agent = Agent(
+        name="history", mode=mode, system_prompt="Continue with text.", tools=[stop],
+        default_tools=[load_history],
+        agent_endpoint=MockLLMEndpoint([
+            {"action": "stop", "rationale": "Done", "value": "text succeeded"},
+        ]),
+    )
+    result, messages = agent.invoke()
+    assert result.value == "text succeeded"
+    retained = next(message for message in messages if message.images)
+    assert json.loads(retained.content)["value"] == "Keep my text"
+    assert retained.images == [image]
+
+
+def test_summary_request_does_not_repeat_main_conversation_image_notice():
+    events = []
+    pipe = EventPipe(event_sinks=[events.append])
+    image = Image(url="https://example.com/chart.png")
+
+    history = [Message(role=Role.USER, content="The chart", images=[image])]
+    original = history[0].model_copy(deep=True)
+    prompt = prompt_llm(PromptLLMContext(
+        endpoint=MockLLMEndpoint([
+            {"action": "stop", "rationale": "Done", "value": "finished"},
+            {"action": "stop", "rationale": "Done", "value": "finished"},
+        ]),
+        active_tools=(stop,), pipe=pipe,
+    ))
+
+    prompt(Empty(), history)
+    summary = summarize_conversation_segment(
+        endpoint=MockLLMEndpoint([{"value": "The note summary"}]),
+        system_prompt="Summarize.", instructions="Keep the facts.",
+        conversation="An unrelated text note.", pipe=pipe,
+    )
+    prompt(Empty(), history)
+
+    assert summary == "The note summary"
+    assert history == [original]
+    notices = [event for event in events
+               if isinstance(event, RuntimeEvent) and event.kind == "images_omitted"]
+    assert len(notices) == 1
 
 
 def test_custom_result_can_declare_images_without_a_shared_image_base():

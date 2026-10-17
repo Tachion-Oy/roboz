@@ -438,13 +438,13 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
 
 
 @pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])
-def test_image_input_error_follows_existing_request_recovery(bind_user_io, mode):
+def test_malformed_image_input_follows_existing_request_recovery(bind_user_io, mode):
     io = bind_user_io([Str(value="retry")])
     agent = Agent(
         name="image_request_recovery", mode=mode,
         system_prompt="Complete the task.", tools=[stop],
         agent_endpoint=MockLLMEndpoint([
-            LLMImageInputError("Model does not accept images"),
+            LLMImageInputError("Image inputs require a user message"),
             {"action": "stop", "rationale": "done", "value": "ok"},
         ]),
     )
