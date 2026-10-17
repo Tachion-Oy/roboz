@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from roboz.models import Image, Message, Role, Str
 from roboz.models._schema import messages_scrubber
+from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.exceptions import LLMImageInputError
 from roboz import factory
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
@@ -226,6 +227,33 @@ def test_selected_model_omits_images_without_completion_retries():
     assert "Images omitted" in sent
     assert "image_url" not in client.chat_requests[0]["messages"][0]
     assert len(message.images) == 1
+
+
+@pytest.mark.parametrize("names", [
+    ["x" * 120_000 + ".png"],
+    [f"chart-{index}.png" for index in range(5_000)],
+    ["\x01" * 1_000 + str(index) + ".png" for index in range(100)],
+])
+def test_omission_references_have_a_total_budget_without_changing_history(names):
+    client = ScriptedClient()
+    endpoint = LLMEndpoint(client=client, api_name="test", model_name="text")
+    message = Message(
+        role=Role.USER, content="t" * (LIGHT_MAX_CHARS + 10),
+        images=[Image(url="https://example.com/chart.png", name=name) for name in names],
+    )
+    original = message.model_copy(deep=True)
+
+    get_completion(endpoint=endpoint, messages=[message])
+
+    sent = client.chat_requests[0]["messages"][0]["content"]
+    truncated_text = "t" * LIGHT_MAX_CHARS + "..."
+    assert sent.startswith(truncated_text)
+    note = sent[len(truncated_text):]
+    assert len(note) <= 2_048
+    assert "Images omitted" in note and "do not infer image contents" in note
+    if len(names) > 1:
+        assert "more images" in note
+    assert message == original
 
 
 @pytest.mark.parametrize("role", [Role.SYSTEM, Role.ASSISTANT])

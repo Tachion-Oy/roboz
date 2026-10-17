@@ -8,6 +8,8 @@
   original history for later vision requests and notify only when omission
   begins or the destination model changes, including nested agents.
 - Declare image support for the bundled GLM 5.3 Flash endpoint.
+- Bound generated image omission references so long filenames and large batches
+  cannot add unlimited text after context truncation.
 
 ## 0.13.2a1 - 2026-10-17
 

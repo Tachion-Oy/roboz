@@ -97,6 +97,8 @@ _TEMPERATURE_FIELD: Final[str] = "temperature"
 _LANGUAGE_FIELD: Final[str] = "language"
 _PROMPT_FIELD: Final[str] = "prompt"
 _MILLISECONDS_PER_SECOND: Final[int] = 1_000
+_IMAGE_NAME_MAX_CHARS: Final[int] = 256
+_IMAGE_OMISSION_MAX_CHARS: Final[int] = 2_048
 _TOKEN_SUMMARY_FIELDS: Final[tuple[tuple[str, str], ...]] = (
     ("tokens_in", _TOKEN_INPUT_KEY),
     ("tokens_out", _TOKEN_OUTPUT_KEY),
@@ -156,6 +158,31 @@ class _TranscriptionRequest(TypedDict):
     prompt: NotRequired[str]
 
 
+def _image_omission_note(images: list[dict]) -> str:
+    """Bound synthesized references, including escaping and the remaining count."""
+    prefix = "\n[Images omitted because this model cannot read images: "
+    suffix = ". Use the conversation text; do not infer image contents.]"
+    # Reserve room for a remainder count even when the next name does not fit.
+    remaining_chars = (
+        _IMAGE_OMISSION_MAX_CHARS - len(prefix) - len(suffix)
+        - len(f", and {len(images)} more images")
+    )
+    references: list[str] = []
+    for index, image in enumerate(images, 1):
+        name = Image.model_validate(image).filename or f"image-{index}"
+        if len(name) > _IMAGE_NAME_MAX_CHARS:
+            name = name[:_IMAGE_NAME_MAX_CHARS - 1] + "…"
+        reference = json.dumps(name, ensure_ascii=False)
+        size = len(reference) + (2 if references else 0)
+        if size > remaining_chars:
+            break
+        references.append(reference)
+        remaining_chars -= size
+    if remaining := len(images) - len(references):
+        references.append(f"and {remaining} more images")
+    return prefix + ", ".join(references) + suffix
+
+
 def _encode_image_messages(
     records: list[dict], *, accepts_images: bool
 ) -> tuple[list[dict], bool]:
@@ -170,16 +197,7 @@ def _encode_image_messages(
                 "Message text must be a string; use an empty string for image-only messages."
             )
         if images and not accepts_images:
-            names = [
-                Image.model_validate(image).filename or f"image-{index}"
-                for index, image in enumerate(images, 1)
-            ]
-            payload["content"] = (
-                payload["content"]
-                + "\n[Images omitted because this model cannot read images: "
-                + json.dumps(names, ensure_ascii=False)
-                + ". Use the conversation text; do not infer image contents.]"
-            )
+            payload["content"] += _image_omission_note(images)
             images = []
             omitted = True
         if images:

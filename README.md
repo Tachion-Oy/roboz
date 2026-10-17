@@ -592,7 +592,11 @@ to check; their file permission checks still apply.
 
 Before each model request, RoboZ resolves its destination and builds a separate
 outgoing history. Text-only models receive the message text, image filenames,
-and a short explanation of omitted images. Original messages and source files
+and a short explanation of omitted images. Displayed names are abbreviated to
+256 characters and each generated explanation is capped at 2,048 characters,
+including escaped names and a count of any remaining images. This bounds the
+added text without changing the conversation's existing truncation rules.
+Original messages and source files
 are unchanged, so switching back to a vision model restores retained attachments
 within the live conversation. Normal history truncation still applies. This
 does not restore image bytes from logs, which intentionally store names only.
