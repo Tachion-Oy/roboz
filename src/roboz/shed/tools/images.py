@@ -144,9 +144,6 @@ def execute_read_image(
             data = source.value.read_bytes()
             if ctx.pipe is not None:
                 ctx.pipe.raise_if_cancelled()
-            unsupported = _unsupported_model()
-            if unsupported is not None:
-                return unsupported
             attachment = Image.from_bytes(
                 data, media_type=_media_type(data), name=source.value.name,
                 detail=request.detail,
@@ -159,6 +156,10 @@ def execute_read_image(
             outcome = f"Loaded as image {image_number}"
     if input.status == GuardStatus.ALLOWED and input.message:
         outcome += f"\n{input.message}"
+    # A model change during a failed read must also discard earlier batch images.
+    unsupported = _unsupported_model()
+    if unsupported is not None:
+        return unsupported
     request._results.append(
         StrImage(value=f"{len(request._results) + 1}. {path!r}: {outcome}", images=images)
     )
@@ -166,9 +167,6 @@ def execute_read_image(
         input.truncation = NO_MESSAGE
         return input
     attachments = [image for result in request._results for image in result.images]
-    unsupported = _unsupported_model()
-    if unsupported is not None:
-        return unsupported
     return StrImage(
         value=f"Read {len(attachments)} of {len(request.paths)} images.\n"
         + "\n".join(result.value for result in request._results),

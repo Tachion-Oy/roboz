@@ -266,7 +266,7 @@ def test_unsupported_reader_explains_and_next_text_turn_succeeds(tmp_path, monke
     assert not any(isinstance(e, RuntimeEvent) and e.kind in {"failed", "retrying"} for e in events)
 
 
-@pytest.mark.parametrize("switch_at", ["permission", "second_permission", "read"])
+@pytest.mark.parametrize("switch_at", ["permission", "second_permission", "read", "failed_read"])
 def test_reader_rechecks_model_after_waits_and_before_attaching(tmp_path, monkeypatch, switch_at):
     source = tmp_path / "image.gif"
     source.write_bytes(GIF)
@@ -295,6 +295,9 @@ def test_reader_rechecks_model_after_waits_and_before_attaching(tmp_path, monkey
         reads.append(path)
         if switch_at == "read":
             selected = text
+        if switch_at == "failed_read" and len(reads) == 2:
+            selected = text
+            raise OSError("Source became unreadable while the model changed")
         return read_bytes(path)
 
     monkeypatch.setattr(Path, "read_bytes", read)
@@ -310,7 +313,8 @@ def test_reader_rechecks_model_after_waits_and_before_attaching(tmp_path, monkey
     finally:
         reset_api_user_io(token)
     assert result.value == "ok"
-    assert len(reads) == (0 if switch_at == "permission" else 1)
+    expected_reads = {"permission": 0, "second_permission": 1, "read": 1, "failed_read": 2}
+    assert len(reads) == expected_reads[switch_at]
     assert all(not message.images for message in messages)
     assert any("cannot read images" in message.content for message in messages)
     assert read_bytes(source) == GIF
