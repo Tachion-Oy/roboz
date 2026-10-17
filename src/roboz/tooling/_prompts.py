@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Sequence
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from pydantic import ConfigDict, create_model
 
@@ -10,6 +10,9 @@ from roboz.llm.prompts import JSON_OUTPUT_SELF_CHECK, JSON_STRING_ESCAPING_RULES
 from roboz.models import BaseNames, Int, Message, Str
 from roboz.tooling.core import Tool
 from roboz.tooling.decorators import tool
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeForm
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +85,13 @@ def example_skill_tool(input: Str, messages: list[Message]) -> Str:
 
 
 def _get_tool_call_schema(tool: Tool) -> dict:
+    # The tool name is known at runtime, but Literal still creates a type form.
+    action_type = cast("TypeForm[str]", Literal[tool.name])
     ToolCallModel = create_model(
         tool.name,
         __base__=tool.InputModel,
         __config__=ConfigDict(extra="forbid"),
-        action=(Literal[tool.name], ...),
+        action=(action_type, ...),
         rationale=(str, ...),
     )
     return ToolCallModel.model_json_schema()
