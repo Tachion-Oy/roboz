@@ -156,6 +156,51 @@ class _TranscriptionRequest(TypedDict):
     prompt: NotRequired[str]
 
 
+def _encode_image_messages(
+    records: list[dict], *, accepts_images: bool
+) -> tuple[list[dict], bool]:
+    """Encode scrubbed attachments for the destination without changing records."""
+    messages = []
+    omitted = False
+    for record in records:
+        payload = record.copy()
+        images = payload.pop("images", [])
+        if images and not isinstance(payload.get("content"), str):
+            raise LLMImageInputError(
+                "Message text must be a string; use an empty string for image-only messages."
+            )
+        if images and not accepts_images:
+            names = [
+                Image.model_validate(image).filename or f"image-{index}"
+                for index, image in enumerate(images, 1)
+            ]
+            payload["content"] = (
+                payload["content"]
+                + "\n[Images omitted because this model cannot read images: "
+                + json.dumps(names, ensure_ascii=False)
+                + ". Use the conversation text; do not infer image contents.]"
+            )
+            images = []
+            omitted = True
+        if images:
+            if payload.get("role") != Role.USER:
+                raise LLMImageInputError("Image inputs require a user message")
+            payload["content"] = [
+                {"type": "text", "text": payload["content"]},
+                *(
+                    {
+                        "type": "image_url",
+                        "image_url": Image.model_validate(image).model_dump(
+                            include={"url", "detail"}, exclude_none=True
+                        ),
+                    }
+                    for image in images
+                ),
+            ]
+        messages.append(payload)
+    return messages, omitted
+
+
 class _LLMCallRunner:
     """Own the state and lifecycle of one synchronous chat call."""
 
@@ -313,41 +358,9 @@ class _LLMCallRunner:
             message.model_copy(deep=True) for message in self._messages
         ]
         records = self._messages_scrubber(mapper(outgoing))
-        messages = []
-        omitted = False
-        for record in records:
-            payload = record.copy()
-            images = payload.pop("images", [])
-            if images and not isinstance(payload.get("content"), str):
-                raise LLMImageInputError("Image message content must be text")
-            if images and not self._endpoint.accepts_images:
-                names = [
-                    Image.model_validate(image).filename or f"image-{index}"
-                    for index, image in enumerate(images, 1)
-                ]
-                payload["content"] = (
-                    payload["content"]
-                    + "\n[Images omitted because this model cannot read images: "
-                    + json.dumps(names, ensure_ascii=False)
-                    + ". Use the conversation text; do not infer image contents.]"
-                )
-                images = []
-                omitted = True
-            self._validate_image_message(payload.get("role"), bool(images))
-            if images:
-                payload["content"] = [
-                    {"type": "text", "text": payload["content"]},
-                    *(
-                        {
-                            "type": "image_url",
-                            "image_url": Image.model_validate(image).model_dump(
-                                include={"url", "detail"}, exclude_none=True
-                            ),
-                        }
-                        for image in images
-                    ),
-                ]
-            messages.append(payload)
+        messages, omitted = _encode_image_messages(
+            records, accepts_images=self._endpoint.accepts_images
+        )
         if self._pipe is not None:
             self._pipe.report_image_omission(
                 endpoint=self._endpoint.api_name,
@@ -355,12 +368,6 @@ class _LLMCallRunner:
                 omitted=omitted,
             )
         return messages
-
-    def _validate_image_message(self, role: str | None, has_images: bool) -> None:
-        if not has_images:
-            return
-        if role != Role.USER:
-            raise LLMImageInputError("Image inputs require a user message")
 
     def _call_mock_llm_api(self) -> _ChatCompletionResult:
         assert isinstance(self._endpoint, MockLLMEndpoint)

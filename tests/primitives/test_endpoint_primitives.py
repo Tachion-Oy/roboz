@@ -115,7 +115,8 @@ def test_concrete_endpoint_drives_factory_execution_and_inspection():
 
 
 @pytest.mark.parametrize("stream", [False, True])
-def test_image_parts_reach_the_client_without_mutating_messages(stream):
+@pytest.mark.parametrize("text", ["", "Compare"])
+def test_image_parts_reach_the_client_without_mutating_messages(stream, text):
     client = ScriptedClient()
     endpoint = LLMEndpoint(
         client=client, api_name="test", model_name="vision", accepts_images=True,
@@ -124,19 +125,19 @@ def test_image_parts_reach_the_client_without_mutating_messages(stream):
         Image(url="https://example.com/chart.png"),
         Image.from_bytes(b"bytes", media_type="image/jpeg", name="photo.jpg", detail="low"),
     ]
-    message = Message(role=Role.USER, content="Compare", images=images)
+    message = Message(role=Role.USER, content=text, images=images)
     call_llm_api(endpoint, [message], on_delta=(lambda _: None) if stream else None)
 
     assert client.chat_requests[0].get("stream", False) is stream
     assert client.chat_requests[0]["messages"] == [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "Compare"},
+            {"type": "text", "text": text},
             {"type": "image_url", "image_url": {"url": images[0].url}},
             {"type": "image_url", "image_url": {"url": images[1].url, "detail": "low"}},
         ],
     }]
-    assert message.content == "Compare"
+    assert message.content == text
     assert message.images == images
 
 
