@@ -10,9 +10,11 @@ from pydantic import ValidationError
 
 from roboz import Agent
 from roboz.exceptions import ExternalCallCancelledError
-from roboz.llm import MockLLMEndpoint
+from roboz.agent import run_nested_agent
+from roboz.llm import LLMEndpointRoute, MockLLMEndpoint
 from roboz.models import Image, Role, Str
-from roboz.runtime import EventPipe
+from roboz.runtime import EventPipe, bind_api_user_io, reset_api_user_io
+from roboz.runtime.events import RuntimeEvent
 from roboz.runtime.persistence import ConversationRun
 from roboz.runtime.sinks import PersistenceSink
 from roboz.shed.models import ActionVerdict, Operation, PermissionRule
@@ -208,3 +210,107 @@ def test_input_schema_exposes_only_paths_and_shared_detail():
     for invalid in ({"paths": []}, {"paths": ["a"], "detail": "original"}, {"paths": [1]}):
         with pytest.raises(ValidationError):
             ReadImagesInput.model_validate(invalid)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_unsupported_reader_explains_and_next_text_turn_succeeds(tmp_path, monkeypatch, nested):
+    events = []
+    pipe = EventPipe(event_sinks=[events.append])
+    endpoint = MockLLMEndpoint([
+        {"action": "read_images", "rationale": "Inspect", "paths": ["missing.gif"]},
+        {"action": "prompt_user", "rationale": "Continue", "value": "Continue with text?"},
+        {"action": "stop", "rationale": "Done", "value": "text succeeded"},
+    ])
+    prompts = []
+
+    class UserIO:
+        def request_input(self, message, timeout=None, *, accepts_images=False):
+            prompts.append(message)
+            return Str(value="Keep chatting")
+
+        def notify(self, message):
+            raise AssertionError(message)
+
+    def unexpected_read(path):
+        raise AssertionError("Unsupported image request read a file")
+
+    monkeypatch.setattr(Path, "read_bytes", unexpected_read)
+    child = Agent(
+        name="reader", system_prompt="Inspect and continue.", event_pipe=pipe,
+        agent_endpoint=endpoint,
+        tools=[*get_read_images_tool(base=tmp_path, default_verdict=ActionVerdict.allow, pipe=EventPipe(),
+                                     ask_rules=[PermissionRule("**", {Operation.READ})]), stop],
+    )
+    root = Agent(
+        name="parent", system_prompt="Delegate.",
+        agent_endpoint=MockLLMEndpoint([
+            {"action": "child", "rationale": "Delegate"},
+            {"action": "stop", "rationale": "Done", "value": "done"},
+        ], accepts_images=True),
+        tools=[run_nested_agent(child).copy(name="child"), stop],
+    ) if nested else child
+    token = bind_api_user_io(UserIO())
+    try:
+        root.invoke()
+    finally:
+        reset_api_user_io(token)
+    result = next(json.loads(m.content) for m in child.messages
+                  if m.role == Role.USER and json.loads(m.content).get("caller") == "read_images")
+    assert result["value"] == (
+        f"The selected model, {endpoint.model_name}, cannot read images. "
+        "Choose an image-capable model to inspect them. You can continue chatting with text."
+    )
+    assert prompts == ["Continue with text?"]
+    assert all(not message.images for message in child.messages)
+    assert "Keep chatting" in str([m.content for m in child.messages])
+    assert not any(isinstance(e, RuntimeEvent) and e.kind in {"failed", "retrying"} for e in events)
+
+
+@pytest.mark.parametrize("switch_at", ["permission", "second_permission", "read"])
+def test_reader_rechecks_model_after_waits_and_before_attaching(tmp_path, monkeypatch, switch_at):
+    source = tmp_path / "image.gif"
+    source.write_bytes(GIF)
+    vision = MockLLMEndpoint([
+        {"action": "read_images", "rationale": "Inspect", "paths": ["image.gif", "image.gif"]},
+    ], accepts_images=True)
+    text = MockLLMEndpoint([{"action": "stop", "rationale": "Continue", "value": "ok"}])
+    selected = vision
+    reads = []
+    prompts = []
+    read_bytes = Path.read_bytes
+
+    class UserIO:
+        def request_input(self, message, timeout=None, *, accepts_images=False):
+            nonlocal selected
+            prompts.append(message)
+            if switch_at == "permission" or (switch_at == "second_permission" and len(prompts) == 2):
+                selected = text
+            return Str(value="yes")
+
+        def notify(self, message):
+            raise AssertionError(message)
+
+    def read(path):
+        nonlocal selected
+        reads.append(path)
+        if switch_at == "read":
+            selected = text
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    agent = Agent(
+        name="reader", system_prompt="Inspect.",
+        agent_endpoint=LLMEndpointRoute(lambda: selected),
+        tools=[*get_read_images_tool(base=tmp_path, default_verdict=ActionVerdict.allow, pipe=EventPipe(),
+                                     ask_rules=[PermissionRule("**", {Operation.READ})]), stop],
+    )
+    token = bind_api_user_io(UserIO())
+    try:
+        result, messages = agent.invoke()
+    finally:
+        reset_api_user_io(token)
+    assert result.value == "ok"
+    assert len(reads) == (0 if switch_at == "permission" else 1)
+    assert all(not message.images for message in messages)
+    assert any("cannot read images" in message.content for message in messages)
+    assert read_bytes(source) == GIF

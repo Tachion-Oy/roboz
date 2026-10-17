@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Treat unsupported image input as an informational outcome: Read Images
+  explains the selected model's limits without reading files, and model requests
+  omit unsupported attachments while retaining text and image names. Keep the
+  original history for later vision requests and notify only when omission
+  begins or the destination model changes, including nested agents.
+- Declare image support for the bundled GLM 5.3 Flash endpoint.
+
 ## 0.13.2a1 - 2026-10-17
 
 - Handle image input errors through the existing request-recovery flow. Hosts

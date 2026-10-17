@@ -1,6 +1,7 @@
 # ruff: noqa: F403, F405
 """Cancellable synchronous OpenAI-compatible chat and transcription calls."""
 
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator
@@ -307,15 +308,33 @@ class _LLMCallRunner:
             if isinstance(self._endpoint, MockLLMEndpoint)
             else self._endpoint.message_mapper
         )
-        records = self._messages_scrubber(mapper(self._messages))
+        # Custom mappers/scrubbers receive a detached outgoing representation.
+        outgoing = [
+            message.model_copy(deep=True) for message in self._messages
+        ]
+        records = self._messages_scrubber(mapper(outgoing))
         messages = []
+        omitted = False
         for record in records:
             payload = record.copy()
             images = payload.pop("images", [])
+            if images and not isinstance(payload.get("content"), str):
+                raise LLMImageInputError("Image message content must be text")
+            if images and not self._endpoint.accepts_images:
+                names = [
+                    Image.model_validate(image).filename or f"image-{index}"
+                    for index, image in enumerate(images, 1)
+                ]
+                payload["content"] = (
+                    payload["content"]
+                    + "\n[Images omitted because this model cannot read images: "
+                    + json.dumps(names, ensure_ascii=False)
+                    + ". Use the conversation text; do not infer image contents.]"
+                )
+                images = []
+                omitted = True
             self._validate_image_message(payload.get("role"), bool(images))
             if images:
-                if not isinstance(payload.get("content"), str):
-                    raise LLMImageInputError("Image message content must be text")
                 payload["content"] = [
                     {"type": "text", "text": payload["content"]},
                     *(
@@ -329,16 +348,17 @@ class _LLMCallRunner:
                     ),
                 ]
             messages.append(payload)
+        if self._pipe is not None:
+            self._pipe.report_image_omission(
+                endpoint=self._endpoint.api_name,
+                model=self._endpoint.model_name,
+                omitted=omitted,
+            )
         return messages
 
     def _validate_image_message(self, role: str | None, has_images: bool) -> None:
         if not has_images:
             return
-        if not self._endpoint.accepts_images:
-            raise LLMImageInputError(
-                f"Model {self._endpoint.api_name}/{self._endpoint.model_name} "
-                "does not accept images"
-            )
         if role != Role.USER:
             raise LLMImageInputError("Image inputs require a user message")
 
@@ -639,6 +659,10 @@ def call_llm_api(
     the optional generic ``images`` field. Retain that field to send attachments;
     omit it to remove them. Records may be filtered or reordered. Image content
     parts are constructed from each returned record only, after scrubbing.
+    The mapper and scrubber receive detached messages. A destination without
+    image support receives text and filename references instead of attachments;
+    original history remains available for later requests to a vision model.
+    When supplied, ``pipe`` reports changes in image omission as information.
     """
     return _LLMCallRunner(
         endpoint,

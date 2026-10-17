@@ -71,6 +71,29 @@ def test_text_and_image_results_have_explicit_contracts():
     assert schema["properties"]["images"]["items"] == {"$ref": "#/$defs/Image"}
 
 
+@pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])
+def test_text_model_completes_with_historical_images_without_recovery(mode):
+    image = Image.from_bytes(b"historical pixels", media_type="image/png", name="old.png")
+
+    @tool
+    def load_history(input: Empty, messages: list[Message]) -> StrImage:
+        """Restore an earlier image and its text."""
+        return StrImage(value="Keep my text", images=[image])
+
+    agent = Agent(
+        name="history", mode=mode, system_prompt="Continue with text.", tools=[stop],
+        default_tools=[load_history],
+        agent_endpoint=MockLLMEndpoint([
+            {"action": "stop", "rationale": "Done", "value": "text succeeded"},
+        ]),
+    )
+    result, messages = agent.invoke()
+    assert result.value == "text succeeded"
+    retained = next(message for message in messages if message.images)
+    assert json.loads(retained.content)["value"] == "Keep my text"
+    assert retained.images == [image]
+
+
 def test_custom_result_can_declare_images_without_a_shared_image_base():
     class ChartResult(Empty):
         caption: str

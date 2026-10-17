@@ -3,7 +3,35 @@
 from __future__ import annotations
 
 import keyword
+from collections.abc import Callable
 from contextvars import ContextVar, Token
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from roboz.llm.endpoints import EndpointLike
+
+
+_agent_endpoint: ContextVar[Callable[[], EndpointLike | None] | None] = ContextVar(
+    "_agent_endpoint", default=None
+)
+
+
+def bind_agent_endpoint(
+    getter: Callable[[], EndpointLike | None],
+) -> Token[Callable[[], EndpointLike | None] | None]:
+    """Bind the owning agent's live endpoint for tools in this execution context."""
+    return _agent_endpoint.set(getter)
+
+
+def reset_agent_endpoint(token: Token[Callable[[], EndpointLike | None] | None]) -> None:
+    """Restore the parent agent's endpoint after an invocation."""
+    _agent_endpoint.reset(token)
+
+
+def get_active_agent_endpoint() -> EndpointLike | None:
+    """Return the current owner's configured endpoint without materializing it."""
+    getter = _agent_endpoint.get()
+    return getter() if getter is not None else None
 
 
 _active_agent_stack: ContextVar[tuple[str, ...]] = ContextVar(

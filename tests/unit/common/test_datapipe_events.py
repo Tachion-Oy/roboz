@@ -18,6 +18,7 @@ from roboz.runtime.events import (
     ScriptOutputEvent,
 )
 from roboz.runtime.observability import (
+    CapabilityKind,
     FailureKind,
     LifecycleKind,
     RuntimeEventCategory,
@@ -239,6 +240,22 @@ def test_cli_sink_prints_script_output(monkeypatch) -> None:
     sink(ScriptOutputEvent(content="script line", sequence=1))
 
     console_print.assert_called_once_with("script line")
+
+
+def test_image_notice_is_printed_and_persisted_as_information(tmp_path, capsys):
+    persistence = PersistenceSink.for_path(tmp_path / "runs")
+    pipe = EventPipe(event_sinks=[CliSink.default(), persistence])
+    pipe.initialize(agent_name="reader")
+    for _ in range(2):
+        pipe.report_image_omission(endpoint="test", model="text", omitted=True)
+    pipe.finalize_run(status=RunStatus.COMPLETED)
+    assert capsys.readouterr().out.count("Images are omitted for text") == 1
+    assert persistence.conversations_location is not None
+    saved = json.loads(persistence.conversations_location.read_text())
+    assert saved["status"] == "completed"
+    notice = saved["runtime_events"][0]
+    assert notice["kind"] == CapabilityKind.IMAGES_OMITTED
+    assert notice["level"] == "info"
 
 
 def test_persistence_sink_for_path_creates_conversation_file(tmp_path) -> None:

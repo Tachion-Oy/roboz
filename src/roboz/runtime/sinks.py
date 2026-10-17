@@ -23,7 +23,7 @@ from roboz.runtime.events import (
     RuntimeEvent,
     ScriptOutputEvent,
 )
-from roboz.runtime.observability import RuntimeEventLevel
+from roboz.runtime.observability import CapabilityKind, RuntimeEventLevel
 from roboz.runtime.persistence import (
     ConversationRun,
     RunMetadata,
@@ -69,6 +69,8 @@ class CliSink:
                 Console().print(escape(content))
             case MessageDeltaEvent():
                 return
+            case RuntimeEvent(kind=CapabilityKind.IMAGES_OMITTED):
+                Console().print(f"[cyan]{escape(event.message)}[/cyan]")
             case RuntimeEvent(level=RuntimeEventLevel.ERROR):
                 Console().print(
                     f"[red][bold]Runtime:[/bold] {escape(event.message)}[/red]"
