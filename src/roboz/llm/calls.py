@@ -230,7 +230,7 @@ class _LLMCallRunner:
         messages_scrubber: Callable[[list[Message]], list[dict]],
         on_delta: Callable[[str], None] | None,
         pipe: EventPipe | None,
-        notify_image_omission: bool,
+        notify_image_omission: bool = False,
         timeout_s: float | None,
         max_attempts: int,
         retry_base_delay_s: float,
