@@ -584,6 +584,29 @@ uses the model default. File signatures identify the format. Original bytes are
 attached without decoding, resizing, conversion, or pixel validation; provider
 format and size limits still apply.
 
+Read Images checks the owning agent's current endpoint before reading files and
+again after permission prompts and before attaching the batch. If that endpoint
+cannot read images, the tool returns an explanation and the conversation can
+continue with text. Standalone tools outside an agent have no owning endpoint
+to check; their file permission checks still apply.
+
+Before each model request, RoboZ resolves its destination and builds a separate
+outgoing history. Text-only models receive the message text, image filenames,
+and a short explanation of omitted images. Displayed names are abbreviated to
+256 characters and each generated explanation is capped at 2,048 characters,
+including escaped names and a count of any remaining images. This bounds the
+added text without changing the conversation's existing truncation rules.
+Original messages and source files
+are unchanged, so switching back to a vision model restores retained attachments
+within the live conversation. Normal history truncation still applies. This
+does not restore image bytes from logs, which intentionally store names only.
+The agent emits an informational `images_omitted` event when omission begins or
+the affected model changes, rather than on every request. Summary and other
+helper calls do not reset or overwrite the main conversation's notice state.
+Custom main-conversation callers can opt into the same tracking with
+`call_llm_api(..., pipe=pipe, notify_image_omission=True)`; helper calls leave this
+option at its default `False` while retaining capability filtering.
+
 For a standalone tool composition:
 
 ```python
@@ -713,7 +736,7 @@ nested input models. Structured-output models use the same explicit declaration.
 Plain `Empty`, `Int`, and `Str` have no image field. A chained tool accepting `Str`
 receives the text from a `StrImage` result; a tool accepting `StrImage` receives
 the text and images. Images already recorded on a conversation message remain
-available to the LLM regardless of the next tool's input type.
+available to image-capable LLMs regardless of the next tool's input type.
 
 Model-generated tool calls retain their supplied arguments in the assistant
 message's JSON text, including explicitly supplied image arguments. Unset defaults

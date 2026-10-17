@@ -3,13 +3,18 @@ from typing import Any, assert_type
 
 from pydantic import BaseModel
 
-from roboz.llm import LLMTelemetryDict, MockLLMEndpoint, get_completion
+from roboz.llm import LLMTelemetryDict, MockLLMEndpoint, call_llm_api, get_completion
 from roboz.llm.completion import JSONDict
 from roboz.models import Message, Role, Str
+from roboz.runtime import EventPipe
 from roboz.tooling import Tool
 
 messages = [Message(role=Role.USER, content="hi")]
 endpoint = MockLLMEndpoint(["raw", {"value": "structured"}])
+assert_type(
+    call_llm_api(endpoint, messages, pipe=EventPipe(), notify_image_omission=True),
+    tuple[str, LLMTelemetryDict],
+)
 
 
 def caller(messages: list[Message]) -> tuple[str, LLMTelemetryDict]:
