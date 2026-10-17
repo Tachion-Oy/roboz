@@ -5,7 +5,9 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, PrivateAttr
 
-from roboz.models import Empty, Image, Location, Message, StrImage
+from roboz.agent._execution_context import get_active_agent_endpoint
+from roboz.llm import resolve_endpoint
+from roboz.models import Empty, Image, Location, Message, Str, StrImage
 from roboz.models.truncation import NO_MESSAGE
 from roboz.runtime import EventPipe
 from roboz.shed.identifiers import READ_IMAGES_TOOL_NAME
@@ -44,11 +46,28 @@ class ReadImagesInput(Empty):
     _failure: str | None = PrivateAttr(default=None)
 
 
+def _unsupported_model() -> Str | None:
+    endpoint = get_active_agent_endpoint()
+    if endpoint is None:
+        return None
+    selected = resolve_endpoint(endpoint)
+    if selected.accepts_images:
+        return None
+    return Str(value=(
+        f"The selected model, {selected.model_name}, cannot read images. "
+        "Choose an image-capable model to inspect them. "
+        "You can continue chatting with text."
+    ))
+
+
 def _prepare(
     request: ReadImagesInput, ctx: GuardContext
-) -> ResolvedFileCommand[ReadImagesInput, Location]:
+) -> ResolvedFileCommand[ReadImagesInput, Location] | Str:
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
+    unsupported = _unsupported_model()
+    if unsupported is not None:
+        return unsupported
     assert ctx.base is not None
     request._failure = None
     items: list[GuardFileSingle[Location]] = []
@@ -73,12 +92,14 @@ def _prepare(
 @factory
 def read_images(
     input: ReadImagesInput, messages: list[Message], ctx: GuardContext
-) -> ResolvedFileCommand[ReadImagesInput, Location]:
+) -> ResolvedFileCommand[ReadImagesInput, Location] | Str:
     """Load local images for visual inspection in one batch.
 
     Supports PNG, JPEG, WebP, and GIF. Each file needs read permission. Failed
     files are reported while later files continue; successful attachments retain
     request order. Use literal file paths, without globs or symlinks.
+    If the selected model cannot read images, choose an image-capable model
+    or continue with text; repeating the same request will not enable vision.
     """
     return _prepare(input, ctx)
 
@@ -101,10 +122,13 @@ def _media_type(data: bytes) -> str:
 @factory
 def execute_read_image(
     input: GuardFilesResult, messages: list[Message], ctx: GuardContext
-) -> GuardFilesResult | StrImage:
+) -> GuardFilesResult | StrImage | Str:
     """Read one permitted image and retain its outcome before continuing."""
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
+    unsupported = _unsupported_model()
+    if unsupported is not None:
+        return unsupported
     request = input.original_input
     assert isinstance(request, ReadImagesInput)
     path = request.paths[len(request._results)]
@@ -132,6 +156,10 @@ def execute_read_image(
             outcome = f"Loaded as image {image_number}"
     if input.status == GuardStatus.ALLOWED and input.message:
         outcome += f"\n{input.message}"
+    # A model change during a failed read must also discard earlier batch images.
+    unsupported = _unsupported_model()
+    if unsupported is not None:
+        return unsupported
     request._results.append(
         StrImage(value=f"{len(request._results) + 1}. {path!r}: {outcome}", images=images)
     )
@@ -149,7 +177,7 @@ def execute_read_image(
 @factory
 def continue_read_images(
     input: GuardFilesResult, messages: list[Message], ctx: GuardContext
-) -> ResolvedFileCommand[ReadImagesInput, Location]:
+) -> ResolvedFileCommand[ReadImagesInput, Location] | Str:
     """Resolve the next image for an independent read permission check."""
     request = input.original_input
     assert isinstance(request, ReadImagesInput)

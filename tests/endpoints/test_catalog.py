@@ -80,6 +80,11 @@ def test_catalogue_forwards_image_capability_without_materializing_client():
     assert catalog.configured().vision.accepts_images is True
 
 
+def test_glm_flash_declares_image_support():
+    assert openrouter.z_ai__glm_5_3_flash.accepts_images is True
+    assert openrouter.configured().z_ai__glm_5_3_flash.accepts_images is True
+
+
 @pytest.mark.parametrize(
     "provider_class,attribute",
     [

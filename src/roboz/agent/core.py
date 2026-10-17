@@ -10,9 +10,11 @@ from rich.console import Console
 from rich.table import Table
 
 from roboz.agent._execution_context import (
+    bind_agent_endpoint,
     get_active_agent_stack,
     pop_active_agent,
     push_active_agent,
+    reset_agent_endpoint,
     validate_agent_name,
 )
 from roboz.agent._notifications import (
@@ -662,6 +664,7 @@ class Agent(HasExternalDependencies):
     ) -> tuple[Stop, list[Message]]:
         """Run the agent synchronously until it stops or is cancelled."""
         stack_token = None
+        endpoint_token = bind_agent_endpoint(lambda: self.agent_endpoint)
         output_token = bind_output(
             get_bound_output(default=Output.CLI)
             if self.mode.allows_user_interaction
@@ -710,6 +713,7 @@ class Agent(HasExternalDependencies):
                 self.pipe.finalize_run(status=exit_status)
             finally:
                 reset_output(output_token)
+                reset_agent_endpoint(endpoint_token)
                 if stack_token is not None:
                     pop_active_agent(stack_token)
 

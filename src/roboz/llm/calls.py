@@ -1,6 +1,7 @@
 # ruff: noqa: F403, F405
 """Cancellable synchronous OpenAI-compatible chat and transcription calls."""
 
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator
@@ -96,6 +97,8 @@ _TEMPERATURE_FIELD: Final[str] = "temperature"
 _LANGUAGE_FIELD: Final[str] = "language"
 _PROMPT_FIELD: Final[str] = "prompt"
 _MILLISECONDS_PER_SECOND: Final[int] = 1_000
+_IMAGE_NAME_MAX_CHARS: Final[int] = 256
+_IMAGE_OMISSION_MAX_CHARS: Final[int] = 2_048
 _TOKEN_SUMMARY_FIELDS: Final[tuple[tuple[str, str], ...]] = (
     ("tokens_in", _TOKEN_INPUT_KEY),
     ("tokens_out", _TOKEN_OUTPUT_KEY),
@@ -155,6 +158,67 @@ class _TranscriptionRequest(TypedDict):
     prompt: NotRequired[str]
 
 
+def _image_omission_note(images: list[dict]) -> str:
+    """Bound synthesized references, including escaping and the remaining count."""
+    prefix = "\n[Images omitted because this model cannot read images: "
+    suffix = ". Use the conversation text; do not infer image contents.]"
+    # Reserve room for a remainder count even when the next name does not fit.
+    remaining_chars = (
+        _IMAGE_OMISSION_MAX_CHARS - len(prefix) - len(suffix)
+        - len(f", and {len(images)} more images")
+    )
+    references: list[str] = []
+    for index, image in enumerate(images, 1):
+        name = Image.model_validate(image).filename or f"image-{index}"
+        if len(name) > _IMAGE_NAME_MAX_CHARS:
+            name = name[:_IMAGE_NAME_MAX_CHARS - 1] + "…"
+        reference = json.dumps(name, ensure_ascii=False)
+        size = len(reference) + (2 if references else 0)
+        if size > remaining_chars:
+            break
+        references.append(reference)
+        remaining_chars -= size
+    if remaining := len(images) - len(references):
+        references.append(f"and {remaining} more images")
+    return prefix + ", ".join(references) + suffix
+
+
+def _encode_image_messages(
+    records: list[dict], *, accepts_images: bool
+) -> tuple[list[dict], bool]:
+    """Encode scrubbed attachments for the destination without changing records."""
+    messages = []
+    omitted = False
+    for record in records:
+        payload = record.copy()
+        images = payload.pop("images", [])
+        if images and not isinstance(payload.get("content"), str):
+            raise LLMImageInputError(
+                "Message text must be a string; use an empty string for image-only messages."
+            )
+        if images and not accepts_images:
+            payload["content"] += _image_omission_note(images)
+            images = []
+            omitted = True
+        if images:
+            if payload.get("role") != Role.USER:
+                raise LLMImageInputError("Image inputs require a user message")
+            payload["content"] = [
+                {"type": "text", "text": payload["content"]},
+                *(
+                    {
+                        "type": "image_url",
+                        "image_url": Image.model_validate(image).model_dump(
+                            include={"url", "detail"}, exclude_none=True
+                        ),
+                    }
+                    for image in images
+                ),
+            ]
+        messages.append(payload)
+    return messages, omitted
+
+
 class _LLMCallRunner:
     """Own the state and lifecycle of one synchronous chat call."""
 
@@ -166,6 +230,7 @@ class _LLMCallRunner:
         messages_scrubber: Callable[[list[Message]], list[dict]],
         on_delta: Callable[[str], None] | None,
         pipe: EventPipe | None,
+        notify_image_omission: bool = False,
         timeout_s: float | None,
         max_attempts: int,
         retry_base_delay_s: float,
@@ -180,6 +245,7 @@ class _LLMCallRunner:
         self._messages_scrubber = messages_scrubber
         self._on_delta = on_delta
         self._pipe = pipe
+        self._notify_image_omission = notify_image_omission
         self._timeout_s = timeout_s
         self._max_attempts = max_attempts
         self._retry_base_delay_s = retry_base_delay_s
@@ -307,40 +373,21 @@ class _LLMCallRunner:
             if isinstance(self._endpoint, MockLLMEndpoint)
             else self._endpoint.message_mapper
         )
-        records = self._messages_scrubber(mapper(self._messages))
-        messages = []
-        for record in records:
-            payload = record.copy()
-            images = payload.pop("images", [])
-            self._validate_image_message(payload.get("role"), bool(images))
-            if images:
-                if not isinstance(payload.get("content"), str):
-                    raise LLMImageInputError("Image message content must be text")
-                payload["content"] = [
-                    {"type": "text", "text": payload["content"]},
-                    *(
-                        {
-                            "type": "image_url",
-                            "image_url": Image.model_validate(image).model_dump(
-                                include={"url", "detail"}, exclude_none=True
-                            ),
-                        }
-                        for image in images
-                    ),
-                ]
-            messages.append(payload)
-        return messages
-
-    def _validate_image_message(self, role: str | None, has_images: bool) -> None:
-        if not has_images:
-            return
-        if not self._endpoint.accepts_images:
-            raise LLMImageInputError(
-                f"Model {self._endpoint.api_name}/{self._endpoint.model_name} "
-                "does not accept images"
+        # Custom mappers/scrubbers receive a detached outgoing representation.
+        outgoing = [
+            message.model_copy(deep=True) for message in self._messages
+        ]
+        records = self._messages_scrubber(mapper(outgoing))
+        messages, omitted = _encode_image_messages(
+            records, accepts_images=self._endpoint.accepts_images
+        )
+        if self._pipe is not None and self._notify_image_omission:
+            self._pipe.report_image_omission(
+                endpoint=self._endpoint.api_name,
+                model=self._endpoint.model_name,
+                omitted=omitted,
             )
-        if role != Role.USER:
-            raise LLMImageInputError("Image inputs require a user message")
+        return messages
 
     def _call_mock_llm_api(self) -> _ChatCompletionResult:
         assert isinstance(self._endpoint, MockLLMEndpoint)
@@ -620,6 +667,8 @@ def call_llm_api(
     retry_base_delay_s: float = 0.5,
     retry_max_delay_s: float = 4.0,
     start_replacement_stream: Callable[[], None] | None = None,
+    *,
+    notify_image_omission: bool = False,
 ) -> tuple[str, LLMTelemetryDict]:
     """Make a validated, cancellable, retrying API call to a specific LLM endpoint.
 
@@ -639,6 +688,13 @@ def call_llm_api(
     the optional generic ``images`` field. Retain that field to send attachments;
     omit it to remove them. Records may be filtered or reordered. Image content
     parts are constructed from each returned record only, after scrubbing.
+    The mapper and scrubber receive detached messages. A destination without
+    image support receives text and filename references instead of attachments;
+    original history remains available for later requests to a vision model.
+    Set ``notify_image_omission=True`` with ``pipe`` for the agent's main
+    conversation requests. This reports changes in omission as information.
+    Helper calls leave that conversation's notice state untouched by default;
+    their images are still filtered according to their destination's capabilities.
     """
     return _LLMCallRunner(
         endpoint,
@@ -646,6 +702,7 @@ def call_llm_api(
         messages_scrubber=messages_scrubber,
         on_delta=on_delta,
         pipe=pipe,
+        notify_image_omission=notify_image_omission,
         timeout_s=timeout_s,
         max_attempts=max_attempts,
         retry_base_delay_s=retry_base_delay_s,

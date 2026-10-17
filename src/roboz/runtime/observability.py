@@ -31,7 +31,13 @@ class FailureKind(StrEnum):
     INTERRUPTED = auto()
 
 
-type RuntimeEventKind = LifecycleKind | FailureKind
+class CapabilityKind(StrEnum):
+    """Informational changes in the input a model can consume."""
+
+    IMAGES_OMITTED = auto()
+
+
+type RuntimeEventKind = LifecycleKind | FailureKind | CapabilityKind
 
 
 class RuntimeEventLevel(StrEnum):
@@ -98,6 +104,7 @@ class ObservedFailure:
 
 
 __all__ = [
+    "CapabilityKind",
     "ExternalCallPhase",
     "FailureKind",
     "LifecycleKind",

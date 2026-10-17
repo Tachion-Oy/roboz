@@ -15,6 +15,7 @@ from roboz.exceptions import (
 from roboz.runtime._logging import LogScalar, log_with_data
 from roboz.models import Message
 from roboz.runtime.observability import (
+    CapabilityKind,
     RuntimeEventCategory,
     RuntimeEventKind,
     RuntimeEventLevel,
@@ -80,6 +81,7 @@ class EventPipe:
         self._sequence = 0
         self._current_message_id: str | None = None
         self._current_message_chunk_index = 0
+        self._image_omission: tuple[str, str] | None = None
         self._cancel_signal = ControlSignal(
             error_type=ExternalCallCancelledError, message="External call cancelled"
         )
@@ -135,6 +137,7 @@ class EventPipe:
         self._current_output_format = output_format
         self._current_message_id = None
         self._current_message_chunk_index = 0
+        self._image_omission = None
         self._cancel_signal.clear()
         self._interrupt_signal.clear()
         if self.dry_run:
@@ -208,6 +211,31 @@ class EventPipe:
                 temperature=self._current_temperature,
                 output_format=self._current_output_format,
             )
+        )
+
+    def report_image_omission(self, *, endpoint: str, model: str, omitted: bool) -> None:
+        """Track omission for this agent's main conversation requests only.
+
+        A main request that can use its images (or has none) clears the state.
+        Helper requests must not call this method, even when sharing this pipe.
+        Each agent's pipe owns this state independently, including nested agents.
+        """
+        selection = (endpoint, model) if omitted else None
+        previous = self._image_omission
+        self._image_omission = selection
+        if selection is None or selection == previous:
+            return
+        message = (
+            f"Images are omitted for {model} because it cannot read them. "
+            "Your conversation text is still available."
+        )
+        logger.info("%s", message)
+        self.emit_runtime_event(
+            category=RuntimeEventCategory.LLM,
+            kind=CapabilityKind.IMAGES_OMITTED,
+            level=RuntimeEventLevel.INFO,
+            message=message,
+            data={"endpoint": endpoint, "model": model},
         )
 
     def start_message(self) -> str:
