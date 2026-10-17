@@ -10,6 +10,8 @@
 - Declare image support for the bundled GLM 5.3 Flash endpoint.
 - Bound generated image omission references so long filenames and large batches
   cannot add unlimited text after context truncation.
+- Scope image omission notices to main conversation requests so summaries and
+  other helper calls do not cause duplicate notices for an unchanged model.
 
 ## 0.13.2a1 - 2026-10-17
 

@@ -214,9 +214,10 @@ class EventPipe:
         )
 
     def report_image_omission(self, *, endpoint: str, model: str, omitted: bool) -> None:
-        """Notify once when requests begin omitting images for a selected model.
+        """Track omission for this agent's main conversation requests only.
 
-        A request that can use its images (or has none) clears the notice state.
+        A main request that can use its images (or has none) clears the state.
+        Helper requests must not call this method, even when sharing this pipe.
         Each agent's pipe owns this state independently, including nested agents.
         """
         selection = (endpoint, model) if omitted else None

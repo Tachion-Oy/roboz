@@ -49,6 +49,7 @@ def prompt_llm(
             x,
             on_delta=ctx.pipe.emit_message_delta,
             pipe=ctx.pipe,
+            notify_image_omission=True,
             start_replacement_stream=start_stream_attempt,
         ),
         error_pipe=ctx.pipe,

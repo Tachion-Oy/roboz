@@ -230,6 +230,7 @@ class _LLMCallRunner:
         messages_scrubber: Callable[[list[Message]], list[dict]],
         on_delta: Callable[[str], None] | None,
         pipe: EventPipe | None,
+        notify_image_omission: bool,
         timeout_s: float | None,
         max_attempts: int,
         retry_base_delay_s: float,
@@ -244,6 +245,7 @@ class _LLMCallRunner:
         self._messages_scrubber = messages_scrubber
         self._on_delta = on_delta
         self._pipe = pipe
+        self._notify_image_omission = notify_image_omission
         self._timeout_s = timeout_s
         self._max_attempts = max_attempts
         self._retry_base_delay_s = retry_base_delay_s
@@ -379,7 +381,7 @@ class _LLMCallRunner:
         messages, omitted = _encode_image_messages(
             records, accepts_images=self._endpoint.accepts_images
         )
-        if self._pipe is not None:
+        if self._pipe is not None and self._notify_image_omission:
             self._pipe.report_image_omission(
                 endpoint=self._endpoint.api_name,
                 model=self._endpoint.model_name,
@@ -665,6 +667,8 @@ def call_llm_api(
     retry_base_delay_s: float = 0.5,
     retry_max_delay_s: float = 4.0,
     start_replacement_stream: Callable[[], None] | None = None,
+    *,
+    notify_image_omission: bool = False,
 ) -> tuple[str, LLMTelemetryDict]:
     """Make a validated, cancellable, retrying API call to a specific LLM endpoint.
 
@@ -687,7 +691,10 @@ def call_llm_api(
     The mapper and scrubber receive detached messages. A destination without
     image support receives text and filename references instead of attachments;
     original history remains available for later requests to a vision model.
-    When supplied, ``pipe`` reports changes in image omission as information.
+    Set ``notify_image_omission=True`` with ``pipe`` for the agent's main
+    conversation requests. This reports changes in omission as information.
+    Helper calls leave that conversation's notice state untouched by default;
+    their images are still filtered according to their destination's capabilities.
     """
     return _LLMCallRunner(
         endpoint,
@@ -695,6 +702,7 @@ def call_llm_api(
         messages_scrubber=messages_scrubber,
         on_delta=on_delta,
         pipe=pipe,
+        notify_image_omission=notify_image_omission,
         timeout_s=timeout_s,
         max_attempts=max_attempts,
         retry_base_delay_s=retry_base_delay_s,

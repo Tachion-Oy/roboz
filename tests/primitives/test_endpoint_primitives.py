@@ -359,7 +359,7 @@ def test_model_switches_filter_and_restore_history_and_notify_only_on_change(cap
     original = history[0].model_copy(deep=True)
     for selected in [vision, text, text, other, vision, text]:
         selector.select(selected.dependency_id)
-        call_llm_api(endpoint, history, pipe=pipe)
+        call_llm_api(endpoint, history, pipe=pipe, notify_image_omission=True)
         sent = client.chat_requests[-1]["messages"][0]["content"]
         if selected.accepts_images:
             assert sent == [
@@ -371,6 +371,11 @@ def test_model_switches_filter_and_restore_history_and_notify_only_on_change(cap
             assert "first.png" in sent and "second.jpg" in sent
             assert all(image.url not in sent for image in images)
         assert history == [original]
+        # A helper with its own image input must still filter its request without
+        # overwriting the main conversation's notification state.
+        call_llm_api(other, history, pipe=pipe)
+        helper_content = client.chat_requests[-1]["messages"][0]["content"]
+        assert isinstance(helper_content, str) and "Images omitted" in helper_content
     notices = [event for event in events if isinstance(event, RuntimeEvent) and event.kind == "images_omitted"]
     assert [notice.data["model"] for notice in notices] == ["text", "other", "text"]
     assert all(notice.level == "info" for notice in notices)

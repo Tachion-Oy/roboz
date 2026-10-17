@@ -601,7 +601,11 @@ are unchanged, so switching back to a vision model restores retained attachments
 within the live conversation. Normal history truncation still applies. This
 does not restore image bytes from logs, which intentionally store names only.
 The agent emits an informational `images_omitted` event when omission begins or
-the affected model changes, rather than on every request.
+the affected model changes, rather than on every request. Summary and other
+helper calls do not reset or overwrite the main conversation's notice state.
+Custom main-conversation callers can opt into the same tracking with
+`call_llm_api(..., pipe=pipe, notify_image_omission=True)`; helper calls leave this
+option at its default `False` while retaining capability filtering.
 
 For a standalone tool composition:
 
