@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.0a1 - 2026-10-17
+
 - Treat unsupported image input as an informational outcome: Read Images
   explains the selected model's limits without reading files, and model requests
   omit unsupported attachments while retaining text and image names. Keep the
@@ -12,6 +14,8 @@
   cannot add unlimited text after context truncation.
 - Scope image omission notices to main conversation requests so summaries and
   other helper calls do not cause duplicate notices for an unchanged model.
+- Update locked OpenAI, Pydantic, pypdf, and Ruff dependencies, and type dynamic
+  tool-name schemas for Pydantic 2.14's stricter model creation annotations.
 
 ## 0.13.2a1 - 2026-10-17
 
