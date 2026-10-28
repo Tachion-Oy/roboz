@@ -65,6 +65,7 @@ def test_inventory_and_discovery():
         assert "materialized" not in endpoint.__dict__
         if isinstance(spec, ChatModelSpec):
             assert endpoint.accepts_images == spec.accepts_images
+            assert endpoint.accepts_temperature == spec.accepts_temperature
     with pytest.raises(TypeError):
         openrouter.models_by_attribute["new"] = ChatModelSpec("new", 1)
     with pytest.raises(FrozenInstanceError):
@@ -78,6 +79,19 @@ def test_catalogue_forwards_image_capability_without_materializing_client():
     )
     assert catalog.vision.accepts_images is True
     assert catalog.configured().vision.accepts_images is True
+
+
+def test_catalogue_forwards_temperature_capability():
+    catalog = Catalog(
+        adapter=OpenAICompatibleAdapter(),
+        models={
+            "reasoning": ChatModelSpec("reasoning", 1000, accepts_temperature=False),
+            "chat": ChatModelSpec("chat", 1000),
+        },
+    )
+    assert catalog.reasoning.accepts_temperature is False
+    assert catalog.configured().reasoning.accepts_temperature is False
+    assert catalog.chat.accepts_temperature is True
 
 
 def test_glm_flash_declares_image_support():

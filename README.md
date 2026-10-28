@@ -682,6 +682,14 @@ The bundled declarations are shipped with RoboZ, so an editor can complete
 provider and model attributes without loading credentials or constructing SDK
 clients.
 
+### Temperature
+
+Requests send the endpoint's `temperature` by default. Some reasoning models
+reject it, and an OpenRouter route that sets `require_parameters` then finds no
+provider at all. Set `accepts_temperature=False` on such an endpoint or its
+`ChatModelSpec` to omit the field from every request. Project catalogue JSON
+accepts the same optional boolean, which defaults to `true`.
+
 ### Image inputs
 
 Set `accepts_images=True` on an image-capable endpoint or its `ChatModelSpec`.
