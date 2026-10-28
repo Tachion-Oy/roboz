@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.14.0 - 2026-10-28
+
+- Omit `temperature` for models that reject it. Set `accepts_temperature=False`
+  on a chat endpoint or `ChatModelSpec`, or in project catalogue JSON, and its
+  requests leave the field out. Without this, OpenRouter's
+  `require_parameters` found no provider for such models and every request
+  failed with 404. The default still sends the endpoint's temperature.
+- Update locked OpenAI, pypdf, certifi, and Ruff dependencies.
+
 ## 0.14.0rc1 - 2026-10-17
 
 - Include only the latest eight images in each vision-model request, selected
