@@ -61,6 +61,7 @@ _RETRYABLE_LLM_ERRORS: Final[tuple[type[Exception], ...]] = (
 )
 
 _CHAT_OPERATION: Final[str] = "chat"
+_CONTENT_FILTER_FINISH_REASON: Final[str] = "content_filter"
 _TRANSCRIPTION_OPERATION: Final[str] = "transcription"
 _MOCK_OUTPUT_FORMAT: Final[str] = "mock"
 _JSON_OUTPUT_FORMAT: Final[str] = "json"
@@ -298,6 +299,7 @@ class _LLMCallRunner:
                     label=self._label,
                     prepare_retry=self._prepare_retry,
                 )
+            self._raise_for_content_filter(result)
             for signal in self._signals:
                 signal.raise_if_set()
         except Exception as exc:
@@ -311,6 +313,15 @@ class _LLMCallRunner:
             raise error from exc
         self._report_succeeded(result)
         return result.content, result.telemetry
+
+    def _raise_for_content_filter(self, result: _ChatCompletionResult) -> None:
+        if result.diagnostics.finish_reason != _CONTENT_FILTER_FINISH_REASON:
+            return
+        raise LLMContentFilteredError(
+            f"{self._endpoint.api_name}/{self._endpoint.model_name} response was "
+            "stopped by the provider's content filter "
+            f"(generation={result.diagnostics.provider_generation_id})"
+        )
 
     def _report_started(self) -> None:
         started_message = (

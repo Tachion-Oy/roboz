@@ -53,6 +53,10 @@ class LLMContextLimitExceededError(LLMProviderRequestError):
     """Raised when the request exceeds the provider/model context window."""
 
 
+class LLMContentFilteredError(LLMProviderRequestError):
+    """Raised when the provider's content filter refuses or stops a response."""
+
+
 class LLMProviderUnavailableError(LLMError):
     """Raised when the provider is temporarily unavailable."""
 
@@ -109,6 +113,7 @@ __all__ = [
     "LLMCallInterruptedError",
     "LLMCallTimeoutError",
     "LLMClientError",
+    "LLMContentFilteredError",
     "LLMContextLimitExceededError",
     "LLMError",
     "LLMImageInputError",

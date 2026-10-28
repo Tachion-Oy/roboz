@@ -18,6 +18,10 @@ LLM_PROVIDER_REQUEST_RETRY_PROMPT: Final[str] = (
     "The selected model could not complete the request. Choose another model, "
     "then enter retry and Send."
 )
+LLM_CONTENT_FILTER_RETRY_PROMPT: Final[str] = (
+    "The model provider's content filter refused this request. Choose another "
+    "model, then enter retry and Send."
+)
 NESTED_AGENT_NO_OUTCOME_PLACEHOLDER: Final[str] = "The agent finished without a message."
 
 
