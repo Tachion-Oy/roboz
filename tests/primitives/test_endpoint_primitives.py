@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from roboz.models import Image, Message, Role, Str
 from roboz.models._schema import messages_scrubber
 from roboz.models.truncation import LIGHT_MAX_CHARS
-from roboz.exceptions import LLMImageInputError
+from roboz.exceptions import LLMContentFilteredError, LLMImageInputError
 from roboz import factory
 from roboz.dependencies import ExecutableDependency, ExternalDependencyKind
 from roboz.llm import (
@@ -114,6 +114,64 @@ def test_concrete_endpoint_drives_factory_execution_and_inspection():
     assert client.chat_requests[0]["messages"] == [
         {"role": "user", "content": "Summarize this."},
     ]
+
+
+
+class ContentFilteredClient(ScriptedClient):
+    """Return an empty response that the provider's content filter stopped."""
+
+    def complete(self, **request):
+        self.chat_requests.append(request)
+        if request.get("stream"):
+            return iter([
+                SimpleNamespace(
+                    id="gen-filtered",
+                    choices=[SimpleNamespace(
+                        delta=SimpleNamespace(content=""),
+                        finish_reason="content_filter",
+                    )],
+                    usage=None,
+                ),
+            ])
+        return SimpleNamespace(
+            id="gen-filtered",
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content=""),
+                finish_reason="content_filter",
+            )],
+            usage=None,
+        )
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_content_filter_stops_the_call_and_names_the_reason(stream):
+    client = ContentFilteredClient()
+    endpoint = LLMEndpoint(client=client, api_name="test", model_name="filtered")
+    events = []
+    pipe = EventPipe(event_sinks=[events.append])
+
+    with pytest.raises(LLMContentFilteredError, match="content filter"):
+        get_completion(
+            messages=[Message(role=Role.USER, content="hi")],
+            call_llm_api=lambda messages: call_llm_api(
+                endpoint,
+                messages,
+                on_delta=(lambda _: None) if stream else None,
+                pipe=pipe,
+            ),
+            active_tools=[],
+        )
+
+    assert len(client.chat_requests) == 1
+    assert client.chat_requests[0].get("stream", False) is stream
+    failed = [
+        event for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == "failed"
+    ]
+    assert [event.data["error_kind"] for event in failed] == ["content_filter"]
+    assert not any(
+        isinstance(event, RuntimeEvent) and event.kind == "succeeded" for event in events
+    )
 
 
 @pytest.mark.parametrize("stream", [False, True])
