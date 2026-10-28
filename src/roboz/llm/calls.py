@@ -150,7 +150,7 @@ class ChaCompletionRequest(TypedDict):
 
     model: str
     messages: list[dict]
-    temperature: float
+    temperature: NotRequired[float]
     response_format: OpenAIResponseFormat
     extra_body: NotRequired[RequestOptions]
 
@@ -383,9 +383,10 @@ class _LLMCallRunner:
         request = ChaCompletionRequest(
             model=self._endpoint.model_name,
             messages=self._chat_completion_messages(),
-            temperature=self._endpoint.temperature,
             response_format=response_format,
         )
+        if self._endpoint.accepts_temperature:
+            request[_TEMPERATURE_FIELD] = self._endpoint.temperature
         if self._endpoint.extra_body:
             request[_EXTRA_BODY_FIELD] = self._endpoint.extra_body
         return request

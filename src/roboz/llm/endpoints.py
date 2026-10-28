@@ -153,6 +153,10 @@ class LLMEndpoint(BaseModel, ExternalDependency):
     accepts_images: bool = Field(
         default=False, description="Whether this model route accepts image inputs."
     )
+    accepts_temperature: bool = Field(
+        default=True,
+        description="Whether requests send ``temperature``; some reasoning models reject it.",
+    )
 
     max_context_tokens: int = Field(
         default=128_000,

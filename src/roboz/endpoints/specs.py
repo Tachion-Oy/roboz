@@ -12,6 +12,8 @@ class ChatModelSpec:
     model_id: str
     max_context_tokens: int
     accepts_images: bool = False
+    # Some reasoning models reject a temperature; their requests then omit it.
+    accepts_temperature: bool = True
 
     def __post_init__(self) -> None:
         """Require a nonblank model ID and a positive context limit."""

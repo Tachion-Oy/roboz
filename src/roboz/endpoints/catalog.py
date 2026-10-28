@@ -75,6 +75,7 @@ class Catalog[Spec: ModelSpec]:
                         model=model.model_id,
                         max_context_tokens=model.max_context_tokens,
                         accepts_images=model.accepts_images,
+                        accepts_temperature=model.accepts_temperature,
                         stream=self._stream,
                     )
                 else:

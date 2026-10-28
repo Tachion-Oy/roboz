@@ -96,6 +96,45 @@ def test_sdk_chat_requests_preserve_typed_stream_and_response_contracts(streamin
         assert len(requests) == 1
 
 
+@pytest.mark.parametrize("accepts_temperature", [True, False])
+def test_sdk_chat_requests_send_temperature_only_when_the_model_accepts_it(
+    accepts_temperature,
+):
+    bodies = []
+
+    def respond(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "id": "scripted",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "chat",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "hello"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    with sdk_client(respond) as client:
+        endpoint = LLMEndpoint(
+            client=client,
+            api_name="test",
+            model_name="chat",
+            stream=False,
+            accepts_temperature=accepts_temperature,
+        )
+        call_llm_api(endpoint, [Message(role=Role.USER, content="hello")])
+    assert ("temperature" in bodies[0]) is accepts_temperature
+    if accepts_temperature:
+        assert bodies[0]["temperature"] == 0.7
+
+
 def test_sdk_transcription_preserves_file_and_optional_arguments():
     requests = []
 
