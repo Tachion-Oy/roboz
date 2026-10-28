@@ -8,6 +8,7 @@ import pytest
 from roboz.agent._notifications import (
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
+    LLM_CONTENT_FILTER_RETRY_PROMPT,
     LLM_PROVIDER_REQUEST_RETRY_PROMPT,
 )
 from roboz.agent.core import Agent, AgentMode
@@ -15,6 +16,7 @@ from roboz.exceptions import (
     ExternalCallInterruptedError,
     LLMAuthError,
     LLMCallCancelledError,
+    LLMContentFilteredError,
     LLMImageInputError,
     LLMProviderUnavailableError,
     StopAgent,
@@ -435,6 +437,28 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
     )
     assert failure["level"] == "warning"
     assert failure["data"]["error_kind"] == "auth"
+
+
+def test_content_filter_refusal_names_the_reason_without_format_repairs(bind_user_io):
+    io = bind_user_io([Str(value="retry")])
+    agent = Agent(
+        name="content_filter_retry_run",
+        tools=[stop],
+        system_prompt="system",
+        agent_endpoint=MockLLMEndpoint(
+            [
+                LLMContentFilteredError("stopped by the provider's content filter"),
+                {"action": "stop", "rationale": "done", "value": "ok"},
+            ]
+        ),
+        initial_messages=None,
+    )
+
+    output, messages = agent.invoke()
+
+    assert output.value == "ok"
+    assert io.prompts == [LLM_CONTENT_FILTER_RETRY_PROMPT]
+    assert not any(message.role == Role.ERROR for message in messages)
 
 
 @pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])

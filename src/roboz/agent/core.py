@@ -21,6 +21,7 @@ from roboz.agent._notifications import (
     AUTO_LOAD_SKILLS_BANNER,
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
+    LLM_CONTENT_FILTER_RETRY_PROMPT,
     LLM_PROVIDER_REQUEST_RETRY_PROMPT,
     auto_load_skill_rationale,
 )
@@ -34,6 +35,7 @@ from roboz.dependencies import (
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
+    LLMContentFilteredError,
     LLMImageInputError,
     LLMProviderRequestError,
     StopAgent,
@@ -649,7 +651,9 @@ class Agent(HasExternalDependencies):
         if prompt_user_tool is None:
             raise RuntimeError("user interaction tool is unavailable")
         retry_input = prompt_user_tool.InputModel(
-            value=LLM_PROVIDER_REQUEST_RETRY_PROMPT
+            value=LLM_CONTENT_FILTER_RETRY_PROMPT
+            if isinstance(error, LLMContentFilteredError)
+            else LLM_PROVIDER_REQUEST_RETRY_PROMPT
         )
         retry_output = prompt_user_tool(retry_input, self.messages)
         self.append_and_pipe(get_finalized_message(retry_output, prompt_user_tool))

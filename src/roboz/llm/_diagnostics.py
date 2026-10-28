@@ -188,6 +188,7 @@ class LLMErrorKind(StrEnum):
     INSUFFICIENT_FUNDS = auto()
     RATE_LIMIT = auto()
     CONTEXT_LIMIT = auto()
+    CONTENT_FILTER = auto()
     PROVIDER_REQUEST = auto()
     PROVIDER_UNAVAILABLE = auto()
     UNKNOWN_PROVIDER_ERROR = auto()
@@ -368,6 +369,8 @@ def error_kind(error: LLMError) -> LLMErrorKind:
             return LLMErrorKind.RATE_LIMIT
         case LLMContextLimitExceededError():
             return LLMErrorKind.CONTEXT_LIMIT
+        case LLMContentFilteredError():
+            return LLMErrorKind.CONTENT_FILTER
         case LLMProviderRequestError():
             return LLMErrorKind.PROVIDER_REQUEST
         case LLMProviderUnavailableError():
