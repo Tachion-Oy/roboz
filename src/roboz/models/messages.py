@@ -3,23 +3,7 @@
 from collections.abc import Iterable
 import json
 
-from roboz.models.core import (
-    BOOTSTRAP_MESSAGE_KINDS,
-    RESERVED_MESSAGE_FIELDS,
-    BaseNames,
-    Message,
-    Role,
-)
-
-
-def _shows_timestamp(message: Message) -> bool:
-    # Assistant replies stay verbatim so the model does not learn to emit
-    # timestamps itself. System and bootstrap messages stay byte-identical
-    # across runs so providers can reuse their cached prompt prefix.
-    return (
-        message.role not in {Role.ASSISTANT, Role.SYSTEM}
-        and message.message_kind not in BOOTSTRAP_MESSAGE_KINDS
-    )
+from roboz.models.core import BOOTSTRAP_MESSAGE_KINDS, BaseNames, Message, Role
 
 
 def format_timestamp(message: Message) -> str:
@@ -28,35 +12,29 @@ def format_timestamp(message: Message) -> str:
 
 
 def render_content(message: Message, *, include_timestamp: bool = True) -> str:
-    """Return model-visible content with the message's caller and time.
+    """Return model-visible content, adding caller and time to tool results.
 
-    JSON object content, the format of agent tool results, receives leading
-    ``caller`` and ``timestamp`` fields. Other content is returned verbatim, so
-    plain prompts sent directly to a model are unchanged. Assistant, system, and
-    bootstrap messages never show a timestamp.
+    Only messages with a ``caller`` are tool results. When their content is a
+    JSON object, it receives leading ``caller`` and ``timestamp`` fields;
+    bootstrap results omit the timestamp so they stay identical across runs and
+    providers can reuse their cached prompt. All other content, including JSON
+    sent directly to a model, is returned verbatim.
 
     Args:
         message: Message to render; it is not modified.
-        include_timestamp: Whether eligible messages show their timestamp.
-
-    Raises:
-        ValueError: If JSON object content already contains a reserved field.
+        include_timestamp: Whether non-bootstrap tool results show their time.
     """
-    envelope: dict[str, str] = {}
-    if message.caller is not None:
-        envelope[BaseNames.CALLER_FIELD] = message.caller
-    if include_timestamp and _shows_timestamp(message):
-        envelope[BaseNames.TIMESTAMP_FIELD] = format_timestamp(message)
-    if not envelope:
+    if message.caller is None:
         return message.content
     try:
         payload = json.loads(message.content)
     except json.JSONDecodeError:
-        payload = None
+        return message.content
     if not isinstance(payload, dict):
         return message.content
-    if reserved := RESERVED_MESSAGE_FIELDS & payload.keys():
-        raise ValueError(f"Message content uses reserved fields: {sorted(reserved)}")
+    envelope = {BaseNames.CALLER_FIELD: message.caller}
+    if include_timestamp and message.message_kind not in BOOTSTRAP_MESSAGE_KINDS:
+        envelope[BaseNames.TIMESTAMP_FIELD] = format_timestamp(message)
     return json.dumps(envelope | payload, ensure_ascii=False)
 
 

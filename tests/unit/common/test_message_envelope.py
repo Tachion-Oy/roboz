@@ -55,19 +55,25 @@ def test_rendering_keeps_creation_offset_after_timezone_changes(
     "message",
     [
         Message(role=Role.ASSISTANT, content='{"action": "stop"}'),
-        Message(role=Role.SYSTEM, content='{"value": "prompt"}'),
-        Message(
-            role=Role.USER,
-            content='{"value": "memory"}',
-            message_kind=MessageKind.STARTUP_CONTEXT,
-        ),
+        Message(role=Role.USER, content='{"event": "deploy", "timestamp": "2026-01-01"}'),
         Message(role=Role.USER, content="plain prompt", caller="prompt_user"),
-        Message(role=Role.USER, content="[1, 2]"),
+        Message(role=Role.USER, content="[1, 2]", caller="prompt_user"),
     ],
-    ids=["assistant", "system", "bootstrap", "plain_text", "json_array"],
+    ids=["assistant", "direct_json", "plain_text_result", "json_array_result"],
 )
 def test_content_without_eligible_envelope_is_verbatim(message: Message) -> None:
     assert render_content(message) == message.content
+
+
+def test_bootstrap_results_show_caller_without_time() -> None:
+    message = Message(
+        role=Role.USER,
+        content='{"value": "skill"}',
+        caller="cli_tools",
+        message_kind=MessageKind.AUTO_LOADED_SKILL,
+    )
+
+    assert render_content(message) == '{"caller": "cli_tools", "value": "skill"}'
 
 
 @pytest.mark.parametrize("field", ["caller", "timestamp"])
@@ -77,17 +83,14 @@ def test_tool_output_models_cannot_declare_reserved_fields(field: str) -> None:
     def produce(input: Empty, messages: list[Message]) -> Output:  # type: ignore[valid-type]
         raise AssertionError("not called")
 
-    with pytest.raises(ValueError, match="reserved message fields"):
+    with pytest.raises(ValueError, match=rf"reserved message fields: \['{field}'\]"):
         tool(produce)
 
 
 @pytest.mark.parametrize("field", ["caller", "timestamp"])
 def test_dynamic_tool_payloads_cannot_use_reserved_fields(field: str) -> None:
-    with pytest.raises(ValueError, match="reserved fields"):
+    with pytest.raises(ValueError, match=rf"reserved fields: \['{field}'\]"):
         get_finalized_message(All.model_validate({field: "x"}))
-
-    with pytest.raises(ValueError, match="reserved fields"):
-        render_content(Message(role=Role.USER, content=f'{{"{field}": "x"}}'))
 
 
 def test_persisted_rows_round_trip_caller_and_creation_offset() -> None:

@@ -8,8 +8,7 @@ from logging import getLogger
 from typing import Any, Callable, Sequence, Type, get_type_hints
 
 from roboz._naming import validate_public_name
-from roboz.models import Empty, Invoke, Message, Stop
-from roboz.models.core import RESERVED_MESSAGE_FIELDS
+from roboz.models import RESERVED_MESSAGE_FIELDS, Empty, Invoke, Message, Stop
 from roboz.models._schema import get_constituent_types
 from roboz.tooling._protocols import FactoryToolFuncProtocol, ToolFuncProtocol
 from roboz.tooling.context import Materializable
@@ -206,7 +205,7 @@ class Tool[TInput: Empty, TOutput: Empty | Invoke | Stop]:
                 )
             if reserved := RESERVED_MESSAGE_FIELDS & arg.model_fields.keys():
                 raise ValueError(
-                    f"output '{arg.__name__}' declares reserved message fields: {sorted(reserved)}"
+                    f"output '{arg.__name__}' declares reserved message fields: {sorted(map(str, reserved))}"
                 )
         return inputModel, outputModel
 

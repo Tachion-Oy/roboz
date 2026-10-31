@@ -64,7 +64,7 @@ def get_finalized_message(
 
     payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
     if reserved := RESERVED_MESSAGE_FIELDS & payload.keys():
-        raise ValueError(f"Tool output uses reserved fields: {sorted(reserved)}")
+        raise ValueError(f"Tool output uses reserved fields: {sorted(map(str, reserved))}")
     images = []
     try:
         images = getattr(output, "images")
