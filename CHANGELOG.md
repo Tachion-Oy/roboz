@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Agent prompts define `rationale` as a short statement of the reasons behind
+  the chosen action, kept for later human review, instead of the agent's
+  internal monologue. Claude Sonnet 5.5 returned empty replies to the old
+  wording.
 - Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their
   producer in `Message.caller` instead of a `caller` key in `content`, and
   provider requests render both into tool results so agents see the current

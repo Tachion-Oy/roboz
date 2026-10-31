@@ -18,6 +18,20 @@ def empty_input_tool(input: Empty, messages: list[Message]) -> Str:
     return Str(value="ok")
 
 
+def test_agentic_system_prompt_defines_rationale_as_reasons_for_review():
+    """Rationale is defined as reasons for human review, not an inner monologue."""
+    prompt = get_agentic_system_prompt(
+        system_prompt="Test.", tools=[example_tool], skills=None
+    )
+    assert (
+        "`rationale`: A short statement of the reasons behind the chosen action. "
+        "These are intended for later human evaluations and review of the "
+        "agent's performance."
+    ) in prompt
+    assert "monologue" not in prompt
+    assert "thought process" not in prompt
+
+
 def test_get_agentic_system_prompt_with_required_input():
     """Tool with required input (Int) produces valid prompt."""
     tools = [example_tool]
