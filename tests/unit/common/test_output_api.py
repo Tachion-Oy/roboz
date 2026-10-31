@@ -303,7 +303,7 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
         if message.role != Role.USER:
             continue
         try:
-            user_payloads.append(json.loads(render_content(message, include_timestamp=False)))
+            user_payloads.append(json.loads(render_content(message)))
         except json.JSONDecodeError:
             continue
 

@@ -35,7 +35,7 @@ def _invoke(base: Path, tokens: list, **policy) -> str:
         initial_messages=None,
     )
     _, messages = agent.invoke()
-    responses = [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role == Role.USER]
+    responses = [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
     return next(
         r["value"] for r in reversed(responses)
         if r.get("caller") == "execute_file_command"

@@ -45,7 +45,7 @@ def invoke(options, paths, *, detail=None, tools=None):
     _, messages = agent.invoke()
     result = next(
         message for message in reversed(messages)
-        if json.loads(render_content(message, include_timestamp=False)).get("caller") == "execute_read_image"
+        if json.loads(render_content(message)).get("caller") == "execute_read_image"
     )
     return result, messages
 

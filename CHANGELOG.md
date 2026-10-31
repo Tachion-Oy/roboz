@@ -2,21 +2,11 @@
 
 ## Unreleased
 
-- Breaking: `Message` declares `caller` and `timestamp` fields. Tool results
-  record their producer in `Message.caller` instead of a `caller` key inside
-  `content`; read `message.caller`, or `render_content(message)` for the
-  model-visible text. Provider requests add both to JSON tool results, so
-  agents now see when each result was recorded, in the local time and UTC
-  offset where the message was created. Messages without a caller, including
-  JSON sent directly to a model, are sent unchanged, and bootstrap results get
-  no timestamp.
-- Breaking: `caller` and `timestamp` are reserved in tool output. Tools whose
-  output models declare them fail at definition, and dynamic payloads that
-  contain them raise `ValueError` when recorded.
-- Breaking: `message_to_logged_row` no longer takes `created_at`; it stores the
-  message timestamp with its offset. Conversation logs move to schema version 5
-  with a `caller` column. Only version 5 logs load; version 3 and 4 logs,
-  including those with stored image payloads, are no longer readable.
+- Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their
+  producer in `Message.caller` instead of a `caller` key in `content`, and
+  provider requests render both into tool results so agents see the current
+  time. `message_to_logged_row` no longer takes `created_at`. Logs move to
+  schema version 5; older logs no longer load.
 
 ## 0.14.0 - 2026-10-28
 

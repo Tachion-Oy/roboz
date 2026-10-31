@@ -48,7 +48,7 @@ def _truncate_str_values(obj: object, max_len: int) -> object:
 def truncate_content_for_context(content: str, severity: Severity) -> str | None:
     """Truncate message content for agent context based on severity.
 
-    STUB: Keep only action + placeholder; caller and time render separately.
+    STUB: Keep only action + placeholder.
     LIGHT: Truncate string fields to
     LIGHT_MAX_CHARS chars.
     """
@@ -131,9 +131,8 @@ _ESTIMATED_CHARS_PER_TOKEN = 4
 
 
 def estimate_conversation_tokens(messages: list[Message]) -> int:
-    """Estimate rendered text tokens after context truncation, excluding images."""
+    """Estimate text tokens after context truncation; image tokens are not counted."""
     return sum(
-        math.ceil(len(content) / _ESTIMATED_CHARS_PER_TOKEN)
+        math.ceil(len(render_content(message)) / _ESTIMATED_CHARS_PER_TOKEN)
         for message in get_truncated_messages_for_context(messages)
-        if (content := render_content(message))
     )

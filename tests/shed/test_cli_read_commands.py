@@ -41,7 +41,7 @@ def _invoke(tools: list, tokens: list[Token]) -> list[dict]:
     )
     _, messages = agent.invoke()
     return [
-        json.loads(render_content(message, include_timestamp=False)) for message in messages if message.role == Role.USER
+        json.loads(render_content(message)) for message in messages if message.role == Role.USER
     ]
 
 

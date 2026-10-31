@@ -19,11 +19,7 @@ def get_constituent_types(type_: type) -> tuple[type, ...]:
 
 
 def messages_scrubber(messages: list[Message]) -> list[dict]:
-    """Serialize messages for provider requests with caller and time rendered.
-
-    Runtime metadata is excluded; ``caller`` and ``timestamp`` reach the model
-    only through the rendered content.
-    """
+    """Serialize messages for provider requests, excluding runtime metadata."""
     allowed = set(Message.model_fields) - runtime_fields(Message)
     return [
         message.model_dump(mode="json", include=allowed, exclude_none=True)

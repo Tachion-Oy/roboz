@@ -63,7 +63,7 @@ def test_loading_filesystem_exposes_commands_and_patches_together(tmp_path):
 
     _, messages = agent.invoke()
     outputs = [
-        json.loads(render_content(message, include_timestamp=False))
+        json.loads(render_content(message))
         for message in messages
         if message.role.value == "user"
     ]
@@ -133,7 +133,7 @@ def test_filesystem_capability_keeps_tools_and_guidance(tmp_path, on_demand):
 
     _, messages = agent.invoke()
     outputs = [
-        json.loads(render_content(message, include_timestamp=False))
+        json.loads(render_content(message))
         for message in messages
         if message.role.value == "user"
     ]

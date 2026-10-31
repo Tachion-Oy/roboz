@@ -227,7 +227,7 @@ def test_permission_reply_survives_large_command_reports(
         initial_messages=None,
     )
     _, messages = agent.invoke()
-    outputs = [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role == Role.USER]
+    outputs = [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
     report = next(
         m["value"]
         for m in outputs
@@ -323,7 +323,7 @@ def test_explicit_private_read_denial_allows_move_without_read(tmp_path):
         initial_messages=None,
     )
     _, messages = agent.invoke()
-    outputs = [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role == Role.USER]
+    outputs = [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
     report = next(
         m["value"]
         for m in outputs

@@ -140,7 +140,7 @@ def test_rebuilding_filesystem_preserves_each_project(tmp_path):
     second, _ = definition.build()
     for agent, own in ((first, "one"), (second, "two")):
         _, messages = agent.invoke()
-        outputs = [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role.value == "user"]
+        outputs = [json.loads(render_content(m)) for m in messages if m.role.value == "user"]
         assert [
             output["status"]
             for output in outputs

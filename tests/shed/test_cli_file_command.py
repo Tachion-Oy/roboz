@@ -73,7 +73,7 @@ def _invoke(
         initial_messages=None,
     )
     _, messages = agent.invoke()
-    return [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role == Role.USER]
+    return [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
 
 
 def _call(value: list[Token]) -> dict:

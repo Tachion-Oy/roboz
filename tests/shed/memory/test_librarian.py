@@ -158,7 +158,7 @@ def _tool_callers(messages: list[Message]) -> list[str]:
     return [
         caller
         for message in messages
-        if (caller := json.loads(render_content(message, include_timestamp=False)).get("caller")) is not None
+        if (caller := json.loads(render_content(message)).get("caller")) is not None
     ]
 
 

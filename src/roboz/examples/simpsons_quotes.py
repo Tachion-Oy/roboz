@@ -110,4 +110,5 @@ QUOTES: Final[list[str]] = [
     "I was elected to lead, not to read.",
     "I was saying Boo-urns.",
     "I sleep in a big bed with my wife.",
+    "Shoplifting is a victimless crime, like punching someone in the dark.",
 ]

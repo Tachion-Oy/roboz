@@ -627,7 +627,7 @@ def test_stop_after_single_cleanup_runs_before_stop():
         if m.role != Role.USER:
             continue
         try:
-            payload = json.loads(render_content(m, include_timestamp=False))
+            payload = json.loads(render_content(m))
         except json.JSONDecodeError:
             continue
         if isinstance(payload, dict) and payload.get("caller") == "cleanup":
@@ -1152,7 +1152,7 @@ def test_default_tool_integration_mixed_truncation():
         if m.role != Role.USER:
             continue
         try:
-            data = json.loads(render_content(m, include_timestamp=False))
+            data = json.loads(render_content(m))
         except json.JSONDecodeError:
             continue
         if isinstance(data, dict) and data.get("caller") == "default_emit_integration":

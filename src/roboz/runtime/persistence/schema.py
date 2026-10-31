@@ -106,11 +106,11 @@ def message_to_logged_row(
     message_id: str,
     sequence: int,
 ) -> LoggedMessageRow:
-    """Build a persisted row whose ``created_at`` is the message timestamp."""
+    """Build a persisted row from an in-memory Message."""
     return LoggedMessageRow(
         message_id=message_id,
         sequence=sequence,
-        created_at=message.timestamp.isoformat(timespec="milliseconds"),
+        created_at=message.timestamp.isoformat(),
         role=message.role,
         content=message.content,
         caller=message.caller,

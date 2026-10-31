@@ -44,7 +44,7 @@ def _invoke(base: Path, tokens: list, **policy) -> str:
     )
     _, messages = agent.invoke()
     responses = [
-        json.loads(render_content(message, include_timestamp=False)) for message in messages if message.role == Role.USER
+        json.loads(render_content(message)) for message in messages if message.role == Role.USER
     ]
     return next(
         response["value"]

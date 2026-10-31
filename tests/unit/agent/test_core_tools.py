@@ -165,7 +165,7 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
         if message.role != Role.USER:
             continue
         try:
-            user_payloads.append(json.loads(render_content(message, include_timestamp=False)))
+            user_payloads.append(json.loads(render_content(message)))
         except json.JSONDecodeError:
             continue
 

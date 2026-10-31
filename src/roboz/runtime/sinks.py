@@ -247,7 +247,7 @@ def rich_print_message_to_terminal(
         return
     color = _ROLE_COLORS.get(message.role, "white")
     console.print(
-        f"[{color}][bold]{message.role.capitalize()}:[/bold] {escape(render_content(message, include_timestamp=False))}[/{color}]"
+        f"[{color}][bold]{message.role.capitalize()}:[/bold] {escape(render_content(message))}[/{color}]"
     )
 
 

@@ -2,7 +2,6 @@
 
 from roboz.models.core import (
     BOOTSTRAP_MESSAGE_KINDS,
-    RESERVED_MESSAGE_FIELDS,
     AgentBaseModel,
     AgentMode,
     All,
@@ -38,7 +37,6 @@ from roboz.models.truncation import (
 
 __all__ = [
     "BOOTSTRAP_MESSAGE_KINDS",
-    "RESERVED_MESSAGE_FIELDS",
     "DEFAULT",
     "ERROR_RETRY",
     "GRADED",
