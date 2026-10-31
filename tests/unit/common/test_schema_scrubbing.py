@@ -1,11 +1,11 @@
 """Agent schemas and messages expose payloads while retaining runtime metadata."""
 
-from datetime import datetime, timezone
 import json
 
 import pytest
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from roboz.models import render_content
 from roboz.agent.core import Agent
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import (
@@ -304,23 +304,20 @@ def test_populated_runtime_metadata_survives_storage_but_stays_out_of_agent_payl
     }
     output = model.model_validate(payload | metadata)
     message = get_finalized_message(output, schema_scrub_test_tool)
-    expected_payload = payload if role == Role.ASSISTANT else {
-        "caller": schema_scrub_test_tool.name, **payload,
-    }
+    expected_caller = None if role == Role.ASSISTANT else schema_scrub_test_tool.name
 
-    assert json.loads(message.content) == expected_payload
-    assert message.model_dump(mode="json") == {
-        "role": role, "content": message.content, "images": [], **metadata,
+    assert json.loads(message.content) == payload
+    assert message.caller == expected_caller
+    assert message.model_dump(mode="json", exclude={"timestamp"}) == {
+        "role": role, "content": message.content, "images": [],
+        "caller": expected_caller, **metadata,
     }
     assert messages_scrubber([message]) == [{
-        "role": role, "content": message.content, "images": [],
+        "role": role, "content": render_content(message), "images": [],
     }]
     assert Message.model_validate_json(message.model_dump_json()) == message
 
-    row = message_to_logged_row(
-        message, message_id="message", sequence=1,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-    )
+    row = message_to_logged_row(message, message_id="message", sequence=1)
     restored = LoggedMessageRow.model_validate_json(row.model_dump_json())
     assert logged_row_to_message(restored) == message
 

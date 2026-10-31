@@ -55,7 +55,7 @@ def test_emit_message_creates_folder_and_file_if_missing(
     assert path is not None
     assert path.is_file()
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 4
+    assert data["schema_version"] == 5
     assert data["agent_name"] == "test_agent"
     assert data["status"] == "running"
     assert len(data["messages"]) == 1
@@ -155,7 +155,7 @@ def test_agent_creates_conversation_folder_and_saves_messages(
     assert len(rel.parts) == 4
 
     data = json.loads(conversation_file.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 4
+    assert data["schema_version"] == 5
     assert "messages" in data
     assert len(data["messages"]) >= 1
     assert data["status"] == "completed"
@@ -183,7 +183,7 @@ def test_agent_creates_conversation_folder_and_saves_messages(
     assert len(conversation_file.relative_to(rbz_root).parts) == 4
     assert conversation_file != first_path
     data = json.loads(conversation_file.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 4
+    assert data["schema_version"] == 5
     assert "messages" in data
     assert data["agent_name"] == "agent_other"
     assert data["metadata"]["agent_description"] == "Agent other description."

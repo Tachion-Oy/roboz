@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from roboz.models import render_content
 from roboz import Agent
 from roboz.deployment import (
     Capability,
@@ -62,7 +63,7 @@ def test_loading_filesystem_exposes_commands_and_patches_together(tmp_path):
 
     _, messages = agent.invoke()
     outputs = [
-        json.loads(message.content)
+        json.loads(render_content(message))
         for message in messages
         if message.role.value == "user"
     ]
@@ -132,7 +133,7 @@ def test_filesystem_capability_keeps_tools_and_guidance(tmp_path, on_demand):
 
     _, messages = agent.invoke()
     outputs = [
-        json.loads(message.content)
+        json.loads(render_content(message))
         for message in messages
         if message.role.value == "user"
     ]

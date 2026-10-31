@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from roboz.models import render_content
 from roboz.agent._notifications import (
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
@@ -392,8 +393,8 @@ def test_invoke_interrupt_prompts_user_and_resumes(bind_user_io) -> None:
 
     follow_up_replies = [
         (index, payload)
-        for index, _, payload in structured_user_messages
-        if payload.get(BaseNames.CALLER_FIELD) == "prompt_user"
+        for index, message, payload in structured_user_messages
+        if message.caller == "prompt_user"
         and payload.get(BaseNames.VALUE_FIELD) == "detour reply"
     ]
     assert len(follow_up_replies) == 1
@@ -626,7 +627,7 @@ def test_stop_after_single_cleanup_runs_before_stop():
         if m.role != Role.USER:
             continue
         try:
-            payload = json.loads(m.content)
+            payload = json.loads(render_content(m))
         except json.JSONDecodeError:
             continue
         if isinstance(payload, dict) and payload.get("caller") == "cleanup":
@@ -1151,7 +1152,7 @@ def test_default_tool_integration_mixed_truncation():
         if m.role != Role.USER:
             continue
         try:
-            data = json.loads(m.content)
+            data = json.loads(render_content(m))
         except json.JSONDecodeError:
             continue
         if isinstance(data, dict) and data.get("caller") == "default_emit_integration":

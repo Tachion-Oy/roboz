@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from roboz.models._fields import runtime_fields
 from roboz.models._telemetry import LLMTelemetry
-from roboz.models.core import BaseNames, Empty, Invoke, Message, MessageKind, Role, Stop
+from roboz.models.core import Empty, Invoke, Message, MessageKind, Role, Stop
 
 if TYPE_CHECKING:
     from roboz.tooling.core import Tool
@@ -56,8 +56,6 @@ def get_finalized_message(
         )
 
     payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
-    if caller is not None:
-        payload = {BaseNames.CALLER_FIELD: caller.name} | payload
     images = []
     try:
         images = getattr(output, "images")
@@ -67,5 +65,6 @@ def get_finalized_message(
         role=Role.USER,
         content=json.dumps(payload, ensure_ascii=False),
         images=images,
+        caller=caller.name if caller is not None else None,
         **metadata,
     )

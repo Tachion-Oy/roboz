@@ -33,10 +33,8 @@ def test_no_filters_returns_a_new_list_and_accepts_empty_history() -> None:
 
 def test_action_caller_and_combined_filters_match_exact_fields() -> None:
     request = Message(role=Role.ASSISTANT, content='{"action": "review"}')
-    result = Message(role=Role.USER, content='{"caller": "review"}')
-    both = Message(
-        role=Role.USER, content='{"action": "review", "caller": "review"}'
-    )
+    result = Message(role=Role.USER, content="{}", caller="review")
+    both = Message(role=Role.USER, content='{"action": "review"}', caller="review")
     history = [request, result, both]
 
     assert filter_messages(history, action="review") == [request, both]
@@ -77,7 +75,8 @@ def test_unmatched_content_is_skipped(field: str, content: str) -> None:
 def test_empty_string_is_a_filter_and_hidden_results_remain_searchable() -> None:
     hidden = Message(
         role=Role.USER,
-        content=json.dumps({"caller": "initialize_context", "value": "ready"}),
+        content=json.dumps({"value": "ready"}),
+        caller="initialize_context",
         truncation=NO_MESSAGE,
     )
     empty_action = Message(role=Role.ASSISTANT, content='{"action": ""}')

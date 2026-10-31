@@ -4,6 +4,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
+from roboz.models import render_content
 from roboz.agent._identifiers import (
     PROMPT_LLM_TOOL_NAME,
     RUN_BACKGROUND_AGENT_TOOL_NAME,
@@ -164,7 +165,7 @@ def test_prompt_user_at_start_as_default_tool_runs_before_first_assistant_messag
         if message.role != Role.USER:
             continue
         try:
-            user_payloads.append(json.loads(message.content))
+            user_payloads.append(json.loads(render_content(message)))
         except json.JSONDecodeError:
             continue
 

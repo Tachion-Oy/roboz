@@ -74,13 +74,13 @@ def _compacted_message(
         role=Role.USER,
         content=json.dumps(
             {
-                BaseNames.CALLER_FIELD: COMPACTIFY_MESSAGES_TOOL_NAME,
                 BaseNames.VALUE_FIELD: "Context compactified for continuation.",
                 "summary_markdown": summary,
                 "percent_used_before": percent_used_before,
                 "threshold_percent": threshold_percent,
             }
         ),
+        caller=COMPACTIFY_MESSAGES_TOOL_NAME,
         message_kind=COMPACTED_CONTEXT_KIND,
     )
 

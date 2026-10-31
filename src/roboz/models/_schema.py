@@ -7,6 +7,7 @@ from typing import Union, get_args, get_origin
 
 from roboz.models._fields import runtime_fields
 from roboz.models.core import Message
+from roboz.models.messages import render_content
 
 
 def get_constituent_types(type_: type) -> tuple[type, ...]:
@@ -18,9 +19,10 @@ def get_constituent_types(type_: type) -> tuple[type, ...]:
 
 
 def messages_scrubber(messages: list[Message]) -> list[dict]:
-    """Serialize message fields for provider requests, excluding runtime metadata."""
+    """Serialize messages for provider requests, excluding runtime metadata."""
     allowed = set(Message.model_fields) - runtime_fields(Message)
     return [
         message.model_dump(mode="json", include=allowed, exclude_none=True)
+        | {"content": render_content(message)}
         for message in messages
     ]

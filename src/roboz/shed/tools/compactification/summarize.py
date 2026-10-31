@@ -20,7 +20,7 @@ from roboz.llm import (
     get_completion,
     resolve_endpoint,
 )
-from roboz.models import NO_TRUNCATION, BaseNames, Message, Role, Str
+from roboz.models import NO_TRUNCATION, BaseNames, Message, Role, Str, render_content
 from roboz.runtime import EventPipe, log_with_data
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def conversation_text(messages: list[Message]) -> str:
     """
     sections = []
     for message in messages:
-        lines = [f"## {message.role.value.upper()}", message.content]
+        lines = [f"## {message.role.value.upper()}", render_content(message)]
         for index, image in enumerate(message.images, start=1):
             source = (
                 "embedded image; data in original message"

@@ -6,6 +6,7 @@ import httpx
 import pytest
 from openai import OpenAI
 
+from roboz.models import render_content
 from roboz.agent import get_active_agent_stack
 from roboz.agent.core import Agent, AgentMode
 from roboz.exceptions import UserInputUnavailableError
@@ -302,7 +303,7 @@ def test_minimal_agent_output_api_terminates_via_user_io(bind_user_io):
         if message.role != Role.USER:
             continue
         try:
-            user_payloads.append(json.loads(message.content))
+            user_payloads.append(json.loads(render_content(message)))
         except json.JSONDecodeError:
             continue
 

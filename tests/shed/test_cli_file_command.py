@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roboz.models import render_content
 from roboz import Agent, runtime
 from roboz.agent import AgentMode
 from roboz.llm import MockLLMEndpoint
@@ -72,7 +73,7 @@ def _invoke(
         initial_messages=None,
     )
     _, messages = agent.invoke()
-    return [json.loads(m.content) for m in messages if m.role == Role.USER]
+    return [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
 
 
 def _call(value: list[Token]) -> dict:

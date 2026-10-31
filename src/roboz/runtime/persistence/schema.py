@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roboz.models import Image, Message, MessageKind, Role
+from roboz.models import Message, MessageKind, Role
 from roboz.runtime.observability import (
     RuntimeEventCategory,
     RuntimeEventKind,
@@ -47,8 +47,7 @@ class LoggedMessageRow(BaseModel):
     created_at: str
     role: Role
     content: str
-    # Read attachments from older logs, but never write their payloads.
-    images: list[Image] = Field(default_factory=list, repr=False, exclude=True)
+    caller: str | None = None
     image_names: list[str] = Field(default_factory=list)
     truncation: TruncationSpec
     message_kind: MessageKind | None = None
@@ -79,7 +78,7 @@ class ConversationRun(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[3, 4] = 4
+    schema_version: Literal[5] = 5
     conversation_id: str
     agent_name: str
     parent_conversation_id: str | None = None
@@ -106,15 +105,15 @@ def message_to_logged_row(
     *,
     message_id: str,
     sequence: int,
-    created_at: datetime,
 ) -> LoggedMessageRow:
-    """Build a persisted row from an in-memory Message (UTC `created_at`)."""
+    """Build a persisted row from an in-memory Message."""
     return LoggedMessageRow(
         message_id=message_id,
         sequence=sequence,
-        created_at=utc_iso_z(created_at),
+        created_at=message.timestamp.isoformat(),
         role=message.role,
         content=message.content,
+        caller=message.caller,
         image_names=[
             image.filename or f"image-{index}"
             for index, image in enumerate(message.images, start=1)
@@ -133,7 +132,8 @@ def logged_row_to_message(row: LoggedMessageRow) -> Message:
     return Message(
         role=row.role,
         content=row.content,
-        images=row.images,
+        caller=row.caller,
+        timestamp=datetime.fromisoformat(row.created_at),
         truncation=row.truncation,
         message_kind=row.message_kind,
         endpoint=row.endpoint,

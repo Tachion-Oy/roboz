@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their
+  producer in `Message.caller` instead of a `caller` key in `content`, and
+  provider requests render both into tool results so agents see the current
+  time. `message_to_logged_row` no longer takes `created_at`. Logs move to
+  schema version 5; older logs no longer load.
+
 ## 0.14.0 - 2026-10-28
 
 - Omit `temperature` for models that reject it. Set `accepts_temperature=False`

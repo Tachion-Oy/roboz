@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import Annotated, Final, Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from roboz.models._fields import RuntimeModel, RuntimeOnly
 from roboz.models.truncation import DEFAULT, TruncationSpec
@@ -37,6 +38,7 @@ class BaseNames(StrEnum):
     ACTION_FIELD = "action"
     RATIONALE_FIELD = "rationale"
     CALLER_FIELD = "caller"
+    TIMESTAMP_FIELD = "timestamp"
     VALUE_FIELD = "value"
     KIND_FIELD = "kind"
 
@@ -241,6 +243,10 @@ class Message(RuntimeModel):
     role: Role = Field(...)
     content: str = Field(...)
     images: list[Image] = Field(default_factory=list, repr=False)
+    caller: Annotated[str | None, RuntimeOnly()] = None
+    timestamp: Annotated[AwareDatetime, RuntimeOnly()] = Field(
+        default_factory=lambda: datetime.now().astimezone()
+    )
     truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
     message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None
     endpoint: Annotated[str | None, RuntimeOnly()] = None

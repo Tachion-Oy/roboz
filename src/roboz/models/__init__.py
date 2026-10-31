@@ -22,7 +22,7 @@ from roboz.models.core import (
     StrImage,
     Strs,
 )
-from roboz.models.messages import filter_messages
+from roboz.models.messages import filter_messages, render_content
 from roboz.models.truncation import (
     DEFAULT,
     ERROR_RETRY,
@@ -66,4 +66,5 @@ __all__ = [
     "Truncation",
     "TruncationSpec",
     "filter_messages",
+    "render_content",
 ]

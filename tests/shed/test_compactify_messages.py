@@ -72,7 +72,7 @@ def test_compactify_messages_rewrites_list_in_place_above_threshold() -> None:
     assert messages[0].content == "sys"
     assert messages[1].message_kind == COMPACTED_CONTEXT_KIND
     compacted = json.loads(messages[1].content)
-    assert compacted["caller"] == COMPACTIFY_MESSAGES_TOOL_NAME
+    assert messages[1].caller == COMPACTIFY_MESSAGES_TOOL_NAME
     assert "kind" not in compacted
     assert "# compact" in compacted["summary_markdown"]
 

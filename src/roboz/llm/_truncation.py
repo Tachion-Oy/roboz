@@ -7,7 +7,7 @@ import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Final
 
-from roboz.models import BaseNames, Role
+from roboz.models import BaseNames, Role, render_content
 from roboz.models.truncation import (
     LIGHT_MAX_CHARS,
     Severity,
@@ -48,7 +48,7 @@ def _truncate_str_values(obj: object, max_len: int) -> object:
 def truncate_content_for_context(content: str, severity: Severity) -> str | None:
     """Truncate message content for agent context based on severity.
 
-    STUB: Keep only caller/action + placeholder.
+    STUB: Keep only action + placeholder.
     LIGHT: Truncate string fields to
     LIGHT_MAX_CHARS chars.
     """
@@ -63,8 +63,6 @@ def truncate_content_for_context(content: str, severity: Severity) -> str | None
             if not isinstance(data, dict):
                 return TRUNCATED_PLACEHOLDER
             stub: dict[str, str] = {"truncated": TRUNCATED_PLACEHOLDER}
-            if "caller" in data:
-                stub["caller"] = str(data["caller"])
             if BaseNames.ACTION_FIELD in data:
                 stub[BaseNames.ACTION_FIELD] = str(data[BaseNames.ACTION_FIELD])
             return json.dumps(stub)
@@ -135,7 +133,6 @@ _ESTIMATED_CHARS_PER_TOKEN = 4
 def estimate_conversation_tokens(messages: list[Message]) -> int:
     """Estimate text tokens after context truncation; image tokens are not counted."""
     return sum(
-        math.ceil(len(message.content) / _ESTIMATED_CHARS_PER_TOKEN)
+        math.ceil(len(render_content(message)) / _ESTIMATED_CHARS_PER_TOKEN)
         for message in get_truncated_messages_for_context(messages)
-        if message.content
     )

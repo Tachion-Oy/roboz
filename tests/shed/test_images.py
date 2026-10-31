@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
+from roboz.models import render_content
 from roboz import Agent
 from roboz.exceptions import ExternalCallCancelledError
 from roboz.agent import run_nested_agent
@@ -44,7 +45,7 @@ def invoke(options, paths, *, detail=None, tools=None):
     _, messages = agent.invoke()
     result = next(
         message for message in reversed(messages)
-        if json.loads(message.content).get("caller") == "execute_read_image"
+        if json.loads(render_content(message)).get("caller") == "execute_read_image"
     )
     return result, messages
 
@@ -85,7 +86,6 @@ def test_batch_delivers_ordered_images_once_and_persists_only_names(
     assert [row.image_names for row in persisted.messages if row.image_names] == [
         ["first.gif", "second.png", "first.gif"],
     ]
-    assert all(not row.images for row in persisted.messages)
     assert "base64," not in serialized
     assert all(image.url not in serialized for image in expected)
 
@@ -255,7 +255,7 @@ def test_unsupported_reader_explains_and_next_text_turn_succeeds(tmp_path, monke
     finally:
         reset_api_user_io(token)
     result = next(json.loads(m.content) for m in child.messages
-                  if m.role == Role.USER and json.loads(m.content).get("caller") == "read_images")
+                  if m.role == Role.USER and m.caller == "read_images")
     assert result["value"] == (
         f"The selected model, {endpoint.model_name}, cannot read images. "
         "Choose an image-capable model to inspect them. You can continue chatting with text."

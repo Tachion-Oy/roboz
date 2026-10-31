@@ -1,9 +1,8 @@
 """Snapshot-specific normalization for persisted conversation messages."""
 
-import json
 from typing import Final
 
-from roboz.models import BaseNames, Message, MessageKind
+from roboz.models import Message, MessageKind
 
 _NO_DESCRIPTION: Final[str] = "no persisted agent description"
 _STARTUP_CONTEXT_PLACEHOLDER: Final[str] = (
@@ -12,21 +11,12 @@ _STARTUP_CONTEXT_PLACEHOLDER: Final[str] = (
 _UNKNOWN_SKILL: Final[str] = "unknown"
 
 
-def _payload(message: Message) -> dict[str, object] | None:
-    try:
-        data = json.loads(message.content)
-    except json.JSONDecodeError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def normalize_messages_for_snapshot(
     messages: list[Message], *, agent_name: str, agent_description: str | None
 ) -> list[Message]:
     """Replace large bootstrap payloads with small prompt-visible markers."""
     normalized: list[Message] = []
     for message in messages:
-        payload = _payload(message)
         match message.message_kind:
             case MessageKind.AUTO_LOAD_BANNER:
                 continue
@@ -36,12 +26,7 @@ def normalize_messages_for_snapshot(
             case MessageKind.STARTUP_CONTEXT:
                 replacement = _STARTUP_CONTEXT_PLACEHOLDER
             case MessageKind.AUTO_LOADED_SKILL:
-                caller = (
-                    payload.get(BaseNames.CALLER_FIELD)
-                    if payload is not None
-                    else None
-                )
-                skill_name = caller if isinstance(caller, str) and caller else _UNKNOWN_SKILL
+                skill_name = message.caller or _UNKNOWN_SKILL
                 replacement = f"[auto-loaded skill omitted: {skill_name}]"
             case _:
                 replacement = ""
@@ -51,6 +36,7 @@ def normalize_messages_for_snapshot(
                     role=message.role,
                     content=replacement,
                     truncation=message.truncation,
+                    timestamp=message.timestamp,
                 )
             )
             continue

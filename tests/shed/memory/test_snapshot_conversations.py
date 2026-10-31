@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from roboz.shed.tools import ConsolidateMemoryContext, SnapshotConversationsContext, consolidate_memory
+from roboz.shed.tools import SnapshotConversationsContext
 from roboz.shed.tools import snapshot_conversations
 from roboz.shed.tools._snapshot_metadata import (
     SNAPSHOT_COVERAGE_SEQUENCE_FIELD,
@@ -47,17 +47,19 @@ def _row(
     content: str,
     role: Role = Role.USER,
     message_kind: MessageKind | None = None,
+    caller: str | None = None,
 ):
     return message_to_logged_row(
         Message(
             role=role,
             content=content,
+            caller=caller,
+            timestamp=created_at,
             truncation=DEFAULT,
             message_kind=message_kind,
         ),
         message_id=f"m-{sequence}",
         sequence=sequence,
-        created_at=created_at,
     )
 
 
@@ -117,7 +119,7 @@ def test_new_logs_preserve_names_for_visible_attachments(tmp_path, severity):
             content="" if severity is None else "x" * (LIGHT_MAX_CHARS + 100),
             truncation=DEFAULT if severity is None else Truncation(threshold=1, severity=severity),
         ),
-        message_id="m-1", sequence=1, created_at=datetime.now(timezone.utc),
+        message_id="m-1", sequence=1,
     )
     hidden = row.model_copy(update={
         "sequence": 2, "truncation": NO_MESSAGE, "image_names": ["hidden.png"],
@@ -142,56 +144,6 @@ def test_new_logs_preserve_names_for_visible_attachments(tmp_path, severity):
     assert "x" * (LIGHT_MAX_CHARS + 100) not in source
     assert "hidden.png" not in source
     assert all(not message.images and image.url not in message.content for message in prompts)
-
-
-def test_legacy_image_messages_flow_through_snapshots_and_memory_as_text(tmp_path):
-    conversation_root = tmp_path / "runs"
-    snapshot_root = tmp_path / "snapshots"
-    embedded = Image.from_bytes(b"image bytes", media_type="image/png")
-    row = _row(sequence=1, created_at=datetime.now(timezone.utc), content="")
-    row.images = [Image(url="https://example.com/chart.png"), embedded]
-    hidden = row.model_copy(update={"sequence": 2, "truncation": NO_MESSAGE})
-    hidden.images = [Image(url="https://example.com/hidden.png")]
-    path = _write_run(conversation_root, rows=[row, hidden])
-    legacy = json.loads(path.read_text())
-    for payload, source_row in zip(legacy["messages"], [row, hidden], strict=True):
-        del payload["image_names"]
-        payload["images"] = [image.model_dump() for image in source_row.images]
-    path.write_text(json.dumps(legacy))
-    snapshot = "Chart attached: conversation-1, sequence=1, image 2 (embedded)."
-    endpoint = MockLLMEndpoint([{"value": snapshot}, {"value": "Remember the chart reference."}])
-    events = []
-    pipe = EventPipe(event_sinks=(events.append,))
-    ctx = _ctx(conversation_root=conversation_root, snapshot_root=snapshot_root,
-               endpoint=endpoint, pipe=pipe)
-
-    result = snapshot_conversations(ctx)(Empty(), [])
-    assert "created=1" in result.value
-    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
-    source = next(message.content for message in prompts if "## Source conversation" in message.content)
-    assert "Conversation: conversation-1" in source
-    assert "sequence=1" in source
-    assert "[image 1: https://example.com/chart.png]" in source
-    assert "[image 2: embedded image; data in original message]" in source
-    assert embedded.url not in source
-    assert "hidden.png" not in source
-    assert all(not message.images for message in prompts)
-    artifact = next(snapshot_root.rglob("*.md"))
-    assert parse_snapshot_document(artifact.read_text()).covered_through_sequence == 2
-
-    events.clear()
-    memory_ctx = ConsolidateMemoryContext(
-        endpoint=endpoint, conversation_root=conversation_root,
-        snapshot_root=snapshot_root, memory_root=tmp_path / "memory", pipe=pipe,
-        agent_names={_DEFAULT_AGENT}, min_pending_snapshots=1,
-        max_pending_age_seconds=3600, max_chars=_MAX_CHARS,
-    )
-    result = consolidate_memory(memory_ctx)(Empty(), [])
-    assert "consolidated=1" in result.value
-    prompts = [event.message for event in events if isinstance(event, MessageEvent)]
-    assert any(snapshot in message.content for message in prompts)
-    assert all(not message.images and embedded.url not in message.content for message in prompts)
-    assert "Remember the chart reference." in next(memory_ctx.memory_root.glob("*.md")).read_text()
 
 
 def test_snapshot_writes_append_only_artifact_with_structured_log(
@@ -356,7 +308,7 @@ def test_snapshot_input_has_source_metadata_and_chronological_identity(
     assert "- Conversation: conversation-42" in conversation
     assert "- Run status: running" in conversation
     assert "- Snapshot mode: incremental" in conversation
-    assert "[sequence=7 created_at=2026-01-01T12:00:00.000Z]" in conversation
+    assert "[sequence=7 created_at=2026-01-01T12:00:00+00:00]" in conversation
     assert max_chars == _MAX_CHARS
     assert tolerance == 15.0
 
@@ -471,44 +423,6 @@ def test_rows_appended_during_snapshot_are_covered_by_the_next_sequence_cursor(
     assert latest_document.covered_through_sequence == 2
 
 
-def test_legacy_snapshot_treats_naive_row_timestamp_as_uncovered(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    conversation_root = tmp_path / "runs"
-    snapshot_root = tmp_path / "snapshots"
-    base = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
-    previous = (
-        snapshot_root
-        / _DEFAULT_CONVERSATION
-        / f"{(base + timedelta(minutes=5)).strftime(TIMESTAMP_STEM_FORMAT)}.md"
-    )
-    previous.parent.mkdir(parents=True)
-    previous.write_text("Legacy snapshot.", encoding="utf-8")
-    naive_row = _row(
-        sequence=1,
-        created_at=base,
-        content="Conservatively reprocess this row.",
-    ).model_copy(update={"created_at": "2026-01-01T12:00:00"})
-    _write_run(conversation_root, rows=[naive_row])
-    captured: list[str] = []
-
-    def fake_summary(**kwargs):
-        captured.append(kwargs["conversation"])
-        return "## State of work\n- Reprocessed."
-
-    monkeypatch.setattr(snapshot_module, "summarize_conversation_segment", fake_summary)
-    result = snapshot_conversations(
-        _ctx(
-            conversation_root=conversation_root,
-            snapshot_root=snapshot_root,
-            endpoint=MockLLMEndpoint([]),
-        )
-    )(input=Empty(), messages=[])
-
-    assert "created=1" in result.value
-    assert "Conservatively reprocess this row" in captured[0]
-
-
 def test_malformed_coverage_marker_reprocesses_rows_instead_of_skipping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -580,12 +494,8 @@ def test_bootstrap_payloads_are_normalized_before_thresholding(
         _row(
             sequence=3,
             created_at=datetime(2026, 1, 1, 12, 2, tzinfo=timezone.utc),
-            content=json.dumps(
-                {
-                    BaseNames.CALLER_FIELD: "cli_tools",
-                    BaseNames.VALUE_FIELD: "skill body",
-                }
-            ),
+            content=json.dumps({BaseNames.VALUE_FIELD: "skill body"}),
+            caller="cli_tools",
             message_kind=MessageKind.AUTO_LOADED_SKILL,
         ),
         _row(

@@ -1,4 +1,5 @@
 import pytest
+from roboz.models import render_content
 from roboz.shed.capabilities import Compactification
 from roboz.shed.tools.compactification import DEFAULT_THRESHOLD_PERCENT
 
@@ -139,7 +140,7 @@ def test_rebuilding_filesystem_preserves_each_project(tmp_path):
     second, _ = definition.build()
     for agent, own in ((first, "one"), (second, "two")):
         _, messages = agent.invoke()
-        outputs = [json.loads(m.content) for m in messages if m.role.value == "user"]
+        outputs = [json.loads(render_content(m)) for m in messages if m.role.value == "user"]
         assert [
             output["status"]
             for output in outputs

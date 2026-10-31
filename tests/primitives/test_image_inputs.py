@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import Field, ValidationError
 
+from roboz.models import render_content
 from roboz import Agent, tool
 from roboz.agent.prompt_llm_tool import PromptLLMContext, prompt_llm
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
@@ -56,7 +57,7 @@ def test_tool_images_survive_finalization_mapping_and_generic_scrubbing():
     assert json.loads(mapped.content) == {"value": "A chart"}
     assert "images" not in Str.model_json_schema()["properties"]
     assert messages_scrubber([mapped]) == [{
-        "role": "user", "content": message.content, "images": [{"url": image.url}],
+        "role": "user", "content": render_content(message), "images": [{"url": image.url}],
     }]
     error = message.model_copy(update={"role": Role.ERROR})
     assert role_to_user_mapper([error])[0] == message
@@ -246,7 +247,7 @@ def test_agent_can_pass_image_arguments_and_continue_after_tool_result(tmp_path:
     persisted = ConversationRun.model_validate_json(sink.conversations_location.read_text())
     assistant_row = next(row for row in persisted.messages if row.role == Role.ASSISTANT)
     assert assistant_row.content == assistant.content
-    assert assistant_row.images == []
+    assert assistant_row.image_names == []
     assert json.loads(assistant_row.content) == invocation
     result_row = next(row for row in persisted.messages if row.image_names)
     assert result_row.image_names == ["chart.png"]
@@ -275,7 +276,7 @@ def test_truncation_keeps_or_removes_whole_images(severity):
 
 
 @pytest.mark.parametrize("role", [Role.USER, Role.ASSISTANT])
-def test_image_logs_store_only_names_and_old_runs_load(role):
+def test_image_logs_store_only_names(role):
     message = Message(
         role=role, content="Inspect",
         images=[
@@ -286,7 +287,7 @@ def test_image_logs_store_only_names_and_old_runs_load(role):
     )
     original = message.model_copy(deep=True)
     now = datetime.now(timezone.utc)
-    row = message_to_logged_row(message, message_id="message", sequence=1, created_at=now)
+    row = message_to_logged_row(message, message_id="message", sequence=1)
     run = ConversationRun(
         conversation_id="run", agent_name="test", started_at=now.isoformat(), messages=[row]
     )
@@ -296,17 +297,6 @@ def test_image_logs_store_only_names_and_old_runs_load(role):
     assert "images" not in json.loads(serialized)["messages"][0]
     assert message == original
     restored = ConversationRun.model_validate_json(serialized)
-    assert restored.schema_version == 4
+    assert restored.schema_version == 5
     assert restored.messages[0].image_names == ["chart.png", "chart.jpg", "image-3"]
     assert logged_row_to_message(restored.messages[0]) == message.model_copy(update={"images": []})
-
-    legacy = run.model_dump(mode="json")
-    del legacy["messages"][0]["image_names"]
-    legacy["messages"][0]["images"] = [image.model_dump() for image in message.images]
-    restored_legacy = ConversationRun.model_validate(legacy)
-    assert logged_row_to_message(restored_legacy.messages[0]) == message
-    assert "base64," not in restored_legacy.model_dump_json()
-    legacy["schema_version"] = 3
-    del legacy["messages"][0]["images"]
-    restored_legacy = ConversationRun.model_validate(legacy)
-    assert logged_row_to_message(restored_legacy.messages[0]).images == []
