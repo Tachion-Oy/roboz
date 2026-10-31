@@ -30,7 +30,7 @@ OUTPUT_STRUCTURE_INSTRUCTIONS: Final[str] = """## JSON Structure
 
 Every JSON object you produce MUST contain *at least* the two fields: `action` and `rationale`.
 - `action`: A string that exactly matches the name of the tool you want to use.
-- `rationale`: A string explaining your thought process i.e. your internal monologue for why you are taking the chosen action.
+- `rationale`: A short statement of the reasons behind the chosen action. These are intended for later human evaluations and review of the agent's performance.
 -  there can only be one `action` and one `rationale` per you output, i.e. you are to perform only one action at a time.
 
 Depending on the required input arguments of the tools you decide to invoke, there of course can be other fields in your output. The Pydantic model schemas that are required for each specific tool call will be provided to you below, if applicable. If your output contains only the above two fields it means you are calling a tool without input arguments.
@@ -41,7 +41,7 @@ JSON_OUTPUT_SHAPE_EXAMPLES: Final[str] = """## JSON shape (illustrative)
 
 Valid — your **entire** reply is **exactly one** JSON object (additional fields depend on the tool you chose):
 
-`{"action": "<tool_name>", "rationale": "<why am I taking this action>"}`
+`{"action": "<tool_name>", "rationale": "<reasons behind this action>"}`
 
 Invalid — never output two top-level objects in one reply. Concatenation so that the sequence `}{` appears in your message (e.g. two objects back-to-back) is **forbidden** and will not parse.
 
