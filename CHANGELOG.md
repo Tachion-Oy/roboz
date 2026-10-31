@@ -2,15 +2,27 @@
 
 ## Unreleased
 
+## 0.15.0 - 2026-10-31
+
+- Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their
+  producer in `Message.caller` instead of a `caller` key in `content`, and
+  `filter_messages(caller=...)` matches that field. Provider requests render
+  both into tool results so agents see the current time; use the new
+  `render_content` to get the model-visible content of a message.
+- Breaking: conversation logs move to schema version 5 with a `caller` column,
+  and `created_at` keeps the local offset of the message's creation time.
+  Older logs, including those with stored image payloads, no longer load.
+  `message_to_logged_row` no longer takes `created_at`.
+- Report provider content-filter refusals as `LLMContentFilteredError`, a
+  provider request error, instead of retrying the empty reply as unparsable
+  JSON and failing with `LLMOutputFormatError`. Interactive agents ask the user
+  to choose another model and name the content filter as the reason; failed LLM
+  events report `error_kind` `content_filter`.
 - Agent prompts define `rationale` as a short statement of the reasons behind
   the chosen action, kept for later human review, instead of the agent's
   internal monologue. Claude Sonnet 5.5 returned empty replies to the old
   wording.
-- Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their
-  producer in `Message.caller` instead of a `caller` key in `content`, and
-  provider requests render both into tool results so agents see the current
-  time. `message_to_logged_row` no longer takes `created_at`. Logs move to
-  schema version 5; older logs no longer load.
+- Update locked OpenAI, pypdf, pytest, and Ruff dependencies.
 
 ## 0.14.0 - 2026-10-28
 
