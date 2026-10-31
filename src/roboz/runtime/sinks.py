@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 
-from roboz.models import Message, Role
+from roboz.models import Message, Role, render_content
 from roboz.runtime._paths import get_conversation_run_path
 from roboz.runtime.events import (
     EventSink,
@@ -199,7 +199,6 @@ class PersistenceSink:
             event.message,
             message_id=str(uuid4()),
             sequence=event.sequence,
-            created_at=datetime.now(timezone.utc),
         )
         run.messages.append(row)
         self._write_run(path)
@@ -248,7 +247,7 @@ def rich_print_message_to_terminal(
         return
     color = _ROLE_COLORS.get(message.role, "white")
     console.print(
-        f"[{color}][bold]{message.role.capitalize()}:[/bold] {escape(message.content)}[/{color}]"
+        f"[{color}][bold]{message.role.capitalize()}:[/bold] {escape(render_content(message, include_timestamp=False))}[/{color}]"
     )
 
 

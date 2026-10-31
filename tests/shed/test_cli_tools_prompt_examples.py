@@ -6,6 +6,7 @@ import shutil
 
 import pytest
 
+from roboz.models import render_content
 from roboz import Agent
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Role
@@ -88,7 +89,7 @@ def _run(workspace, example, *, deny_rules=(), ask_rules=(), pipe=None):
     )
     _, messages = agent.invoke()
     results = [
-        json.loads(message.content) for message in messages if message.role == Role.USER
+        json.loads(render_content(message, include_timestamp=False)) for message in messages if message.role == Role.USER
     ]
     assert any(
         item.get("caller") == skill.name and "# Instructions" in item.get("value", "")

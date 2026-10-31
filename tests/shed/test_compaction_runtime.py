@@ -189,7 +189,7 @@ def test_summary_over_budget_retries_even_within_default_length_tolerance():
 
 
 def test_json_escaping_cannot_exceed_replacement_budget():
-    endpoint = MockLLMEndpoint([{"value": "\U0001f600" * 300}], max_context_tokens=1000)
+    endpoint = MockLLMEndpoint([{"value": '"' * 1700}], max_context_tokens=1000)
     ctx = _ctx(endpoint)
     ctx.state.count = 2
     messages = _messages()
@@ -231,9 +231,8 @@ def test_repeated_compaction_uses_previous_summary_and_preserves_only_prefix():
     assert "summary-1" in requests[1]["messages"][1]["content"]
     assert "late startup" in requests[1]["messages"][1]["content"]
     payload = json.loads(messages[1].content)
-    assert payload["caller"] == tool.name == "compactify_messages_when_needed"
+    assert messages[1].caller == tool.name == "compactify_messages_when_needed"
     assert set(payload) == {
-        "caller",
         "value",
         "summary_markdown",
         "percent_used_before",

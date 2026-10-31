@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from roboz.models import render_content
 from roboz import Agent, runtime
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Role, Str
@@ -43,7 +44,7 @@ def _invoke(base: Path, tokens: list, **policy) -> str:
     )
     _, messages = agent.invoke()
     responses = [
-        json.loads(message.content) for message in messages if message.role == Role.USER
+        json.loads(render_content(message, include_timestamp=False)) for message in messages if message.role == Role.USER
     ]
     return next(
         response["value"]

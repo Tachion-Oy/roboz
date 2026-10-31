@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import tempfile
 from pathlib import Path
 
+from roboz.models import render_content
 from roboz.shed.agents import orchestrator as orchestrator_definition
 from roboz.shed.capabilities import (
     ArtifactRetention,
@@ -101,7 +102,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
     assert outside.read_text() == "private-marker"
     # Tool outputs, not model requests, prove both reads and guard denials.
     outputs = [
-        json.loads(message.content)
+        json.loads(render_content(message, include_timestamp=False))
         for message in messages
         if message.role.value == "user"
     ]
@@ -385,7 +386,7 @@ def test_filesystem_capability_writes_and_removes_with_its_skill(tmp_path):
         not {"operation_guard", "execute_file_command", "continue_file_command"}
         & active_names
     )
-    results = [json.loads(m.content) for m in messages if m.role.value == "user"]
+    results = [json.loads(render_content(m, include_timestamp=False)) for m in messages if m.role.value == "user"]
     final = [
         r["value"]
         for r in results

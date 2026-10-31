@@ -46,6 +46,12 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         "reply.\n\n"
     )
     section += (
+        "User messages carry `caller`, the tool that produced the result, and "
+        "`timestamp`, the local time the message was recorded. Use them to "
+        "know the current date and time and how much time has passed; never "
+        "include them in your own replies.\n\n"
+    )
+    section += (
         "System: This is an example system message for illustrative purposes.\n\n"
     )
     if not allow_user_input:
@@ -62,7 +68,11 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         )
         section += "User: "
         section += json.dumps(
-            {"caller": "example_tool", "value": "Example: 42"}
+            {
+                "caller": "example_tool",
+                "timestamp": "2026-01-15T09:30:04+02:00",
+                "value": "Example: 42",
+            }
         )
         section += "\n\n</example>"
         return section
@@ -82,6 +92,7 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         json.dumps(
             {
                 "caller": "prompt_user",
+                "timestamp": "2026-01-15T09:30:41+02:00",
                 "value": "Please demonstrate the example tool by calling it with value 42.",
             }
         )
@@ -103,6 +114,7 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         json.dumps(
             {
                 "caller": "example_tool",
+                "timestamp": "2026-01-15T09:30:44+02:00",
                 "value": "Example: 42",
             }
         )
@@ -124,6 +136,7 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         json.dumps(
             {
                 "caller": "prompt_user",
+                "timestamp": "2026-01-15T09:32:10+02:00",
                 "value": "Please load the example skill.",
             }
         )
@@ -143,6 +156,7 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
     section += json.dumps(
         {
             "caller": "example_skill",
+            "timestamp": "2026-01-15T09:32:13+02:00",
             "value": "# Instructions\n\nYou are now using the Example Skill... "
             "<redacted the rest as this is an example>",
         }

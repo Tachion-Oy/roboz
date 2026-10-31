@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Final
 
 import pytest
+from roboz.models import render_content
 from roboz.shed.agents.librarian import LIBRARIAN_AGENT_DESCRIPTION
 from roboz.shed.capabilities import (
     ArtifactRetention,
@@ -109,10 +110,13 @@ def _write_source_run(
         status=status,
         messages=[
             message_to_logged_row(
-                Message(role=Role.USER, content="Persist this source state."),
+                Message(
+                    role=Role.USER,
+                    content="Persist this source state.",
+                    timestamp=created_at,
+                ),
                 message_id="source-message",
                 sequence=1,
-                created_at=created_at,
             )
         ],
     )
@@ -135,10 +139,13 @@ def _complete_source_run(source: Path, *, final_fact: str = "The final fact.") -
     run.ended_at = utc_iso_z(datetime(2026, 8, 4, tzinfo=timezone.utc))
     run.messages.append(
         message_to_logged_row(
-            Message(role=Role.ASSISTANT, content=final_fact),
+            Message(
+                role=Role.ASSISTANT,
+                content=final_fact,
+                timestamp=datetime(2026, 8, 4, tzinfo=timezone.utc),
+            ),
             message_id=f"{run.conversation_id}-final-message",
             sequence=max(row.sequence for row in run.messages) + 1,
-            created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
         )
     )
     source.write_text(run.model_dump_json(), encoding="utf-8")
@@ -151,7 +158,7 @@ def _tool_callers(messages: list[Message]) -> list[str]:
     return [
         caller
         for message in messages
-        if (caller := json.loads(message.content).get("caller")) is not None
+        if (caller := json.loads(render_content(message, include_timestamp=False)).get("caller")) is not None
     ]
 
 

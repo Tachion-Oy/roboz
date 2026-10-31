@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Breaking: `Message` declares `caller` and `timestamp` fields. Tool results
+  record their producer in `Message.caller` instead of a `caller` key inside
+  `content`; read `message.caller`, or `render_content(message)` for the
+  model-visible text. Provider requests render both into JSON tool results, so
+  agents now see when each result was recorded (local time with UTC offset).
+  Assistant, system, and bootstrap messages and plain-text content are sent
+  unchanged. `message_to_logged_row` no longer takes `created_at`; it uses the
+  message timestamp. Conversation logs move to schema version 5 with a `caller`
+  column. Breaking: only version 5 logs load; version 3 and 4 logs, including
+  those with stored image payloads, are no longer readable.
+
 ## 0.14.0 - 2026-10-28
 
 - Omit `temperature` for models that reject it. Set `accepts_temperature=False`

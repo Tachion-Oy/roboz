@@ -33,7 +33,7 @@ from roboz.shed.tools.snapshot_normalize import normalize_messages_for_snapshot
 from roboz.exceptions import ExternalCallCancelledError, LLMProviderRequestError
 from roboz.llm import estimate_conversation_tokens, get_truncated_messages_for_context
 from roboz.llm._truncation import select_truncation
-from roboz.models import NO_MESSAGE, NO_TRUNCATION, All, Message, Role, Str
+from roboz.models import NO_MESSAGE, NO_TRUNCATION, All, Message, Role, Str, render_content
 from roboz.models.truncation import Severity
 from roboz.runtime import log_with_data
 from roboz.runtime.persistence import (
@@ -122,7 +122,7 @@ def _normalize_temporal_messages(
                     update={
                         "content": (
                             f"[sequence={row.sequence} created_at={row.created_at}]\n"
-                            f"{visible.content}"
+                            f"{render_content(visible, include_timestamp=False)}"
                             + "".join(
                                 f"\n[image {index}: {name}]"
                                 for index, name in enumerate(image_names, start=1)

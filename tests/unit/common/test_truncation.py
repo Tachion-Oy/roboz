@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from dataclasses import dataclass
+from roboz.models import render_content
 from roboz.llm._truncation import (
     TRUNCATED_PLACEHOLDER,
     get_truncated_messages_for_context,
@@ -241,7 +242,7 @@ def test_get_messages_for_context_parametrized(
         assert len(result) == 1
         m = result[0]
         assert TRUNCATED_PLACEHOLDER in m.content
-        assert '"caller"' in m.content
+        assert '"caller"' in render_content(m)
         assert marker not in m.content
     else:
         pytest.fail(f"Unknown expected: {expected}")
