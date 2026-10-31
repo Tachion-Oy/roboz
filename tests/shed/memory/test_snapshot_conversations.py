@@ -308,7 +308,7 @@ def test_snapshot_input_has_source_metadata_and_chronological_identity(
     assert "- Conversation: conversation-42" in conversation
     assert "- Run status: running" in conversation
     assert "- Snapshot mode: incremental" in conversation
-    assert "[sequence=7 created_at=2026-01-01T12:00:00.000Z]" in conversation
+    assert "[sequence=7 created_at=2026-01-01T12:00:00.000+00:00]" in conversation
     assert max_chars == _MAX_CHARS
     assert tolerance == 15.0
 

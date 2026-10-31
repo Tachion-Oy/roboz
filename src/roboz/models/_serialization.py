@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from roboz.models._fields import runtime_fields
 from roboz.models._telemetry import LLMTelemetry
-from roboz.models.core import Empty, Invoke, Message, MessageKind, Role, Stop
+from roboz.models.core import RESERVED_MESSAGE_FIELDS, Empty, Invoke, Message, MessageKind, Role, Stop
 
 if TYPE_CHECKING:
     from roboz.tooling.core import Tool
@@ -35,7 +35,11 @@ def get_finalized_message(
     """Record invocation arguments as JSON and attach images from tool results.
 
     Tool results record the producing tool in ``Message.caller`` rather than in
-    their JSON content.
+    their JSON content, so their payloads must not use ``caller`` or
+    ``timestamp`` fields.
+
+    Raises:
+        ValueError: If a tool result payload contains a reserved field.
 
     Invocation payloads retain supplied fields without inserting unset defaults.
     Result images become message attachments instead of duplicated JSON text.
@@ -59,6 +63,8 @@ def get_finalized_message(
         )
 
     payload = output.model_dump(mode="json", exclude=excluded_fields | {"images"})
+    if reserved := RESERVED_MESSAGE_FIELDS & payload.keys():
+        raise ValueError(f"Tool output uses reserved fields: {sorted(reserved)}")
     images = []
     try:
         images = getattr(output, "images")

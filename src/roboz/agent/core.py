@@ -45,7 +45,17 @@ from roboz.llm.endpoints import (
     LLMEndpointRoute,
     MockLLMEndpoint,
 )
-from roboz.models import AgentMode, Empty, Invoke, Message, MessageKind, Role, Stop, Str
+from roboz.models import (
+    AgentMode,
+    Empty,
+    Invoke,
+    Message,
+    MessageKind,
+    Role,
+    Stop,
+    Str,
+    render_content,
+)
 from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
 from roboz.runtime.events import EventSink
@@ -833,10 +843,10 @@ class Agent(HasExternalDependencies):
 
         for m in self.messages:
             if m.role == Role.USER:
-                msg_table.add_row("User", m.content)
+                msg_table.add_row("User", render_content(m, include_timestamp=False))
                 msg_table.add_row("", "")
                 continue
-            msg_table.add_row("System", m.content)
+            msg_table.add_row("System", render_content(m, include_timestamp=False))
             msg_table.add_row("", "")
 
         console.print(msg_table)

@@ -159,7 +159,7 @@ def _summary_input(
         f"- Snapshot mode: {_snapshot_mode(run.status).value}\n"
         f"- Run started at: {run.started_at}\n"
         f"- Run ended at: {ended_at}\n"
-        "- Message ordering: ascending sequence; created_at is UTC context.\n\n"
+        "- Message ordering: ascending sequence; created_at is local time with UTC offset.\n\n"
     )
     if previous_snapshot is None:
         return (

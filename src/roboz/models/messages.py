@@ -3,7 +3,13 @@
 from collections.abc import Iterable
 import json
 
-from roboz.models.core import BOOTSTRAP_MESSAGE_KINDS, BaseNames, Message, Role
+from roboz.models.core import (
+    BOOTSTRAP_MESSAGE_KINDS,
+    RESERVED_MESSAGE_FIELDS,
+    BaseNames,
+    Message,
+    Role,
+)
 
 
 def _shows_timestamp(message: Message) -> bool:
@@ -17,22 +23,24 @@ def _shows_timestamp(message: Message) -> bool:
 
 
 def format_timestamp(message: Message) -> str:
-    """Return the message time as local ISO 8601 with offset, in seconds."""
-    return message.timestamp.astimezone().isoformat(timespec="seconds")
+    """Return the message time as ISO 8601 with its creation offset, in seconds."""
+    return message.timestamp.isoformat(timespec="seconds")
 
 
 def render_content(message: Message, *, include_timestamp: bool = True) -> str:
     """Return model-visible content with the message's caller and time.
 
     JSON object content, the format of agent tool results, receives leading
-    ``caller`` and ``timestamp`` fields; payload fields with the same names take
-    precedence. Other content is returned verbatim, so plain prompts sent
-    directly to a model are unchanged. Assistant, system, and bootstrap
-    messages never show a timestamp.
+    ``caller`` and ``timestamp`` fields. Other content is returned verbatim, so
+    plain prompts sent directly to a model are unchanged. Assistant, system, and
+    bootstrap messages never show a timestamp.
 
     Args:
         message: Message to render; it is not modified.
         include_timestamp: Whether eligible messages show their timestamp.
+
+    Raises:
+        ValueError: If JSON object content already contains a reserved field.
     """
     envelope: dict[str, str] = {}
     if message.caller is not None:
@@ -47,6 +55,8 @@ def render_content(message: Message, *, include_timestamp: bool = True) -> str:
         payload = None
     if not isinstance(payload, dict):
         return message.content
+    if reserved := RESERVED_MESSAGE_FIELDS & payload.keys():
+        raise ValueError(f"Message content uses reserved fields: {sorted(reserved)}")
     return json.dumps(envelope | payload, ensure_ascii=False)
 
 

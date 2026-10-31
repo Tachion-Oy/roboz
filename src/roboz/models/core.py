@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import Annotated, Final, Literal, Self
@@ -41,6 +41,11 @@ class BaseNames(StrEnum):
     TIMESTAMP_FIELD = "timestamp"
     VALUE_FIELD = "value"
     KIND_FIELD = "kind"
+
+
+RESERVED_MESSAGE_FIELDS: Final[frozenset[str]] = frozenset(
+    {BaseNames.CALLER_FIELD, BaseNames.TIMESTAMP_FIELD}
+)
 
 
 class Role(StrEnum):
@@ -235,9 +240,10 @@ class Invoke(AgentBaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-def _utc_now() -> datetime:
-    # Millisecond precision matches persisted logs, so timestamps round-trip.
-    now = datetime.now(UTC)
+def _local_now() -> datetime:
+    # Keep the creation-time offset so rendering never depends on where a
+    # conversation resumes; millisecond precision matches persisted logs.
+    now = datetime.now().astimezone()
     return now.replace(microsecond=now.microsecond // 1000 * 1000)
 
 
@@ -245,9 +251,10 @@ class Message(RuntimeModel):
     """One typed conversation message and its runtime metadata.
 
     ``content`` holds only the payload. ``caller`` names the tool that produced a
-    recorded result, and ``timestamp`` records when the message was created.
-    Both are rendered into model-visible content when a request is built, so
-    they never need to be written into ``content`` directly.
+    recorded result, and ``timestamp`` records when the message was created, in
+    the local time and UTC offset of its creation. Both are rendered into
+    model-visible content when a request is built, so they never need to be
+    written into ``content`` directly.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -257,7 +264,7 @@ class Message(RuntimeModel):
     images: list[Image] = Field(default_factory=list, repr=False)
     caller: Annotated[str | None, RuntimeOnly()] = None
     timestamp: Annotated[AwareDatetime, RuntimeOnly()] = Field(
-        default_factory=_utc_now
+        default_factory=_local_now
     )
     truncation: Annotated[TruncationSpec, RuntimeOnly()] = Field(default=DEFAULT)
     message_kind: Annotated[MessageKind | None, RuntimeOnly()] = None

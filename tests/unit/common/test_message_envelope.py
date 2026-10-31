@@ -1,28 +1,32 @@
-import json
 import time
-from datetime import UTC, datetime
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from roboz.models import MessageKind, Message, Role, render_content
+from roboz import tool
+from roboz.models import All, Empty, MessageKind, Message, Role, render_content
+from roboz.models._serialization import get_finalized_message
 from roboz.runtime.persistence import (
     logged_row_to_message,
     message_to_logged_row,
 )
 
-_AT = datetime(2026, 10, 31, 12, 2, 11, tzinfo=UTC)
+_AT = datetime(2026, 10, 31, 14, 2, 11, tzinfo=timezone(timedelta(hours=2)))
 
 
 @pytest.fixture
-def helsinki(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("TZ", "Europe/Helsinki")
-    time.tzset()
-    yield
+def set_tz(monkeypatch: pytest.MonkeyPatch):
+    def apply(name: str) -> None:
+        monkeypatch.setenv("TZ", name)
+        time.tzset()
+
+    yield apply
     monkeypatch.undo()
     time.tzset()
 
 
-def test_tool_result_renders_caller_and_local_time_ahead_of_payload(helsinki) -> None:
+def test_tool_result_renders_caller_and_creation_time_ahead_of_payload() -> None:
     message = Message(
         role=Role.USER, content='{"value": "ok"}', caller="prompt_user", timestamp=_AT
     )
@@ -32,6 +36,19 @@ def test_tool_result_renders_caller_and_local_time_ahead_of_payload(helsinki) ->
         '"value": "ok"}'
     )
     assert message.content == '{"value": "ok"}'
+
+
+def test_rendering_keeps_creation_offset_after_timezone_changes(
+    set_tz: Callable[[str], None],
+) -> None:
+    set_tz("Asia/Tokyo")
+    message = Message(role=Role.USER, content="{}", caller="tool")
+    created = render_content(message)
+
+    set_tz("America/New_York")
+
+    assert message.timestamp.utcoffset() == timedelta(hours=9)
+    assert render_content(message) == created
 
 
 @pytest.mark.parametrize(
@@ -53,16 +70,29 @@ def test_content_without_eligible_envelope_is_verbatim(message: Message) -> None
     assert render_content(message) == message.content
 
 
-def test_payload_fields_take_precedence_over_envelope() -> None:
-    message = Message(
-        role=Role.USER, content='{"caller": "own", "timestamp": "own"}', caller="tool"
-    )
+@pytest.mark.parametrize("field", ["caller", "timestamp"])
+def test_tool_output_models_cannot_declare_reserved_fields(field: str) -> None:
+    Output = type("Output", (Empty,), {"__annotations__": {field: str}})
 
-    assert json.loads(render_content(message)) == {"caller": "own", "timestamp": "own"}
+    def produce(input: Empty, messages: list[Message]) -> Output:  # type: ignore[valid-type]
+        raise AssertionError("not called")
+
+    with pytest.raises(ValueError, match="reserved message fields"):
+        tool(produce)
 
 
-def test_persisted_rows_round_trip_caller_and_timestamp() -> None:
-    message = Message(role=Role.USER, content="{}", caller="tool")
+@pytest.mark.parametrize("field", ["caller", "timestamp"])
+def test_dynamic_tool_payloads_cannot_use_reserved_fields(field: str) -> None:
+    with pytest.raises(ValueError, match="reserved fields"):
+        get_finalized_message(All.model_validate({field: "x"}))
+
+    with pytest.raises(ValueError, match="reserved fields"):
+        render_content(Message(role=Role.USER, content=f'{{"{field}": "x"}}'))
+
+
+def test_persisted_rows_round_trip_caller_and_creation_offset() -> None:
+    message = Message(role=Role.USER, content="{}", caller="tool", timestamp=_AT)
     row = message_to_logged_row(message, message_id="m", sequence=1)
 
+    assert row.created_at == "2026-10-31T14:02:11.000+02:00"
     assert logged_row_to_message(row) == message
