@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.2 - 2026-11-05
+
 - `orchestrator()` includes the `Pdf()` capability, so the orchestrator can read
   PDFs without extra configuration.
 - `process_pdf` accepts `images: true` to attach the images embedded in the
