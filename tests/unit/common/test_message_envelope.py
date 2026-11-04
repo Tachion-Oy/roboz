@@ -35,7 +35,7 @@ def test_system_message_renders_time_before_prompt() -> None:
     message = Message(role=Role.SYSTEM, content="You are an agent.", timestamp=_AT)
 
     assert render_content(message) == (
-        '{"timestamp": "2026-10-31T14:02:11+02:00"}\n\nYou are an agent.'
+        "timestamp: 2026-10-31T14:02:11+02:00\n\nYou are an agent."
     )
 
 

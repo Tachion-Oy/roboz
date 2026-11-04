@@ -10,11 +10,7 @@ def render_content(message: Message) -> str:
     """Return model-visible content, prefixing the system message and tool results."""
     timestamp = message.timestamp.isoformat(timespec="seconds")
     if message.role == Role.SYSTEM:
-        return (
-            json.dumps({BaseNames.TIMESTAMP_FIELD: timestamp})
-            + "\n\n"
-            + message.content
-        )
+        return f"{BaseNames.TIMESTAMP_FIELD}: {timestamp}\n\n{message.content}"
     if message.caller is None:
         return message.content
     envelope = {BaseNames.CALLER_FIELD: message.caller}
