@@ -627,17 +627,25 @@ automatic chained steps.
 
 ### PDF reading
 
-Add `Pdf()` from `roboz.shed.capabilities` to a deployment with a configured
-`sandbox`. It loads the guarded `process_pdf` reader:
+`orchestrator()` includes `Pdf()`. Add `Pdf()` from `roboz.shed.capabilities`
+to any other deployment with a configured `sandbox`. It loads the guarded
+`process_pdf` reader:
 
 ```json
 {"action": "process_pdf", "rationale": "Read the report", "path": "report.pdf", "start_page": 1, "end_page": 3}
 ```
 
 Reading uses pypdf, includes page numbers, and limits the combined text output.
-Use smaller page ranges when output is truncated. Images are ignored and no OCR
-is performed; an existing OCR text layer can be read. Encrypted PDFs require a
-decrypted copy.
+Use smaller page ranges when output is truncated. No OCR is performed; an
+existing OCR text layer can be read. Encrypted PDFs require a decrypted copy.
+
+Set `"images": true` to also attach the images embedded in the selected pages,
+with an optional `detail` of `auto`, `low`, or `high`. JPEG images keep their
+original bytes; other formats are re-encoded as PNG. Images under 64 pixels on
+both sides and repeated images are skipped, and at most 20 images are attached
+per request. Charts drawn as vector graphics are not images and are not
+attached. A model that cannot read images receives the text with a notice
+instead.
 
 `Pdf(label=SkillLabel("pdf"))` offers the skill on demand. Direct compositions
 can use `pdf_skill(**permissions.tool_options(pipe))` from

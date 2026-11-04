@@ -34,6 +34,7 @@ classifiers = [
 dependencies = [
     "cryptography>=50.0.1",
     "openai>=2.8.1,<4",
+    "pillow>=13.0.0,<14",
     "pydantic>=2.12.4",
     "pygments>=2.20.0",
     "pypdf>=6.20.0,<7",

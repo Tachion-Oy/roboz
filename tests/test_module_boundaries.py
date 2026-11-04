@@ -41,6 +41,7 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
     assert names == {
         "cryptography",
         "openai",
+        "pillow",
         "pydantic",
         "pygments",
         "pypdf",

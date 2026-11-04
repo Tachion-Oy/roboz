@@ -1,9 +1,9 @@
-"""Persistent orchestrator constructor with its filesystem capabilities."""
+"""Persistent orchestrator constructor with its filesystem and PDF capabilities."""
 
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz.shed.capabilities import Filesystem
+from roboz.shed.capabilities import Filesystem, Pdf
 from roboz.shed.sandbox import Sandbox
 from roboz.deployment import (
     Capability,
@@ -40,6 +40,7 @@ def orchestrator(
         capabilities=(
             Capability(label=ToolLabel("stop"), value=stop),
             Filesystem(),
+            Pdf(),
         ),
         nested_agents=tuple(nested_agents),
         background_agents=tuple(background_agents),
