@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The system message renders with its `timestamp`, so agents know the
+  session start time before the first reply.
+
 ## 0.15.0 - 2026-10-31
 
 - Breaking: `Message` gains `caller` and `timestamp`. Tool results keep their

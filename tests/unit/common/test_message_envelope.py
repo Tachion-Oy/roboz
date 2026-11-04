@@ -31,6 +31,14 @@ def test_bootstrap_results_omit_time() -> None:
     assert render_content(message) == '{"caller": "cli_tools", "value": "skill"}'
 
 
+def test_system_message_renders_time_before_prompt() -> None:
+    message = Message(role=Role.SYSTEM, content="You are an agent.", timestamp=_AT)
+
+    assert render_content(message) == (
+        "timestamp: 2026-10-31T14:02:11+02:00\n\nYou are an agent."
+    )
+
+
 def test_persisted_rows_round_trip_caller_and_timestamp() -> None:
     message = Message(role=Role.USER, content="{}", caller="tool", timestamp=_AT)
     row = message_to_logged_row(message, message_id="m", sequence=1)

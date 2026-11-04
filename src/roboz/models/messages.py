@@ -7,15 +7,16 @@ from roboz.models.core import BOOTSTRAP_MESSAGE_KINDS, BaseNames, Message, Role
 
 
 def render_content(message: Message) -> str:
-    """Return model-visible content, prefixing tool results with caller and time."""
+    """Return model-visible content, prefixing the system message and tool results."""
+    timestamp = message.timestamp.isoformat(timespec="seconds")
+    if message.role == Role.SYSTEM:
+        return f"{BaseNames.TIMESTAMP_FIELD}: {timestamp}\n\n{message.content}"
     if message.caller is None:
         return message.content
     envelope = {BaseNames.CALLER_FIELD: message.caller}
     # Bootstrap results stay identical across runs so prompt caches hit.
     if message.message_kind not in BOOTSTRAP_MESSAGE_KINDS:
-        envelope[BaseNames.TIMESTAMP_FIELD] = message.timestamp.isoformat(
-            timespec="seconds"
-        )
+        envelope[BaseNames.TIMESTAMP_FIELD] = timestamp
     return json.dumps(envelope | json.loads(message.content), ensure_ascii=False)
 
 
