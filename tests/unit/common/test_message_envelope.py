@@ -14,21 +14,34 @@ def test_tool_result_renders_caller_and_time_ahead_of_payload() -> None:
     )
 
 
-def test_messages_without_caller_render_verbatim() -> None:
-    message = Message(role=Role.USER, content='{"timestamp": "mine"}')
+def test_json_input_without_caller_renders_time() -> None:
+    message = Message(role=Role.USER, content='{"value": "context"}', timestamp=_AT)
 
-    assert render_content(message) == message.content
+    assert render_content(message) == (
+        '{"timestamp": "2026-10-31T14:02:11+02:00", "value": "context"}'
+    )
 
 
-def test_bootstrap_results_omit_time() -> None:
+def test_bootstrap_results_render_time() -> None:
     message = Message(
         role=Role.USER,
         content='{"value": "skill"}',
         caller="cli_tools",
         message_kind=MessageKind.AUTO_LOADED_SKILL,
+        timestamp=_AT,
     )
 
-    assert render_content(message) == '{"caller": "cli_tools", "value": "skill"}'
+    assert render_content(message) == (
+        '{"caller": "cli_tools", "timestamp": "2026-10-31T14:02:11+02:00", "value": "skill"}'
+    )
+
+
+def test_assistant_and_plain_text_render_verbatim() -> None:
+    assistant = Message(role=Role.ASSISTANT, content='{"action": "x"}')
+    system = Message(role=Role.SYSTEM, content="You are an agent.")
+
+    assert render_content(assistant) == assistant.content
+    assert render_content(system) == system.content
 
 
 def test_persisted_rows_round_trip_caller_and_timestamp() -> None:
