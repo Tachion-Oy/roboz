@@ -28,6 +28,11 @@ from roboz.shed.tools.guard import build_guarded_tool_chain, operation_guard
 from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.tooling import Tool, factory
 
+JPEG_SIGNATURE = b"\xff\xd8\xff"
+JPEG_MEDIA_TYPE = "image/jpeg"
+PNG_MEDIA_TYPE = "image/png"
+ImageDetail = Literal["auto", "low", "high"] | None
+
 
 class ReadImagesInput(Empty):
     """Select local images and an optional detail level shared by the batch."""
@@ -36,7 +41,7 @@ class ReadImagesInput(Empty):
         min_length=1,
         description="Image files in order, relative to the tool base or absolute.",
     )
-    detail: Literal["auto", "low", "high"] | None = Field(
+    detail: ImageDetail = Field(
         default=None, description="Detail level for every image; omit for the model default."
     )
     model_config = ConfigDict(extra="forbid")
@@ -46,7 +51,8 @@ class ReadImagesInput(Empty):
     _failure: str | None = PrivateAttr(default=None)
 
 
-def _unsupported_model() -> Str | None:
+def unsupported_image_model() -> Str | None:
+    """Explain why images are withheld when the active model cannot read them."""
     endpoint = get_active_agent_endpoint()
     if endpoint is None:
         return None
@@ -65,7 +71,7 @@ def _prepare(
 ) -> ResolvedFileCommand[ReadImagesInput, Location] | Str:
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
-    unsupported = _unsupported_model()
+    unsupported = unsupported_image_model()
     if unsupported is not None:
         return unsupported
     assert ctx.base is not None
@@ -108,9 +114,9 @@ def _media_type(data: bytes) -> str:
     """Recognize supported signatures without decoding or changing pixels."""
     match data[:12]:
         case header if header.startswith(b"\x89PNG\r\n\x1a\n"):
-            return "image/png"
-        case header if header.startswith(b"\xff\xd8\xff"):
-            return "image/jpeg"
+            return PNG_MEDIA_TYPE
+        case header if header.startswith(JPEG_SIGNATURE):
+            return JPEG_MEDIA_TYPE
         case header if header.startswith((b"GIF87a", b"GIF89a")):
             return "image/gif"
         case header if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
@@ -126,7 +132,7 @@ def execute_read_image(
     """Read one permitted image and retain its outcome before continuing."""
     if ctx.pipe is not None:
         ctx.pipe.raise_if_cancelled()
-    unsupported = _unsupported_model()
+    unsupported = unsupported_image_model()
     if unsupported is not None:
         return unsupported
     request = input.original_input
@@ -157,7 +163,7 @@ def execute_read_image(
     if input.status == GuardStatus.ALLOWED and input.message:
         outcome += f"\n{input.message}"
     # A model change during a failed read must also discard earlier batch images.
-    unsupported = _unsupported_model()
+    unsupported = unsupported_image_model()
     if unsupported is not None:
         return unsupported
     request._results.append(
