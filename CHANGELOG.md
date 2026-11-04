@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `orchestrator()` includes the `Pdf()` capability, so the orchestrator can read
+  PDFs without extra configuration.
 - `process_pdf` accepts `images: true` to attach the images embedded in the
   selected pages, up to 20 per request. Models that cannot read images receive
   the text with a notice. Adds a Pillow dependency.

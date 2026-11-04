@@ -11,6 +11,7 @@ from roboz.shed.capabilities import (
     Filesystem,
     MaintenanceCadence,
     MemoryConsolidation,
+    Pdf,
 )
 from roboz.shed.sandbox import Sandbox
 from roboz.models import Empty, Message, Str
@@ -33,6 +34,7 @@ def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
     ] == [
         Capability,
         Filesystem,
+        Pdf,
     ]
     assert [type(capability) for capability in librarian_definition.capabilities] == [
         ConversationSnapshots,

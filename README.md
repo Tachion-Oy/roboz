@@ -627,8 +627,9 @@ automatic chained steps.
 
 ### PDF reading
 
-Add `Pdf()` from `roboz.shed.capabilities` to a deployment with a configured
-`sandbox`. It loads the guarded `process_pdf` reader:
+`orchestrator()` includes `Pdf()`. Add `Pdf()` from `roboz.shed.capabilities`
+to any other deployment with a configured `sandbox`. It loads the guarded
+`process_pdf` reader:
 
 ```json
 {"action": "process_pdf", "rationale": "Read the report", "path": "report.pdf", "start_page": 1, "end_page": 3}
