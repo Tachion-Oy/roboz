@@ -3,18 +3,26 @@
 import json
 
 import pytest
+from PIL import Image as PILImage
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from roboz.deployment import Capability, DeployableAgent, SkillLabel, ToolLabel
 from roboz.llm import MockLLMEndpoint
-from roboz.models import Str
+from roboz.models import Str, StrImage, render_content
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
 from roboz.shed.capabilities import Pdf
 from roboz.shed.models import ActionVerdict, GuardFilesResult, GuardStatus
 from roboz.shed.sandbox import PermissionPolicy, Sandbox
-from roboz.shed.tools.pdf import PdfInput, get_pdf_tool
+from roboz.shed.tools.images import JPEG_MEDIA_TYPE, PNG_MEDIA_TYPE
+from roboz.shed.tools.pdf import (
+    IMAGE_CAP_NOTICE,
+    IMAGES_NOT_INTERPRETED,
+    MAX_PDF_IMAGES,
+    PdfInput,
+    get_pdf_tool,
+)
 from roboz.tools import stop
 
 
@@ -96,6 +104,59 @@ def test_read_errors_are_tool_results(options, tmp_path, kind, expected):
         write_pdf(path, encrypted=kind == "encrypted")
     result = invoke(options, path="input.pdf", end_page=3 if kind == "range" else None)
     assert isinstance(result, Str) and expected in result.value
+
+
+def write_image_pdf(path, pictures):
+    pictures[0].save(path, save_all=True, append_images=pictures[1:])
+
+
+def red(size=(120, 90)):
+    return PILImage.new("RGB", size, (200, 30, 30))
+
+
+def test_images_attach_distinct_embedded_pictures(options, tmp_path):
+    palette = PILImage.new("P", (100, 100), 3)
+    write_image_pdf(tmp_path / "figures.pdf", [red(), palette, red(), red((10, 10))])
+    result = invoke(options, path="figures.pdf", images=True, detail="low")
+    assert isinstance(result, StrImage)
+    assert [(image.name, image.detail) for image in result.images] == [
+        ("page1-image1.jpg", "low"), ("page2-image1.png", "low"),
+    ]
+    assert result.images[0].url.startswith(f"data:{JPEG_MEDIA_TYPE};")
+    assert result.images[1].url.startswith(f"data:{PNG_MEDIA_TYPE};")
+
+
+def test_images_stop_at_the_cap(options, tmp_path):
+    pictures = [PILImage.new("RGB", (80, 80), (i * 10, 0, 0)) for i in range(MAX_PDF_IMAGES + 1)]
+    write_image_pdf(tmp_path / "many.pdf", pictures)
+    result = invoke(options, path="many.pdf", images=True)
+    assert isinstance(result, StrImage) and len(result.images) == MAX_PDF_IMAGES
+    assert IMAGE_CAP_NOTICE in result.value
+
+
+def test_images_are_off_by_default(options, tmp_path):
+    write_image_pdf(tmp_path / "figures.pdf", [red()])
+    result = invoke(options, path="figures.pdf")
+    assert type(result) is Str and IMAGES_NOT_INTERPRETED in result.value
+
+
+@pytest.mark.parametrize("vision", [True, False])
+def test_agents_receive_images_only_with_vision(tmp_path, vision):
+    write_image_pdf(tmp_path / "figures.pdf", [red()])
+    definition = DeployableAgent(
+        name="pdf_reader", system_prompt="Read the PDF.",
+        capabilities=(Pdf(), Capability(label=ToolLabel("stop"), value=stop)),
+    )
+    definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))
+    definition.set_agent_endpoint(MockLLMEndpoint([
+        {"action": "process_pdf", "rationale": "Read", "path": "figures.pdf", "images": True},
+        {"action": "stop", "rationale": "Done", "value": "done"},
+    ], accepts_images=vision))
+    agent, _ = definition.build()
+    _, messages = agent.invoke()
+    result = next(m for m in messages if "PDF:" in render_content(m))
+    assert [image.name for image in result.images] == (["page1-image1.jpg"] if vision else [])
+    assert (IMAGES_NOT_INTERPRETED in render_content(result)) is not vision
 
 
 def test_denied_paths_stop_before_execution(tmp_path):
