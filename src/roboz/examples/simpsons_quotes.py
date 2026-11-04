@@ -113,4 +113,5 @@ QUOTES: Final[list[str]] = [
     "Shoplifting is a victimless crime, like punching someone in the dark.",
     "Inflammable means flammable? What a country!",
     "Hi, Super Nintendo Chalmers!",
+    "When I grow up, I'm going to Bovine University!",
 ]
