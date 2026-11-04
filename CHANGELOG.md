@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.1 - 2026-11-04
+
 - The system message renders with its `timestamp`, so agents know the
   session start time before the first reply.
 

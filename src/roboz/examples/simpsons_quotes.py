@@ -112,4 +112,5 @@ QUOTES: Final[list[str]] = [
     "I sleep in a big bed with my wife.",
     "Shoplifting is a victimless crime, like punching someone in the dark.",
     "Inflammable means flammable? What a country!",
+    "Hi, Super Nintendo Chalmers!",
 ]
