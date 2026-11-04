@@ -46,9 +46,9 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
         "reply.\n\n"
     )
     section += (
-        "Messages you receive carry `timestamp`, the local time they were "
-        "recorded, and tool results also carry `caller`, the tool that "
-        "produced them. Use them to "
+        "Tool results carry `caller`, the tool that produced the result, and "
+        "`timestamp`, the local time the result was recorded; the system "
+        "message starts with the session's start `timestamp`. Use them to "
         "know the current date and time and how much time has passed; never "
         "include them in your own replies.\n\n"
     )

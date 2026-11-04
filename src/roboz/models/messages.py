@@ -3,28 +3,25 @@
 from collections.abc import Iterable
 import json
 
-from roboz.models.core import BaseNames, Message, Role
+from roboz.models.core import BOOTSTRAP_MESSAGE_KINDS, BaseNames, Message, Role
 
 
 def render_content(message: Message) -> str:
-    """Return model-visible content, prefixing JSON inputs with caller and time.
-
-    Assistant replies and non-object content render verbatim.
-    """
-    if message.role == Role.ASSISTANT:
+    """Return model-visible content, prefixing the system message and tool results."""
+    timestamp = message.timestamp.isoformat(timespec="seconds")
+    if message.role == Role.SYSTEM:
+        return (
+            json.dumps({BaseNames.TIMESTAMP_FIELD: timestamp})
+            + "\n\n"
+            + message.content
+        )
+    if message.caller is None:
         return message.content
-    try:
-        payload = json.loads(message.content)
-    except ValueError:
-        return message.content
-    if not isinstance(payload, dict):
-        return message.content
-    envelope = {
-        BaseNames.TIMESTAMP_FIELD: message.timestamp.isoformat(timespec="seconds")
-    }
-    if message.caller is not None:
-        envelope = {BaseNames.CALLER_FIELD: message.caller} | envelope
-    return json.dumps(envelope | payload, ensure_ascii=False)
+    envelope = {BaseNames.CALLER_FIELD: message.caller}
+    # Bootstrap results stay identical across runs so prompt caches hit.
+    if message.message_kind not in BOOTSTRAP_MESSAGE_KINDS:
+        envelope[BaseNames.TIMESTAMP_FIELD] = timestamp
+    return json.dumps(envelope | json.loads(message.content), ensure_ascii=False)
 
 
 def filter_messages(

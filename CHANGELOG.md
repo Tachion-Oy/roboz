@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- `render_content` stamps every non-assistant JSON message with its
-  `timestamp`, including bootstrap results and inputs without a `caller`, so
-  agents know the time before the first user reply.
+- The system message renders with its `timestamp`, so agents know the
+  session start time before the first reply.
 
 ## 0.15.0 - 2026-10-31
 

@@ -358,7 +358,8 @@ def test_message_kind_is_not_agent_facing_in_scrubbed_messages():
     assert message.message_kind == MessageKind.STARTUP_CONTEXT
 
     scrubbed = messages_scrubber([message])
-    assert scrubbed[0].keys() == {"role", "content", "images"}
+    assert scrubbed == [{"role": "user", "content": message.content, "images": []}]
+    assert "message_kind" not in scrubbed[0]
 
 
 def test_finalized_message_inherits_output_message_kind() -> None:
