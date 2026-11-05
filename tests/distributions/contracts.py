@@ -27,6 +27,7 @@ def test_all_modules_and_required_dependencies_are_installed():
     dependencies = {
         "openai": True,
         "pypdf": True,
+        "pypdfium2": True,
         "PIL": True,
         "imapclient": False,
         "pydantic_settings": False,
