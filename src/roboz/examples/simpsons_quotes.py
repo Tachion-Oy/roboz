@@ -115,4 +115,5 @@ QUOTES: Final[list[str]] = [
     "Hi, Super Nintendo Chalmers!",
     "When I grow up, I'm going to Bovine University!",
     "Spider-Pig, Spider-Pig, does whatever a Spider-Pig does.",
+    "Purple monkey dishwasher.",
 ]
