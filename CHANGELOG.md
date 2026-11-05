@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.16.0 - 2026-11-05
+
 - Breaking: `process_pdf` `images` is now `"none"`, `"embedded"`, or
   `"pages"` instead of a boolean. Replace `images: true` with
   `images: "embedded"`.
