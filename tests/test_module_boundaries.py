@@ -45,6 +45,7 @@ def test_one_distribution_declares_the_complete_runtime() -> None:
         "pydantic",
         "pygments",
         "pypdf",
+        "pypdfium2",
         "python-dotenv",
         "rich",
     }

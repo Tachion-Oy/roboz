@@ -1,4 +1,4 @@
-"""PDF instructions and the guarded text and image reader."""
+"""PDF instructions and the guarded text, image, and page reader."""
 
 from pathlib import Path
 
@@ -22,16 +22,29 @@ def pdf_skill(
     return Skill(
         name="pdf",
         description=(
-            "Read PDF text and embedded images with page ranges and file permission checks."
+            "Read PDF text, embedded images, or rendered page images with page ranges "
+            "and file permission checks."
         ),
         instructions=(
             "Use process_pdf with path to extract PDF text. "
             "start_page/end_page are inclusive and one-based; use smaller ranges "
             "if output is truncated. No OCR is performed. "
-            "Set images to true to also attach the photos, figures, and scanned pages "
-            f"embedded in the selected pages, up to {MAX_PDF_IMAGES} per request; "
-            "this needs an image-capable model. Charts drawn as vector graphics are "
-            "not images, so only their extractable text appears. "
+            "Text is always returned; the images option chooses what else is attached. "
+            "images=none (default) attaches nothing; use it for ordinary prose. "
+            "images=embedded attaches the pictures stored inside the PDF, such as "
+            "photos, figures saved as pictures, and scanned pages, at their own "
+            "resolution but without the surrounding page. It misses charts, diagrams, "
+            "and tables drawn as vector graphics, because those are drawing "
+            "instructions rather than stored pictures. "
+            "images=pages renders each selected page as one image, exactly as it looks: "
+            "text, layout, vector charts, diagrams, tables, forms, and pictures together. "
+            "Use pages when the visual appearance matters more than the extracted text, "
+            "or when the text is garbled, out of order, or missing; where the page image "
+            "and the text disagree, trust the image. It costs one image per page, so "
+            "keep page ranges narrow. Use embedded only to inspect a specific photo or "
+            "figure at full fidelity. "
+            f"Both image modes attach at most {MAX_PDF_IMAGES} images per request and "
+            "need an image-capable model. "
             "Encrypted PDFs require a decrypted copy."
         ),
         tools=get_pdf_tool(
