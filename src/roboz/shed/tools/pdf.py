@@ -1,10 +1,14 @@
-"""Read PDF text and optionally its embedded images through a guarded tool."""
+"""Read PDF text and optionally its images or rendered pages through a guarded tool."""
 
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
+from threading import Lock
+from typing import Literal
 
 from PIL.Image import Image as Picture
+# pypdfium2 ships no stubs; pyright infers its types from the sources.
+import pypdfium2 as pdfium  # pyright: ignore[reportMissingTypeStubs]
 from pydantic import Field
 from pypdf import PdfReader
 from pypdf.errors import PyPdfError
@@ -40,12 +44,23 @@ from roboz.tooling import Tool, factory
 MAX_PDF_IMAGES = 20
 IMAGES_NOT_INTERPRETED = "Images are not interpreted."
 IMAGE_CAP_NOTICE = f"[Stopped at {MAX_PDF_IMAGES} images; request a smaller page range.]"
+PAGE_CAP_NOTICE = f"[Rendered only the first {MAX_PDF_IMAGES} pages; request a smaller page range.]"
+PAGES_TAKE_PRECEDENCE = (
+    "The page images show the true layout, charts, and graphics; "
+    "prefer them where the extracted text is incomplete or disagrees."
+)
+# Rendered pages fit this many pixels on the longest side, at most at double size.
+MAX_RENDER_SIDE = 1600
+MAX_RENDER_SCALE = 2.0
+PdfImages = Literal["none", "embedded", "pages"]
 # Bullets, rules, and icons below this size on both sides are not worth attaching.
 _MIN_IMAGE_SIDE = 64
 _JPEG_MODES = {"L", "RGB"}
 _PNG_MODES = {"1", "L", "LA", "P", "RGB", "RGBA"}
 _SUFFIXES = {JPEG_MEDIA_TYPE: ".jpg", PNG_MEDIA_TYPE: ".png"}
 _DECODE_ERRORS = (OSError, ValueError, KeyError, NotImplementedError, PyPdfError)
+# PDFium is not thread-safe; every document access holds this lock.
+_PDFIUM_LOCK = Lock()
 
 
 class PdfInput(Empty):
@@ -58,9 +73,13 @@ class PdfInput(Empty):
     end_page: int | None = Field(
         default=None, ge=1, description="Read through this page; default: last."
     )
-    images: bool = Field(
-        default=False,
-        description="Also attach images embedded in the selected pages for visual inspection.",
+    images: PdfImages = Field(
+        default="none",
+        description=(
+            "none: text only. embedded: also attach the pictures stored in the PDF "
+            "(photos, scans), without vector charts or layout. pages: also attach each "
+            "selected page rendered as it looks, including charts, tables, and layout."
+        ),
     )
     detail: ImageDetail = Field(
         default=None, description="Detail level for attached images; omit for the model default."
@@ -73,10 +92,19 @@ def process_pdf(
     messages: list[Message],
     ctx: Path,
 ) -> ResolvedFileCommand[PdfInput, PdfInput] | ParseError:
-    """Read PDF text, optionally attaching its embedded images; performs no OCR.
+    """Read PDF text, optionally attaching images; performs no OCR.
 
-    Use inclusive page ranges to read long documents in parts. Charts drawn as
-    vector graphics are not images and are not attached.
+    Use inclusive page ranges to read long documents in parts. Text is always
+    returned. The images modes need an image-capable model and attach at most
+    20 images:
+    - none (default): text only; enough for ordinary prose.
+    - embedded: the pictures stored inside the PDF, such as photos and scanned
+      pages, at their own resolution. Charts, diagrams, and tables drawn as
+      vector graphics are not stored pictures, so they are not attached.
+    - pages: each selected page rendered as one image, exactly as it looks,
+      including text, layout, vector charts, diagrams, tables, and pictures.
+      Use it when appearance matters more than the text, or when the text is
+      garbled or incomplete. One image per page, so keep page ranges narrow.
     """
     try:
         source = resolve_single_file_path(input.path, base=ctx)
@@ -98,6 +126,7 @@ def process_pdf(
 def _read(
     input: PdfInput, pipe: EventPipe | None, *, with_images: bool
 ) -> tuple[str, list[Image]]:
+    """Extract the page range's text and the images its mode selects."""
     with open(input.path, "rb") as stream:
         reader = PdfReader(stream, strict=False)
         if reader.is_encrypted:
@@ -109,8 +138,12 @@ def _read(
         pages = range(input.start_page - 1, end)
         images: list[Image] = []
         report = IMAGES_NOT_INTERPRETED
-        if with_images:
-            collector = _EmbeddedImages(reader, input.detail, pipe)
+        if with_images and input.images != "none":
+            collector = (
+                _EmbeddedImages(reader, input.detail, pipe)
+                if input.images == "embedded"
+                else _RenderedPages(input.path, input.detail, pipe)
+            )
             report = collector.collect(pages)
             images = collector.images
         output = f"PDF: {total} pages. {report}\n"
@@ -208,6 +241,61 @@ class _EmbeddedImages:
         return buffer.getvalue(), PNG_MEDIA_TYPE
 
 
+class _RenderedPages:
+    """Render each page of a range as one image, up to the cap."""
+
+    def __init__(self, path: str, detail: ImageDetail, pipe: EventPipe | None) -> None:
+        self._path = path
+        self._detail: ImageDetail = detail
+        self._pipe = pipe
+        self._lines: list[str] = []
+        self.images: list[Image] = []
+
+    def collect(self, pages: range) -> str:
+        """Attach rendered pages in order and report every failed one."""
+        with _PDFIUM_LOCK:
+            document = pdfium.PdfDocument(self._path)
+            try:
+                for index in pages[:MAX_PDF_IMAGES]:
+                    if self._pipe is not None:
+                        self._pipe.raise_if_cancelled()
+                    self._attach(document, index)
+            finally:
+                document.close()
+        if len(pages) > MAX_PDF_IMAGES:
+            self._lines.append(PAGE_CAP_NOTICE)
+        summary = f"Rendered {len(self.images)} pages as images. {PAGES_TAKE_PRECEDENCE}"
+        return "\n".join((summary, *self._lines))
+
+    def _attach(self, document: pdfium.PdfDocument, index: int) -> None:
+        try:
+            data = self._render(document, index)
+        except (pdfium.PdfiumError, OSError, ValueError) as error:
+            self._lines.append(f"- page {index + 1}: could not be rendered ({error})")
+            return
+        self.images.append(Image.from_bytes(
+            data, media_type=PNG_MEDIA_TYPE, name=f"page{index + 1}.png", detail=self._detail
+        ))
+
+    @staticmethod
+    def _render(document: pdfium.PdfDocument, index: int) -> bytes:
+        """Render one page within the size bounds and encode it as PNG."""
+        page = document[index]
+        try:
+            width, height = page.get_size()
+            scale = min(MAX_RENDER_SCALE, MAX_RENDER_SIDE / max(width, height, 1))
+            # The untyped default scale=1 makes pyright infer int; PDFium takes floats.
+            bitmap = page.render(scale=scale)  # pyright: ignore[reportArgumentType]
+            try:
+                buffer = BytesIO()
+                bitmap.to_pil().save(buffer, format="PNG")
+                return buffer.getvalue()
+            finally:
+                bitmap.close()
+        finally:
+            page.close()
+
+
 @factory
 def execute_pdf(
     input: GuardFilesResult,
@@ -219,14 +307,15 @@ def execute_pdf(
         return Str(value=input.message or "PDF read denied")
     request = input.items[0].value
     assert isinstance(request, PdfInput)
-    unsupported = unsupported_image_model() if request.images else None
+    wants_images = request.images != "none"
+    unsupported = unsupported_image_model() if wants_images else None
     try:
-        text, images = _read(request, ctx, with_images=request.images and unsupported is None)
-    except (OSError, ValueError, PyPdfError) as error:
+        text, images = _read(request, ctx, with_images=wants_images and unsupported is None)
+    except (OSError, ValueError, PyPdfError, pdfium.PdfiumError) as error:
         return Str(value=f"PDF read failed: {error}")
     if unsupported is not None:
         text = f"{unsupported.value}\n{text}"
-    return StrImage(value=text, images=images) if request.images and images else Str(value=text)
+    return StrImage(value=text, images=images) if images else Str(value=text)
 
 
 def get_pdf_tool(

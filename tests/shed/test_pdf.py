@@ -1,5 +1,7 @@
 """The PDF tool reads text under the existing guards."""
 
+import base64
+from io import BytesIO
 import json
 
 import pytest
@@ -20,6 +22,9 @@ from roboz.shed.tools.pdf import (
     IMAGE_CAP_NOTICE,
     IMAGES_NOT_INTERPRETED,
     MAX_PDF_IMAGES,
+    MAX_RENDER_SIDE,
+    PAGE_CAP_NOTICE,
+    PAGES_TAKE_PRECEDENCE,
     PdfInput,
     get_pdf_tool,
 )
@@ -117,7 +122,7 @@ def red(size=(120, 90)):
 def test_images_attach_distinct_embedded_pictures(options, tmp_path):
     palette = PILImage.new("P", (100, 100), 3)
     write_image_pdf(tmp_path / "figures.pdf", [red(), palette, red(), red((10, 10))])
-    result = invoke(options, path="figures.pdf", images=True, detail="low")
+    result = invoke(options, path="figures.pdf", images="embedded", detail="low")
     assert isinstance(result, StrImage)
     assert [(image.name, image.detail) for image in result.images] == [
         ("page1-image1.jpg", "low"), ("page2-image1.png", "low"),
@@ -129,7 +134,7 @@ def test_images_attach_distinct_embedded_pictures(options, tmp_path):
 def test_images_stop_at_the_cap(options, tmp_path):
     pictures = [PILImage.new("RGB", (80, 80), (i * 10, 0, 0)) for i in range(MAX_PDF_IMAGES + 1)]
     write_image_pdf(tmp_path / "many.pdf", pictures)
-    result = invoke(options, path="many.pdf", images=True)
+    result = invoke(options, path="many.pdf", images="embedded")
     assert isinstance(result, StrImage) and len(result.images) == MAX_PDF_IMAGES
     assert IMAGE_CAP_NOTICE in result.value
 
@@ -141,7 +146,8 @@ def test_images_are_off_by_default(options, tmp_path):
 
 
 @pytest.mark.parametrize("vision", [True, False])
-def test_agents_receive_images_only_with_vision(tmp_path, vision):
+@pytest.mark.parametrize("mode,name", [("embedded", "page1-image1.jpg"), ("pages", "page1.png")])
+def test_agents_receive_images_only_with_vision(tmp_path, vision, mode, name):
     write_image_pdf(tmp_path / "figures.pdf", [red()])
     definition = DeployableAgent(
         name="pdf_reader", system_prompt="Read the PDF.",
@@ -149,14 +155,64 @@ def test_agents_receive_images_only_with_vision(tmp_path, vision):
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))
     definition.set_agent_endpoint(MockLLMEndpoint([
-        {"action": "process_pdf", "rationale": "Read", "path": "figures.pdf", "images": True},
+        {"action": "process_pdf", "rationale": "Read", "path": "figures.pdf", "images": mode},
         {"action": "stop", "rationale": "Done", "value": "done"},
     ], accepts_images=vision))
     agent, _ = definition.build()
     _, messages = agent.invoke()
     result = next(m for m in messages if "PDF:" in render_content(m))
-    assert [image.name for image in result.images] == (["page1-image1.jpg"] if vision else [])
+    assert [image.name for image in result.images] == ([name] if vision else [])
     assert (IMAGES_NOT_INTERPRETED in render_content(result)) is not vision
+
+
+def write_vector_chart(path, pages=1, size=(612, 792)):
+    """Write pages whose only content is a filled red bar drawn with vector operators."""
+    writer = PdfWriter()
+    for _ in range(pages):
+        page = writer.add_blank_page(width=size[0], height=size[1])
+        content = DecodedStreamObject()
+        content.set_data(b"1 0 0 rg 0 0 100 100 re f")
+        page.replace_contents(content.flate_encode())
+    writer.write(path)
+
+
+def decoded(image):
+    return PILImage.open(BytesIO(base64.b64decode(image.url.split(",", 1)[1])))
+
+
+def test_pages_render_vector_graphics_that_embedded_misses(options, tmp_path):
+    write_vector_chart(tmp_path / "chart.pdf")
+    embedded = invoke(options, path="chart.pdf", images="embedded")
+    assert type(embedded) is Str
+    result = invoke(options, path="chart.pdf", images="pages", detail="high")
+    assert isinstance(result, StrImage) and PAGES_TAKE_PRECEDENCE in result.value
+    [image] = result.images
+    assert (image.name, image.detail) == ("page1.png", "high")
+    assert image.url.startswith(f"data:{PNG_MEDIA_TYPE};")
+    picture = decoded(image).convert("RGB")
+    width, height = picture.size
+    assert picture.getpixel((5, height - 5)) == (255, 0, 0)
+    assert picture.getpixel((width - 5, 5)) == (255, 255, 255)
+
+
+def test_pages_render_only_the_selected_range(options, tmp_path):
+    write_vector_chart(tmp_path / "chart.pdf", pages=3)
+    result = invoke(options, path="chart.pdf", images="pages", start_page=2, end_page=3)
+    assert [image.name for image in result.images] == ["page2.png", "page3.png"]
+
+
+@pytest.mark.parametrize("size", [(612, 792), (5000, 3000), (100, 50)])
+def test_pages_fit_the_render_bound(options, tmp_path, size):
+    write_vector_chart(tmp_path / "chart.pdf", size=size)
+    [image] = invoke(options, path="chart.pdf", images="pages").images
+    assert max(decoded(image).size) <= MAX_RENDER_SIDE
+
+
+def test_pages_stop_at_the_cap(options, tmp_path):
+    write_vector_chart(tmp_path / "long.pdf", pages=MAX_PDF_IMAGES + 1)
+    result = invoke(options, path="long.pdf", images="pages")
+    assert len(result.images) == MAX_PDF_IMAGES and PAGE_CAP_NOTICE in result.value
+    assert result.images[-1].name == f"page{MAX_PDF_IMAGES}.png"
 
 
 def test_denied_paths_stop_before_execution(tmp_path):

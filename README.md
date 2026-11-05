@@ -635,17 +635,32 @@ to any other deployment with a configured `sandbox`. It loads the guarded
 {"action": "process_pdf", "rationale": "Read the report", "path": "report.pdf", "start_page": 1, "end_page": 3}
 ```
 
-Reading uses pypdf, includes page numbers, and limits the combined text output.
+Text extraction uses pypdf, includes page numbers, and limits the combined text output.
 Use smaller page ranges when output is truncated. No OCR is performed; an
 existing OCR text layer can be read. Encrypted PDFs require a decrypted copy.
 
-Set `"images": true` to also attach the images embedded in the selected pages,
-with an optional `detail` of `auto`, `low`, or `high`. JPEG images keep their
-original bytes; other formats are re-encoded as PNG. Images under 64 pixels on
-both sides and repeated images are skipped, and at most 20 images are attached
-per request. Charts drawn as vector graphics are not images and are not
-attached. A model that cannot read images receives the text with a notice
-instead.
+Text is always returned. `images` chooses what else is attached, with an
+optional `detail` of `auto`, `low`, or `high`:
+
+- `"none"` (default) attaches nothing.
+- `"embedded"` attaches the pictures stored inside the PDF, such as photos and
+  scanned pages, at their own resolution but without the surrounding page.
+  JPEG images keep their original bytes; other formats are re-encoded as PNG.
+  Images under 64 pixels on both sides and repeated images are skipped. Charts,
+  diagrams, and tables drawn as vector graphics are not stored pictures and
+  are not attached.
+- `"pages"` renders each selected page as one PNG with PDFium (through
+  pypdfium2), exactly as it looks: text, layout, vector charts, tables, and
+  pictures together. Pages render at up to double size and fit within 1600
+  pixels on the longest side. Use it when appearance matters more than the
+  extracted text, or when the text is garbled or incomplete.
+
+```json
+{"action": "process_pdf", "rationale": "Read the chart", "path": "report.pdf", "start_page": 4, "end_page": 4, "images": "pages"}
+```
+
+Both image modes attach at most 20 images per request. A model that cannot read
+images receives the text with a notice instead.
 
 `Pdf(label=SkillLabel("pdf"))` offers the skill on demand. Direct compositions
 can use `pdf_skill(**permissions.tool_options(pipe))` from

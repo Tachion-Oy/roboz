@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Breaking: `process_pdf` `images` is now `"none"`, `"embedded"`, or
+  `"pages"` instead of a boolean. Replace `images: true` with
+  `images: "embedded"`.
+- `images: "pages"` renders each selected page as an image, so the model sees
+  layout, tables, and charts drawn as vector graphics. Adds a pypdfium2
+  dependency.
+
 ## 0.15.2 - 2026-11-05
 
 - `orchestrator()` includes the `Pdf()` capability, so the orchestrator can read
