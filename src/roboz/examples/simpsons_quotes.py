@@ -114,4 +114,5 @@ QUOTES: Final[list[str]] = [
     "Inflammable means flammable? What a country!",
     "Hi, Super Nintendo Chalmers!",
     "When I grow up, I'm going to Bovine University!",
+    "Spider-Pig, Spider-Pig, does whatever a Spider-Pig does.",
 ]
