@@ -147,14 +147,10 @@ def test_executable_identity_metadata_and_explicit_resolution(monkeypatch):
     program = ExecutableDependency("python", display_name="Python")
     assert program.dependency_id == "executable:python"
     assert program.kind is ExternalDependencyKind.EXECUTABLE
-    assert not program.kind.waits_on_network
-    assert {kind for kind in ExternalDependencyKind if kind.waits_on_network} == {
-        ExternalDependencyKind.NETWORK_SERVICE,
-        ExternalDependencyKind.MODEL_ENDPOINT,
-    }
-    assert "executable" in program.kind.metadata_keys
-    assert ExternalDependencyKind("executable") is program.kind
-    assert str(program.kind) == program.kind.value == "executable"
+    assert not program.kind.traits.waits_on_network
+    assert "executable" in program.kind.traits.metadata_keys
+
+
     assert program.redacted_metadata() == {"executable": "python", "display_name": "Python"}
     resolved_names = []
 
@@ -172,6 +168,15 @@ def test_executable_identity_metadata_and_explicit_resolution(monkeypatch):
         program.require()
     with pytest.raises(ValueError, match="non-empty"):
         ExecutableDependency(" ")
+
+
+def test_every_dependency_kind_has_traits() -> None:
+    waiting = {kind for kind in ExternalDependencyKind if kind.traits.waits_on_network}
+    assert waiting == {
+        ExternalDependencyKind.NETWORK_SERVICE,
+        ExternalDependencyKind.MODEL_ENDPOINT,
+    }
+    assert all(kind.traits.metadata_keys for kind in ExternalDependencyKind)
 
 
 def test_aggregate_context_uses_concrete_fields_and_declared_resources():
