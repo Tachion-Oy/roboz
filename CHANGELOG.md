@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Dependency health checks that cannot wait on the network, executables and the
+  local script socket, run outside the worker slots, and a check's timeout
+  starts when the check starts rather than when it is queued. Local tools no
+  longer show as timed out while stuck network checks fill the slots. The
+  script socket reports the new kind `local_service`.
+
 ## 0.16.0 - 2026-11-05
 
 - Breaking: `process_pdf` `images` is now `"none"`, `"embedded"`, or

@@ -3,6 +3,7 @@ import asyncio
 import ssl
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -23,18 +24,22 @@ from roboz.dependencies import (
 )
 
 
+_NETWORK = ExternalDependencyKind.NETWORK_SERVICE
+
+
 class _Resource(ExternalDependency):
-    def __init__(self, name, checker=lambda _: None):
+    def __init__(self, name, checker=lambda _: None, kind=ExternalDependencyKind.EXECUTABLE):
         self.name = name
         self.checker = checker
+        self._kind = kind
 
     @property
     def dependency_id(self) -> str:
-        return f"executable:{self.name}"
+        return f"{self._kind.value}:{self.name}"
 
     @property
     def kind(self) -> ExternalDependencyKind:
-        return ExternalDependencyKind.EXECUTABLE
+        return self._kind
 
     def redacted_metadata(self):
         return {"executable": self.name}
@@ -338,7 +343,7 @@ def test_health_monitor_enforces_four_check_concurrency() -> None:
             active -= 1
         return None
 
-    dependencies = [_Resource(f"command-{index}", checker) for index in range(6)]
+    dependencies = [_Resource(f"probe-{index}", checker, _NETWORK) for index in range(6)]
     monitor = DependencyHealthMonitor(
         dependencies,
         max_concurrency=4,
@@ -416,7 +421,7 @@ def test_scheduler_recovers_from_failures_and_logs_sanitized_diagnostics(caplog,
     assert "private-diagnostic-payload" not in caplog.text
 
 
-def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
+def test_timeout_keeps_worker_permit_and_a_queued_check_waits_untimed():
     entered = threading.Event()
     release = threading.Event()
     second_entered = threading.Event()
@@ -424,7 +429,7 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
 
     def checker(dependency):
         calls.append(dependency.dependency_id)
-        if dependency.dependency_id == "executable:first":
+        if dependency.dependency_id == "network_service:first":
             entered.set()
             assert release.wait(timeout=5)
         else:
@@ -432,7 +437,7 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
         return None
 
     async def exercise():
-        dependencies = [_Resource("first", checker), _Resource("second", checker)]
+        dependencies = [_Resource("first", checker, _NETWORK), _Resource("second", checker, _NETWORK)]
         monitor = DependencyHealthMonitor(
             dependencies,
             timeout_s=0.05,
@@ -441,18 +446,86 @@ def test_timeout_keeps_worker_permit_and_prevents_duplicate_checks():
         try:
             observation = asyncio.create_task(monitor.run_once())
             assert await asyncio.to_thread(entered.wait, 2)
-            await observation
-            assert all(record.reason_code is DependencyReasonCode.TIMEOUT for record in monitor.records())
+            await asyncio.sleep(0.2)
+            first = monitor.record("network_service:first")
+            second = monitor.record("network_service:second")
+            assert first is not None and first.reason_code is DependencyReasonCode.TIMEOUT
+            # The queued check is neither failed nor started: it waits for the permit.
+            assert second is not None and second.status is DependencyStatus.PENDING
+            assert not observation.done()
             await monitor.run_once()
-            assert calls == ["executable:first"]
+            assert calls == ["network_service:first"]
             assert not second_entered.is_set()
             release.set()
-            assert await asyncio.to_thread(second_entered.wait, 2)
+            await asyncio.wait_for(observation, 2)
+            second = monitor.record("network_service:second")
+            assert second is not None and second.status is DependencyStatus.AVAILABLE
         finally:
             release.set()
             await monitor.stop()
 
     asyncio.run(exercise())
+
+
+def test_local_checks_skip_the_network_lane():
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking(dependency):
+        del dependency
+        entered.set()
+        assert release.wait(timeout=5)
+        return None
+
+    dependencies = [
+        _Resource("probe", blocking, _NETWORK),
+        _Resource("cat"),
+        _Resource("helper", kind=ExternalDependencyKind.LOCAL_SERVICE),
+    ]
+    monitor = DependencyHealthMonitor(dependencies, timeout_s=5, max_concurrency=1)
+
+    async def exercise():
+        observation = asyncio.create_task(monitor.run_once())
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            await asyncio.sleep(0.1)
+            for dependency_id in ("executable:cat", "local_service:helper"):
+                record = monitor.record(dependency_id)
+                assert record is not None and record.status is DependencyStatus.AVAILABLE
+                assert record.latency_ms is not None and record.latency_ms < 1000
+            probe = monitor.record("network_service:probe")
+            assert probe is not None and probe.status is DependencyStatus.PENDING
+        finally:
+            release.set()
+            await observation
+            await monitor.stop()
+
+    asyncio.run(exercise())
+
+
+def test_queued_check_is_not_timed_while_waiting():
+    def slow(dependency):
+        del dependency
+        time.sleep(0.3)
+        return None
+
+    monitor = DependencyHealthMonitor(
+        [_Resource("slow", slow, _NETWORK), _Resource("quick", kind=_NETWORK)],
+        timeout_s=0.05,
+        max_concurrency=1,
+    )
+
+    async def exercise():
+        try:
+            await monitor.run_once()
+        finally:
+            await monitor.stop()
+
+    asyncio.run(exercise())
+    slow_record = monitor.record("network_service:slow")
+    quick = monitor.record("network_service:quick")
+    assert slow_record is not None and slow_record.reason_code is DependencyReasonCode.TIMEOUT
+    assert quick is not None and quick.status is DependencyStatus.AVAILABLE
 
 
 def test_monitor_logs_changes_and_returns_the_same_diagnostic(caplog):

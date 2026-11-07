@@ -52,6 +52,8 @@ class ExternalDependencyKind(StrEnum):
     EXECUTABLE = "executable"
     NETWORK_SERVICE = "network_service"
     MODEL_ENDPOINT = "model_endpoint"
+    # A helper on this machine reached without the network, such as a Unix socket.
+    LOCAL_SERVICE = "local_service"
 
 
 class ExternalDependency(ABC):

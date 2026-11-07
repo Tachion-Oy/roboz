@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from enum import StrEnum
 
@@ -21,6 +22,11 @@ from roboz.dependencies import (
 from roboz.runtime._logging import log_with_data
 
 logger = logging.getLogger(__name__)
+
+# Checks that can hang on the network share the worker slots; the rest run at once.
+_NETWORK_KINDS = frozenset(
+    {ExternalDependencyKind.MODEL_ENDPOINT, ExternalDependencyKind.NETWORK_SERVICE}
+)
 
 
 class DependencyStatus(StrEnum):
@@ -50,6 +56,8 @@ class DependencyHealthMonitor:
     Combine agent dependencies and standalone resources in the supplied sequence.
     The first resource for each dependency ID is retained for this monitor's
     lifetime. Construction records pending status; observation performs checks.
+    ``max_concurrency`` bounds the network and model checks; executables and
+    local services are checked at once, so a stuck network never hides them.
     """
 
     def __init__(
@@ -120,8 +128,9 @@ class DependencyHealthMonitor:
     async def run_once(self) -> None:
         """Observe dependencies without overlapping an in-flight check.
 
-        Timeouts bound observation waits. Active checkers retain their concurrency
-        slots until completion, including workers that cannot be cancelled.
+        Timeouts bound each check from the moment it runs; waiting for a worker
+        slot is not timed. Active checkers retain their slots until completion,
+        including workers that cannot be cancelled.
         """
         await asyncio.gather(
             *(self._observe(dependency_id) for dependency_id in self._dependencies)
@@ -151,10 +160,13 @@ class DependencyHealthMonitor:
         existing = self._inflight.get(dependency_id)
         if existing is not None and not existing.done():
             return
+        running = asyncio.Event()
         task = asyncio.create_task(
-            self._run_check(dependency_id), name=f"dependency-check:{dependency_id}"
+            self._run_check(dependency_id, running),
+            name=f"dependency-check:{dependency_id}",
         )
         self._inflight[dependency_id] = task
+        await running.wait()
         started = self._monotonic()
         try:
             result = await asyncio.wait_for(asyncio.shield(task), self._timeout_s)
@@ -214,10 +226,18 @@ class DependencyHealthMonitor:
             },
         )
 
-    async def _run_check(self, dependency_id: str) -> DependencyFailure | None:
+    async def _run_check(
+        self, dependency_id: str, running: asyncio.Event
+    ) -> DependencyFailure | None:
         dependency = self._dependencies[dependency_id]
-        async with self._semaphore:
-            return await asyncio.to_thread(check_dependency, dependency)
+        lane = self._semaphore if dependency.kind in _NETWORK_KINDS else nullcontext()
+        try:
+            async with lane:
+                running.set()
+                return await asyncio.to_thread(check_dependency, dependency)
+        finally:
+            # A task cancelled while queued must not leave its observer waiting.
+            running.set()
 
     def _clear_inflight(
         self, dependency_id: str, task: asyncio.Task[DependencyFailure | None]
@@ -247,6 +267,7 @@ _METADATA_KEYS: Mapping[ExternalDependencyKind, frozenset[str]] = {
     ExternalDependencyKind.NETWORK_SERVICE: frozenset(
         {"provider", "service", "host", "port", "tls_mode", "display_name"}
     ),
+    ExternalDependencyKind.LOCAL_SERVICE: frozenset({"socket_path", "display_name"}),
 }
 
 

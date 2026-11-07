@@ -9,6 +9,7 @@ from roboz.dependencies import (
     DependencyFailure,
     DependencyReasonCode,
     ExecutableDependency,
+    ExternalDependencyKind,
 )
 
 
@@ -100,7 +101,9 @@ def test_suppressed_context_is_not_disclosed_and_cycles_terminate():
 def test_missing_script_socket_retains_os_diagnostic(tmp_path):
     from roboz.shed.tools.safe_scripts.client import ScriptSocketDependency
 
-    failure = ScriptSocketDependency(tmp_path / "missing.sock").check()
+    dependency = ScriptSocketDependency(tmp_path / "missing.sock")
+    assert dependency.kind is ExternalDependencyKind.LOCAL_SERVICE
+    failure = dependency.check()
     assert failure is not None
     assert failure.reason_code is DependencyReasonCode.CONNECTION_FAILED
     assert "FileNotFoundError" in failure.message and "[Errno 2]" in failure.message
