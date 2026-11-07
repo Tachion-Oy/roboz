@@ -48,8 +48,8 @@ class ScriptSocketDependency(ExternalDependency):
 
     @property
     def kind(self) -> ExternalDependencyKind:
-        """Report an external service."""
-        return ExternalDependencyKind.NETWORK_SERVICE
+        """Report a local helper: its check never waits on the network."""
+        return ExternalDependencyKind.LOCAL_SERVICE
 
     def redacted_metadata(self) -> Mapping[str, str]:
         """Report the configured socket location."""
