@@ -225,7 +225,7 @@ class DependencyHealthMonitor:
         self, dependency_id: str, running: asyncio.Event
     ) -> DependencyFailure | None:
         dependency = self._dependencies[dependency_id]
-        lane = self._semaphore if dependency.kind.waits_on_network else nullcontext()
+        lane = self._semaphore if dependency.kind.traits.waits_on_network else nullcontext()
         try:
             async with lane:
                 running.set()
@@ -259,7 +259,7 @@ def _sanitize_metadata(dependency: ExternalDependency) -> dict[str, str]:
         metadata = dependency.redacted_metadata()
     except Exception:
         return {}
-    allowed = dependency.kind.metadata_keys
+    allowed = dependency.kind.traits.metadata_keys
     return {
         key: str(value)
         for key, value in metadata.items()
