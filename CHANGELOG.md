@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.16.1 - 2026-11-07
+
 - Dependency health checks that cannot wait on the network, executables and the
   local script socket, run outside the worker slots, and a check's timeout
   starts when the check starts rather than when it is queued. Local tools no

@@ -117,4 +117,5 @@ QUOTES: Final[list[str]] = [
     "Spider-Pig, Spider-Pig, does whatever a Spider-Pig does.",
     "Purple monkey dishwasher.",
     "Can't talk, eating.",
+    "Me fail English? That's unpossible.",
 ]
