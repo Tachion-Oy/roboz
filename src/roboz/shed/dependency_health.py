@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -22,11 +22,6 @@ from roboz.dependencies import (
 from roboz.runtime._logging import log_with_data
 
 logger = logging.getLogger(__name__)
-
-# Checks that can hang on the network share the worker slots; the rest run at once.
-_NETWORK_KINDS = frozenset(
-    {ExternalDependencyKind.MODEL_ENDPOINT, ExternalDependencyKind.NETWORK_SERVICE}
-)
 
 
 class DependencyStatus(StrEnum):
@@ -56,8 +51,8 @@ class DependencyHealthMonitor:
     Combine agent dependencies and standalone resources in the supplied sequence.
     The first resource for each dependency ID is retained for this monitor's
     lifetime. Construction records pending status; observation performs checks.
-    ``max_concurrency`` bounds the network and model checks; executables and
-    local services are checked at once, so a stuck network never hides them.
+    ``max_concurrency`` bounds the checks whose kind waits on the network; the
+    other kinds are checked at once, so a stuck network never hides them.
     """
 
     def __init__(
@@ -230,7 +225,7 @@ class DependencyHealthMonitor:
         self, dependency_id: str, running: asyncio.Event
     ) -> DependencyFailure | None:
         dependency = self._dependencies[dependency_id]
-        lane = self._semaphore if dependency.kind in _NETWORK_KINDS else nullcontext()
+        lane = self._semaphore if dependency.kind.waits_on_network else nullcontext()
         try:
             async with lane:
                 running.set()
@@ -259,24 +254,12 @@ def check_dependency(dependency: ExternalDependency) -> DependencyFailure | None
         return DependencyFailure.from_exception(exc)
 
 
-_METADATA_KEYS: Mapping[ExternalDependencyKind, frozenset[str]] = {
-    ExternalDependencyKind.EXECUTABLE: frozenset({"executable", "display_name"}),
-    ExternalDependencyKind.MODEL_ENDPOINT: frozenset(
-        {"api_name", "model_name", "endpoint_type"}
-    ),
-    ExternalDependencyKind.NETWORK_SERVICE: frozenset(
-        {"provider", "service", "host", "port", "tls_mode", "display_name"}
-    ),
-    ExternalDependencyKind.LOCAL_SERVICE: frozenset({"socket_path", "display_name"}),
-}
-
-
 def _sanitize_metadata(dependency: ExternalDependency) -> dict[str, str]:
     try:
         metadata = dependency.redacted_metadata()
     except Exception:
         return {}
-    allowed = _METADATA_KEYS.get(dependency.kind, frozenset())
+    allowed = dependency.kind.metadata_keys
     return {
         key: str(value)
         for key, value in metadata.items()

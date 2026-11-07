@@ -9,7 +9,7 @@ import ssl
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 from urllib.parse import quote
 
@@ -46,14 +46,42 @@ class DependencyFailure:
         return cls(reason, redact_dependency_message(message, secrets=secrets))
 
 
-class ExternalDependencyKind(StrEnum):
-    """Stable categories understood by dependency inspection."""
+class ExternalDependencyKind(str, Enum):
+    """Stable categories understood by dependency inspection.
 
-    EXECUTABLE = "executable"
-    NETWORK_SERVICE = "network_service"
-    MODEL_ENDPOINT = "model_endpoint"
-    # A helper on this machine reached without the network, such as a Unix socket.
-    LOCAL_SERVICE = "local_service"
+    Each kind carries what inspection needs to know about it: whether its
+    check can hang on the network, so health monitoring bounds how many such
+    checks run at once while the others are checked straight away, and which
+    metadata keys are safe to show for it. A ``LOCAL_SERVICE`` is a helper on
+    this machine reached without the network, such as a Unix socket. The value
+    is the kind's stable string identity, as ``StrEnum`` would give it.
+    """
+
+    EXECUTABLE = "executable", False, ("executable", "display_name")
+    NETWORK_SERVICE = (
+        "network_service",
+        True,
+        ("provider", "service", "host", "port", "tls_mode", "display_name"),
+    )
+    MODEL_ENDPOINT = "model_endpoint", True, ("api_name", "model_name", "endpoint_type")
+    LOCAL_SERVICE = "local_service", False, ("socket_path", "display_name")
+
+    waits_on_network: bool
+    metadata_keys: frozenset[str]
+
+    def __new__(
+        cls, value: str, waits_on_network: bool, metadata_keys: tuple[str, ...]
+    ) -> ExternalDependencyKind:
+        """Build the member from its string identity and its traits."""
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.waits_on_network = waits_on_network
+        member.metadata_keys = frozenset(metadata_keys)
+        return member
+
+    def __str__(self) -> str:
+        """Render the string identity, as ``StrEnum`` does."""
+        return self.value
 
 
 class ExternalDependency(ABC):

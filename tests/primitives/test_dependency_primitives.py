@@ -147,6 +147,14 @@ def test_executable_identity_metadata_and_explicit_resolution(monkeypatch):
     program = ExecutableDependency("python", display_name="Python")
     assert program.dependency_id == "executable:python"
     assert program.kind is ExternalDependencyKind.EXECUTABLE
+    assert not program.kind.waits_on_network
+    assert {kind for kind in ExternalDependencyKind if kind.waits_on_network} == {
+        ExternalDependencyKind.NETWORK_SERVICE,
+        ExternalDependencyKind.MODEL_ENDPOINT,
+    }
+    assert "executable" in program.kind.metadata_keys
+    assert ExternalDependencyKind("executable") is program.kind
+    assert str(program.kind) == program.kind.value == "executable"
     assert program.redacted_metadata() == {"executable": "python", "display_name": "Python"}
     resolved_names = []
 
