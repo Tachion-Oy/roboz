@@ -13,6 +13,8 @@
   `env_allowlist`; `get_run_shell_command` accepts `policy`. The chained
   executor tool is now named `execute_shell_command`, and shell commands
   require POSIX.
+- Error and retry messages stay in the model's context for 20 messages
+  instead of 5, so a correction is still visible on the following turns.
 
 ## 0.16.2 - 2026-11-15
 
