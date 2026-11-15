@@ -580,7 +580,8 @@ from roboz.shed.capabilities import ShellCommands
 agent.add_capabilities(ShellCommands(timeout_s=600, env_allowlist=("HOME",)))
 ```
 
-Commands run through the runner that trusted scripts use, on POSIX systems.
+Commands run through the Bash runner that trusted scripts also use, on POSIX
+systems.
 They get the application's privileges and `PATH`, `LANG=C.UTF-8`, and otherwise
 only the variables named in `env_allowlist`, so credentials in the application's
 environment stay out of reach of `env`. Output is emitted as script output
@@ -591,10 +592,9 @@ the command line ends, every process it started is ended, so nothing keeps
 running in the background. Commands receive no interactive input.
 
 For a tool-only composition, pass
-`get_run_shell_command(base=..., pipe=..., policy=ExecutionPolicy(...))` from
-`roboz.shed.tools` to an agent; `ExecutionPolicy` comes from
-`roboz.shed.tools.safe_scripts`. User approval is the only protection; this is
-not an operating-system sandbox.
+`get_run_shell_command(base=..., pipe=..., policy=ExecutionPolicy(...))` to an
+agent; both names come from `roboz.shed.tools`. User approval is the only
+protection; this is not an operating-system sandbox.
 
 ### Image reading
 

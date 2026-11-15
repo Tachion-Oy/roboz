@@ -39,10 +39,12 @@ from roboz.shed.tools.safe_scripts import (
     SafeScriptContext,
     run_shell_script,
 )
-from roboz.shed.tools.safe_scripts.protocol import (
+from roboz.shed.tools.bash_runner import (
     DEFAULT_TIMEOUT_S,
     DEFAULT_MAX_OUTPUT_BYTES,
     ExecutionPolicy,
+)
+from roboz.shed.tools.safe_scripts.protocol import (
     require_linux_transport,
 )
 from roboz.shed.tools.stop_when_watched_agents_inactive import (

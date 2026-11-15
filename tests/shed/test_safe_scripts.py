@@ -296,7 +296,7 @@ def test_discovery_checks_cancellation_during_traversal_and_description(
 ):
     from threading import Lock
     from roboz.dependencies import ExecutableDependency
-    from roboz.shed.tools.safe_scripts.protocol import ExecutionPolicy
+    from roboz.shed.tools.bash_runner import ExecutionPolicy
     from roboz.shed.tools.safe_scripts.server import Scripts
 
     _script(
@@ -330,7 +330,7 @@ def test_discovery_checks_cancellation_during_traversal_and_description(
 def test_discovery_deadline_preserves_already_discovered_entries(tmp_path):
     from threading import Lock
     from roboz.dependencies import ExecutableDependency
-    from roboz.shed.tools.safe_scripts.protocol import ExecutionPolicy
+    from roboz.shed.tools.bash_runner import ExecutionPolicy
     from roboz.shed.tools.safe_scripts.server import Scripts
 
     for index in range(2):
@@ -344,7 +344,7 @@ def test_discovery_deadline_preserves_already_discovered_entries(tmp_path):
     )
     entries = []
 
-    from roboz.shed.tools.safe_scripts.protocol import Completed
+    from roboz.shed.tools.bash_runner import Completed
 
     for event in runner.events(RunShellScriptInput(), lambda: None):
         if isinstance(event, Completed):

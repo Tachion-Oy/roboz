@@ -5,31 +5,17 @@ import socket
 import sys
 import time
 from collections.abc import Callable
-from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
-from pydantic.dataclasses import dataclass as validated_dataclass
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from roboz.models import Empty
-
-DEFAULT_TIMEOUT_S = 300.0
-DEFAULT_MAX_OUTPUT_BYTES = 65_536
-MAX_DIAGNOSTIC_CHARS = 4096  # Protocol bounds terminal diagnostics.
-
-
-class ReservedScriptEnv(StrEnum):
-    """Process-control variables excluded from the script environment allowlist."""
-
-    PATH = "PATH"
-    BASH_ENV = "BASH_ENV"
-    ENV = "ENV"
-    SHELLOPTS = "SHELLOPTS"
-    BASHOPTS = "BASHOPTS"
-    LD_PRELOAD = "LD_PRELOAD"
-    LD_LIBRARY_PATH = "LD_LIBRARY_PATH"
-    PYTHONPATH = "PYTHONPATH"
-
+from roboz.shed.tools.bash_runner import (
+    Completed,
+    ExecutionPolicy,
+    OutputChunk,
+    ScriptStatus,
+)
 
 class RunShellScriptInput(Empty):
     """Omit ``script`` to discover entrypoints, or select one relative path."""
@@ -46,11 +32,6 @@ class ScriptEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-ScriptStatus = Literal[
-    "listed", "success", "refused", "busy", "failed", "timeout", "output_limit"
-]
-
-
 class ShellScriptResult(Empty):
     """Bounded outcome of discovery or a trusted script invocation."""
 
@@ -59,23 +40,6 @@ class ShellScriptResult(Empty):
     exit_code: int | None = None
     output: str = ""
     model_config = ConfigDict(extra="forbid")
-
-
-@validated_dataclass(frozen=True, config=ConfigDict(strict=True))
-class ExecutionPolicy:
-    """Validate immutable execution settings using the same rules at both entrypoints."""
-
-    timeout_s: Annotated[float, Field(gt=0, allow_inf_nan=False)] = DEFAULT_TIMEOUT_S
-    max_output_bytes: Annotated[int, Field(gt=0)] = DEFAULT_MAX_OUTPUT_BYTES
-    env_allowlist: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        """Exclude invalid names and variables that control shell startup."""
-        if any(
-            not name or "=" in name or "\x00" in name or name in ReservedScriptEnv
-            for name in self.env_allowlist
-        ):
-            raise ValueError("env_allowlist contains an invalid or reserved name")
 
 
 PROTOCOL_VERSION = 2
@@ -121,53 +85,12 @@ class Request(WireMessage):
     script: str | None = None
 
 
-class OutputChunk(WireMessage):
-    """Carry only decoded script transcript."""
-
-    kind: Literal["output"] = "output"
-    output: str
-
-
 class ScriptEntryMessage(WireMessage):
     """Deliver one entry without a whole-catalogue frame ceiling."""
 
     kind: Literal["entry"] = "entry"
     script: str
     description: str = Field(max_length=512)
-
-
-class Completed(WireMessage):
-    """Carry terminal metadata separately from streamed data."""
-
-    kind: Literal["completion"] = "completion"
-    status: ScriptStatus
-    exit_code: int | None
-    diagnostic: str = Field(max_length=MAX_DIAGNOSTIC_CHARS)
-
-    @model_validator(mode="after")
-    def validate_outcome(self) -> "Completed":
-        """Reject exit codes inconsistent with the terminal status."""
-        match self.status:
-            case "success" if self.exit_code != 0:
-                raise ValueError("successful completion requires exit code zero")
-            case "failed" if self.exit_code == 0:
-                raise ValueError("failed completion cannot have exit code zero")
-            case "success" | "failed":
-                pass
-            case _ if self.exit_code is not None:
-                raise ValueError("non-execution completion cannot have an exit code")
-        return self
-
-    @classmethod
-    def outcome(
-        cls, status: ScriptStatus, exit_code: int | None = None, diagnostic: str = ""
-    ) -> "Completed":
-        """Bound locally produced diagnostics; wire decoding remains strict."""
-        return cls(
-            status=status,
-            exit_code=exit_code,
-            diagnostic=diagnostic[:MAX_DIAGNOSTIC_CHARS],
-        )
 
 
 Response = OutputChunk | ScriptEntryMessage | Completed

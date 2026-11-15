@@ -1,6 +1,7 @@
 """Basic tools; service integrations are imported explicitly."""
 
 from .apply_patch import get_apply_patch
+from .bash_runner import ExecutionPolicy
 from .contexts import (
     CompactionContext,
     CompactionState,
@@ -30,6 +31,7 @@ __all__ = [
     "GuardContext",
     "FileCommandExecutionContext",
     "ExecutableCommandCatalog",
+    "ExecutionPolicy",
     "CompactionContext",
     "CompactionState",
     "ConsolidateMemoryContext",

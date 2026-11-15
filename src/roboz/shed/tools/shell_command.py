@@ -20,6 +20,7 @@ from roboz.shed.models import (
     Operation,
     PermissionRule,
 )
+from roboz.shed.tools.bash_runner import ExecutionPolicy, bash_events, collect_output
 from roboz.shed.tools.cli_commands.command import guard_file_command
 from roboz.shed.tools.cli_commands.constants import SUCCESS_NO_OUTPUT
 from roboz.shed.tools.cli_commands.contracts import CommandExecution
@@ -32,9 +33,6 @@ from roboz.shed.tools.cli_commands.execute import (
 from roboz.shed.tools.contexts import GuardContext
 from roboz.shed.tools.formatting import _framed_cli_output
 from roboz.shed.tools.guard import build_guarded_tool_chain
-from roboz.shed.tools.safe_scripts.client import collect
-from roboz.shed.tools.safe_scripts.protocol import ExecutionPolicy
-from roboz.shed.tools.safe_scripts.server import bash_events
 from roboz.shed.tools.truncation import default_cli_truncation
 from roboz.shed.tools.types import ResolvedFileCommand
 from roboz.tooling import Tool
@@ -122,12 +120,12 @@ def execute_shell_command(
     messages: list[Message],
     ctx: ShellCommandContext,
 ) -> Str:
-    """Run the approved command with the trusted-script runner and report its outcome."""
+    """Run the approved command with the shared Bash runner and report its outcome."""
     del messages
     ready = input.original_input.ready
     if ready is None:
         raise ValueError("Missing prepared command")
-    result = collect(
+    completion, output = collect_output(
         bash_events(
             ctx.bash,
             ready.argv[1:],
@@ -138,9 +136,11 @@ def execute_shell_command(
         ),
         ctx.pipe.emit_script_output,
     )
-    succeeded = result.status == "success"
-    detail = result.status if result.exit_code is None else f"exit {result.exit_code}"
-    output = result.output
+    succeeded = completion.status == "success"
+    if completion.exit_code is None:
+        detail = completion.status
+    else:
+        detail = f"exit {completion.exit_code}"
     if succeeded and not output:
         output = SUCCESS_NO_OUTPUT.format(command=ready.display_command)
     return _final_result(
@@ -162,7 +162,7 @@ def get_run_shell_command(
 
     Every call asks the user; no rule skips the prompt, and a run without
     user interaction denies the command. Commands run in `base` under
-    `policy`, through the runner trusted scripts use: a minimal environment,
+    `policy`, through the runner trusted scripts also use: a minimal environment,
     output streamed to the pipe, and the whole process group ended at the
     time limit or on cancellation. User approval is the only protection: this
     is not an OS sandbox.

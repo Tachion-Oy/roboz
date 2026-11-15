@@ -2,8 +2,11 @@
 
 ## Unreleased
 
-- `run_shell_command` runs approved commands through the trusted-script
-  runner instead of the file-command executor. Commands get the application's
+- `run_shell_command` runs approved commands through the Bash runner that
+  trusted scripts use, instead of the file-command executor. That runner, its
+  `ExecutionPolicy` and its output events now live in
+  `roboz.shed.tools.bash_runner`, which both tools import; `ExecutionPolicy`
+  is exported from `roboz.shed.tools`. Commands get the application's
   `PATH`, `LANG=C.UTF-8`, and otherwise only allowed variables, so they no
   longer inherit credentials from the application's environment. Output is
   emitted as script output events while the command runs, cancelling the run

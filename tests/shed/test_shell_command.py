@@ -16,8 +16,7 @@ from roboz.models import Role, Str, render_content
 from roboz.runtime import EventPipe, ScriptOutputEvent
 from roboz.shed.capabilities import ShellCommands
 from roboz.shed.sandbox import Sandbox
-from roboz.shed.tools import get_run_shell_command
-from roboz.shed.tools.safe_scripts import ExecutionPolicy
+from roboz.shed.tools import ExecutionPolicy, get_run_shell_command
 from roboz.tools import stop
 
 pytestmark = pytest.mark.skipif(
