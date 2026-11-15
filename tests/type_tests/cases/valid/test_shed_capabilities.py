@@ -13,6 +13,7 @@ from roboz.shed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
     SafeScripts,
+    ShellCommands,
 )
 from roboz.shed.sandbox import Sandbox
 from roboz import Agent, Skill, Tool
@@ -35,6 +36,7 @@ def compose(
         MaintenanceCadence(seconds=0),
         SafeScripts(scripts_dir=Path("/opt/trusted-scripts")),
         SafeScripts(socket_path=Path("/run/scripts/service.sock")),
+        ShellCommands(),
     )
     sandbox.configure_scope("project")
     definition = orchestrator(sandbox, agent_endpoint=endpoint)

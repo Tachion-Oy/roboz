@@ -31,6 +31,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Deployable agents and capabilities](#deployable-agents-and-capabilities)
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
+  - [User-approved shell commands](#user-approved-shell-commands)
   - [Image reading](#image-reading)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
   - [Use the bundled examples](#use-the-bundled-examples)
@@ -561,6 +562,30 @@ The filesystem skill's [command instructions](src/roboz/shed/skills/filesystem/c
 contain the full option allowlist and describe command-specific operand ordering
 and restrictions. Its [patch instructions](src/roboz/shed/skills/filesystem/patch.py)
 cover literal replacements and choosing between patches and full-file rewrites.
+
+### User-approved shell commands
+
+`ShellCommands()` adds `run_shell_command`, which takes one Bash command line as
+a string and runs it with `bash -c` in the sandbox root. Pipes, redirects,
+`&&`, `||`, `;`, and `&` work as in a terminal.
+
+Before every run the tool itself, not the model, shows the user the exact
+command in a fenced block and asks yes or no. Only `y` or `yes` runs it. Any
+other reply, no reply, or a run without user interaction denies the command,
+and the agent receives the user's reply. No setting or rule skips the prompt.
+
+```python
+from roboz.shed.capabilities import ShellCommands
+
+agent.add_capabilities(ShellCommands())
+```
+
+For a tool-only composition, pass
+`get_run_shell_command(base=..., pipe=...)` from `roboz.shed.tools` to an agent.
+Commands inherit the application's environment and privileges, receive no
+interactive input, and share the file-command executor's limits: 60 seconds and
+100,000 output characters, returned when the command finishes. User approval is
+the only protection; this is not an operating-system sandbox.
 
 ### Image reading
 

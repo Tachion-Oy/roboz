@@ -105,7 +105,10 @@ def _request_approvals(
             input, pending[0], "Approval unavailable: no interaction context"
         )
     for item in pending:
-        prompt = f"Allow {item.operation} for {str(item.location)!r}? (yes/no)"
+        prompt = (
+            item.prompt
+            or f"Allow {item.operation} for {str(item.location)!r}? (yes/no)"
+        )
         try:
             reply = runtime.interact_with_user(prompt, with_reply=True)
         except (UserInputUnavailableError, RuntimeError, ValueError) as error:

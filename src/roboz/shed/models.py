@@ -90,6 +90,7 @@ class Operation(StrEnum):
     CREATE = auto()
     DELETE = auto()
     STAGE = auto()
+    EXECUTE = auto()
 
 
 class GuardFileSingle(BaseModel, Generic[TPayload]):
@@ -98,6 +99,9 @@ class GuardFileSingle(BaseModel, Generic[TPayload]):
     operation: Operation = Field(description="The operation type")
     location: Path = Field(description="The access location")
     value: SerializeAsAny[TPayload]
+    prompt: str | None = Field(
+        default=None, description="Approval question replacing the default"
+    )
     model_config = ConfigDict(extra="forbid")
 
 
