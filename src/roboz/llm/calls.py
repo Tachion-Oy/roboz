@@ -350,11 +350,13 @@ class _LLMCallRunner:
             data=started_data,
         )
 
+    def _duration_ms(self) -> int:
+        return round((time.monotonic() - self._started) * _MILLISECONDS_PER_SECOND)
+
     def _report_progress(self, diagnostics: LLMResponseDiagnostics) -> None:
-        duration_ms = round((time.monotonic() - self._started) * 1000)
         progress_data = (
             self._event_data
-            | {_DURATION_MS_KEY: duration_ms}
+            | {_DURATION_MS_KEY: self._duration_ms()}
             | diagnostics.event_data()
         )
         emit_llm_runtime_event(
@@ -368,14 +370,13 @@ class _LLMCallRunner:
         )
 
     def _report_succeeded(self, result: _ChatCompletionResult) -> None:
-        duration_ms = round((time.monotonic() - self._started) * 1000)
         succeeded_message = (
             f"LLM call succeeded: {self._endpoint.api_name}/{self._endpoint.model_name}"
         )
         succeeded_data = (
             self._event_data
             | {
-                _DURATION_MS_KEY: duration_ms,
+                _DURATION_MS_KEY: self._duration_ms(),
                 _RESPONSE_CHARS_KEY: len(result.content),
                 _TOKEN_INPUT_KEY: result.telemetry.get(_TOKEN_INPUT_KEY),
                 _TOKEN_OUTPUT_KEY: result.telemetry.get(_TOKEN_OUTPUT_KEY),
