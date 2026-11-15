@@ -62,7 +62,7 @@ class FileCommand(Empty):
 class CommandExecution(Empty):
     """Execution progress with pipe bytes separate from the ready command's text stdin."""
 
-    request: FileCommand
+    request: FileCommand | None = None
     remaining: list[Token]
     stdin: bytes | None = None
     accumulated_output: str = ""
