@@ -7,6 +7,10 @@ from pathlib import Path
 from roboz.dependencies import ExecutableDependency, ExternalDependency
 from roboz.models import Message
 from roboz.runtime import EventPipe
+from roboz.shed.tools.bash_runner import (
+    ExecutionPolicy,
+    ReservedScriptEnv as ReservedScriptEnv,
+)
 from roboz.tooling.context import HasExternalDependencies
 from roboz.tooling.decorators import factory
 
@@ -16,8 +20,6 @@ from .client import (
     request_script,
 )
 from .protocol import (
-    ExecutionPolicy,
-    ReservedScriptEnv as ReservedScriptEnv,
     RunShellScriptInput as RunShellScriptInput,
     ScriptEntry as ScriptEntry,
     ShellScriptResult as ShellScriptResult,

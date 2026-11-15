@@ -1,6 +1,5 @@
 """Discover and run trusted scripts, directly or through a Unix socket service."""
 
-import codecs
 import logging
 import os
 import select
@@ -8,12 +7,11 @@ import signal
 import socket
 import socketserver
 import stat
-import subprocess
 import sys
 import time
 from _thread import LockType
 from collections.abc import Callable, Generator
-from contextlib import ExitStack, closing, suppress
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path, PureWindowsPath
@@ -23,18 +21,24 @@ from typing import TYPE_CHECKING, cast
 from roboz.dependencies import ExecutableDependency
 from roboz.exceptions import ExternalCallCancelledError
 
-from .protocol import (
+from roboz.shed.tools.bash_runner import (
     DEFAULT_MAX_OUTPUT_BYTES,
     DEFAULT_TIMEOUT_S,
+    OUTPUT_CHUNK_BYTES,
+    Completed,
+    DeadlineExpired,
+    ExecutionPolicy,
+    deadline_check,
+    run_bash,
+)
+
+from .protocol import (
     HANDSHAKE_TIMEOUT_S,
     MAX_CONNECTIONS,
     PROTOCOL_VERSION,
     STALLED_DELIVERY_TIMEOUT_S,
-    Completed,
-    ExecutionPolicy,
     FrameReader,
     Greeting,
-    OutputChunk,
     Request,
     Response,
     RunShellScriptInput,
@@ -44,9 +48,6 @@ from .protocol import (
 )
 
 logger = logging.getLogger(__name__)
-PROCESS_CLEANUP_TIMEOUT_S = 2.0
-POLL_INTERVAL_S = 0.1
-OUTPUT_CHUNK_BYTES = 4096
 DESCRIPTION_CHARS = 512
 
 # Unix serving is only constructed on Linux; local imports remain portable.
@@ -134,21 +135,6 @@ def _discover(
     return Completed.outcome("listed")
 
 
-def _terminate(process: subprocess.Popen[bytes]) -> None:
-    with suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
-        deadline = time.monotonic() + PROCESS_CLEANUP_TIMEOUT_S
-        while time.monotonic() < deadline:
-            process.poll()  # Reap the leader before checking for remaining children.
-            os.killpg(process.pid, 0)
-            time.sleep(0.05)
-        os.killpg(process.pid, signal.SIGKILL)
-
-
-class _DeadlineExpired(Exception):
-    pass
-
-
 @dataclass(frozen=True)
 class Scripts:
     """Share immutable settings and a gate; keep all operation state in its stream."""
@@ -163,13 +149,7 @@ class Scripts:
         self, request: RunShellScriptInput, check_cancelled: Callable[[], None]
     ) -> Generator[Response]:
         """Yield completion only after process cleanup and gate release."""
-        deadline = time.monotonic() + self.policy.timeout_s
-
-        def check() -> None:
-            check_cancelled()
-            if time.monotonic() >= deadline:
-                raise _DeadlineExpired
-
+        check = deadline_check(self.policy.timeout_s, check_cancelled)
         try:
             check()
             root = self.scripts_dir.absolute()
@@ -181,7 +161,7 @@ class Scripts:
                 )
             else:
                 completion = yield from self._execute(path, check)
-        except _DeadlineExpired:
+        except DeadlineExpired:
             completion = Completed.outcome("timeout")
         except (OSError, ValueError) as error:
             completion = Completed.outcome("failed", diagnostic=str(error))
@@ -190,60 +170,21 @@ class Scripts:
     def _execute(
         self, path: Path, check: Callable[[], None]
     ) -> Generator[Response, None, Completed]:
-        environment = {
-            "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
-            "LANG": "C.UTF-8",
-            **{
-                key: os.environ[key]
-                for key in self.policy.env_allowlist
-                if key in os.environ
-            },
-        }
         if not self.execution_lock.acquire(blocking=False):
             return Completed.outcome("busy", diagnostic="another script is running")
-        with ExitStack() as cleanup:
-            cleanup.callback(self.execution_lock.release)
-            check()
-            process = cleanup.enter_context(
-                subprocess.Popen(
-                    [str(self.bash.require()), "--noprofile", "--norc", str(path)],
-                    cwd=self.cwd,
-                    env=environment,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
+        try:
+            return (
+                yield from run_bash(
+                    self.bash,
+                    ["--noprofile", "--norc", str(path)],
+                    self.cwd,
+                    os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
+                    self.policy,
+                    check,
                 )
             )
-            cleanup.callback(_terminate, process)
-            assert process.stdout is not None
-            decoder = codecs.getincrementaldecoder("utf-8")("replace")
-            streams, remaining = [process.stdout], self.policy.max_output_bytes
-            completion = None
-            try:
-                while streams or process.poll() is None:
-                    check()
-                    if not select.select(streams, [], [], POLL_INTERVAL_S)[0]:
-                        continue
-                    chunk = os.read(process.stdout.fileno(), OUTPUT_CHUNK_BYTES)
-                    if not chunk:
-                        streams.clear()
-                        continue
-                    if text := decoder.decode(chunk[:remaining]):
-                        yield OutputChunk(output=text)
-                    remaining -= len(chunk)
-                    if remaining < 0:
-                        completion = Completed.outcome("output_limit")
-                        break
-            except _DeadlineExpired:
-                completion = Completed.outcome("timeout")
-            except OSError as error:
-                completion = Completed.outcome("failed", diagnostic=str(error))
-            if tail := decoder.decode(b"", final=True):
-                yield OutputChunk(output=tail)
-            return completion or Completed.outcome(
-                "success" if process.returncode == 0 else "failed", process.returncode
-            )
+        finally:
+            self.execution_lock.release()
 
 
 class _Session(socketserver.BaseRequestHandler):

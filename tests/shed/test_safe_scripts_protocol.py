@@ -8,12 +8,11 @@ from contextlib import contextmanager
 import pytest
 from safe_scripts_support import fake_helper
 
+from roboz.shed.tools.bash_runner import Completed, OutputChunk
 from roboz.shed.tools.safe_scripts.client import ScriptSocketDependency, request_script
 from roboz.shed.tools.safe_scripts.protocol import (
     MAX_FRAME_BYTES,
-    Completed,
     FrameReader,
-    OutputChunk,
     Request,
     RunShellScriptInput,
     encode,

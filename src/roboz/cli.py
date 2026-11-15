@@ -266,11 +266,9 @@ def _encrypt(path: Path, secret_names: list[str]) -> int:
 
 
 def _scripts(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from roboz.shed.tools.bash_runner import ExecutionPolicy
     from roboz.shed.tools.safe_scripts.client import ScriptSocketDependency
-    from roboz.shed.tools.safe_scripts.protocol import (
-        ExecutionPolicy,
-        require_linux_transport,
-    )
+    from roboz.shed.tools.safe_scripts.protocol import require_linux_transport
     from roboz.shed.tools.safe_scripts.server import serve_scripts
 
     if args.command == "check":

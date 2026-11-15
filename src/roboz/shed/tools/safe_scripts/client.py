@@ -3,19 +3,18 @@
 import socket
 import time
 from collections.abc import Callable, Generator, Mapping
-from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
 from roboz.dependencies import DependencyFailure, ExternalDependency, ExternalDependencyKind
 
+from roboz.shed.tools.bash_runner import Completed, OutputChunk, collect_output
+
 from .protocol import (
     CLEANUP_DELIVERY_ALLOWANCE_S,
     HANDSHAKE_TIMEOUT_S,
-    Completed,
     FrameReader,
     Greeting,
-    OutputChunk,
     Request,
     Response,
     RunShellScriptInput,
@@ -144,29 +143,15 @@ def collect(
     events: Generator[Response], output: Callable[[str], None]
 ) -> ShellScriptResult:
     """Consume local or socket responses, closing the source if a sink raises."""
-    chunks: list[str] = []
     entries: list[ScriptEntry] = []
-    with closing(events):
-        for event in events:
-            match event:
-                case Completed():
-                    break
-                case ScriptEntryMessage():
-                    entries.append(
-                        ScriptEntry(script=event.script, description=event.description)
-                    )
-                case OutputChunk():
-                    chunks.append(event.output)
-                    output(event.output)
-        else:
-            raise RuntimeError("script stream ended without completion")
-    transcript = "".join(chunks)
-    if event.diagnostic:
-        transcript += "\n" if transcript and not transcript.endswith("\n") else ""
-        transcript += event.diagnostic
+
+    def add_entry(entry: ScriptEntryMessage) -> None:
+        entries.append(ScriptEntry(script=entry.script, description=entry.description))
+
+    completion, transcript = collect_output(events, output, add_entry)
     return ShellScriptResult(
-        status=event.status,
-        exit_code=event.exit_code,
+        status=completion.status,
+        exit_code=completion.exit_code,
         scripts=sorted(entries, key=lambda entry: entry.script),
         output=transcript,
     )

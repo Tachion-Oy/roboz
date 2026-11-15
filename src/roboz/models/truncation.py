@@ -7,7 +7,7 @@ from typing import Final, TypeAlias
 LIGHT_MAX_CHARS: Final[int] = 40_000
 GRADED_STUB_DISTANCE: Final[int] = 50
 GRADED_REMOVE_DISTANCE: Final[int] = 200
-ERROR_RETRY_DISTANCE: Final[int] = 5
+ERROR_RETRY_DISTANCE: Final[int] = 20
 
 
 class Severity(IntEnum):
