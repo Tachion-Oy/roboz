@@ -1068,6 +1068,78 @@ def test_call_llm_api_counts_one_reasoning_representation_per_stream_chunk() -> 
     assert succeeded.data["content_chunks"] == 1
 
 
+def _progress_events(events: list[object]) -> list[RuntimeEvent]:
+    return [
+        event
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.kind == LifecycleKind.PROGRESS
+    ]
+
+
+def _stream_progress(chunks: list[object]) -> tuple[list[object], str]:
+    endpoint = LLMEndpoint(
+        client=_FakeLLMClient(chunks),
+        model_name="reasoning-model",
+        api_name="fake",
+        output_format="json",
+    )
+    pipe = EventPipe()
+    events: list[object] = []
+    pipe.add_sink(events.append)
+    pipe.initialize(dry_run=False, agent_name="agent")
+    response, _ = call_llm_api(
+        endpoint,
+        [Message(role=Role.USER, content="hello")],
+        on_delta=lambda delta: None,
+        pipe=pipe,
+    )
+    return events, response
+
+
+def test_call_llm_api_reports_growing_reasoning_progress_during_a_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("roboz.llm.calls._PROGRESS_INTERVAL_S", 0.0)
+
+    events, response = _stream_progress(
+        [
+            _stream_chunk(reasoning="first thought"),
+            _stream_chunk(reasoning=" and a second one"),
+            _stream_chunk('{"arg":"ok"}', finish_reason="stop"),
+        ]
+    )
+
+    progress = _progress_events(events)
+    assert response == '{"arg":"ok"}'
+    assert len(progress) == 3
+    assert progress[0].category == "llm"
+    assert progress[0].message == "LLM call progress: fake/reasoning-model"
+    reasoning_chars = []
+    for event in progress:
+        assert event.data is not None
+        assert event.data["model"] == "reasoning-model"
+        reasoning_chars.append(event.data["reasoning_chars"])
+    assert reasoning_chars == [
+        len("first thought"),
+        len("first thought and a second one"),
+        len("first thought and a second one"),
+    ]
+    assert progress[-1].data is not None
+    assert progress[-1].data["stream_chunks"] == 3
+    assert progress[-1].data["content_chunks"] == 1
+
+
+def test_call_llm_api_reports_no_progress_for_a_stream_shorter_than_the_interval() -> None:
+    events, _ = _stream_progress(
+        [
+            _stream_chunk(reasoning="quick thought"),
+            _stream_chunk('{"arg":"ok"}', finish_reason="stop"),
+        ]
+    )
+
+    assert _progress_events(events) == []
+
+
 def test_call_llm_api_collects_diagnostics_from_dict_stream_chunks() -> None:
     hidden = "dict reasoning"
     usage = {

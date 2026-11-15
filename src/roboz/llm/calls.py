@@ -98,6 +98,8 @@ _TEMPERATURE_FIELD: Final[str] = "temperature"
 _LANGUAGE_FIELD: Final[str] = "language"
 _PROMPT_FIELD: Final[str] = "prompt"
 _MILLISECONDS_PER_SECOND: Final[int] = 1_000
+# Hosts show that a long call is still receiving output, such as hidden reasoning.
+_PROGRESS_INTERVAL_S: Final[float] = 10.0
 _MAX_REQUEST_IMAGES: Final[int] = 8
 _IMAGE_WINDOW_OMISSION_REASON: Final[str] = (
     f"Older images omitted; only the latest {_MAX_REQUEST_IMAGES} "
@@ -348,15 +350,33 @@ class _LLMCallRunner:
             data=started_data,
         )
 
+    def _duration_ms(self) -> int:
+        return round((time.monotonic() - self._started) * _MILLISECONDS_PER_SECOND)
+
+    def _report_progress(self, diagnostics: LLMResponseDiagnostics) -> None:
+        progress_data = (
+            self._event_data
+            | {_DURATION_MS_KEY: self._duration_ms()}
+            | diagnostics.event_data()
+        )
+        emit_llm_runtime_event(
+            self._pipe,
+            kind=LifecycleKind.PROGRESS,
+            level=RuntimeEventLevel.INFO,
+            message=(
+                f"LLM call progress: {self._endpoint.api_name}/{self._endpoint.model_name}"
+            ),
+            data=progress_data,
+        )
+
     def _report_succeeded(self, result: _ChatCompletionResult) -> None:
-        duration_ms = round((time.monotonic() - self._started) * 1000)
         succeeded_message = (
             f"LLM call succeeded: {self._endpoint.api_name}/{self._endpoint.model_name}"
         )
         succeeded_data = (
             self._event_data
             | {
-                _DURATION_MS_KEY: duration_ms,
+                _DURATION_MS_KEY: self._duration_ms(),
                 _RESPONSE_CHARS_KEY: len(result.content),
                 _TOKEN_INPUT_KEY: result.telemetry.get(_TOKEN_INPUT_KEY),
                 _TOKEN_OUTPUT_KEY: result.telemetry.get(_TOKEN_OUTPUT_KEY),
@@ -594,6 +614,7 @@ class _LLMCallRunner:
         chunks: list[str] = []
         usage: object | None = None
         diagnostics = LLMResponseDiagnostics.for_stream()
+        last_progress = time.monotonic()
         try:
             for chunk in stream:
                 if self._call_abandoned(call_abandoned) or self._any_signal_set():
@@ -603,6 +624,10 @@ class _LLMCallRunner:
                     usage = chunk_usage
                 delta = self._stream_delta_content(chunk)
                 diagnostics.observe_chunk(chunk, has_content=bool(delta))
+                now = time.monotonic()
+                if now - last_progress >= _PROGRESS_INTERVAL_S:
+                    last_progress = now
+                    self._report_progress(diagnostics)
                 if not delta:
                     continue
                 chunks.append(delta)
