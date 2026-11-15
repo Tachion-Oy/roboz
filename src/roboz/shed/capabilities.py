@@ -31,6 +31,7 @@ from roboz.shed.tools.contexts import (
     StopWhenWatchedAgentsInactiveContext,
 )
 from roboz.shed.tools.purge_files import purge_files
+from roboz.shed.tools.shell_command import get_run_shell_command
 from roboz.shed.tools.sleep_between_runs import sleep_between_runs
 from roboz.shed.tools.safe_scripts import (
     RemoteScriptContext,
@@ -125,6 +126,28 @@ class SafeScripts(Capability):
                 execution_lock=self._execution_lock,
             )
         return (run_shell_script(ctx).copy(),)
+
+
+class ShellCommands(Capability):
+    """Bind arbitrary Bash commands that run only after the user approves each one.
+
+    Commands run in the sandbox root with this application's environment and
+    privileges. The approval prompt is the only guard; it cannot be disabled.
+    """
+
+    def __init__(self, *, label: ToolLabel = ToolLabel("shell_commands")) -> None:
+        """Keep configuration for fresh runtime bindings on each build."""
+        super().__init__(label=label)
+
+    @property
+    def required_attributes(self) -> RequiredAttributes:
+        """Require the owning agent's configured sandbox."""
+        return {"sandbox": Sandbox}
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
+        """Bind the approval chain to the sandbox root and this run's pipe."""
+        sandbox = cast(Sandbox, agent.sandbox)
+        return tuple(get_run_shell_command(base=sandbox.resolved_root, pipe=pipe))
 
 
 _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)

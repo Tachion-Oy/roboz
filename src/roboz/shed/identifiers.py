@@ -5,6 +5,7 @@ from typing import Final
 RUN_FILE_COMMAND_TOOL_NAME: Final[str] = "run_file_command"
 CONTINUE_FILE_COMMAND_TOOL_NAME: Final[str] = "continue_file_command"
 APPLY_PATCH_TOOL_NAME: Final[str] = "apply_patch"
+RUN_SHELL_COMMAND_TOOL_NAME: Final[str] = "run_shell_command"
 READ_IMAGES_TOOL_NAME: Final[str] = "read_images"
 FILESYSTEM_SKILL_NAME: Final[str] = "filesystem"
 
