@@ -35,8 +35,9 @@ class ShellCommand(Empty):
         ...,
         min_length=1,
         description=(
-            "Bash command line. Break a long command across several lines "
-            "with trailing backslashes or newlines."
+            "Raw Bash as one plain string, not [value, tag] pairs, for example "
+            "`grep -rn TODO src | head -n 5`. Break a long command across "
+            "several lines."
         ),
     )
     model_config = ConfigDict(extra="forbid")
@@ -56,7 +57,7 @@ def _approval_prompt(command: str, base: Path) -> str:
 def resolve_shell_command(
     input: ShellCommand, messages: list[Message], ctx: Path
 ) -> ResolvedFileCommand[CommandExecution, CommandReady]:
-    """Run one Bash command line after the user approves it.
+    """Run one raw Bash command line after the user approves it.
 
     The user is shown the exact command and answers yes or no before every
     run; a declined command does not run. Pipes, redirects, `&&`, `||`, `;`,
