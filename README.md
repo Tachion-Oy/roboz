@@ -567,7 +567,7 @@ cover literal replacements and choosing between patches and full-file rewrites.
 
 `ShellCommands()` adds `run_shell_command`, which takes one Bash command line as
 a string and runs it with `bash -c` in the sandbox root. Pipes, redirects,
-`&&`, `||`, `;`, and `&` work as in a terminal.
+`&&`, `||`, and `;` work as in a terminal.
 
 Before every run the tool itself, not the model, shows the user the exact
 command in a fenced block and asks yes or no. Only `y` or `yes` runs it. Any
@@ -577,15 +577,24 @@ and the agent receives the user's reply. No setting or rule skips the prompt.
 ```python
 from roboz.shed.capabilities import ShellCommands
 
-agent.add_capabilities(ShellCommands())
+agent.add_capabilities(ShellCommands(timeout_s=600, env_allowlist=("HOME",)))
 ```
 
+Commands run through the runner that trusted scripts use, on POSIX systems.
+They get the application's privileges and `PATH`, `LANG=C.UTF-8`, and otherwise
+only the variables named in `env_allowlist`, so credentials in the application's
+environment stay out of reach of `env`. Output is emitted as script output
+events while the command runs and returned with the exit status when it
+finishes. The command runs in its own session: at `timeout_s` (300 seconds by
+default), at `max_output_bytes` (65,536 by default), on cancellation, and when
+the command line ends, every process it started is ended, so nothing keeps
+running in the background. Commands receive no interactive input.
+
 For a tool-only composition, pass
-`get_run_shell_command(base=..., pipe=...)` from `roboz.shed.tools` to an agent.
-Commands inherit the application's environment and privileges, receive no
-interactive input, and share the file-command executor's limits: 60 seconds and
-100,000 output characters, returned when the command finishes. User approval is
-the only protection; this is not an operating-system sandbox.
+`get_run_shell_command(base=..., pipe=..., policy=ExecutionPolicy(...))` from
+`roboz.shed.tools` to an agent; `ExecutionPolicy` comes from
+`roboz.shed.tools.safe_scripts`. User approval is the only protection; this is
+not an operating-system sandbox.
 
 ### Image reading
 

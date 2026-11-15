@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- `run_shell_command` runs approved commands through the trusted-script
+  runner instead of the file-command executor. Commands get the application's
+  `PATH`, `LANG=C.UTF-8`, and otherwise only allowed variables, so they no
+  longer inherit credentials from the application's environment. Output is
+  emitted as script output events while the command runs, cancelling the run
+  ends the command, and every process the command started is ended with it.
+  `ShellCommands` accepts `timeout_s` (now 300 seconds by default, was 60),
+  `max_output_bytes` (65,536 bytes, was 100,000 characters) and
+  `env_allowlist`; `get_run_shell_command` accepts `policy`. The chained
+  executor tool is now named `execute_shell_command`, and shell commands
+  require POSIX.
+
 ## 0.16.2 - 2026-11-15
 
 - While an LLM call streams, an `llm` / `progress` runtime event

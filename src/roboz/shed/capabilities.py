@@ -131,13 +131,22 @@ class SafeScripts(Capability):
 class ShellCommands(Capability):
     """Bind arbitrary Bash commands that run only after the user approves each one.
 
-    Commands run in the sandbox root with this application's environment and
-    privileges. The approval prompt is the only guard; it cannot be disabled.
+    Commands run in the sandbox root with this application's privileges, its
+    `PATH`, and otherwise only the allowed environment variables. The approval
+    prompt is the only guard; it cannot be disabled.
     """
 
-    def __init__(self, *, label: ToolLabel = ToolLabel("shell_commands")) -> None:
+    def __init__(
+        self,
+        *,
+        label: ToolLabel = ToolLabel("shell_commands"),
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+        env_allowlist: tuple[str, ...] = (),
+    ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
         super().__init__(label=label)
+        self.policy = ExecutionPolicy(timeout_s, max_output_bytes, env_allowlist)
 
     @property
     def required_attributes(self) -> RequiredAttributes:
@@ -147,7 +156,11 @@ class ShellCommands(Capability):
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
         """Bind the approval chain to the sandbox root and this run's pipe."""
         sandbox = cast(Sandbox, agent.sandbox)
-        return tuple(get_run_shell_command(base=sandbox.resolved_root, pipe=pipe))
+        return tuple(
+            get_run_shell_command(
+                base=sandbox.resolved_root, pipe=pipe, policy=self.policy
+            )
+        )
 
 
 _ENDPOINT_TYPES = (LLMEndpoint, MockLLMEndpoint, LLMEndpointRoute)

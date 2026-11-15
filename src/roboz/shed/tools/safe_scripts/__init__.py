@@ -16,7 +16,7 @@ from .client import (
     request_script,
 )
 from .protocol import (
-    ExecutionPolicy,
+    ExecutionPolicy as ExecutionPolicy,
     ReservedScriptEnv as ReservedScriptEnv,
     RunShellScriptInput as RunShellScriptInput,
     ScriptEntry as ScriptEntry,

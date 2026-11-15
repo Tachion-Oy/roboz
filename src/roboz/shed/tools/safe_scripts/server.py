@@ -149,6 +149,106 @@ class _DeadlineExpired(Exception):
     pass
 
 
+def _deadline_check(
+    timeout_s: float, check_cancelled: Callable[[], None]
+) -> Callable[[], None]:
+    deadline = time.monotonic() + timeout_s
+
+    def check() -> None:
+        check_cancelled()
+        if time.monotonic() >= deadline:
+            raise _DeadlineExpired
+
+    return check
+
+
+def _run_bash(
+    bash: ExecutableDependency,
+    arguments: list[str],
+    cwd: Path,
+    search_path: str,
+    policy: ExecutionPolicy,
+    check: Callable[[], None],
+) -> Generator[Response, None, Completed]:
+    environment = {
+        "PATH": search_path,
+        "LANG": "C.UTF-8",
+        **{
+            key: os.environ[key]
+            for key in policy.env_allowlist
+            if key in os.environ
+        },
+    }
+    with ExitStack() as cleanup:
+        check()
+        process = cleanup.enter_context(
+            subprocess.Popen(
+                [str(bash.require()), *arguments],
+                cwd=cwd,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        )
+        cleanup.callback(_terminate, process)
+        assert process.stdout is not None
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        streams, remaining = [process.stdout], policy.max_output_bytes
+        completion = None
+        try:
+            while streams or process.poll() is None:
+                check()
+                if not select.select(streams, [], [], POLL_INTERVAL_S)[0]:
+                    continue
+                chunk = os.read(process.stdout.fileno(), OUTPUT_CHUNK_BYTES)
+                if not chunk:
+                    streams.clear()
+                    continue
+                if text := decoder.decode(chunk[:remaining]):
+                    yield OutputChunk(output=text)
+                remaining -= len(chunk)
+                if remaining < 0:
+                    completion = Completed.outcome("output_limit")
+                    break
+        except _DeadlineExpired:
+            completion = Completed.outcome("timeout")
+        except OSError as error:
+            completion = Completed.outcome("failed", diagnostic=str(error))
+        if tail := decoder.decode(b"", final=True):
+            yield OutputChunk(output=tail)
+        return completion or Completed.outcome(
+            "success" if process.returncode == 0 else "failed", process.returncode
+        )
+
+
+def bash_events(
+    bash: ExecutableDependency,
+    arguments: list[str],
+    cwd: Path,
+    search_path: str,
+    policy: ExecutionPolicy,
+    check_cancelled: Callable[[], None],
+) -> Generator[Response]:
+    """Run Bash once under the policy; yield completion only after process cleanup.
+
+    The process gets `search_path` as its `PATH` and, besides that, only the
+    policy's allowed variables. It runs in its own session, and the whole
+    session ends with it, at the time limit, or on cancellation.
+    """
+    check = _deadline_check(policy.timeout_s, check_cancelled)
+    try:
+        completion = yield from _run_bash(
+            bash, arguments, cwd, search_path, policy, check
+        )
+    except _DeadlineExpired:
+        completion = Completed.outcome("timeout")
+    except (OSError, ValueError) as error:
+        completion = Completed.outcome("failed", diagnostic=str(error))
+    yield completion
+
+
 @dataclass(frozen=True)
 class Scripts:
     """Share immutable settings and a gate; keep all operation state in its stream."""
@@ -163,13 +263,7 @@ class Scripts:
         self, request: RunShellScriptInput, check_cancelled: Callable[[], None]
     ) -> Generator[Response]:
         """Yield completion only after process cleanup and gate release."""
-        deadline = time.monotonic() + self.policy.timeout_s
-
-        def check() -> None:
-            check_cancelled()
-            if time.monotonic() >= deadline:
-                raise _DeadlineExpired
-
+        check = _deadline_check(self.policy.timeout_s, check_cancelled)
         try:
             check()
             root = self.scripts_dir.absolute()
@@ -190,60 +284,21 @@ class Scripts:
     def _execute(
         self, path: Path, check: Callable[[], None]
     ) -> Generator[Response, None, Completed]:
-        environment = {
-            "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
-            "LANG": "C.UTF-8",
-            **{
-                key: os.environ[key]
-                for key in self.policy.env_allowlist
-                if key in os.environ
-            },
-        }
         if not self.execution_lock.acquire(blocking=False):
             return Completed.outcome("busy", diagnostic="another script is running")
-        with ExitStack() as cleanup:
-            cleanup.callback(self.execution_lock.release)
-            check()
-            process = cleanup.enter_context(
-                subprocess.Popen(
-                    [str(self.bash.require()), "--noprofile", "--norc", str(path)],
-                    cwd=self.cwd,
-                    env=environment,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
+        try:
+            return (
+                yield from _run_bash(
+                    self.bash,
+                    ["--noprofile", "--norc", str(path)],
+                    self.cwd,
+                    os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
+                    self.policy,
+                    check,
                 )
             )
-            cleanup.callback(_terminate, process)
-            assert process.stdout is not None
-            decoder = codecs.getincrementaldecoder("utf-8")("replace")
-            streams, remaining = [process.stdout], self.policy.max_output_bytes
-            completion = None
-            try:
-                while streams or process.poll() is None:
-                    check()
-                    if not select.select(streams, [], [], POLL_INTERVAL_S)[0]:
-                        continue
-                    chunk = os.read(process.stdout.fileno(), OUTPUT_CHUNK_BYTES)
-                    if not chunk:
-                        streams.clear()
-                        continue
-                    if text := decoder.decode(chunk[:remaining]):
-                        yield OutputChunk(output=text)
-                    remaining -= len(chunk)
-                    if remaining < 0:
-                        completion = Completed.outcome("output_limit")
-                        break
-            except _DeadlineExpired:
-                completion = Completed.outcome("timeout")
-            except OSError as error:
-                completion = Completed.outcome("failed", diagnostic=str(error))
-            if tail := decoder.decode(b"", final=True):
-                yield OutputChunk(output=tail)
-            return completion or Completed.outcome(
-                "success" if process.returncode == 0 else "failed", process.returncode
-            )
+        finally:
+            self.execution_lock.release()
 
 
 class _Session(socketserver.BaseRequestHandler):
