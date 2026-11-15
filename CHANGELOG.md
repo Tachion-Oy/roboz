@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.16.2 - 2026-11-15
+
+- While an LLM call streams, an `llm` / `progress` runtime event
+  (`LifecycleKind.PROGRESS`) is emitted at most every 10 seconds with the
+  elapsed time and the chunk and reasoning counts received so far, never the
+  text. Hosts can show that a long call is alive. A model that sends no chunks
+  emits no progress events.
+- New `ShellCommands()` capability and `get_run_shell_command(base=..., pipe=...)`
+  builder: the `run_shell_command` tool runs any raw Bash command line the
+  agent writes, but only after the user answers yes to a prompt showing the
+  exact command. Every call prompts; no rule skips it, and a run without user
+  interaction denies the command. Commands use the file-command executor: 60
+  seconds, 100,000 output characters, the application's environment.
+- `GuardFileSingle` accepts an optional `prompt` that replaces the default
+  approval question, and `Operation` gains `EXECUTE`.
+- pypdf 7 is allowed: the range is now `pypdf>=6.20.0,<8`.
+
 ## 0.16.1 - 2026-11-07
 
 - Dependency health checks that cannot wait on the network, executables and the

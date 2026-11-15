@@ -119,4 +119,5 @@ QUOTES: Final[list[str]] = [
     "Can't talk, eating.",
     "Me fail English? That's unpossible.",
     "I can't promise I'll try, but I'll try to try.",
+    "Trying is the first step towards failure.",
 ]
