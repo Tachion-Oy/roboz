@@ -2,20 +2,26 @@
 
 ## Unreleased
 
-- `run_shell_command` runs approved commands through the Bash runner that
-  trusted scripts use, instead of the file-command executor. That runner, its
-  `ExecutionPolicy` and its output events now live in
-  `roboz.shed.tools.bash_runner`, which both tools import; `ExecutionPolicy`
-  is exported from `roboz.shed.tools`. Commands get the application's
+## 0.17.0 - 2026-11-15
+
+- Breaking: the Bash runner shared by trusted scripts and shell commands,
+  with `ExecutionPolicy`, `ReservedScriptEnv`, the `OutputChunk` and
+  `Completed` events, and `DEFAULT_TIMEOUT_S` and `DEFAULT_MAX_OUTPUT_BYTES`,
+  moves to `roboz.shed.tools.bash_runner`. Import `ReservedScriptEnv` and the
+  two defaults from there instead of `roboz.shed.tools.safe_scripts.protocol`;
+  `ExecutionPolicy` is also exported from `roboz.shed.tools`. The package
+  `roboz.shed.tools.safe_scripts` exports the same names as before.
+- `run_shell_command` runs approved commands through that runner instead of
+  the file-command executor. Commands get the application's
   `PATH`, `LANG=C.UTF-8`, and otherwise only allowed variables, so they no
   longer inherit credentials from the application's environment. Output is
   emitted as script output events while the command runs, cancelling the run
   ends the command, and every process the command started is ended with it.
   `ShellCommands` accepts `timeout_s` (now 300 seconds by default, was 60),
   `max_output_bytes` (65,536 bytes, was 100,000 characters) and
-  `env_allowlist`; `get_run_shell_command` accepts `policy`. The chained
-  executor tool is now named `execute_shell_command`, and shell commands
-  require POSIX.
+  `env_allowlist`; `get_run_shell_command` accepts `policy`. Breaking: the
+  chained executor tool is now named `execute_shell_command` instead of
+  `execute_file_command`, and shell commands require POSIX.
 - Error and retry messages stay in the model's context for 20 messages
   instead of 5, so a correction is still visible on the following turns.
 

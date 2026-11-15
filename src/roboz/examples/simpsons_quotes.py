@@ -120,4 +120,5 @@ QUOTES: Final[list[str]] = [
     "Me fail English? That's unpossible.",
     "I can't promise I'll try, but I'll try to try.",
     "Trying is the first step towards failure.",
+    "I sleep in a racing car, do you?",
 ]
