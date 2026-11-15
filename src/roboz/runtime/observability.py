@@ -18,6 +18,7 @@ class LifecycleKind(StrEnum):
     """Successful lifecycle transitions for observed work."""
 
     STARTED = auto()
+    PROGRESS = auto()
     RETRYING = auto()
     SUCCEEDED = auto()
 
