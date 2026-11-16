@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compaction summarizes the conversation as the model was sent it, the same
+  view its threshold measures. It used to send the whole stored history,
+  including messages kept out of the model's context, which in real runs was
+  1.2 to 2.5 times larger and could exceed the summarizing model's context
+  window as soon as compaction started.
 - Breaking for hosts: when a model request fails in a way the user can remedy,
   the agent emits one `llm` `failed` runtime event at level `error` whose
   message names the endpoint, the cause and what to do, for example "The

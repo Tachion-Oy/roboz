@@ -18,7 +18,9 @@ from roboz.shed.tools.compactification import (
 from roboz.models import All, Message, Role
 from roboz.llm import MockLLMEndpoint
 from roboz.models import MessageKind
-from roboz.models.truncation import Severity
+from roboz.models.truncation import NO_MESSAGE, Severity
+from roboz.runtime import EventPipe
+from roboz.runtime.events import MessageEvent
 
 
 def _ctx(**overrides) -> CompactionContext:
@@ -81,6 +83,34 @@ def test_compactify_messages_rewrites_list_in_place_above_threshold() -> None:
     # get_finalized_message + Agent.append_and_pipe), since only the return
     # value is ever piped to disk, never in-place list mutations.
     assert out.compaction_summary == compacted["summary_markdown"]
+
+
+def test_summary_request_holds_only_what_the_model_sees() -> None:
+    requested: list[str] = []
+
+    def record(event: object) -> None:
+        if isinstance(event, MessageEvent):
+            requested.append(event.message.content)
+
+    pipe = EventPipe()
+    pipe.add_sink(record)
+    messages = [
+        Message(
+            role=Role.SYSTEM, content="sys", message_kind=MessageKind.SYSTEM_MESSAGE
+        ),
+        Message(role=Role.USER, content="seen " * 640),  # 800 tokens => 80%
+        # A chained tool's intermediate result: logged, never sent to the model.
+        Message(role=Role.USER, content="hidden " * 10_000, truncation=NO_MESSAGE),
+    ]
+
+    out = compactify_messages_when_needed(_ctx(pipe=pipe))(
+        input=All(), messages=messages
+    )
+
+    assert out.status == "compacted"
+    request = "\n".join(requested)
+    assert "seen" in request
+    assert "hidden" not in request
 
 
 def test_compactify_messages_preserves_bootstrap_prefix_without_skill_args() -> None:
