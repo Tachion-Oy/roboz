@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A message longer than 1,000,000 characters (`MAX_LOGGED_MESSAGE_CHARS`) is
+  cut at that length in the conversation log, followed by a line stating how
+  much was kept. The run file is rewritten whole for every message and event,
+  so one oversized message was written again with each later one. The live
+  conversation keeps the whole message.
 - Compaction summarizes the conversation as the model was sent it, the same
   view its threshold measures. It used to send the whole stored history,
   including messages kept out of the model's context, which in real runs was
