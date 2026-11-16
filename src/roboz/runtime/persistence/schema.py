@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,9 @@ from roboz.runtime.observability import (
     RuntimeEventLevel,
 )
 from roboz.models.truncation import TruncationSpec
+
+
+MAX_LOGGED_MESSAGE_CHARS: Final[int] = 1_000_000
 
 
 class RunStatus(StrEnum):
@@ -100,19 +103,34 @@ def utc_iso_z(dt: datetime) -> str:
     )
 
 
+def _logged_content(content: str) -> str:
+    """Cut content over the row limit and say how much was kept.
+
+    The run file is rewritten whole for every row, so one oversized message
+    would otherwise be written again with each later row.
+    """
+    if len(content) <= MAX_LOGGED_MESSAGE_CHARS:
+        return content
+    kept = content[:MAX_LOGGED_MESSAGE_CHARS]
+    return (
+        f"{kept}\n[log entry cut: {MAX_LOGGED_MESSAGE_CHARS:,} of "
+        f"{len(content):,} characters kept]"
+    )
+
+
 def message_to_logged_row(
     message: Message,
     *,
     message_id: str,
     sequence: int,
 ) -> LoggedMessageRow:
-    """Build a persisted row from an in-memory Message."""
+    """Build a persisted row from an in-memory Message, bounding its content."""
     return LoggedMessageRow(
         message_id=message_id,
         sequence=sequence,
         created_at=message.timestamp.isoformat(),
         role=message.role,
-        content=message.content,
+        content=_logged_content(message.content),
         caller=message.caller,
         image_names=[
             image.filename or f"image-{index}"

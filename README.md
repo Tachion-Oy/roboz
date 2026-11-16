@@ -857,7 +857,9 @@ reordering records; remove the field to redact attachments. The caller construct
 API content parts from those returned records only.
 
 New conversation logs retain image names only and cannot restore attachments;
-existing logs remain readable and are not rewritten. In live conversations,
+existing logs remain readable and are not rewritten. A logged message longer
+than 1,000,000 characters is cut at that length, followed by a line stating how
+much was kept; the live conversation keeps the whole message. In live conversations,
 LIGHT truncation leaves image data intact; STUB removes attachments and REMOVE
 drops the whole message. Context token estimates count text only. Compaction and
 memory snapshots of older logs use image URLs or numbered embedded-image markers

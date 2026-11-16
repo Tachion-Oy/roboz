@@ -9,6 +9,7 @@ from .activity import (
     mark_conversation_active,
 )
 from .schema import (
+    MAX_LOGGED_MESSAGE_CHARS,
     ConversationRun,
     LoggedMessageRow,
     RunMetadata,
@@ -21,6 +22,7 @@ from .schema import (
 )
 
 __all__ = [
+    "MAX_LOGGED_MESSAGE_CHARS",
     "ConversationRun",
     "LoggedMessageRow",
     "RunMetadata",

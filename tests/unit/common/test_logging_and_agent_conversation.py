@@ -7,7 +7,7 @@ from roboz.agent.core import Agent
 from roboz.tools import stop
 from roboz.models import Empty, Invoke, Message, Role
 from roboz.runtime.pipe import EventPipe
-from roboz.runtime.persistence import RunStatus
+from roboz.runtime.persistence import MAX_LOGGED_MESSAGE_CHARS, RunStatus
 from roboz.runtime.sinks import PersistenceSink
 from roboz.tooling.decorators import tool
 from roboz.llm.endpoints import MockLLMEndpoint
@@ -83,6 +83,27 @@ def test_emit_message_appends_to_same_run(
     assert data["messages"][1]["content"] == "second"
     assert data["messages"][0]["sequence"] == 2
     assert data["messages"][1]["sequence"] == 3
+
+
+def test_oversized_message_is_cut_in_the_log(
+    tmp_path: Path, persisted_pipe: tuple[EventPipe, PersistenceSink]
+) -> None:
+    pipe, sink = persisted_pipe
+    pipe.initialize(dry_run=False, agent_name="test_agent")
+    oversized = Message(role=Role.USER, content="x" * (MAX_LOGGED_MESSAGE_CHARS + 5))
+
+    pipe.emit_message(oversized)
+    pipe.emit_message(Message(role=Role.USER, content="small"))
+
+    path = sink.conversations_location
+    assert path is not None
+    first, second = json.loads(path.read_text(encoding="utf-8"))["messages"]
+    kept, marker = first["content"].split("\n")
+    assert kept == "x" * MAX_LOGGED_MESSAGE_CHARS
+    assert marker == "[log entry cut: 1,000,000 of 1,000,005 characters kept]"
+    assert second["content"] == "small"
+    # Only the log is bounded; the message the agent holds is whole.
+    assert len(oversized.content) == MAX_LOGGED_MESSAGE_CHARS + 5
 
 
 # ---------- EventPipe.finalize_run ----------
