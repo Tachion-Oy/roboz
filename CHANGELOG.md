@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.18.0 - 2026-11-16
+
 - A message longer than 1,000,000 characters (`MAX_LOGGED_MESSAGE_CHARS`) is
   cut at that length in the conversation log, followed by a line stating how
   much was kept. The run file is rewritten whole for every message and event,
