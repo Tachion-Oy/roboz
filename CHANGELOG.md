@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The resolved requirements a guarded tool passes to its guard
+  (`ResolvedFileCommand`) no longer enter the model's context. For a recursive
+  file command they list every file the command may touch: one `grep -r` over a
+  large folder added about 290,000 tokens to every later model call. The
+  command's final result, with each step's output and the permission history,
+  is unchanged. Applies to file commands, shell commands, patches, images and
+  PDFs.
+
 ## 0.17.0 - 2026-11-15
 
 - Breaking: the Bash runner shared by trusted scripts and shell commands,

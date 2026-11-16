@@ -12,6 +12,7 @@ from roboz import Agent, runtime
 from roboz.deployment import Capability, DeployableAgent, ToolLabel
 from roboz.exceptions import UserInputUnavailableError
 from roboz.llm import MockLLMEndpoint
+from roboz.llm._truncation import get_truncated_messages_for_context
 from roboz.models import Role, Str, render_content
 from roboz.runtime import EventPipe, ScriptOutputEvent
 from roboz.shed.capabilities import ShellCommands
@@ -98,6 +99,35 @@ def test_command_does_not_run_without_an_explicit_yes(
     assert outputs["guard_file_command"]["status"] == "denied"
     assert "execute_shell_command" not in outputs
     assert not (tmp_path / "marker").exists()
+
+
+def test_declined_command_leaves_only_its_denial_in_the_model_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        runtime, "interact_with_user", lambda *args, **kwargs: Str(value="no")
+    )
+    agent = Agent(
+        name="shell_context_test",
+        system_prompt="Run the requested command.",
+        tools=[*get_run_shell_command(base=tmp_path, pipe=EventPipe()), stop],
+        agent_endpoint=MockLLMEndpoint(
+            responses=[
+                {"action": "run_shell_command", "rationale": "Run", "command": "true"},
+                {"action": "stop", "rationale": "Done", "value": "ok"},
+            ]
+        ),
+        initial_messages=None,
+    )
+    _, messages = agent.invoke()
+
+    context = [
+        json.loads(render_content(message))
+        for message in get_truncated_messages_for_context(messages)
+        if message.role == Role.USER and message.caller != "stop"
+    ]
+    assert [entry["caller"] for entry in context] == ["guard_file_command"]
+    assert context[0]["deny_reason"] == "user_declined"
 
 
 def test_failed_command_reports_its_exit_status_and_output(
