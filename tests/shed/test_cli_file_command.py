@@ -16,6 +16,7 @@ from roboz.models import render_content
 from roboz import Agent, runtime
 from roboz.agent import AgentMode
 from roboz.llm import MockLLMEndpoint
+from roboz.llm._truncation import get_truncated_messages_for_context
 from roboz.models import Role, Str
 from roboz.runtime import EventPipe
 from roboz.shed.models import (
@@ -74,6 +75,25 @@ def _invoke(
     )
     _, messages = agent.invoke()
     return [json.loads(render_content(m)) for m in messages if m.role == Role.USER]
+
+
+def _model_context(tools: list, calls: list[dict]) -> list[dict]:
+    """Return the tool results the model would be sent after the calls."""
+    agent = Agent(
+        name="file_context_test",
+        system_prompt="Perform the requested file commands.",
+        tools=[*tools, stop],
+        agent_endpoint=MockLLMEndpoint(
+            responses=[*calls, {"action": "stop", "rationale": "Done", "value": "ok"}]
+        ),
+        initial_messages=None,
+    )
+    _, messages = agent.invoke()
+    return [
+        json.loads(render_content(message))
+        for message in get_truncated_messages_for_context(messages)
+        if message.role == Role.USER
+    ]
 
 
 def _call(value: list[Token]) -> dict:
@@ -1752,3 +1772,37 @@ def test_recursive_matches_guard_hidden_descendants_before_any_approval(
     assert _execution_result(responses).startswith("Overall: failure")
     assert (tmp_path / "src/sub/.secret").read_text() == "private"
     assert list((tmp_path / "out").iterdir()) == []
+
+
+def test_model_context_holds_only_the_final_result_of_a_command(tmp_path: Path) -> None:
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    for index in range(200):
+        (tree / f"note-{index}.txt").write_text("needle" if index == 7 else "hay")
+    tools = get_run_file_command(base=tmp_path, default_verdict=ActionVerdict.allow)
+
+    context = _model_context(
+        tools,
+        [
+            _call(
+                [
+                    ("grep", "CMD"),
+                    ("-r", "FLG"),
+                    ("-l", "FLG"),
+                    ("needle", "ARG"),
+                    ("tree", "PTH"),
+                    (";", "CTL"),
+                    ("wc", "CMD"),
+                    ("-c", "FLG"),
+                    ("tree/note-7.txt", "PTH"),
+                ]
+            )
+        ],
+    )
+
+    # Resolving a recursive command lists every file it may read; only the
+    # result, which holds each step's output, is for the model.
+    results = [entry for entry in context if entry.get("caller") != "stop"]
+    assert [entry["caller"] for entry in results] == ["execute_file_command"]
+    assert "tree/note-7.txt" in results[0]["value"]
+    assert "note-8.txt" not in json.dumps(context)
