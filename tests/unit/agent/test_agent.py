@@ -9,8 +9,6 @@ from roboz.models import render_content
 from roboz.agent._notifications import (
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
-    LLM_CONTENT_FILTER_RETRY_PROMPT,
-    LLM_PROVIDER_REQUEST_RETRY_PROMPT,
 )
 from roboz.agent.core import Agent, AgentMode
 from roboz.exceptions import (
@@ -425,23 +423,31 @@ def test_invoke_provider_request_error_prompts_user_and_resumes(
     output, messages = agent.invoke()
 
     assert output.value == "ok"
-    assert io.prompts == [LLM_PROVIDER_REQUEST_RETRY_PROMPT]
+    # The host shows the notice; the prompt only waits for the reply.
+    assert io.prompts == [""]
     assert any("retry" in message.content for message in messages)
     path = sink.conversations_location
     assert path is not None
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["status"] == "completed"
-    failure = next(
+    failure, notice = [
         event
         for event in data["runtime_events"]
         if event["category"] == "llm" and event["kind"] == "failed"
-    )
+    ]
     assert failure["level"] == "warning"
     assert failure["data"]["error_kind"] == "auth"
+    assert notice["level"] == "error"
+    assert notice["message"] == (
+        "The request to mock/mock failed: the provider rejected the API key. "
+        "Check the key or choose a model from another provider, "
+        "then send a message to continue."
+    )
 
 
 def test_content_filter_refusal_names_the_reason_without_format_repairs(bind_user_io):
     io = bind_user_io([Str(value="retry")])
+    events: list = []
     agent = Agent(
         name="content_filter_retry_run",
         tools=[stop],
@@ -453,12 +459,22 @@ def test_content_filter_refusal_names_the_reason_without_format_repairs(bind_use
             ]
         ),
         initial_messages=None,
+        event_sinks=(events.append,),
     )
 
     output, messages = agent.invoke()
 
     assert output.value == "ok"
-    assert io.prompts == [LLM_CONTENT_FILTER_RETRY_PROMPT]
+    assert io.prompts == [""]
+    assert [
+        event.message
+        for event in events
+        if isinstance(event, RuntimeEvent) and event.level == "error"
+    ] == [
+        "The request to mock/mock failed: the provider's content filter stopped it. "
+        "Rephrase the request or choose another model, "
+        "then send a message to continue."
+    ]
     assert not any(message.role == Role.ERROR for message in messages)
 
 
@@ -481,7 +497,36 @@ def test_malformed_image_input_follows_existing_request_recovery(bind_user_io, m
     else:
         output, _ = agent.invoke()
         assert output.value == "ok"
-        assert io.prompts == [LLM_PROVIDER_REQUEST_RETRY_PROMPT]
+        assert io.prompts == [""]
+
+
+def test_terminal_prompt_names_the_cause_of_a_failed_request(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.stdin.readline", lambda: "retry\n")
+    agent = Agent(
+        name="terminal_refusal_run",
+        tools=[stop],
+        system_prompt="system",
+        agent_endpoint=MockLLMEndpoint(
+            [
+                MockProviderError("Payment required", status_code=402),
+                {"action": "stop", "rationale": "done", "value": "ok"},
+            ]
+        ),
+        initial_messages=None,
+        event_sinks=(),
+    )
+
+    output, _ = agent.invoke()
+
+    assert output.value == "ok"
+    # A terminal shows no runtime notices, so the prompt explains the wait.
+    assert (
+        "The request to mock/mock failed: the provider account does not have "
+        "enough credit for it. Add credit or choose a model from another "
+        "provider, then send a message to continue."
+    ) in " ".join(capsys.readouterr().out.split())
 
 
 def test_invoke_provider_5xx_remains_terminal_failure(tmp_path: Path) -> None:

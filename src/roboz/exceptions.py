@@ -20,6 +20,9 @@ class ExternalCallTimeoutError(ExternalCallError):
 class LLMError(Exception):
     """Base exception for all LLM related errors."""
 
+    endpoint: str | None = None
+    """The failed call's `<api name>/<model name>`, set where the call fails."""
+
 
 class LLMProviderRequestError(LLMError):
     """Base exception for provider-side request failures the user can remedy."""

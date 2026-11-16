@@ -130,16 +130,19 @@ def _classify_call_error(
         | MockTranscriptionEndpoint
     ),
 ) -> LLMError:
-    """Map a raw external-call-boundary or provider exception to a typed LLMError."""
+    """Map a raw boundary or provider exception to a typed LLMError naming its endpoint."""
     if isinstance(error, LLMError):
-        return error
-    if isinstance(error, ExternalCallInterruptedError):
-        return LLMCallInterruptedError("LLM call was interrupted")
-    if isinstance(error, ExternalCallCancelledError):
-        return LLMCallCancelledError("LLM call was cancelled")
-    if isinstance(error, ExternalCallTimeoutError):
-        return LLMCallTimeoutError("LLM call timed out")
-    return classify_llm_provider_error(error, endpoint)
+        classified = error
+    elif isinstance(error, ExternalCallInterruptedError):
+        classified = LLMCallInterruptedError("LLM call was interrupted")
+    elif isinstance(error, ExternalCallCancelledError):
+        classified = LLMCallCancelledError("LLM call was cancelled")
+    elif isinstance(error, ExternalCallTimeoutError):
+        classified = LLMCallTimeoutError("LLM call timed out")
+    else:
+        classified = classify_llm_provider_error(error, endpoint)
+    classified.endpoint = f"{endpoint.api_name}/{endpoint.model_name}"
+    return classified
 
 
 class ResponseFormat(TypedDict):

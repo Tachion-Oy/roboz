@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Breaking for hosts: when a model request fails in a way the user can remedy,
+  the agent emits one `llm` `failed` runtime event at level `error` whose
+  message names the endpoint, the cause and what to do, for example "The
+  request to openrouter/z-ai/glm-5.3 failed: the provider account does not have
+  enough credit for it. Add credit or choose a model from another provider,
+  then send a message to continue." The causes are insufficient funds, a
+  rejected key, rate limiting, the context limit, the content filter and
+  unusable image input. With `Output.API` the prompt that waits for the user's
+  reply is now empty, so the host presents the event; with `Output.CLI` the
+  prompt carries the same sentence. The sentence "The selected model could not
+  complete the request…" is gone. The text never includes the provider's own
+  message.
+- `LLMError.endpoint` holds the failed call's `<api name>/<model name>`.
 - The resolved requirements a guarded tool passes to its guard
   (`ResolvedFileCommand`) no longer enter the model's context. For a recursive
   file command they list every file the command may touch: one `grep -r` over a

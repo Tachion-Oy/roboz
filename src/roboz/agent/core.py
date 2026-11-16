@@ -21,9 +21,8 @@ from roboz.agent._notifications import (
     AUTO_LOAD_SKILLS_BANNER,
     INTERRUPT_PROMPT_TO_USER,
     INTERRUPTED_GENERATION_CONTEXT,
-    LLM_CONTENT_FILTER_RETRY_PROMPT,
-    LLM_PROVIDER_REQUEST_RETRY_PROMPT,
     auto_load_skill_rationale,
+    provider_failure_notice,
 )
 from roboz.agent._prompts import get_agentic_system_prompt
 from roboz.agent._tool_observer import ToolInvocationObserver
@@ -35,7 +34,6 @@ from roboz.dependencies import (
 from roboz.exceptions import (
     ExternalCallCancelledError,
     ExternalCallInterruptedError,
-    LLMContentFilteredError,
     LLMImageInputError,
     LLMProviderRequestError,
     StopAgent,
@@ -52,6 +50,11 @@ from roboz.models._schema import get_constituent_types
 from roboz.models._serialization import get_finalized_message
 from roboz.runtime.events import EventSink
 from roboz.runtime.io import Output, bind_output, get_bound_output, reset_output
+from roboz.runtime.observability import (
+    FailureKind,
+    RuntimeEventCategory,
+    RuntimeEventLevel,
+)
 from roboz.runtime.persistence import RunStatus
 from roboz.runtime.pipe import EventPipe
 from roboz.skill.core import Skill
@@ -650,11 +653,20 @@ class Agent(HasExternalDependencies):
         prompt_user_tool = self.prompt_user_tool
         if prompt_user_tool is None:
             raise RuntimeError("user interaction tool is unavailable")
-        retry_input = prompt_user_tool.InputModel(
-            value=LLM_CONTENT_FILTER_RETRY_PROMPT
-            if isinstance(error, LLMContentFilteredError)
-            else LLM_PROVIDER_REQUEST_RETRY_PROMPT
+        notice = provider_failure_notice(error)
+        self.pipe.emit_runtime_event(
+            category=RuntimeEventCategory.LLM,
+            kind=FailureKind.FAILED,
+            level=RuntimeEventLevel.ERROR,
+            message=notice,
         )
+        # A host UI shows the notice. A terminal shows only prompts, so there
+        # the prompt carries it.
+        if get_bound_output() == Output.CLI:
+            prompt = notice
+        else:
+            prompt = ""
+        retry_input = prompt_user_tool.InputModel(value=prompt)
         retry_output = prompt_user_tool(retry_input, self.messages)
         self.append_and_pipe(get_finalized_message(retry_output, prompt_user_tool))
         self._ephemeral_default_tools = []
