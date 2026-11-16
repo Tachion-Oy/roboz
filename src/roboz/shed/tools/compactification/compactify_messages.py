@@ -5,7 +5,12 @@ import math
 from typing import Final
 
 from roboz.shed.identifiers import COMPACTIFY_MESSAGES_TOOL_NAME
-from roboz.llm import EndpointLike, estimate_conversation_tokens, resolve_endpoint
+from roboz.llm import (
+    EndpointLike,
+    estimate_conversation_tokens,
+    get_truncated_messages_for_context,
+    resolve_endpoint,
+)
 from roboz.llm.binding import _validate_endpoint
 from roboz.models import (
     BOOTSTRAP_MESSAGE_KINDS,
@@ -175,11 +180,14 @@ def compactify_messages_when_needed(
     ) * _ESTIMATED_CHARS_PER_TOKEN
     if max_chars <= 0:
         return blocked
+    # Summarize what the model was sent, which is what the threshold measures.
+    # Messages kept out of its context can be several times larger.
+    visible = get_truncated_messages_for_context(messages[prefix_len:])
     summary = summarize_conversation_segment(
         endpoint=endpoint_like,
         system_prompt=ctx.system_prompt,
         instructions=skill_message,
-        conversation=conversation_text(messages[prefix_len:]),
+        conversation=conversation_text(visible),
         max_chars=max_chars,
         max_chars_tolerance_percent=0,
         pipe=ctx.pipe,
