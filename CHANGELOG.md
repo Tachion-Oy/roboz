@@ -11,6 +11,13 @@
   share findings with `share_note`; `read_shared_notes` returns what the
   others shared since the caller last read, including each member's final
   result and stop status, and is available to the owner as well.
+- Breaking: the Librarian's `sleep_between_runs` is now `sleep`, a wait any
+  agent can use, for example while parallel subagents work. Add it with the
+  `Sleep()` capability. The model may choose each wait's length, the wait
+  emits a script output line every 3 seconds with the time waited and left,
+  and the user's interrupt ends it. `SleepBetweenRunsContext` is now
+  `SleepContext`, which takes the run's `pipe` instead of `is_cancelled`, and
+  `SLEEP_BETWEEN_RUNS_TOOL_NAME` is now `SLEEP_TOOL_NAME`.
 
 ## 0.18.0 - 2026-11-16
 

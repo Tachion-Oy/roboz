@@ -16,7 +16,7 @@ from roboz.shed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
 )
-from roboz.shed.tools.contexts import SleepBetweenRunsContext
+from roboz.shed.tools.contexts import SleepContext
 from roboz.shed.tools.librarian_errors import LibrarianProviderRequestFailure
 from roboz.shed.sandbox import Sandbox
 
@@ -26,7 +26,7 @@ from roboz.deployment import DeployableAgent
 from roboz.llm import MockLLMEndpoint, MockProviderError
 from roboz.models import Empty, Message, Role, Stop, Str
 from roboz.models._serialization import get_finalized_message
-from roboz.runtime import PipeEvent, RuntimeEvent, default_event_sinks
+from roboz.runtime import EventPipe, PipeEvent, RuntimeEvent, default_event_sinks
 from roboz.runtime.persistence import (
     ConversationRun,
     RunStatus,
@@ -36,7 +36,7 @@ from roboz.runtime.persistence import (
     utc_iso_z,
 )
 
-sleep_module = importlib.import_module("roboz.shed.tools.sleep_between_runs")
+sleep_module = importlib.import_module("roboz.shed.tools.sleep")
 
 _WATCHED_AGENT: Final[str] = "orchestrator"
 
@@ -172,7 +172,7 @@ def test_librarian_wires_exact_ordered_maintenance_pipeline(tmp_path: Path) -> N
         "purge_snapshots",
         "purge_memory",
         "stop_when_watched_agents_inactive",
-        "sleep_between_runs",
+        "sleep",
     ]
     assert [tool.name for tool in agent.default_tools] == expected_names
     assert len({tool.id for tool in agent.default_tools}) == len(expected_names)
@@ -247,7 +247,7 @@ def test_librarian_accepts_selected_capabilities_without_a_model(tmp_path):
         "purge_snapshots",
         "purge_memory",
         "stop_when_watched_agents_inactive",
-        "sleep_between_runs",
+        "sleep",
     ]
     result, _ = agent.invoke()
     assert "watched agents inactive" in result.value
@@ -310,7 +310,7 @@ def test_idle_project_gets_a_complete_final_sweep_before_stopping(
     assert calls.count("snapshot_conversations") == 2
     assert calls.count("consolidate_memory") == 2
     assert calls.count("purge_memory") == 2
-    assert calls.count("sleep_between_runs") == 1
+    assert calls.count("sleep") == 1
 
 
 def test_wait_returns_when_observed_active_run_ends(
@@ -320,7 +320,7 @@ def test_wait_returns_when_observed_active_run_ends(
     source = _write_source_run(sandbox, status=RunStatus.RUNNING)
     agent = _build(tmp_path, sleep_seconds=120.0)
     wait = next(
-        tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
+        tool for tool in agent.default_tools if tool.name == "sleep"
     )
 
     def finish_run(seconds: float) -> None:
@@ -330,11 +330,11 @@ def test_wait_returns_when_observed_active_run_ends(
             agent_dir=source.parent, conversation_id=run.conversation_id
         )
 
-    monkeypatch.setattr(sleep_module, "sleep", finish_run)
+    monkeypatch.setattr(sleep_module, "pause", finish_run)
     result = wait(input=Empty(), messages=[])
 
     assert isinstance(result, Str)
-    assert result.value == "sleep_between_runs: active run ended"
+    assert result.value == "sleep: active run ended"
 
 
 @pytest.mark.parametrize(
@@ -344,7 +344,7 @@ def test_wait_returns_when_observed_active_run_ends(
         "consolidate_memory",
         "purge_memory",
         "stop_when_watched_agents_inactive",
-        "sleep_between_runs",
+        "sleep",
     ],
 )
 def test_completion_during_maintenance_is_flushed_without_sleeping(
@@ -374,15 +374,15 @@ def test_completion_during_maintenance_is_flushed_without_sleeping(
             return
         _complete_source_run(source)
 
-    if complete_after == "sleep_between_runs":
+    if complete_after == "sleep":
         monkeypatch.setattr(
-            sleep_module, "sleep", lambda _seconds: _complete_source_run(source)
+            sleep_module, "pause", lambda _seconds: _complete_source_run(source)
         )
     else:
         agent.pipe.add_sink(complete_after_tool)
         monkeypatch.setattr(
             sleep_module,
-            "sleep",
+            "pause",
             lambda seconds: pytest.fail(f"final sweep slept for {seconds}s"),
         )
 
@@ -440,7 +440,7 @@ def test_all_watched_workers_finish_before_final_maintenance(
     agent.pipe.add_sink(complete_first_after_snapshot)
     monkeypatch.setattr(
         sleep_module,
-        "sleep",
+        "pause",
         lambda _seconds: _complete_source_run(second, final_fact="Second worker fact."),
     )
 
@@ -505,9 +505,9 @@ def test_wait_observes_cancellation_during_sleep(
     _write_source_run(_sandbox(tmp_path), status=RunStatus.RUNNING)
     agent = _build(tmp_path, sleep_seconds=120)
     wait = next(
-        tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
+        tool for tool in agent.default_tools if tool.name == "sleep"
     )
-    monkeypatch.setattr(sleep_module, "sleep", lambda seconds: agent.pipe.cancel())
+    monkeypatch.setattr(sleep_module, "pause", lambda seconds: agent.pipe.cancel())
 
     with pytest.raises(ExternalCallCancelledError):
         wait(Empty(), [])
@@ -518,7 +518,7 @@ def test_wait_observes_agent_pipe_cancellation(tmp_path: Path) -> None:
     _write_source_run(sandbox, status=RunStatus.RUNNING)
     agent = _build(tmp_path, sleep_seconds=120.0)
     wait = next(
-        tool for tool in agent.default_tools if tool.name == "sleep_between_runs"
+        tool for tool in agent.default_tools if tool.name == "sleep"
     )
     agent.pipe.cancel()
 
@@ -539,7 +539,7 @@ def test_librarian_invoke_persists_no_message_cycle_outputs(tmp_path: Path) -> N
     joined = "\n".join(message["content"] for message in run["messages"])
     assert "snapshot_conversations" in joined
     assert "consolidate_memory" in joined
-    assert "sleep_between_runs" in joined
+    assert "sleep" in joined
     assert len(run["messages"]) > 1
     assert run["runtime_events"]
 
@@ -577,13 +577,13 @@ def test_provider_failure_is_sanitized_in_persisted_failed_run(tmp_path: Path) -
 
 
 def test_builtin_default_configuration_is_preserved() -> None:
-    from roboz.shed.tools import sleep_between_runs
+    from roboz.shed.tools import sleep
 
     from roboz.models import All, Str
 
-    result = sleep_between_runs(SleepBetweenRunsContext(seconds=0))(All(), [])
+    result = sleep(SleepContext(pipe=EventPipe(), seconds=0))(All(), [])
     assert isinstance(result, Str)
-    assert result.value == "sleep_between_runs: slept=0.0s"
+    assert result.value == "sleep: slept=0.0s"
 
 
 @pytest.mark.parametrize("override_snapshot", [False, True])

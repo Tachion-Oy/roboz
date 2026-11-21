@@ -10,12 +10,12 @@ from roboz.shed.tools import (
     ExecutableCommandCatalog,
     FileCommandExecutionContext,
     PurgeFilesContext,
-    SleepBetweenRunsContext,
+    SleepContext,
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
     consolidate_memory,
     purge_files,
-    sleep_between_runs,
+    sleep,
     snapshot_conversations,
     stop_when_watched_agents_inactive,
 )
@@ -27,6 +27,7 @@ from roboz.models import All, Stop, Str
 from roboz.models._serialization import get_finalized_message
 from roboz.dependencies import ExecutableDependency
 from roboz.llm import LLMEndpoint
+from roboz.runtime import EventPipe
 
 
 def _endpoint():
@@ -113,14 +114,14 @@ def test_configuration_only_contexts_report_no_external_dependencies(tmp_path):
         ).external_dependencies()
         == ()
     )
-    context = SleepBetweenRunsContext(seconds=0)
-    bound = sleep_between_runs(context)
+    context = SleepContext(pipe=EventPipe(), seconds=0)
+    bound = sleep(context)
     assert bound.external_dependencies() == ()
-    assert bound(All(), []).value == "sleep_between_runs: slept=0.0s"
-    other = SleepBetweenRunsContext(seconds=0, conversation_root=tmp_path)
+    assert bound(All(), []).value == "sleep: slept=0.0s"
+    other = SleepContext(pipe=EventPipe(), seconds=0, conversation_root=tmp_path)
     context.agent_names.add("worker")
     assert other.agent_names == set()
-    assert isinstance(sleep_between_runs(other)(All(), []), Str)
+    assert isinstance(sleep(other)(All(), []), Str)
     idle = stop_when_watched_agents_inactive(
         StopWhenWatchedAgentsInactiveContext(
             conversation_root=tmp_path,

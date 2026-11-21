@@ -33,6 +33,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
   - [User-approved shell commands](#user-approved-shell-commands)
+  - [Waiting for background work](#waiting-for-background-work)
   - [Image reading](#image-reading)
 - [Endpoints and model catalogues](#endpoints-and-model-catalogues)
   - [Use the bundled examples](#use-the-bundled-examples)
@@ -631,6 +632,25 @@ For a tool-only composition, pass
 `get_run_shell_command(base=..., pipe=..., policy=ExecutionPolicy(...))` to an
 agent; both names come from `roboz.shed.tools`. User approval is the only
 protection; this is not an operating-system sandbox.
+
+### Waiting for background work
+
+`Sleep()` adds `sleep`, which waits and returns so the model can check on
+background work again, such as parallel subagents. The model may pass
+`seconds`; otherwise the capability's `seconds` (20 by default) applies. While
+waiting it emits a script output line every 3 seconds with the time waited and
+the time left. The user's interrupt and the run's cancellation end the wait
+within a second, and an interrupt is handled like any other: the agent asks the
+user how to continue.
+
+```python
+from roboz.shed.capabilities import Sleep
+
+agent.add_capabilities(Sleep(seconds=20))
+```
+
+The Librarian's `MaintenanceCadence` binds the same tool with its own default
+and also ends the wait as soon as a watched conversation stops running.
 
 ### Image reading
 

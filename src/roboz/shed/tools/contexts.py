@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -130,10 +129,10 @@ class StopWhenWatchedAgentsInactiveContext:
 
 
 @dataclass(frozen=True, kw_only=True)
-class SleepBetweenRunsContext:
-    """Wait settings for observing activity between maintenance cycles."""
+class SleepContext:
+    """Default wait, the run's pipe that interrupts it, and optional watched runs."""
 
+    pipe: EventPipe
     seconds: float
-    is_cancelled: Callable[[], bool] | None = None
     conversation_root: Path | None = None
     agent_names: set[str] = field(default_factory=set)
