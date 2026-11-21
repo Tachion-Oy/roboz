@@ -13,3 +13,5 @@ from typing import Final
 PROMPT_LLM_TOOL_NAME: Final[str] = "prompt_llm"
 RUN_BACKGROUND_AGENT_TOOL_NAME: Final[str] = "run_background_agent"
 RUN_NESTED_AGENT_TOOL_NAME: Final[str] = "run_nested_agent"
+SHARE_NOTE_TOOL_NAME: Final[str] = "share_note"
+READ_SHARED_NOTES_TOOL_NAME: Final[str] = "read_shared_notes"

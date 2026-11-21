@@ -122,4 +122,5 @@ QUOTES: Final[list[str]] = [
     "Trying is the first step towards failure.",
     "I sleep in a racing car, do you?",
     "I'm Idaho!",
+    "Can't someone else do it?",
 ]

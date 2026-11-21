@@ -29,6 +29,7 @@ RoboZ is a framework for building llm powered agents. The main idea is that ever
 - [RoboZ CLI](#roboz-cli)
   - [Create a local tool or skill](#create-a-local-tool-or-skill)
 - [Deployable agents and capabilities](#deployable-agents-and-capabilities)
+- [Parallel subagents](#parallel-subagents)
 - [Shed](#shed)
   - [Guarded file CLI](#guarded-file-cli)
   - [User-approved shell commands](#user-approved-shell-commands)
@@ -428,6 +429,41 @@ inherit from `Capability`; the separate `AgentCapability` protocol is removed.
 Capability constructors, including Shed's, accept keywords only. Labels remain
 immutable metadata.
 There are no compatibility aliases, inferred names, or separate registry.
+
+## Parallel subagents
+
+`start_subagents` starts one copy of the same agent per sub-goal, each in its
+own background thread, all working toward one common task. The call returns at
+once with the team. `SubagentsContext` holds what every member gets and the
+pipe of the agent that owns the team, usually the pipe a capability's
+`build(agent, pipe)` receives:
+
+```python
+from roboz.agent import SubagentsContext, read_shared_notes, start_subagents
+
+team = SubagentsContext(name="web_searcher", tools=[search], skills=[guide], pipe=pipe)
+owner_tools = (start_subagents(team), read_shared_notes(team))
+```
+
+- Members are named `web_searcher_1`, `web_searcher_2` and so on. Each runs
+  autonomously on its owner's model, holds the given tools and loads the given
+  skills at start. Its system prompt states the common task, its own sub-goal
+  and the whole team.
+- Members post findings with `share_note` and read the others' with
+  `read_shared_notes`. The owner reads the same notes with its own
+  `read_shared_notes`: everything shared since it last read, including each
+  member's final result and a `stopped (completed|failed|cancelled)` note.
+  A read with nothing new says so; it is never hidden.
+- Nothing reads the notes automatically. How often the owner should read
+  depends on the team, so say it in the descriptions of the team's tools.
+- The team is cancelled when the owner's run stops, and starting a new team
+  cancels the previous one. Bind tools that make external calls to the owner's
+  pipe, as a capability does, so cancelling the run also aborts calls in
+  flight.
+- Each member logs its conversation in a folder of its own name next to its
+  owner's.
+- A member that cannot start is reported as `did not start`, and one that fails
+  as `stopped (failed)`; neither stops the others or the owner.
 
 ## Shed
 
@@ -1008,7 +1044,7 @@ old secrets using the previous release before upgrading if you need them.
 | --- | --- |
 | `roboz` | Agent, tool, factory, and skill authoring facade. |
 | `roboz.cli` | Central command parser and handlers for the `roboz` executable. |
-| `roboz.agent` | Agent implementations, nested agents, and background agents. |
+| `roboz.agent` | Agent implementations, nested, background, and parallel subagents. |
 | `roboz.deployment` | Reusable agent definitions and capabilities. |
 | `roboz.llm` | Endpoint contracts, selection, calls, and request policies. |
 | `roboz.models` | Typed messages and tool input/output models. |
