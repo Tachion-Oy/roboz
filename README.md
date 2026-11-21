@@ -640,9 +640,8 @@ protection; this is not an operating-system sandbox.
 
 `Sleep()` adds `sleep`, which waits and returns so the model can check on
 background work again, such as parallel subagents. The model may pass
-`seconds`; otherwise the capability's `seconds` (20 by default) applies. While
-waiting it emits a script output line every 3 seconds with the time waited and
-the time left. The user's interrupt and the run's cancellation end the wait
+`seconds`; otherwise the capability's `seconds` (20 by default) applies. The
+wait prints nothing. The user's interrupt and the run's cancellation end the wait
 within a second, and an interrupt is handled like any other: the agent asks the
 user how to continue.
 

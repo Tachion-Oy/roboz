@@ -7,6 +7,9 @@
   model never sees them, and they follow the capability's selection. A skill
   can use one to hand the model background results, such as subagents' notes,
   without the model asking.
+- `sleep` no longer emits a script output line every 3 seconds. A short wait
+  between checks on background work then leaves the screen to that work's
+  own output.
 
 ## 0.19.0 - 2026-11-21
 
