@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.0 - 2026-11-21
+
 - `roboz.agent.start_subagents` starts one copy of an agent per sub-goal, each
   in its own background thread, all working toward one common task, and
   returns at once. `SubagentsContext` names the members (`<name>_1`,
