@@ -123,4 +123,5 @@ QUOTES: Final[list[str]] = [
     "I sleep in a racing car, do you?",
     "I'm Idaho!",
     "Can't someone else do it?",
+    "Shut up, brain, or I'll stab you with a Q-tip!",
 ]
