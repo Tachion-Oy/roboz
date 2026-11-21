@@ -7,13 +7,16 @@ from pydantic import ValidationError
 from roboz.models import render_content
 from roboz.agent._identifiers import (
     PROMPT_LLM_TOOL_NAME,
+    READ_SHARED_NOTES_TOOL_NAME,
     RUN_BACKGROUND_AGENT_TOOL_NAME,
     RUN_NESTED_AGENT_TOOL_NAME,
+    SHARE_NOTE_TOOL_NAME,
 )
 from roboz.agent.background_agent import run_background_agent
 from roboz.agent.core import Agent
 from roboz.agent.prompt_llm_tool import prompt_llm
 from roboz.agent.nested_agent import run_nested_agent
+from roboz.agent.subagents import read_shared_notes, share_note
 from roboz.llm.endpoints import MockLLMEndpoint
 from roboz.models import Empty, Message, Role, Stop, Str
 from roboz.models.truncation import NO_MESSAGE
@@ -62,6 +65,8 @@ def test_prompt_user_at_start_returns_interaction_reply(bind_user_io):
         (stop, STOP_TOOL_NAME),
         (run_background_agent, RUN_BACKGROUND_AGENT_TOOL_NAME),
         (run_nested_agent, RUN_NESTED_AGENT_TOOL_NAME),
+        (share_note, SHARE_NOTE_TOOL_NAME),
+        (read_shared_notes, READ_SHARED_NOTES_TOOL_NAME),
     ],
 )
 def test_tool_name_matches_identifier(tool_obj, identifier):

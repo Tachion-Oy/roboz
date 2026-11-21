@@ -6,8 +6,13 @@ import json
 import logging
 from typing import TYPE_CHECKING, Sequence
 
+from roboz.agent._identifiers import (
+    READ_SHARED_NOTES_TOOL_NAME,
+    SHARE_NOTE_TOOL_NAME,
+)
 from roboz.skill._prompts import AGENT_SKILL_USE_INSTRUCTIONS
 from roboz.tooling._prompts import AGENT_TOOL_USE_INSTRUCTIONS, _get_single_instruction
+from roboz.tools._identifiers import STOP_TOOL_NAME
 
 if TYPE_CHECKING:
     from roboz.skill.core import Skill
@@ -164,6 +169,27 @@ def get_example_agent_discussion(*, allow_user_input: bool = True) -> str:
     )
     section += "\n\n</example>"
     return section
+
+
+def get_subagent_system_prompt(
+    *, name: str, task: str, subgoal: str, team: Sequence[str]
+) -> str:
+    """Build the fixed prompt that gives one subagent its task, team and sub-goal."""
+    roster = "\n".join(team)
+    return f"""You are {name}, one of a team of subagents working in parallel toward a common task.
+
+Common task: {task}
+
+Your sub-goal: {subgoal}
+
+The team and each member's sub-goal:
+{roster}
+
+Work on your own sub-goal; the others cover theirs. Read what they have shared with `{READ_SHARED_NOTES_TOOL_NAME}` before you start and from time to time while you work, and use it.
+
+When you learn something that helps the others, such as a useful source, a dead end, or a finding that belongs to another member's sub-goal, post it with `{SHARE_NOTE_TOOL_NAME}`. Keep notes short and do not repeat what is already shared.
+
+You cannot ask the user anything. When your sub-goal is met, call `{STOP_TOOL_NAME}` with your complete result; it is shared automatically."""
 
 
 def get_agentic_system_prompt(

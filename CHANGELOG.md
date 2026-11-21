@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `roboz.agent.start_subagents` starts one copy of an agent per sub-goal, each
+  in its own background thread, all working toward one common task, and
+  returns at once. `SubagentsContext` names the members (`<name>_1`,
+  `<name>_2`, …), gives them their tools and the skills they load at start,
+  and takes the owner's pipe: the team is cancelled when the owner's run
+  stops, and each member logs its conversation next to its owner's. Members
+  share findings with `share_note`; `read_shared_notes` returns what the
+  others shared since the caller last read, including each member's final
+  result and stop status, and is available to the owner as well.
+
 ## 0.18.0 - 2026-11-16
 
 - A message longer than 1,000,000 characters (`MAX_LOGGED_MESSAGE_CHARS`) is
