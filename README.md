@@ -389,7 +389,10 @@ exposes a tool or intact chain; `default=True` adds its first tool to
 `default_tools`. Default roots run in declaration order; selection preserves
 that order.
 `SkillLabel` declares `SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`.
-A skill's instructions and embedded tools always remain together.
+A skill's instructions and embedded tools always remain together. A tool that a
+skill capability's `build()` returns beside its skill joins `default_tools`: the
+scheduler runs it in every cycle and the model never sees it. It follows the
+capability's selection, not the skill's loading mode.
 
 Inspect `agent.capabilities` and their labels without building tools. Each label's
 `kind` is `"tool"` or `"skill"`, so callers can expose metadata directly. Selection

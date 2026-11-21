@@ -77,6 +77,10 @@ class Capability:
     omit the value and override build() to return fresh tools, chains, or skills.
     Deployment applies this capability's declared label to every returned value.
     Default chain roots retain declaration order. Objects remain caller-owned.
+
+    A skill capability's build() may also return tools beside its skill. They
+    become default tools: the scheduler runs them in every cycle and the model
+    never sees them. They follow the capability's selection, not its loading.
     """
 
     def __init__(
@@ -143,15 +147,22 @@ class Capability:
         """Build and route this capability's values into Agent constructor fields."""
         if choice is False:
             return {}
-        values = [self._validate_value(value) for value in self.build(agent, pipe)]
+        built = self.build(agent, pipe)
         label = self.label
         if isinstance(label, SkillLabel):
+            default_tools = [value for value in built if isinstance(value, Tool)]
+            values = [
+                self._validate_value(value)
+                for value in built
+                if not isinstance(value, Tool)
+            ]
             skills = [value for value in values if isinstance(value, Skill)]
             loading = choice if isinstance(choice, SkillLoading) else label.loading
             if loading is SkillLoading.AUTOMATIC:
-                return {"auto_loaded_skills": skills}
-            return {"skills": skills}
+                return {"auto_loaded_skills": skills, "default_tools": default_tools}
+            return {"skills": skills, "default_tools": default_tools}
 
+        values = [self._validate_value(value) for value in built]
         chains = [
             (value,) if isinstance(value, Tool) else value
             for value in values

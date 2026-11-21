@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A skill capability's `build()` may return tools beside its skill. They join
+  the agent's `default_tools`: the scheduler runs them in every cycle, the
+  model never sees them, and they follow the capability's selection. A skill
+  can use one to hand the model background results, such as subagents' notes,
+  without the model asking.
+
 ## 0.19.0 - 2026-11-21
 
 - `roboz.agent.start_subagents` starts one copy of an agent per sub-goal, each

@@ -174,7 +174,7 @@ def test_invalid_child_additions_leave_existing_children_unchanged(children):
 @pytest.mark.parametrize(
     "label, value, error, message",
     [
-        (SkillLabel("bad"), stop, TypeError, "a SkillLabel requires a Skill"),
+        (SkillLabel("bad"), (stop,), TypeError, "a SkillLabel requires a Skill"),
         (
             ToolLabel("bad"),
             Skill(name="skill", description="Skill", instructions="Help."),
@@ -208,6 +208,47 @@ def test_supplied_and_built_payloads_use_the_same_validation(
     definition = _definition("invalid", capabilities=(Invalid(label=label),))
     with pytest.raises(error, match=message):
         definition.build()
+
+
+def test_tool_beside_a_skill_runs_every_cycle_and_follows_the_selection():
+    calls = []
+
+    @tool
+    def watch(input: Empty, messages: list[Message]) -> Empty:
+        calls.append("watch")
+        return Empty()
+
+    class Guided(Capability):
+        def build(self, agent, pipe):
+            guide = Skill(name="guide", description="Guide.", instructions="Help.")
+            return (guide, watch)
+
+    definition = DeployableAgent(
+        name="guided",
+        system_prompt="Exercise the capabilities.",
+        capabilities=(
+            Capability(label=ToolLabel("stop"), value=stop),
+            Guided(label=SkillLabel("guide", selectable=True)),
+        ),
+    )
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {"action": "guide", "rationale": "load instructions"},
+                {"action": "stop", "rationale": "done", "value": "ok"},
+            ]
+        )
+    )
+
+    agent, _ = definition.build()
+    assert agent.default_tools == [watch]
+    assert watch.name not in {active.name for active in agent.active_tools.values()}
+    agent.invoke()
+    assert calls == ["watch", "watch"]
+
+    definition.set_capability_selection({"stop": True})
+    without, _ = definition.build()
+    assert without.default_tools == []
 
 
 def test_builder_cannot_return_an_unbound_value():

@@ -124,4 +124,5 @@ QUOTES: Final[list[str]] = [
     "I'm Idaho!",
     "Can't someone else do it?",
     "Shut up, brain, or I'll stab you with a Q-tip!",
+    "I've been calling her Crandall!",
 ]
