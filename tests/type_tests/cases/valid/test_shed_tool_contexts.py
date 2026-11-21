@@ -10,12 +10,12 @@ from roboz.shed.tools import (
     FileCommandExecutionContext,
     GuardContext,
     PurgeFilesContext,
-    SleepBetweenRunsContext,
+    SleepContext,
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
     consolidate_memory,
     purge_files,
-    sleep_between_runs,
+    sleep,
     snapshot_conversations,
     stop_when_watched_agents_inactive,
 )
@@ -25,6 +25,7 @@ from roboz.shed.tools.compactification import (
     compactify_messages_when_needed,
 )
 from roboz.shed.tools.guard import operation_guard
+from roboz.shed.tools.sleep import SleepFor
 from roboz.shed.tools.cli_commands.contracts import CommandExecution
 from roboz.shed.tools.cli_commands.execute import execute_file_command
 from roboz.shed.tools.types import ResolvedFileCommand
@@ -48,7 +49,7 @@ assert_type(
 assert_type(snapshot_conversations, Factory[All, Str, SnapshotConversationsContext])
 assert_type(consolidate_memory, Factory[All, Str, ConsolidateMemoryContext])
 assert_type(purge_files, Factory[All, Str, PurgeFilesContext])
-assert_type(sleep_between_runs, Factory[All, Str, SleepBetweenRunsContext])
+assert_type(sleep, Factory[SleepFor, Str, SleepContext])
 assert_type(
     stop_when_watched_agents_inactive,
     Factory[All, Str | Stop, StopWhenWatchedAgentsInactiveContext],

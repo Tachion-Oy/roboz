@@ -172,6 +172,6 @@ def test_instance_preserves_maintenance_order_and_cli_output(tmp_path):
         "purge_snapshots",
         "purge_memory",
         "stop_when_watched_agents_inactive",
-        "sleep_between_runs",
+        "sleep",
     ]
     assert not list(tmp_path.iterdir())

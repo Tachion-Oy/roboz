@@ -9,7 +9,7 @@ from .contexts import (
     FileCommandExecutionContext,
     GuardContext,
     PurgeFilesContext,
-    SleepBetweenRunsContext,
+    SleepContext,
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
 )
@@ -20,7 +20,7 @@ from .consolidate_memory import consolidate_memory
 from .images import ReadImagesInput, get_read_images_tool
 from .shell_command import get_run_shell_command
 from .purge_files import purge_files, purge_files_by_threshold
-from .sleep_between_runs import sleep_between_runs
+from .sleep import sleep
 from .stop_when_watched_agents_inactive import stop_when_watched_agents_inactive
 from .snapshot_conversations import (
     SnapshotMode,
@@ -37,7 +37,7 @@ __all__ = [
     "ConsolidateMemoryContext",
     "SnapshotConversationsContext",
     "PurgeFilesContext",
-    "SleepBetweenRunsContext",
+    "SleepContext",
     "StopWhenWatchedAgentsInactiveContext",
     "SnapshotMode",
     "ReadImagesInput",
@@ -49,7 +49,7 @@ __all__ = [
     "get_read_images_tool",
     "purge_files",
     "purge_files_by_threshold",
-    "sleep_between_runs",
+    "sleep",
     "stop_when_watched_agents_inactive",
     "snapshot_conversations",
 ]

@@ -12,7 +12,7 @@ from roboz.shed.identifiers import (
     PURGE_LOGS_TOOL_NAME,
     PURGE_MEMORY_TOOL_NAME,
     PURGE_SNAPSHOTS_TOOL_NAME,
-    SLEEP_BETWEEN_RUNS_TOOL_NAME,
+    SLEEP_TOOL_NAME,
     SNAPSHOT_CONVERSATIONS_TOOL_NAME,
     STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME,
 )
@@ -26,13 +26,13 @@ from roboz.shed.tools.consolidate_memory import consolidate_memory
 from roboz.shed.tools.contexts import (
     ConsolidateMemoryContext,
     PurgeFilesContext,
-    SleepBetweenRunsContext,
+    SleepContext,
     SnapshotConversationsContext,
     StopWhenWatchedAgentsInactiveContext,
 )
 from roboz.shed.tools.purge_files import purge_files
 from roboz.shed.tools.shell_command import get_run_shell_command
-from roboz.shed.tools.sleep_between_runs import sleep_between_runs
+from roboz.shed.tools.sleep import sleep
 from roboz.shed.tools.safe_scripts import (
     RemoteScriptContext,
     ScriptSocketDependency,
@@ -494,12 +494,31 @@ class MaintenanceCadence(Capability):
                     agent_names=set(watched_agent_names),
                 )
             ).copy(name=STOP_WHEN_WATCHED_AGENTS_INACTIVE_TOOL_NAME),
-            sleep_between_runs(
-                SleepBetweenRunsContext(
+            sleep(
+                SleepContext(
+                    pipe=pipe,
                     seconds=self.seconds,
-                    is_cancelled=lambda: pipe.cancelled,
                     conversation_root=sandbox.project_logs_dir(),
                     agent_names=set(watched_agent_names),
                 )
-            ).copy(name=SLEEP_BETWEEN_RUNS_TOOL_NAME),
+            ).copy(name=SLEEP_TOOL_NAME),
         )
+
+
+class Sleep(Capability):
+    """Let the model wait for background work, such as parallel subagents.
+
+    The model may choose each wait's length; ``seconds`` is the default. The
+    run's cancellation and the user's interrupt end a wait.
+    """
+
+    def __init__(
+        self, *, label: ToolLabel = ToolLabel("sleep"), seconds: float = 20.0
+    ) -> None:
+        """Keep configuration for fresh runtime bindings on each build."""
+        super().__init__(label=label)
+        self.seconds = seconds
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
+        """Bind the wait to this run's pipe."""
+        return (sleep(SleepContext(pipe=pipe, seconds=self.seconds)).copy(),)
