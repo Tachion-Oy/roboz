@@ -55,7 +55,15 @@ def test_nested_agent_completion(tmp_path: Path) -> None:
 def test_generic_definitions_build_without_application_packages(tmp_path: Path) -> None:
     from roboz.models import Empty, Message
     from roboz import tool
-    from roboz.deployment import DeployableAgent, Capability
+    from roboz.deployment import Capability, DeployableAgent
+
+    class Returns(Capability):
+        def __init__(self, *, label, value):
+            super().__init__(label=label)
+            self.value = value
+
+        def build(self, agent, pipe):
+            return (self.value,)
 
     root_ticks = []
 
@@ -66,7 +74,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
 
     child = DeployableAgent(
         name="worker",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(Returns(label=ToolLabel("stop"), value=stop),),
         system_prompt="Finish the delegated work.",
     )
     child.set_agent_endpoint(
@@ -76,7 +84,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
     )
     root = DeployableAgent(
         name="coordinator",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(Returns(label=ToolLabel("stop"), value=stop),),
         nested_agents=(child,),
         system_prompt="Delegate, then finish.",
     )
@@ -109,7 +117,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
         )
 
     root.add_capabilities(
-        Capability(label=ToolLabel("root_tick", default=True), value=root_tick)
+        Returns(label=ToolLabel("root_tick", default=True), value=root_tick)
     )
     agent, backgrounds = root.build(
         event_sinks=(shared_events.append,),

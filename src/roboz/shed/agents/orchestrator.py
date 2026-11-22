@@ -3,15 +3,10 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from roboz.shed.capabilities import Filesystem, Pdf
+from roboz.shed.capabilities import Filesystem, Pdf, Stop
 from roboz.shed.sandbox import Sandbox
-from roboz.deployment import (
-    Capability,
-    DeployableAgent,
-    ToolLabel,
-)
+from roboz.deployment import DeployableAgent
 from roboz.llm import EndpointLike
-from roboz.tools import stop
 
 ORCHESTRATOR_PROMPT = """You are the user's persistent collaborator. Help them reach their
 goals using the available capabilities, and delegate to suitable specialists.
@@ -38,7 +33,7 @@ def orchestrator(
         description="Coordinates ongoing user goals and specialist agents.",
         system_prompt=ORCHESTRATOR_PROMPT,
         capabilities=(
-            Capability(label=ToolLabel("stop"), value=stop),
+            Stop(),
             Filesystem(),
             Pdf(),
         ),

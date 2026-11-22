@@ -10,6 +10,13 @@
 - `sleep` no longer emits a script output line every 3 seconds. A short wait
   between checks on background work then leaves the screen to that work's
   own output.
+- Breaking: `Capability` is now an abstract base class whose subclasses
+  implement `build`, and it no longer takes `value`. Replace each
+  `Capability(label=..., value=...)` with a subclass whose `build` returns the
+  value in a tuple; `roboz tool init` and `roboz skill init` create one. A
+  capability without `build` now fails when it is constructed instead of when
+  the agent is built. `roboz.shed.capabilities.Stop()` provides the `stop`
+  tool, as the orchestrator uses it.
 
 ## 0.19.0 - 2026-11-21
 

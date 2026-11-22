@@ -78,6 +78,7 @@ QUOTES: Final[list[str]] = [
     "I didn't do it.",
     "Do it for her.",
     "A noble spirit embiggens the smallest man.",
+    "I'm not not licking toads.",
     "In this house, we obey the laws of thermodynamics!",
     "It's a perfectly cromulent word.",
     "That's a problem for future Homer.",

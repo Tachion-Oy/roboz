@@ -6,11 +6,19 @@ from .tool import get_$name
 
 __all__ = ["CAPABILITY"]
 
-CAPABILITY = Capability(
+
+class Quotes(Capability):
+    """Give the agent this package's tool."""
+
+    def build(self, agent, pipe):
+        """Return the tool; RoboZ applies the label below."""
+        return (get_$name,)
+
+
+CAPABILITY = Quotes(
     label=ToolLabel(
         "$name",
         selectable=True,  # False makes this capability fixed.
         default=False,  # True runs the tool before the model; this example stops the run.
     ),
-    value=get_$name,
 )

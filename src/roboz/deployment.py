@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -70,11 +71,10 @@ class SkillLabel(CapabilityLabel):
             raise TypeError("loading must be a SkillLoading value")
 
 
-class Capability:
-    """A labeled feature, supplied directly or bound by a subclass at build time.
+class Capability(ABC):
+    """A labeled feature whose subclass returns its values at build time.
 
-    Supply a value for an existing tool, chain, or intact skill. Subclasses can
-    omit the value and override build() to return fresh tools, chains, or skills.
+    Subclasses implement build() to return tools, chains, or skills.
     Deployment applies this capability's declared label to every returned value.
     Default chain roots retain declaration order. Objects remain caller-owned.
 
@@ -83,20 +83,12 @@ class Capability:
     never sees them. They follow the capability's selection, not its loading.
     """
 
-    def __init__(
-        self,
-        *,
-        label: ToolLabel | SkillLabel,
-        value: Tool | Sequence[Tool] | Skill | None = None,
-    ) -> None:
-        """Validate the outer payload without inspecting skill contents."""
+    def __init__(self, *, label: ToolLabel | SkillLabel) -> None:
+        """Keep the label that selects this whole capability."""
         self._label = label
-        self.value: Tool | tuple[Tool, ...] | Skill | None = (
-            None if value is None else self._validate_value(value)
-        )
 
     def _validate_value(self, value: object) -> Tool | tuple[Tool, ...] | Skill:
-        """Validate a supplied or built payload without inspecting skill contents."""
+        """Validate a built payload without inspecting skill contents."""
         if value is None:
             raise TypeError("build() must return bound tool or skill capabilities")
         match self.label:
@@ -127,15 +119,11 @@ class Capability:
         """Declare owner configuration needed by build(); none by default."""
         return {}
 
+    @abstractmethod
     def build(
         self, agent: "DeployableAgent", pipe: EventPipe
     ) -> tuple[Tool | Sequence[Tool] | Skill, ...]:
         """Return runtime values in order; deployment applies the declared label."""
-        if self.value is None:
-            raise NotImplementedError(
-                "a capability without a value must implement build()"
-            )
-        return (self.value,)
 
     def _build_inputs(
         self,

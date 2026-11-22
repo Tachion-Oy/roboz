@@ -65,6 +65,7 @@ from roboz.llm import EndpointLike, LLMEndpoint, LLMEndpointRoute, MockLLMEndpoi
 from roboz.runtime import EventPipe
 from roboz.skill import Skill
 from roboz.tooling import Tool
+from roboz.tools import stop
 
 
 class SafeScripts(Capability):
@@ -503,6 +504,18 @@ class MaintenanceCadence(Capability):
                 )
             ).copy(name=SLEEP_TOOL_NAME),
         )
+
+
+class Stop(Capability):
+    """Let the model end the run with its final answer."""
+
+    def __init__(self, *, label: ToolLabel = ToolLabel("stop")) -> None:
+        """Keep the label that selects the stop tool."""
+        super().__init__(label=label)
+
+    def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
+        """Return the stop tool."""
+        return (stop,)
 
 
 class Sleep(Capability):

@@ -19,6 +19,17 @@ from roboz.dependencies import ExecutableDependency
 from roboz.llm import LLMEndpoint, MockLLMEndpoint
 
 
+class _Returns(Capability):
+    """Test capability whose build() returns the one value it was given."""
+
+    def __init__(self, *, label, value):
+        super().__init__(label=label)
+        self.value = value
+
+    def build(self, agent, pipe):
+        return (self.value,)
+
+
 def _endpoint(name):
     def forbidden():
         pytest.fail("inspection initialized or checked a client")
@@ -101,15 +112,15 @@ def test_inspection_uses_agent_tool_and_skill_coverage_and_first_resource():
     unloaded = _resource_tool("unloaded")
     automatic = _resource_tool("automatic")
     features = (
-        Capability(label=ToolLabel("direct"), value=(direct, duplicate)),
-        Capability(label=ToolLabel("default", default=True), value=default),
-        Capability(
+        _Returns(label=ToolLabel("direct"), value=(direct, duplicate)),
+        _Returns(label=ToolLabel("default", default=True), value=default),
+        _Returns(
             label=SkillLabel("lazy"),
             value=Skill(
                 name="lazy", description="Lazy", instructions="Lazy", tools=(unloaded,)
             ),
         ),
-        Capability(
+        _Returns(
             label=SkillLabel("auto", loading=SkillLoading.AUTOMATIC),
             value=Skill(
                 name="auto", description="Auto", instructions="Auto", tools=(automatic,)
@@ -171,7 +182,7 @@ def test_tool_inspection_errors_propagate_through_deployment(invalid):
     definition = _definition(
         "invalid",
         capabilities=(
-            Capability(label=ToolLabel("tools"), value=inspect_value(Context())),
+            _Returns(label=ToolLabel("tools"), value=inspect_value(Context())),
         ),
     )
     with pytest.raises(TypeError):
@@ -201,7 +212,7 @@ def test_resource_free_definition_can_be_inspected_built_and_invoked():
     definition = DeployableAgent(
         name="worker",
         mode=AgentMode.DETERMINISTIC,
-        capabilities=(Capability(label=ToolLabel("stop", default=True), value=stop),),
+        capabilities=(_Returns(label=ToolLabel("stop", default=True), value=stop),),
     )
     definition.set_agent_endpoint(_endpoint("unused"))
     assert definition.external_dependencies() == ()
@@ -218,14 +229,14 @@ def test_full_dependency_inspection_ignores_selections_on_every_definition():
     child = _definition(
         "child",
         capabilities=(
-            Capability(label=ToolLabel("child", selectable=True), value=child_tool),
+            _Returns(label=ToolLabel("child", selectable=True), value=child_tool),
         ),
     )
     root = _definition(
         "root",
         nested_agents=(child,),
         capabilities=(
-            Capability(label=ToolLabel("parent", selectable=True), value=parent_tool),
+            _Returns(label=ToolLabel("parent", selectable=True), value=parent_tool),
         ),
     )
     root.set_capability_selection({})
@@ -252,7 +263,7 @@ def test_inspection_accepts_alternatives_with_the_same_runtime_name(as_skill):
                 tools=(value,),
             )
             label = SkillLabel(resource.executable, selectable=True)
-        capabilities.append(Capability(label=label, value=value))
+        capabilities.append(_Returns(label=label, value=value))
     definition = _definition("root", capabilities=capabilities)
 
     for selection in ({}, {"first": True}, {"second": True}):

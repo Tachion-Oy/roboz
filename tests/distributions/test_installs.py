@@ -60,10 +60,15 @@ def test_installed_cli_generates_importable_capabilities(consumer):
          f"import sys; sys.path.insert(0, {str(project)!r})\n"
          "from local.tools.simpsons_quotes import CAPABILITY as tool\n"
          "from local.skills.simpsons_quotes_skill import CAPABILITY as skill\n"
+         "from roboz.deployment import DeployableAgent\n"
          "from roboz.models import Empty\n"
+         "from roboz.runtime import EventPipe\n"
          "from roboz.examples.simpsons_quotes import QUOTES\n"
-         "assert tool.value(Empty(), []).value in QUOTES\n"
-         "assert skill.value.tools[0](Empty(), []).value in QUOTES\n"
+         "agent, pipe = DeployableAgent(name='quotes'), EventPipe()\n"
+         "[quote] = tool.build(agent, pipe)\n"
+         "[guide] = skill.build(agent, pipe)\n"
+         "assert quote(Empty(), []).value in QUOTES\n"
+         "assert guide.tools[0](Empty(), []).value in QUOTES\n"
          "assert skill.label.selectable and tool.label.selectable\n"],
         cwd=project, env=env, check=True,
     )

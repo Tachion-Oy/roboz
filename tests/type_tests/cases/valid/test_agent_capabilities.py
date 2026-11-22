@@ -40,7 +40,6 @@ class EndpointFree(Capability):
         return ()
 
 
-static_capability: Capability = Capability(label=ToolLabel("empty"), value=())
 capability: Capability = Extension()
 endpoint_free: Capability = EndpointFree()
 
@@ -49,7 +48,7 @@ endpoint: EndpointLike = MockLLMEndpoint([])
 definition = DeployableAgent(
     name="custom",
     system_prompt="Use the configured capabilities.",
-    capabilities=(static_capability, capability, endpoint_free),
+    capabilities=(capability, endpoint_free),
 )
 definition.set_agent_endpoint(endpoint)
 definition.name = "updated"

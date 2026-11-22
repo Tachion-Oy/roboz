@@ -7,16 +7,26 @@ from .tool import get_$name
 
 __all__ = ["CAPABILITY"]
 
-CAPABILITY = Capability(
+
+class Quotes(Capability):
+    """Give the agent this package's skill."""
+
+    def build(self, agent, pipe):
+        """Return the skill; RoboZ applies the label below."""
+        return (
+            Skill(
+                name="$name",
+                description="Return a Simpsons quote.",
+                instructions="Use get_$name to return a random Simpsons quote and finish.",
+                tools=(get_$name,),
+            ),
+        )
+
+
+CAPABILITY = Quotes(
     label=SkillLabel(
         "$name",
         selectable=True,  # False makes this capability fixed.
         loading=SkillLoading.ON_DEMAND,  # AUTOMATIC loads instructions and tools at startup.
-    ),
-    value=Skill(
-        name="$name",
-        description="Return a Simpsons quote.",
-        instructions="Use get_$name to return a random Simpsons quote and finish.",
-        tools=(get_$name,),
     ),
 )

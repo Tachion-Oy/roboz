@@ -5,6 +5,7 @@ from roboz.deployment import (
 )
 import pytest
 
+from roboz.shed import capabilities
 from roboz.shed.sandbox import Sandbox
 from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Stop
@@ -20,7 +21,7 @@ def _definition(name, nested_agents=(), background_agents=()):
         system_prompt="Complete the task.",
         nested_agents=nested_agents,
         background_agents=background_agents,
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(capabilities.Stop(),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     return definition

@@ -361,15 +361,31 @@ from roboz.deployment import (
 from roboz.llm import MockLLMEndpoint
 from roboz.tools import stop
 
+
+class Stop(Capability):
+    def __init__(self):
+        super().__init__(label=ToolLabel("stop"))
+
+    def build(self, agent, pipe):
+        return (stop,)
+
+
+class Guide(Capability):
+    def __init__(self):
+        super().__init__(label=SkillLabel("guide", selectable=True))
+
+    def build(self, agent, pipe):
+        return (
+            Skill(name="guide", description="Project guidance", instructions="Help."),
+        )
+
+
 agent = DeployableAgent(
     name="assistant",
     system_prompt="Help the user.",
-    capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+    capabilities=(Stop(),),
 )
-guide = Skill(name="guide", description="Project guidance", instructions="Help.")
-agent.add_capabilities(
-    Capability(label=SkillLabel("guide", selectable=True), value=guide)
-)
+agent.add_capabilities(Guide())
 agent.set_agent_endpoint(MockLLMEndpoint([]))
 agent.set_capability_selection({"guide": SkillLoading.ON_DEMAND})
 runtime, background_agents = agent.build()
@@ -411,8 +427,10 @@ disabled entries are `False`. It leaves the explicit selection unchanged and
 does not build capabilities. The returned map can be passed back to
 `set_capability_selection()` or compared with another run's choices.
 
-For a capability requiring runtime bindings, subclass `Capability`, pass its
-label to `super().__init__(label=...)`, and override
+`Capability` is an abstract base class: it cannot be constructed itself, and
+neither can a subclass without `build`. Every capability, including one for a
+single ready-made tool, is a subclass: pass its
+label to `super().__init__(label=...)`, and implement
 `build(agent, pipe)`. Override `required_attributes` when the builder needs owner
 configuration. Return a tuple of runtime tools, chains, or intact skills in
 construction order. A tool chain is one sequence inside that tuple; multiple
@@ -426,10 +444,9 @@ including disabled capabilities, without changing choices or invoking agents.
 
 Migration: replace `default_capabilities=` with `capabilities=` and inspect
 `capabilities` instead of the old default/additional views. Replace the old
-four-field `Capability` build result with a tuple of runtime values. Use
-`Capability(label=..., value=...)` to register an existing tool, chain, or skill;
-its build returns the supplied value in a singleton tuple. Custom builders
-inherit from `Capability`; the separate `AgentCapability` protocol is removed.
+four-field `Capability` build result with a tuple of runtime values. Replace
+`Capability(label=..., value=...)` with a subclass whose `build` returns the
+value in a tuple. The separate `AgentCapability` protocol is removed.
 Capability constructors, including Shed's, accept keywords only. Labels remain
 immutable metadata.
 There are no compatibility aliases, inferred names, or separate registry.
@@ -635,6 +652,11 @@ For a tool-only composition, pass
 `get_run_shell_command(base=..., pipe=..., policy=ExecutionPolicy(...))` to an
 agent; both names come from `roboz.shed.tools`. User approval is the only
 protection; this is not an operating-system sandbox.
+
+### Stopping
+
+`roboz.shed.capabilities.Stop()` adds the `stop` tool, with which the model
+ends the run and returns its final answer. The orchestrator includes it.
 
 ### Waiting for background work
 

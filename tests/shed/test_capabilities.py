@@ -7,7 +7,6 @@ from roboz.agent import AgentMode
 from roboz.models import All, Str
 from roboz.deployment import (
     DeployableAgent,
-    ToolLabel,
 )
 from roboz.llm import MockLLMEndpoint
 
@@ -152,11 +151,9 @@ def test_rebuilding_filesystem_preserves_each_project(tmp_path):
 
 @pytest.mark.parametrize("reply,allowed", [("yes", True), ("no", False)])
 def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
-    from roboz.shed.capabilities import Filesystem
+    from roboz.shed.capabilities import Filesystem, Stop
     from roboz.shed.sandbox import Sandbox
     from roboz.runtime import bind_api_user_io, reset_api_user_io
-    from roboz.deployment import Capability
-    from roboz.tools import stop
 
     class Replies:
         def __init__(self):
@@ -173,7 +170,7 @@ def test_filesystem_keeps_shared_write_confirmation(tmp_path, reply, allowed):
     definition = DeployableAgent(
         name="files",
         system_prompt="Edit files.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop), Filesystem()),
+        capabilities=(Stop(), Filesystem()),
     )
     definition.set_attributes(sandbox=sandbox)
     definition.set_agent_endpoint(
