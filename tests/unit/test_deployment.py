@@ -306,6 +306,19 @@ def test_a_loading_mode_makes_a_capability_a_skill():
     assert skill.kind == "skill"
 
 
+def test_a_subclass_cannot_overwrite_a_setting():
+    class Clashing(Capability):
+        def __init__(self):
+            super().__init__(name="clashing")
+            self.name = "other"
+
+        def build(self, agent, pipe):
+            return ()
+
+    with pytest.raises(AttributeError, match="name"):
+        Clashing()
+
+
 def test_builder_returning_no_values_still_configures_the_runtime_pipe():
     events = []
 

@@ -22,7 +22,7 @@
   `selectable`, `default` for a tool capability, and `loading` for a skill
   capability. Giving `loading` is what makes a capability a skill. Read them
   as `capability.name`, `.selectable`, `.default`, `.loading` and `.kind`;
-  there is no `.label`. Shed's capabilities state their own names and no
+  they are read-only and there is no `.label`. Shed's capabilities state their own names and no
   longer take `label`: use `Filesystem(loading=SkillLoading.ON_DEMAND)`,
   `Pdf(loading=...)`, `SafeScripts(selectable=True)` and
   `ShellCommands(selectable=True)`.

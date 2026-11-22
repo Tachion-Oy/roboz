@@ -411,7 +411,7 @@ skill capability's `build()` returns beside its skill joins `default_tools`: the
 scheduler runs it in every cycle and the model never sees it. It follows the
 capability's selection, not the skill's loading mode.
 
-Inspect `agent.capabilities` without building tools: each has `name`,
+Inspect `agent.capabilities` without building tools: each has read-only `name`,
 `selectable`, `default`, `loading`, and a `kind` of `"tool"` or `"skill"`, so
 callers can expose metadata directly. Selection
 belongs to the agent, not the shared capability: `capability_selection` is a

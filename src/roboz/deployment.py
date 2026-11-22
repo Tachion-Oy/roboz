@@ -65,10 +65,30 @@ class Capability(ABC):
             raise TypeError("loading must be a SkillLoading value")
         if default and loading is not None:
             raise ValueError("default applies to a tool capability, not a skill")
-        self.name = name
-        self.selectable = selectable
-        self.default = default
-        self.loading = loading
+        self._name = name
+        self._selectable = selectable
+        self._default = default
+        self._loading = loading
+
+    @property
+    def name(self) -> str:
+        """Return the name that selects this capability."""
+        return self._name
+
+    @property
+    def selectable(self) -> bool:
+        """Return whether the owner may switch this capability off."""
+        return self._selectable
+
+    @property
+    def default(self) -> bool:
+        """Return whether a tool capability's chain roots run before the model."""
+        return self._default
+
+    @property
+    def loading(self) -> SkillLoading | None:
+        """Return a skill capability's loading mode; None for a tool capability."""
+        return self._loading
 
     @property
     def kind(self) -> Literal["tool", "skill"]:
