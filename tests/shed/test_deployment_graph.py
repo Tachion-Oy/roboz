@@ -106,16 +106,16 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
     pipes = {}
 
     class RecordPipe(Capability):
-        def __init__(self, name):
+        def __init__(self, owner):
             super().__init__(name="record_pipe")
-            self.name = name
+            self.owner = owner
 
         @property
         def required_attributes(self):
             return {}
 
         def build(self, agent, pipe):
-            pipes[self.name] = pipe
+            pipes[self.owner] = pipe
             return (stop,)
 
     def node(name, nested_agents=(), background_agents=()):
