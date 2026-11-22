@@ -9,13 +9,22 @@ from roboz.agent import AgentMode
 from roboz.deployment import (
     Capability,
     DeployableAgent,
-    SkillLabel,
     SkillLoading,
-    ToolLabel,
 )
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Empty, Message, Str
 from roboz.tools import stop
+
+
+class _Returns(Capability):
+    """Test capability whose build() returns the one value it was given."""
+
+    def __init__(self, *, value, **settings):
+        super().__init__(**settings)
+        self.value = value
+
+    def build(self, agent, pipe):
+        return (self.value,)
 
 
 def definition(*capabilities):
@@ -38,13 +47,17 @@ def definition(*capabilities):
 def test_resolution_preserves_selection_and_round_trips_without_building(
     selection, tool_choice, skill_choice
 ):
+    class Unbuilt(Capability):
+        def build(self, agent, pipe):
+            pytest.fail("resolution built a capability")
+
     agent = DeployableAgent(
         name="test",
         capabilities=(
-            Capability(label=ToolLabel("fixed")),
-            Capability(label=SkillLabel("fixed_skill", loading=SkillLoading.AUTOMATIC)),
-            Capability(label=ToolLabel("optional", selectable=True)),
-            Capability(label=SkillLabel("guide", selectable=True)),
+            Unbuilt(name="fixed"),
+            Unbuilt(name="fixed_skill", loading=SkillLoading.AUTOMATIC),
+            Unbuilt(name="optional", selectable=True),
+            Unbuilt(name="guide", selectable=True, loading=SkillLoading.ON_DEMAND),
         ),
     )
     agent.set_capability_selection(selection)
@@ -66,7 +79,9 @@ def test_selection_and_loading_belong_to_each_definition_and_future_builds():
     skill = Skill(
         name="guide", description="Guide", instructions="Help.", tools=(embedded,)
     )
-    shared = Capability(label=SkillLabel("guide", selectable=True), value=skill)
+    shared = _Returns(
+        name="guide", selectable=True, loading=SkillLoading.ON_DEMAND, value=skill
+    )
     first, second = definition(shared), definition(shared)
     first.set_capability_selection({"guide": SkillLoading.ON_DEMAND})
     second.set_capability_selection({"guide": SkillLoading.AUTOMATIC})
@@ -76,7 +91,7 @@ def test_selection_and_loading_belong_to_each_definition_and_future_builds():
     assert automatic.auto_loaded_skills == [skill] and not automatic.skills
     assert lazy.skills[0] is skill and automatic.auto_loaded_skills[0] is skill
     assert skill.tools == [embedded]
-    assert shared.label.loading is SkillLoading.ON_DEMAND
+    assert shared.loading is SkillLoading.ON_DEMAND
 
     first.set_capability_selection({})
     disabled, _ = first.build()
@@ -90,7 +105,7 @@ def test_disabled_bundle_skips_requirements_and_builder_then_enables_as_a_whole(
 
     class Bundle(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("bundle", selectable=True))
+            super().__init__(name="bundle", selectable=True)
 
         required_attributes = {"setting": str}
 
@@ -102,7 +117,7 @@ def test_disabled_bundle_skips_requirements_and_builder_then_enables_as_a_whole(
             )
 
     agent = definition(Bundle())
-    assert agent.capabilities[0].label.name == "bundle" and not calls
+    assert agent.capabilities[0].name == "bundle" and not calls
     agent.set_capability_selection({})
     agent.validate()
     empty, _ = agent.build()
@@ -118,9 +133,9 @@ def test_disabled_bundle_skips_requirements_and_builder_then_enables_as_a_whole(
 
 
 def test_fixed_and_appended_choices_and_selection_ownership():
-    fixed = Capability(label=ToolLabel("fixed"), value=stop)
-    optional = Capability(
-        label=ToolLabel("optional", selectable=True), value=stop.copy(name="optional")
+    fixed = _Returns(name="fixed", value=stop)
+    optional = _Returns(
+        name="optional", selectable=True, value=stop.copy(name="optional")
     )
     agent = definition(fixed)
     choices = {"fixed": True}
@@ -154,9 +169,10 @@ def test_fixed_and_appended_choices_and_selection_ownership():
 )
 def test_invalid_choices_leave_previous_selection_unchanged(choices, error):
     agent = definition(
-        Capability(label=ToolLabel("fixed"), value=stop),
-        Capability(
-            label=ToolLabel("optional", selectable=True),
+        _Returns(name="fixed", value=stop),
+        _Returns(
+            name="optional",
+            selectable=True,
             value=stop.copy(name="optional"),
         ),
     )
@@ -183,17 +199,19 @@ def test_selection_preserves_default_order_and_completes_each_chain():
         name="scheduled",
         mode=AgentMode.DETERMINISTIC,
         capabilities=(
-            Capability(
-                label=ToolLabel("chain", selectable=True, default=True),
+            _Returns(
+                name="chain",
+                selectable=True,
+                default=True,
                 value=(begin, follow),
             ),
-            Capability(
-                label=ToolLabel("disabled", selectable=True, default=True),
+            _Returns(
+                name="disabled",
+                selectable=True,
+                default=True,
                 value=begin.copy(name="disabled"),
             ),
-            Capability(
-                label=ToolLabel("stop", selectable=True, default=True), value=stop
-            ),
+            _Returns(name="stop", selectable=True, default=True, value=stop),
         ),
     )
     agent.set_capability_selection({"stop": True, "chain": True})

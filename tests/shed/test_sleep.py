@@ -1,4 +1,4 @@
-"""The sleep tool waits as long as asked, reports progress, and yields to interrupts."""
+"""The sleep tool waits as long as asked, prints nothing, and yields to interrupts."""
 
 import importlib
 
@@ -12,7 +12,7 @@ from roboz.shed.tools.sleep import SleepFor
 sleep_module = importlib.import_module("roboz.shed.tools.sleep")
 
 
-def test_model_chosen_seconds_override_default_and_report_progress(
+def test_model_chosen_seconds_override_default_without_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[PipeEvent] = []
@@ -24,10 +24,7 @@ def test_model_chosen_seconds_override_default_and_report_progress(
 
     assert result.value == "sleep: slept=7.0s"
     assert sum(waited) == 7
-    assert [e.content for e in events if isinstance(e, ScriptOutputEvent)] == [
-        "sleep: waited 3s, 4s left\n",
-        "sleep: waited 6s, 1s left\n",
-    ]
+    assert not [event for event in events if isinstance(event, ScriptOutputEvent)]
 
 
 def test_user_interrupt_ends_the_wait(monkeypatch: pytest.MonkeyPatch) -> None:

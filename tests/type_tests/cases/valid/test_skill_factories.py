@@ -4,11 +4,6 @@ from collections.abc import Callable
 from typing import assert_type
 
 from roboz import Agent, Skill, Tool, factory
-from roboz.deployment import (
-    Capability,
-    SkillLabel,
-    SkillLoading,
-)
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Message, Str
 from roboz.shed.skills import FilesystemContext, filesystem_skill
@@ -45,4 +40,3 @@ def bind(ctx: FilesystemContext) -> None:
         agent_endpoint=MockLLMEndpoint([]),
         skills=[skill],
     )
-    Capability(label=SkillLabel("skill", loading=SkillLoading.AUTOMATIC), value=skill)

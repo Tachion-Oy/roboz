@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar, Literal
+from typing import Literal
 
 from roboz.agent import (
     Agent,
@@ -35,103 +35,96 @@ class SkillLoading(StrEnum):
     AUTOMATIC = "automatic"
 
 
-@dataclass(frozen=True)
-class CapabilityLabel:
-    """Identify one whole capability and whether its owner may deselect it."""
+class Capability(ABC):
+    """A named feature whose subclass returns its values at build time.
 
-    name: str
-    selectable: bool = False
+    Subclasses state their name and settings and implement build() to return
+    tools, chains, or skills. The owner selects a capability by its name;
+    selectable=False makes it fixed. A capability with a loading mode is a skill
+    capability. Without one it is a tool capability: default=True runs its
+    chain roots before the model, in declaration order. Objects remain
+    caller-owned.
 
-    def __post_init__(self) -> None:
-        """Require a usable selection name before registering the capability."""
-        if not self.name.strip():
-            raise ValueError("capability name must be nonempty")
-
-
-@dataclass(frozen=True)
-class ToolLabel(CapabilityLabel):
-    """Expose a tool or chain; default roots run in declaration order."""
-
-    kind: ClassVar[Literal["tool"]] = "tool"
-    default: bool = False
-
-
-@dataclass(frozen=True)
-class SkillLabel(CapabilityLabel):
-    """Describe an opaque skill's declared loading behavior."""
-
-    kind: ClassVar[Literal["skill"]] = "skill"
-    loading: SkillLoading = SkillLoading.ON_DEMAND
-
-    def __post_init__(self) -> None:
-        """Validate the loading mode independently of the skill's contents."""
-        super().__post_init__()
-        if not isinstance(self.loading, SkillLoading):
-            raise TypeError("loading must be a SkillLoading value")
-
-
-class Capability:
-    """A labeled feature, supplied directly or bound by a subclass at build time.
-
-    Supply a value for an existing tool, chain, or intact skill. Subclasses can
-    omit the value and override build() to return fresh tools, chains, or skills.
-    Deployment applies this capability's declared label to every returned value.
-    Default chain roots retain declaration order. Objects remain caller-owned.
+    A skill capability's build() may also return tools beside its skill. They
+    become default tools: the scheduler runs them in every cycle and the model
+    never sees them. They follow the capability's selection, not its loading.
     """
 
     def __init__(
         self,
         *,
-        label: ToolLabel | SkillLabel,
-        value: Tool | Sequence[Tool] | Skill | None = None,
+        name: str,
+        selectable: bool = False,
+        default: bool = False,
+        loading: SkillLoading | None = None,
     ) -> None:
-        """Validate the outer payload without inspecting skill contents."""
-        self._label = label
-        self.value: Tool | tuple[Tool, ...] | Skill | None = (
-            None if value is None else self._validate_value(value)
-        )
-
-    def _validate_value(self, value: object) -> Tool | tuple[Tool, ...] | Skill:
-        """Validate a supplied or built payload without inspecting skill contents."""
-        if value is None:
-            raise TypeError("build() must return bound tool or skill capabilities")
-        match self.label:
-            case SkillLabel():
-                if not isinstance(value, Skill):
-                    raise TypeError("a SkillLabel requires a Skill")
-                return value
-            case ToolLabel(default=default):
-                if isinstance(value, Tool):
-                    return value
-                if not isinstance(value, Sequence) or any(
-                    not isinstance(tool, Tool) for tool in value
-                ):
-                    raise TypeError("a ToolLabel requires a Tool or tool chain")
-                if default and not value:
-                    raise ValueError("a default tool capability requires a chain root")
-                return tuple(value)
-            case _:
-                raise TypeError("a bound capability requires a ToolLabel or SkillLabel")
+        """Keep the name that selects this whole capability, and its settings."""
+        if not name.strip():
+            raise ValueError("capability name must be nonempty")
+        if loading is not None and not isinstance(loading, SkillLoading):
+            raise TypeError("loading must be a SkillLoading value")
+        if default and loading is not None:
+            raise ValueError("default applies to a tool capability, not a skill")
+        self._name = name
+        self._selectable = selectable
+        self._default = default
+        self._loading = loading
 
     @property
-    def label(self) -> ToolLabel | SkillLabel:
-        """Return the immutable label used to select this whole capability."""
-        return self._label
+    def name(self) -> str:
+        """Return the name that selects this capability."""
+        return self._name
+
+    @property
+    def selectable(self) -> bool:
+        """Return whether the owner may switch this capability off."""
+        return self._selectable
+
+    @property
+    def default(self) -> bool:
+        """Return whether a tool capability's chain roots run before the model."""
+        return self._default
+
+    @property
+    def loading(self) -> SkillLoading | None:
+        """Return a skill capability's loading mode; None for a tool capability."""
+        return self._loading
+
+    @property
+    def kind(self) -> Literal["tool", "skill"]:
+        """Return "skill" for a capability with a loading mode, otherwise "tool"."""
+        if self.loading is None:
+            return "tool"
+        return "skill"
+
+    def _validate_value(self, value: object) -> Tool | tuple[Tool, ...] | Skill:
+        """Validate a built payload without inspecting skill contents."""
+        if value is None:
+            raise TypeError("build() must return bound tool or skill capabilities")
+        if self.loading is not None:
+            if not isinstance(value, Skill):
+                raise TypeError("a skill capability requires a Skill")
+            return value
+        if isinstance(value, Tool):
+            return value
+        if not isinstance(value, Sequence) or any(
+            not isinstance(tool, Tool) for tool in value
+        ):
+            raise TypeError("a tool capability requires a Tool or tool chain")
+        if self.default and not value:
+            raise ValueError("a default tool capability requires a chain root")
+        return tuple(value)
 
     @property
     def required_attributes(self) -> RequiredAttributes:
         """Declare owner configuration needed by build(); none by default."""
         return {}
 
+    @abstractmethod
     def build(
         self, agent: "DeployableAgent", pipe: EventPipe
     ) -> tuple[Tool | Sequence[Tool] | Skill, ...]:
-        """Return runtime values in order; deployment applies the declared label."""
-        if self.value is None:
-            raise NotImplementedError(
-                "a capability without a value must implement build()"
-            )
-        return (self.value,)
+        """Return runtime values in order; this capability's settings route them."""
 
     def _build_inputs(
         self,
@@ -143,21 +136,27 @@ class Capability:
         """Build and route this capability's values into Agent constructor fields."""
         if choice is False:
             return {}
-        values = [self._validate_value(value) for value in self.build(agent, pipe)]
-        label = self.label
-        if isinstance(label, SkillLabel):
+        built = self.build(agent, pipe)
+        if self.loading is not None:
+            default_tools = [value for value in built if isinstance(value, Tool)]
+            values = [
+                self._validate_value(value)
+                for value in built
+                if not isinstance(value, Tool)
+            ]
             skills = [value for value in values if isinstance(value, Skill)]
-            loading = choice if isinstance(choice, SkillLoading) else label.loading
+            loading = choice if isinstance(choice, SkillLoading) else self.loading
             if loading is SkillLoading.AUTOMATIC:
-                return {"auto_loaded_skills": skills}
-            return {"skills": skills}
+                return {"auto_loaded_skills": skills, "default_tools": default_tools}
+            return {"skills": skills, "default_tools": default_tools}
 
+        values = [self._validate_value(value) for value in built]
         chains = [
             (value,) if isinstance(value, Tool) else value
             for value in values
             if not isinstance(value, Skill)
         ]
-        if label.default:
+        if self.default:
             return {
                 "default_tools": [chain[0] for chain in chains],
                 "tools": Tool.to_tool_list([chain[1:] for chain in chains]),
@@ -168,7 +167,7 @@ class Capability:
 class DeployableAgent(HasExternalDependencies):
     """Mutable configuration for one agent and its attached child graph.
 
-    Capabilities form one ordered collection; labels define selectability.
+    Capabilities form one ordered collection; each states whether it is selectable.
     Selection belongs to this definition and can be replaced between builds.
     Runtime-specific values can be supplied
     after declaration with set_attributes(); they belong only to this node.
@@ -233,18 +232,16 @@ class DeployableAgent(HasExternalDependencies):
             self._capability_selection = None
             return
         choices = dict(selection)
-        labels = {
-            capability.label.name: capability.label for capability in self.capabilities
-        }
+        declared = {capability.name: capability for capability in self.capabilities}
         for name, choice in choices.items():
-            if name not in labels:
+            if name not in declared:
                 raise ValueError(f"unknown capability: {name!r}")
-            label = labels[name]
+            capability = declared[name]
             if not isinstance(choice, (bool, SkillLoading)):
                 raise TypeError(f"invalid capability choice for {name!r}")
-            if not label.selectable and choice is not True:
+            if not capability.selectable and choice is not True:
                 raise ValueError(f"capability {name!r} is fixed")
-            if isinstance(choice, SkillLoading) and not isinstance(label, SkillLabel):
+            if isinstance(choice, SkillLoading) and capability.loading is None:
                 raise ValueError(f"capability {name!r} is not a skill")
         self._capability_selection = choices
 
@@ -259,14 +256,14 @@ class DeployableAgent(HasExternalDependencies):
         selection = self._capability_selection
         resolved: dict[str, bool | SkillLoading] = {}
         for capability in self.capabilities:
-            label = capability.label
-            choice = True if selection is None else selection.get(label.name, False)
-            match label, choice:
-                case CapabilityLabel(selectable=False), _:
-                    choice = True
-                case SkillLabel(loading=loading), True:
-                    choice = loading
-            resolved[label.name] = choice
+            choice = (
+                True if selection is None else selection.get(capability.name, False)
+            )
+            if not capability.selectable:
+                choice = True
+            elif choice is True and capability.loading is not None:
+                choice = capability.loading
+            resolved[capability.name] = choice
         return resolved
 
     @property
@@ -315,7 +312,7 @@ class DeployableAgent(HasExternalDependencies):
     def add_capabilities(self, *capabilities: Capability) -> None:
         """Append declarations without changing an explicit selection."""
         combined = (*self._capabilities, *capabilities)
-        names = [capability.label.name for capability in combined]
+        names = [capability.name for capability in combined]
         if len(set(names)) != len(names):
             raise ValueError("capability names must be unique within an agent")
         self._capabilities = combined
@@ -358,7 +355,7 @@ class DeployableAgent(HasExternalDependencies):
         missing = object()
         selection = {} if include_all else self.resolve_capabilities()
         for capability in self.capabilities:
-            if selection.get(capability.label.name, True) is False:
+            if selection.get(capability.name, True) is False:
                 continue
             for name, expected in capability.required_attributes.items():
                 value = getattr(self, name, missing)
@@ -474,9 +471,7 @@ class DeployableAgent(HasExternalDependencies):
         )
         selection = self.resolve_capabilities()
         inputs = [
-            capability._build_inputs(
-                self, pipe, choice=selection[capability.label.name]
-            )
+            capability._build_inputs(self, pipe, choice=selection[capability.name])
             for capability in self.capabilities
         ]
         tools = [tool for item in inputs for tool in item.get("tools", ())]
@@ -527,9 +522,6 @@ class DeployableAgent(HasExternalDependencies):
 
 __all__ = [
     "Capability",
-    "CapabilityLabel",
-    "ToolLabel",
-    "SkillLabel",
     "SkillLoading",
     "DeployableAgent",
     "RequiredAttributeType",

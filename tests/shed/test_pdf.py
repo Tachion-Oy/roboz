@@ -9,12 +9,12 @@ from PIL import Image as PILImage
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from roboz.deployment import Capability, DeployableAgent, SkillLabel, ToolLabel
+from roboz.deployment import DeployableAgent, SkillLoading
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Str, StrImage, render_content
 from roboz.models.truncation import LIGHT_MAX_CHARS
 from roboz.runtime import EventPipe
-from roboz.shed.capabilities import Pdf
+from roboz.shed.capabilities import Pdf, Stop
 from roboz.shed.models import ActionVerdict, GuardFilesResult, GuardStatus
 from roboz.shed.sandbox import PermissionPolicy, Sandbox
 from roboz.shed.tools.images import JPEG_MEDIA_TYPE, PNG_MEDIA_TYPE
@@ -28,7 +28,6 @@ from roboz.shed.tools.pdf import (
     PdfInput,
     get_pdf_tool,
 )
-from roboz.tools import stop
 
 
 def write_pdf(path, texts=("First page", "Finnish: ä ö Å"), *, encrypted=False):
@@ -151,7 +150,7 @@ def test_agents_receive_images_only_with_vision(tmp_path, vision, mode, name):
     write_image_pdf(tmp_path / "figures.pdf", [red()])
     definition = DeployableAgent(
         name="pdf_reader", system_prompt="Read the PDF.",
-        capabilities=(Pdf(), Capability(label=ToolLabel("stop"), value=stop)),
+        capabilities=(Pdf(), Stop()),
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))
     definition.set_agent_endpoint(MockLLMEndpoint([
@@ -229,8 +228,8 @@ def test_capability_reads_pdf(tmp_path, on_demand):
     definition = DeployableAgent(
         name="pdf_reader", system_prompt="Read the PDF.",
         capabilities=(
-            Pdf(label=SkillLabel("pdf")) if on_demand else Pdf(),
-            Capability(label=ToolLabel("stop"), value=stop),
+            Pdf(loading=SkillLoading.ON_DEMAND) if on_demand else Pdf(),
+            Stop(),
         ),
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))

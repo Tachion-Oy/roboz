@@ -34,8 +34,8 @@ def test_examples_import_and_execute_together_in_a_deployment(tmp_path, monkeypa
         from roboz.examples.simpsons_quotes import QUOTES
         from roboz.llm import MockLLMEndpoint
 
-        assert tool.label.selectable and not tool.label.default
-        assert skill.label.selectable and skill.label.loading is SkillLoading.ON_DEMAND
+        assert tool.selectable and not tool.default
+        assert skill.selectable and skill.loading is SkillLoading.ON_DEMAND
         definition = DeployableAgent(
             name="quotes", system_prompt="Return a Simpsons quote.",
             capabilities=(tool, skill),
@@ -54,7 +54,7 @@ def test_examples_import_and_execute_together_in_a_deployment(tmp_path, monkeypa
                 {"action": name, "rationale": "Return a quote"} for name in actions
             ]))
             definition.set_capability_selection({
-                tool.label.name: True, skill.label.name: loading,
+                tool.name: True, skill.name: loading,
             })
             agent, _ = definition.build()
             assert "get_simpsons_quotes" in {t.name for t in agent.tools}
@@ -65,7 +65,7 @@ def test_examples_import_and_execute_together_in_a_deployment(tmp_path, monkeypa
         definition.set_agent_endpoint(MockLLMEndpoint([
             {"action": "get_simpsons_quotes", "rationale": "Return a quote"},
         ]))
-        definition.set_capability_selection({tool.label.name: True})
+        definition.set_capability_selection({tool.name: True})
         agent, _ = definition.build()
         result, _ = agent.invoke()
         assert result.value in QUOTES
@@ -86,7 +86,7 @@ def test_custom_destination_is_importable_and_preserves_existing_files(tmp_path,
         from my_quotes.tool import get_my_quotes
         from roboz.models import Empty
         from roboz.examples.simpsons_quotes import QUOTES
-        assert CAPABILITY.label.name == "my_quotes"
+        assert CAPABILITY.name == "my_quotes"
         assert get_my_quotes(Empty(), []).value in QUOTES
     """)
     assert result.returncode == 0, result.stderr
@@ -113,7 +113,7 @@ def test_nested_destination_can_share_a_top_level_module_name(tmp_path):
 
         assert main(["tool", "init", "--path", "local/tools/typing"]) == 0
         from local.tools.typing import CAPABILITY
-        assert CAPABILITY.label.name == "typing"
+        assert CAPABILITY.name == "typing"
     """)
     assert result.returncode == 0, result.stderr
 

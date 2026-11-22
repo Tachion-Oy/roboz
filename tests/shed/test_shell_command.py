@@ -9,13 +9,13 @@ from pathlib import Path
 import pytest
 
 from roboz import Agent, runtime
-from roboz.deployment import Capability, DeployableAgent, ToolLabel
+from roboz.deployment import DeployableAgent
 from roboz.exceptions import UserInputUnavailableError
 from roboz.llm import MockLLMEndpoint
 from roboz.llm._truncation import get_truncated_messages_for_context
 from roboz.models import Role, Str, render_content
 from roboz.runtime import EventPipe, ScriptOutputEvent
-from roboz.shed.capabilities import ShellCommands
+from roboz.shed.capabilities import ShellCommands, Stop
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.tools import ExecutionPolicy, get_run_shell_command
 from roboz.tools import stop
@@ -227,7 +227,7 @@ def test_capability_binds_the_command_to_the_sandbox_root(tmp_path: Path) -> Non
     definition = DeployableAgent(
         name="shell_command_test",
         system_prompt="Run the requested command.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop), ShellCommands()),
+        capabilities=(Stop(), ShellCommands()),
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path))
     definition.set_agent_endpoint(MockLLMEndpoint([]))

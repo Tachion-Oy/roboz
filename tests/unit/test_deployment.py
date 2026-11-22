@@ -2,9 +2,7 @@ from roboz.deployment import (
     Capability,
     DeployableAgent,
     RequiredAttributes,
-    SkillLabel,
     SkillLoading,
-    ToolLabel,
 )
 import pickle
 from copy import copy, deepcopy
@@ -19,9 +17,20 @@ from roboz.tools import stop
 from roboz.llm import MockLLMEndpoint
 
 
+class _Returns(Capability):
+    """Test capability whose build() returns the one value it was given."""
+
+    def __init__(self, *, value, **settings):
+        super().__init__(**settings)
+        self.value = value
+
+    def build(self, agent, pipe):
+        return (self.value,)
+
+
 class _ConfiguredCapability(Capability):
     def __init__(self):
-        super().__init__(label=ToolLabel("configured_capability"))
+        super().__init__(name="configured_capability")
 
     @property
     def required_attributes(self) -> RequiredAttributes:
@@ -44,7 +53,7 @@ def _definition(
         capabilities=(
             capabilities
             if capabilities
-            else (Capability(label=ToolLabel("stop", default=True), value=stop),)
+            else (_Returns(name="stop", default=True, value=stop),)
         ),
         nested_agents=nested_agents,
         background_agents=background_agents,
@@ -59,7 +68,7 @@ def test_build_preserves_loading_scheduling_and_chain_identity():
 
     class ScheduledChain(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("chain", default=True))
+            super().__init__(name="chain", default=True)
 
         @property
         def required_attributes(self) -> Mapping:
@@ -85,18 +94,20 @@ def test_build_preserves_loading_scheduling_and_chain_identity():
         name="test",
         system_prompt="Exercise the capabilities.",
         capabilities=(
-            Capability(label=ToolLabel("stop"), value=stop),
+            _Returns(name="stop", value=stop),
             ScheduledChain(),
-            Capability(
-                label=SkillLabel("research"),
+            _Returns(
+                name="research",
+                loading=SkillLoading.ON_DEMAND,
                 value=Skill(
                     name="research",
                     description="Research instructions.",
                     instructions="ON_DEMAND_MARKER",
                 ),
             ),
-            Capability(
-                label=SkillLabel("orientation", loading=SkillLoading.AUTOMATIC),
+            _Returns(
+                name="orientation",
+                loading=SkillLoading.AUTOMATIC,
                 value=Skill(
                     name="orientation",
                     description="Orientation.",
@@ -172,42 +183,81 @@ def test_invalid_child_additions_leave_existing_children_unchanged(children):
 
 
 @pytest.mark.parametrize(
-    "label, value, error, message",
+    "settings, value, error, message",
     [
-        (SkillLabel("bad"), stop, TypeError, "a SkillLabel requires a Skill"),
         (
-            ToolLabel("bad"),
+            {"loading": SkillLoading.ON_DEMAND},
+            (stop,),
+            TypeError,
+            "a skill capability requires a Skill",
+        ),
+        (
+            {},
             Skill(name="skill", description="Skill", instructions="Help."),
             TypeError,
-            "a ToolLabel requires a Tool or tool chain",
+            "a tool capability requires a Tool or tool chain",
         ),
         (
-            ToolLabel("bad"),
+            {},
             (stop, object()),
             TypeError,
-            "a ToolLabel requires a Tool or tool chain",
+            "a tool capability requires a Tool or tool chain",
         ),
         (
-            ToolLabel("bad", default=True),
+            {"default": True},
             (),
             ValueError,
             "a default tool capability requires a chain root",
         ),
     ],
 )
-def test_supplied_and_built_payloads_use_the_same_validation(
-    label, value, error, message
-):
-    with pytest.raises(error, match=message):
-        Capability(label=label, value=value)
-
-    class Invalid(Capability):
-        def build(self, agent, pipe):
-            return (value,)
-
-    definition = _definition("invalid", capabilities=(Invalid(label=label),))
+def test_built_payloads_are_validated(settings, value, error, message):
+    definition = _definition(
+        "invalid", capabilities=(_Returns(name="bad", value=value, **settings),)
+    )
     with pytest.raises(error, match=message):
         definition.build()
+
+
+def test_tool_beside_a_skill_runs_every_cycle_and_follows_the_selection():
+    calls = []
+
+    @tool
+    def watch(input: Empty, messages: list[Message]) -> Empty:
+        calls.append("watch")
+        return Empty()
+
+    class Guided(Capability):
+        def build(self, agent, pipe):
+            guide = Skill(name="guide", description="Guide.", instructions="Help.")
+            return (guide, watch)
+
+    definition = DeployableAgent(
+        name="guided",
+        system_prompt="Exercise the capabilities.",
+        capabilities=(
+            _Returns(name="stop", value=stop),
+            Guided(name="guide", selectable=True, loading=SkillLoading.ON_DEMAND),
+        ),
+    )
+    definition.set_agent_endpoint(
+        MockLLMEndpoint(
+            [
+                {"action": "guide", "rationale": "load instructions"},
+                {"action": "stop", "rationale": "done", "value": "ok"},
+            ]
+        )
+    )
+
+    agent, _ = definition.build()
+    assert agent.default_tools == [watch]
+    assert watch.name not in {active.name for active in agent.active_tools.values()}
+    agent.invoke()
+    assert calls == ["watch", "watch"]
+
+    definition.set_capability_selection({"stop": True})
+    without, _ = definition.build()
+    assert without.default_tools == []
 
 
 def test_builder_cannot_return_an_unbound_value():
@@ -215,11 +265,58 @@ def test_builder_cannot_return_an_unbound_value():
         def build(self, agent, pipe):
             return (None,)
 
-    definition = _definition(
-        "invalid", capabilities=(Unbound(label=ToolLabel("unbound")),)
-    )
+    definition = _definition("invalid", capabilities=(Unbound(name="unbound"),))
     with pytest.raises(TypeError, match="must return bound tool or skill capabilities"):
         definition.build()
+
+
+def test_a_capability_without_build_cannot_be_constructed():
+    class Unfinished(Capability):
+        pass
+
+    for incomplete in (Capability, Unfinished):
+        with pytest.raises(TypeError, match="abstract method 'build'"):
+            incomplete(name="incomplete")
+
+
+@pytest.mark.parametrize(
+    "settings, error, message",
+    [
+        ({"name": " "}, ValueError, "capability name must be nonempty"),
+        (
+            {"name": "bad", "loading": "automatic"},
+            TypeError,
+            "loading must be a SkillLoading value",
+        ),
+        (
+            {"name": "bad", "default": True, "loading": SkillLoading.ON_DEMAND},
+            ValueError,
+            "default applies to a tool capability",
+        ),
+    ],
+)
+def test_invalid_settings_are_rejected_at_construction(settings, error, message):
+    with pytest.raises(error, match=message):
+        _Returns(value=stop, **settings)
+
+
+def test_a_loading_mode_makes_a_capability_a_skill():
+    assert _Returns(name="tool", value=stop).kind == "tool"
+    skill = _Returns(name="skill", loading=SkillLoading.ON_DEMAND, value=stop)
+    assert skill.kind == "skill"
+
+
+def test_a_subclass_cannot_overwrite_a_setting():
+    class Clashing(Capability):
+        def __init__(self):
+            super().__init__(name="clashing")
+            self.name = "other"
+
+        def build(self, agent, pipe):
+            return ()
+
+    with pytest.raises(AttributeError, match="name"):
+        Clashing()
 
 
 def test_builder_returning_no_values_still_configures_the_runtime_pipe():
@@ -233,8 +330,8 @@ def test_builder_returning_no_values_still_configures_the_runtime_pipe():
     definition = _definition(
         "configured",
         capabilities=(
-            ConfigurePipe(label=ToolLabel("configure_pipe", default=True)),
-            Capability(label=ToolLabel("stop", default=True), value=stop),
+            ConfigurePipe(name="configure_pipe", default=True),
+            _Returns(name="stop", default=True, value=stop),
         ),
     )
     runtime, _ = definition.build()
@@ -249,7 +346,7 @@ def test_build_returns_fresh_nested_background_handles():
     child = _definition("child", background_agents=(background,))
     root = _definition(
         "root",
-        capabilities=(Capability(label=ToolLabel("stop", default=True), value=stop),),
+        capabilities=(_Returns(name="stop", default=True, value=stop),),
         nested_agents=(child,),
         background_agents=(_definition("other"),),
     )
@@ -269,7 +366,7 @@ def test_each_capability_receives_its_owning_agent():
 
     class Feature(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("feature"))
+            super().__init__(name="feature")
 
         @property
         def required_attributes(self):
@@ -368,9 +465,9 @@ def test_agent_modes_are_string_valued_enums():
 @pytest.mark.parametrize("mode", list(AgentMode))
 def test_build_preserves_agent_mode(mode: AgentMode):
     capability = (
-        Capability(label=ToolLabel("stop", default=True), value=stop)
+        _Returns(name="stop", default=True, value=stop)
         if mode is AgentMode.DETERMINISTIC
-        else Capability(label=ToolLabel("stop"), value=stop)
+        else _Returns(name="stop", value=stop)
     )
     definition = DeployableAgent(
         name=f"{mode}_agent",
@@ -394,7 +491,7 @@ def test_nested_agent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, c
         name="steerable_child",
         mode=AgentMode.STEERABLE,
         system_prompt="Ask once, then stop.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(_Returns(name="stop", value=stop),),
     )
     child.set_agent_endpoint(
         MockLLMEndpoint(
@@ -412,7 +509,7 @@ def test_nested_agent_binds_its_own_mode_inside_autonomous_parent(monkeypatch, c
         name="autonomous_parent",
         mode=AgentMode.AUTONOMOUS,
         system_prompt="Delegate, then stop.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(_Returns(name="stop", value=stop),),
         nested_agents=(child,),
     )
     parent.set_agent_endpoint(
@@ -457,8 +554,8 @@ def test_validation_aggregates_missing_none_and_wrong_types_across_graph():
 
 
 def test_capabilities_and_child_views_cannot_be_replaced_or_cleared():
-    built_in = Capability(label=ToolLabel("empty"), value=())
-    extension = Capability(label=ToolLabel("stop"), value=stop)
+    built_in = _Returns(name="empty", value=())
+    extension = _Returns(name="stop", value=stop)
     child = _definition("child")
     background = _definition("background")
     definition = _definition("root", capabilities=(built_in,))
@@ -492,7 +589,7 @@ def test_capability_attributes_cannot_overwrite_agent_structure(name):
 def test_valid_falsey_capability_attributes_are_accepted():
     class FalseyCapability(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("falsey_capability"))
+            super().__init__(name="falsey_capability")
 
         @property
         def required_attributes(self):

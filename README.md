@@ -355,21 +355,37 @@ follow the same rules. The primitive requires no particular tool set.
 
 ```python
 from roboz import Skill
-from roboz.deployment import (
-    Capability, DeployableAgent, SkillLabel, SkillLoading, ToolLabel,
-)
+from roboz.deployment import Capability, DeployableAgent, SkillLoading
 from roboz.llm import MockLLMEndpoint
 from roboz.tools import stop
+
+
+class Stop(Capability):
+    def __init__(self):
+        super().__init__(name="stop")
+
+    def build(self, agent, pipe):
+        return (stop,)
+
+
+class Guide(Capability):
+    def __init__(self):
+        super().__init__(
+            name="guide", selectable=True, loading=SkillLoading.ON_DEMAND
+        )
+
+    def build(self, agent, pipe):
+        return (
+            Skill(name="guide", description="Project guidance", instructions="Help."),
+        )
+
 
 agent = DeployableAgent(
     name="assistant",
     system_prompt="Help the user.",
-    capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+    capabilities=(Stop(),),
 )
-guide = Skill(name="guide", description="Project guidance", instructions="Help.")
-agent.add_capabilities(
-    Capability(label=SkillLabel("guide", selectable=True), value=guide)
-)
+agent.add_capabilities(Guide())
 agent.set_agent_endpoint(MockLLMEndpoint([]))
 agent.set_capability_selection({"guide": SkillLoading.ON_DEMAND})
 runtime, background_agents = agent.build()
@@ -383,16 +399,21 @@ attributes. Assign an `AgentMode` to `mode` and a tuple of paths or strings to
 sequence and stores a tuple. `set_attributes()` is for capability-specific
 configuration and cannot overwrite these structural fields.
 
-Labels are immutable typed values. Their `name` is unique within an owning
-agent; `selectable=False` makes the declared capability fixed. `ToolLabel`
-exposes a tool or intact chain; `default=True` adds its first tool to
-`default_tools`. Default roots run in declaration order; selection preserves
-that order.
-`SkillLabel` declares `SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`.
-A skill's instructions and embedded tools always remain together.
+A capability states four settings in `super().__init__(...)`. Its `name` is
+unique within an owning agent; `selectable=False`, the default, makes it fixed.
+A tool capability exposes a tool or intact chain; `default=True` adds its first
+tool to `default_tools`. Default roots run in declaration order; selection
+preserves that order. A skill capability gives `loading`, either
+`SkillLoading.ON_DEMAND` or `SkillLoading.AUTOMATIC`; giving `loading` is what
+makes a capability a skill, and `default` does not apply to it.
+A skill's instructions and embedded tools always remain together. A tool that a
+skill capability's `build()` returns beside its skill joins `default_tools`: the
+scheduler runs it in every cycle and the model never sees it. It follows the
+capability's selection, not the skill's loading mode.
 
-Inspect `agent.capabilities` and their labels without building tools. Each label's
-`kind` is `"tool"` or `"skill"`, so callers can expose metadata directly. Selection
+Inspect `agent.capabilities` without building tools: each has read-only `name`,
+`selectable`, `default`, `loading`, and a `kind` of `"tool"` or `"skill"`, so
+callers can expose metadata directly. Selection
 belongs to the agent, not the shared capability: `capability_selection` is a
 read-only view, and `set_capability_selection(...)` replaces it for future builds.
 `None`, the initial value, includes all declared capabilities. An explicit map
@@ -408,14 +429,15 @@ disabled entries are `False`. It leaves the explicit selection unchanged and
 does not build capabilities. The returned map can be passed back to
 `set_capability_selection()` or compared with another run's choices.
 
-For a capability requiring runtime bindings, subclass `Capability`, pass its
-label to `super().__init__(label=...)`, and override
+`Capability` is an abstract base class: it cannot be constructed itself, and
+neither can a subclass without `build`. Every capability, including one for a
+single ready-made tool, is a subclass: pass its
+name and settings to `super().__init__(...)`, and implement
 `build(agent, pipe)`. Override `required_attributes` when the builder needs owner
 configuration. Return a tuple of runtime tools, chains, or intact skills in
 construction order. A tool chain is one sequence inside that tuple; multiple
-entries under a default-tool label are scheduled as separate roots. Deployment
-applies the declared `ToolLabel` or `SkillLabel` to every returned value; builders
-do not construct new capabilities or pass labels again. The owner selects all
+entries of a default tool capability are scheduled as separate roots. Deployment
+applies the capability's settings to every returned value. The owner selects all
 values from one capability together. Excluded builders and their attribute
 requirements are skipped. Skills' embedded tools are never filtered or validated
 against the selection. `external_dependencies()` still inspects the full declared graph,
@@ -423,12 +445,12 @@ including disabled capabilities, without changing choices or invoking agents.
 
 Migration: replace `default_capabilities=` with `capabilities=` and inspect
 `capabilities` instead of the old default/additional views. Replace the old
-four-field `Capability` build result with a tuple of runtime values. Use
-`Capability(label=..., value=...)` to register an existing tool, chain, or skill;
-its build returns the supplied value in a singleton tuple. Custom builders
-inherit from `Capability`; the separate `AgentCapability` protocol is removed.
-Capability constructors, including Shed's, accept keywords only. Labels remain
-immutable metadata.
+four-field `Capability` build result with a tuple of runtime values. Replace
+`Capability(label=..., value=...)` with a subclass whose `build` returns the
+value in a tuple, and `label=ToolLabel("name", ...)` or
+`label=SkillLabel("name", ...)` with `name="name"` and the same flags; a skill
+capability states `loading`. The separate `AgentCapability` protocol is removed.
+Capability constructors, including Shed's, accept keywords only.
 There are no compatibility aliases, inferred names, or separate registry.
 
 ## Parallel subagents
@@ -558,7 +580,7 @@ Pass `file_skill` in the agent's `auto_loaded_skills` for startup activation,
 or `skills` for on-demand activation, and pass `pipe` as its `event_pipe`. The
 skill already contains all three tool chains. `Filesystem()` derives the policy and
 pipe from its owning deployment and registers the complete skill automatically.
-`Filesystem(label=SkillLabel("filesystem"))` offers the complete skill for
+`Filesystem(loading=SkillLoading.ON_DEMAND)` offers the complete skill for
 on-demand activation: loading it makes both its instructions and tool chains available.
 The standalone `get_run_file_command`, `get_apply_patch`, and
 `get_read_images_tool` builders remain available for tool-only compositions.
@@ -633,13 +655,17 @@ For a tool-only composition, pass
 agent; both names come from `roboz.shed.tools`. User approval is the only
 protection; this is not an operating-system sandbox.
 
+### Stopping
+
+`roboz.shed.capabilities.Stop()` adds the `stop` tool, with which the model
+ends the run and returns its final answer. The orchestrator includes it.
+
 ### Waiting for background work
 
 `Sleep()` adds `sleep`, which waits and returns so the model can check on
 background work again, such as parallel subagents. The model may pass
-`seconds`; otherwise the capability's `seconds` (20 by default) applies. While
-waiting it emits a script output line every 3 seconds with the time waited and
-the time left. The user's interrupt and the run's cancellation end the wait
+`seconds`; otherwise the capability's `seconds` (20 by default) applies. The
+wait prints nothing. The user's interrupt and the run's cancellation end the wait
 within a second, and an interrupt is handled like any other: the agent asks the
 user how to continue.
 
@@ -752,7 +778,7 @@ optional `detail` of `auto`, `low`, or `high`:
 Both image modes attach at most 20 images per request. A model that cannot read
 images receives the text with a notice instead.
 
-`Pdf(label=SkillLabel("pdf"))` offers the skill on demand. Direct compositions
+`Pdf(loading=SkillLoading.ON_DEMAND)` offers the skill on demand. Direct compositions
 can use `pdf_skill(**permissions.tool_options(pipe))` from
 `roboz.shed.skills`, or `get_pdf_tool(**permissions.tool_options(pipe))` from
 `roboz.shed.tools.pdf` for the guarded tool chain. Both reader builders accept

@@ -1,6 +1,5 @@
 from roboz.deployment import (
     Capability,
-    ToolLabel,
 )
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from roboz.shed.capabilities import (
     MaintenanceCadence,
     MemoryConsolidation,
     Pdf,
+    Stop,
 )
 from roboz.shed.sandbox import Sandbox
 from roboz.models import Empty, Message, Str
@@ -32,7 +32,7 @@ def test_role_constructors_own_their_builtin_capabilities(tmp_path: Path):
     assert [
         type(capability) for capability in orchestrator_definition.capabilities
     ] == [
-        Capability,
+        Stop,
         Filesystem,
         Pdf,
     ]
@@ -55,7 +55,7 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
 
     class CustomCapability(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("custom_capability"))
+            super().__init__(name="custom_capability")
 
         @property
         def required_attributes(self):

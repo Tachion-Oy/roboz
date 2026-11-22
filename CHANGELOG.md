@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.20.0 - 2026-11-22
+
+- A skill capability's `build()` may return tools beside its skill. They join
+  the agent's `default_tools`: the scheduler runs them in every cycle, the
+  model never sees them, and they follow the capability's selection. A skill
+  can use one to hand the model background results, such as subagents' notes,
+  without the model asking.
+- `sleep` no longer emits a script output line every 3 seconds. A short wait
+  between checks on background work then leaves the screen to that work's
+  own output.
+- Breaking: `Capability` is now an abstract base class whose subclasses
+  implement `build`, and it no longer takes `value`. Replace each
+  `Capability(label=..., value=...)` with a subclass whose `build` returns the
+  value in a tuple; `roboz tool init` and `roboz skill init` create one. A
+  capability without `build` now fails when it is constructed instead of when
+  the agent is built. `roboz.shed.capabilities.Stop()` provides the `stop`
+  tool, as the orchestrator uses it.
+- Breaking: `CapabilityLabel`, `ToolLabel` and `SkillLabel` are removed. A
+  capability's settings are arguments of `Capability.__init__`: `name`,
+  `selectable`, `default` for a tool capability, and `loading` for a skill
+  capability. Giving `loading` is what makes a capability a skill. Read them
+  as `capability.name`, `.selectable`, `.default`, `.loading` and `.kind`;
+  they are read-only and there is no `.label`. Shed's capabilities state their own names and no
+  longer take `label`: use `Filesystem(loading=SkillLoading.ON_DEMAND)`,
+  `Pdf(loading=...)`, `SafeScripts(selectable=True)` and
+  `ShellCommands(selectable=True)`.
+
 ## 0.19.0 - 2026-11-21
 
 - `roboz.agent.start_subagents` starts one copy of an agent per sub-goal, each

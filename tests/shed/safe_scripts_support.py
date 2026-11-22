@@ -15,17 +15,14 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from roboz.deployment import (
-    Capability,
     DeployableAgent,
-    ToolLabel,
 )
 from roboz.llm import MockLLMEndpoint
-from roboz.shed.capabilities import SafeScripts
+from roboz.shed.capabilities import SafeScripts, Stop
 from roboz.shed.sandbox import Sandbox
 from roboz.shed.tools.safe_scripts import (
     ScriptSocketDependency,
 )
-from roboz.tools import stop
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or shutil.which("bash") is None,
@@ -44,7 +41,7 @@ def _agent(workspace: Path, capability: SafeScripts, *, sink=None):
     definition = DeployableAgent(
         name="script_test",
         system_prompt="Use installed scripts.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop), capability),
+        capabilities=(Stop(), capability),
     )
     definition.set_attributes(sandbox=Sandbox(workspace))
     definition.set_agent_endpoint(MockLLMEndpoint([]))

@@ -13,6 +13,7 @@ from roboz.shed.capabilities import (
     Filesystem,
     MaintenanceCadence,
     MemoryConsolidation,
+    Stop,
 )
 from roboz.shed.sandbox import Sandbox
 
@@ -20,9 +21,7 @@ from roboz import Agent
 from roboz.agent import AgentMode
 from roboz.tools import stop
 from roboz.deployment import (
-    Capability,
     DeployableAgent,
-    ToolLabel,
 )
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe, PersistenceSink
@@ -63,7 +62,7 @@ def test_guarded_read_edit_read_and_denied_escape(tmp_path: Path) -> None:
         name="file_worker",
         system_prompt="Complete the file task and stop.",
         capabilities=(
-            Capability(label=ToolLabel("stop"), value=stop),
+            Stop(),
             Filesystem(),
         ),
     )
@@ -208,7 +207,7 @@ def _conversation_snapshot_memory_retention(
 def test_persistent_orchestrator_delegates_and_accepts_another_request(
     tmp_path: Path,
 ) -> None:
-    from roboz.deployment import DeployableAgent, Capability
+    from roboz.deployment import DeployableAgent
     from roboz.runtime import (
         bind_api_user_io,
         reset_api_user_io,
@@ -229,7 +228,7 @@ def test_persistent_orchestrator_delegates_and_accepts_another_request(
     child = DeployableAgent(
         name="specialist",
         system_prompt="Complete the delegated task.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(Stop(),),
     )
     child.set_agent_endpoint(
         MockLLMEndpoint(
@@ -348,7 +347,7 @@ def test_filesystem_capability_writes_and_removes_with_its_skill(tmp_path):
     definition = DeployableAgent(
         name="cli_worker",
         system_prompt="Write, verify, and remove the note.",
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop), Filesystem()),
+        capabilities=(Stop(), Filesystem()),
     )
     definition.set_attributes(sandbox=sandbox)
     definition.set_agent_endpoint(

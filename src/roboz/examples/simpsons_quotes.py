@@ -78,6 +78,8 @@ QUOTES: Final[list[str]] = [
     "I didn't do it.",
     "Do it for her.",
     "A noble spirit embiggens the smallest man.",
+    "I'm not not licking toads.",
+    "Old man yells at cloud.",
     "In this house, we obey the laws of thermodynamics!",
     "It's a perfectly cromulent word.",
     "That's a problem for future Homer.",
@@ -124,4 +126,6 @@ QUOTES: Final[list[str]] = [
     "I'm Idaho!",
     "Can't someone else do it?",
     "Shut up, brain, or I'll stab you with a Q-tip!",
+    "My eyes! The goggles do nothing!",
+    "I've been calling her Crandall!",
 ]

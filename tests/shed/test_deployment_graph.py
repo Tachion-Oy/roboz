@@ -1,10 +1,10 @@
 from roboz.deployment import (
     Capability,
     DeployableAgent,
-    ToolLabel,
 )
 import pytest
 
+from roboz.shed import capabilities
 from roboz.shed.sandbox import Sandbox
 from roboz.agent import AgentMode
 from roboz.models import Empty, Message, Stop
@@ -20,7 +20,7 @@ def _definition(name, nested_agents=(), background_agents=()):
         system_prompt="Complete the task.",
         nested_agents=nested_agents,
         background_agents=background_agents,
-        capabilities=(Capability(label=ToolLabel("stop"), value=stop),),
+        capabilities=(capabilities.Stop(),),
     )
     definition.set_agent_endpoint(MockLLMEndpoint([]))
     return definition
@@ -36,7 +36,7 @@ def test_child_slot_selects_invocation_behavior(background):
 
     class Work(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("work", default=True))
+            super().__init__(name="work", default=True)
 
         @property
         def required_attributes(self):
@@ -106,16 +106,16 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
     pipes = {}
 
     class RecordPipe(Capability):
-        def __init__(self, name):
-            super().__init__(label=ToolLabel("record_pipe"))
-            self.name = name
+        def __init__(self, owner):
+            super().__init__(name="record_pipe")
+            self.owner = owner
 
         @property
         def required_attributes(self):
             return {}
 
         def build(self, agent, pipe):
-            pipes[self.name] = pipe
+            pipes[self.owner] = pipe
             return (stop,)
 
     def node(name, nested_agents=(), background_agents=()):
