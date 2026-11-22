@@ -1,6 +1,6 @@
 """Expose $name as a selectable tool capability."""
 
-from roboz.deployment import Capability, ToolLabel
+from roboz.deployment import Capability
 
 from .tool import get_$name
 
@@ -10,15 +10,17 @@ __all__ = ["CAPABILITY"]
 class Quotes(Capability):
     """Give the agent this package's tool."""
 
+    def __init__(self) -> None:
+        """State the capability's name and how it is offered."""
+        super().__init__(
+            name="$name",
+            selectable=True,  # False makes this capability fixed.
+            default=False,  # True runs the tool before the model; this example stops the run.
+        )
+
     def build(self, agent, pipe):
-        """Return the tool; RoboZ applies the label below."""
+        """Return the tool."""
         return (get_$name,)
 
 
-CAPABILITY = Quotes(
-    label=ToolLabel(
-        "$name",
-        selectable=True,  # False makes this capability fixed.
-        default=False,  # True runs the tool before the model; this example stops the run.
-    ),
-)
+CAPABILITY = Quotes()

@@ -1,6 +1,5 @@
 from roboz.deployment import (
     Capability,
-    ToolLabel,
 )
 from pathlib import Path
 
@@ -56,7 +55,7 @@ def test_orchestrator_uses_injected_capabilities_and_pipe(tmp_path: Path):
 
     class CustomCapability(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("custom_capability"))
+            super().__init__(name="custom_capability")
 
         @property
         def required_attributes(self):

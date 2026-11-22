@@ -9,7 +9,7 @@ from PIL import Image as PILImage
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from roboz.deployment import DeployableAgent, SkillLabel
+from roboz.deployment import DeployableAgent, SkillLoading
 from roboz.llm import MockLLMEndpoint
 from roboz.models import Str, StrImage, render_content
 from roboz.models.truncation import LIGHT_MAX_CHARS
@@ -228,7 +228,7 @@ def test_capability_reads_pdf(tmp_path, on_demand):
     definition = DeployableAgent(
         name="pdf_reader", system_prompt="Read the PDF.",
         capabilities=(
-            Pdf(label=SkillLabel("pdf")) if on_demand else Pdf(),
+            Pdf(loading=SkillLoading.ON_DEMAND) if on_demand else Pdf(),
             Stop(),
         ),
     )

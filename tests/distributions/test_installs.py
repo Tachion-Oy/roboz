@@ -69,7 +69,7 @@ def test_installed_cli_generates_importable_capabilities(consumer):
          "[guide] = skill.build(agent, pipe)\n"
          "assert quote(Empty(), []).value in QUOTES\n"
          "assert guide.tools[0](Empty(), []).value in QUOTES\n"
-         "assert skill.label.selectable and tool.label.selectable\n"],
+         "assert skill.selectable and tool.selectable\n"],
         cwd=project, env=env, check=True,
     )
     subprocess.run(

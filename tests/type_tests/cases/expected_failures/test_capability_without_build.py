@@ -1,4 +1,4 @@
-from roboz.deployment import Capability, ToolLabel
+from roboz.deployment import Capability
 
 # Expected: reportAbstractUsage; Capability is a contract that needs build().
-Capability(label=ToolLabel("abstract"))
+Capability(name="abstract")

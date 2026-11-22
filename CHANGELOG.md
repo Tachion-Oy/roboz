@@ -17,6 +17,15 @@
   capability without `build` now fails when it is constructed instead of when
   the agent is built. `roboz.shed.capabilities.Stop()` provides the `stop`
   tool, as the orchestrator uses it.
+- Breaking: `CapabilityLabel`, `ToolLabel` and `SkillLabel` are removed. A
+  capability's settings are arguments of `Capability.__init__`: `name`,
+  `selectable`, `default` for a tool capability, and `loading` for a skill
+  capability. Giving `loading` is what makes a capability a skill. Read them
+  as `capability.name`, `.selectable`, `.default`, `.loading` and `.kind`;
+  there is no `.label`. Shed's capabilities state their own names and no
+  longer take `label`: use `Filesystem(loading=SkillLoading.ON_DEMAND)`,
+  `Pdf(loading=...)`, `SafeScripts(selectable=True)` and
+  `ShellCommands(selectable=True)`.
 
 ## 0.19.0 - 2026-11-21
 

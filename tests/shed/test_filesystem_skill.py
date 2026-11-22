@@ -7,10 +7,7 @@ import pytest
 
 from roboz.models import render_content
 from roboz import Agent
-from roboz.deployment import (
-    DeployableAgent,
-    SkillLabel,
-)
+from roboz.deployment import DeployableAgent, SkillLoading
 from roboz.llm import MockLLMEndpoint
 from roboz.runtime import EventPipe
 from roboz.shed.capabilities import Filesystem, Stop
@@ -92,7 +89,7 @@ def test_filesystem_capability_keeps_tools_and_guidance(tmp_path, on_demand):
         system_prompt="Work on files.",
         capabilities=(
             Stop(),
-            Filesystem(label=SkillLabel("filesystem")) if on_demand else Filesystem(),
+            Filesystem(loading=SkillLoading.ON_DEMAND) if on_demand else Filesystem(),
         ),
     )
     definition.set_attributes(sandbox=Sandbox(tmp_path, scope="project"))

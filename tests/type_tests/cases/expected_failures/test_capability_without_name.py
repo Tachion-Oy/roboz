@@ -4,10 +4,10 @@ from roboz.tooling import Tool
 from roboz.tools import stop
 
 
-class Unlabeled(Capability):
+class Unnamed(Capability):
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
         return (stop,)
 
 
-# Expected: reportCallIssue; every capability needs a label.
-Unlabeled()
+# Expected: reportCallIssue; every capability needs a name.
+Unnamed()

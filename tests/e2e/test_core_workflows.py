@@ -1,6 +1,5 @@
 """Credential-free E2E contracts, also executed from installed wheels."""
 
-from roboz.deployment import ToolLabel
 import tempfile
 from pathlib import Path
 
@@ -58,8 +57,8 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
     from roboz.deployment import Capability, DeployableAgent
 
     class Returns(Capability):
-        def __init__(self, *, label, value):
-            super().__init__(label=label)
+        def __init__(self, *, value, **settings):
+            super().__init__(**settings)
             self.value = value
 
         def build(self, agent, pipe):
@@ -74,7 +73,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
 
     child = DeployableAgent(
         name="worker",
-        capabilities=(Returns(label=ToolLabel("stop"), value=stop),),
+        capabilities=(Returns(name="stop", value=stop),),
         system_prompt="Finish the delegated work.",
     )
     child.set_agent_endpoint(
@@ -84,7 +83,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
     )
     root = DeployableAgent(
         name="coordinator",
-        capabilities=(Returns(label=ToolLabel("stop"), value=stop),),
+        capabilities=(Returns(name="stop", value=stop),),
         nested_agents=(child,),
         system_prompt="Delegate, then finish.",
     )
@@ -116,9 +115,7 @@ def test_generic_definitions_build_without_application_packages(tmp_path: Path) 
             PersistenceSink.for_path(tmp_path / f"{name}-history"),
         )
 
-    root.add_capabilities(
-        Returns(label=ToolLabel("root_tick", default=True), value=root_tick)
-    )
+    root.add_capabilities(Returns(name="root_tick", default=True, value=root_tick))
     agent, backgrounds = root.build(
         event_sinks=(shared_events.append,),
         event_sink_factory=sinks,

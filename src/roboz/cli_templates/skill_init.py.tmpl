@@ -1,7 +1,7 @@
 """Expose $name as a selectable skill with its own quote tool."""
 
 from roboz import Skill
-from roboz.deployment import Capability, SkillLabel, SkillLoading
+from roboz.deployment import Capability, SkillLoading
 
 from .tool import get_$name
 
@@ -11,8 +11,16 @@ __all__ = ["CAPABILITY"]
 class Quotes(Capability):
     """Give the agent this package's skill."""
 
+    def __init__(self) -> None:
+        """State the capability's name and how it is offered."""
+        super().__init__(
+            name="$name",
+            selectable=True,  # False makes this capability fixed.
+            loading=SkillLoading.ON_DEMAND,  # AUTOMATIC loads instructions and tools at startup.
+        )
+
     def build(self, agent, pipe):
-        """Return the skill; RoboZ applies the label below."""
+        """Return the skill with its tool."""
         return (
             Skill(
                 name="$name",
@@ -23,10 +31,4 @@ class Quotes(Capability):
         )
 
 
-CAPABILITY = Quotes(
-    label=SkillLabel(
-        "$name",
-        selectable=True,  # False makes this capability fixed.
-        loading=SkillLoading.ON_DEMAND,  # AUTOMATIC loads instructions and tools at startup.
-    ),
-)
+CAPABILITY = Quotes()

@@ -1,7 +1,6 @@
 from roboz.deployment import (
     Capability,
     DeployableAgent,
-    ToolLabel,
 )
 import pytest
 
@@ -37,7 +36,7 @@ def test_child_slot_selects_invocation_behavior(background):
 
     class Work(Capability):
         def __init__(self):
-            super().__init__(label=ToolLabel("work", default=True))
+            super().__init__(name="work", default=True)
 
         @property
         def required_attributes(self):
@@ -108,7 +107,7 @@ def test_build_collects_nested_backgrounds_and_isolates_sinks_and_state(tmp_path
 
     class RecordPipe(Capability):
         def __init__(self, name):
-            super().__init__(label=ToolLabel("record_pipe"))
+            super().__init__(name="record_pipe")
             self.name = name
 
         @property

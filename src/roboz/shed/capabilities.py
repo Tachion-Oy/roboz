@@ -54,8 +54,6 @@ from roboz.shed.tools.snapshot_conversations import snapshot_conversations
 from roboz.shed.sandbox import Sandbox
 from roboz.deployment import (
     Capability,
-    ToolLabel,
-    SkillLabel,
     SkillLoading,
     DeployableAgent,
     RequiredAttributeType,
@@ -79,7 +77,7 @@ class SafeScripts(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("safe_scripts"),
+        selectable: bool = False,
         scripts_dir: Path | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
@@ -87,7 +85,7 @@ class SafeScripts(Capability):
         socket_path: Path | None = None,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="safe_scripts", selectable=selectable)
         self.scripts_dir = scripts_dir
         self.timeout_s = timeout_s
         self.max_output_bytes = max_output_bytes
@@ -142,13 +140,13 @@ class ShellCommands(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("shell_commands"),
+        selectable: bool = False,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
         env_allowlist: tuple[str, ...] = (),
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="shell_commands", selectable=selectable)
         self.policy = ExecutionPolicy(timeout_s, max_output_bytes, env_allowlist)
 
     @property
@@ -175,17 +173,12 @@ _AGENT_ENDPOINT_REQUIRED: RequiredAttributes = {
 class Filesystem(Capability):
     """Bind guarded commands, patches, and image reading as one filesystem skill.
 
-    The skill label defaults to automatic loading. A selectable label also
-    permits the owning agent to choose on-demand loading or disable the skill.
+    The skill loads automatically unless ``loading`` says on demand.
     """
 
-    def __init__(
-        self,
-        *,
-        label: SkillLabel = SkillLabel("filesystem", loading=SkillLoading.AUTOMATIC),
-    ) -> None:
+    def __init__(self, *, loading: SkillLoading = SkillLoading.AUTOMATIC) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="filesystem", loading=loading)
 
     @property
     def required_attributes(self) -> RequiredAttributes:
@@ -204,12 +197,9 @@ class Filesystem(Capability):
 class Pdf(Capability):
     """Bind PDF reading as a guarded skill."""
 
-    def __init__(
-        self, *,
-        label: SkillLabel = SkillLabel("pdf", loading=SkillLoading.AUTOMATIC),
-    ) -> None:
+    def __init__(self, *, loading: SkillLoading = SkillLoading.AUTOMATIC) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="pdf", loading=loading)
 
     @property
     def required_attributes(self) -> RequiredAttributes:
@@ -228,13 +218,12 @@ class Compactification(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("compactification", default=True),
         endpoint: EndpointLike | None = None,
         threshold_percent: float = DEFAULT_THRESHOLD_PERCENT,
         timeout_s: float | None = None,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="compactification", default=True)
         self.endpoint = endpoint
         self.threshold_percent = threshold_percent
         self.timeout_s = timeout_s
@@ -271,7 +260,6 @@ class ConversationSnapshots(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("conversation_snapshots", default=True),
         endpoint: EndpointLike | None = None,
         token_growth_threshold: int = 20000,
         max_chars: int = 8000,
@@ -279,7 +267,7 @@ class ConversationSnapshots(Capability):
         timeout_s: float = 300.0,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="conversation_snapshots", default=True)
         self.endpoint = endpoint
         self.token_growth_threshold = token_growth_threshold
         self.max_chars = max_chars
@@ -343,7 +331,6 @@ class MemoryConsolidation(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("memory_consolidation", default=True),
         endpoint: EndpointLike | None = None,
         min_pending_snapshots: int = 3,
         max_pending_age_seconds: float = 86400.0,
@@ -352,7 +339,7 @@ class MemoryConsolidation(Capability):
         timeout_s: float = 300.0,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="memory_consolidation", default=True)
         self.endpoint = endpoint
         self.min_pending_snapshots = min_pending_snapshots
         self.max_pending_age_seconds = max_pending_age_seconds
@@ -414,13 +401,12 @@ class ArtifactRetention(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("artifact_retention", default=True),
         max_log_files: int = 500,
         max_snapshot_files: int = 100,
         max_memory_files: int = 10,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="artifact_retention", default=True)
         self.max_log_files = max_log_files
         self.max_snapshot_files = max_snapshot_files
         self.max_memory_files = max_memory_files
@@ -469,11 +455,10 @@ class MaintenanceCadence(Capability):
     def __init__(
         self,
         *,
-        label: ToolLabel = ToolLabel("maintenance_cadence", default=True),
         seconds: float = 120.0,
     ) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="maintenance_cadence", default=True)
         self.seconds = seconds
 
     @property
@@ -509,9 +494,9 @@ class MaintenanceCadence(Capability):
 class Stop(Capability):
     """Let the model end the run with its final answer."""
 
-    def __init__(self, *, label: ToolLabel = ToolLabel("stop")) -> None:
-        """Keep the label that selects the stop tool."""
-        super().__init__(label=label)
+    def __init__(self) -> None:
+        """Name the capability after its tool."""
+        super().__init__(name="stop")
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
         """Return the stop tool."""
@@ -525,11 +510,9 @@ class Sleep(Capability):
     run's cancellation and the user's interrupt end a wait.
     """
 
-    def __init__(
-        self, *, label: ToolLabel = ToolLabel("sleep"), seconds: float = 20.0
-    ) -> None:
+    def __init__(self, *, seconds: float = 20.0) -> None:
         """Keep configuration for fresh runtime bindings on each build."""
-        super().__init__(label=label)
+        super().__init__(name="sleep")
         self.seconds = seconds
 
     def build(self, agent: DeployableAgent, pipe: EventPipe) -> tuple[Tool, ...]:
