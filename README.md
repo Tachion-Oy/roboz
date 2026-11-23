@@ -829,6 +829,14 @@ provider at all. Set `accepts_temperature=False` on such an endpoint or its
 `ChatModelSpec` to omit the field from every request. Project catalogue JSON
 accepts the same optional boolean, which defaults to `true`.
 
+### Prices
+
+`ChatModelSpec` takes `input_price_per_million_tokens` and
+`output_price_per_million_tokens` in USD. Set both or neither; the catalogue
+copies them to the endpoint's `prices`, which is `None` for an unpriced model.
+Project catalogue JSON accepts the same optional numbers, which default to
+`null`.
+
 ### Image inputs
 
 Set `accepts_images=True` on an image-capable endpoint or its `ChatModelSpec`.

@@ -481,6 +481,8 @@ def test_version_one_defaults_and_model_records_remain_compatible():
     expected["providers"]["example"].update(timeout_s=60.0, stream=True)
     expected["providers"]["example"]["models"]["chat"]["accepts_images"] = False
     expected["providers"]["example"]["models"]["chat"]["accepts_temperature"] = True
+    expected["providers"]["example"]["models"]["chat"]["input_price_per_million_tokens"] = None
+    expected["providers"]["example"]["models"]["chat"]["output_price_per_million_tokens"] = None
     assert exported == expected
     assert parse_document(exported) == decoded
 
@@ -511,6 +513,37 @@ def test_temperature_capability_round_trips_through_inventory_and_generated_cata
     assert namespace["cerebras"].gpt_oss_120b.accepts_temperature is False
     models["gpt_oss_120b"]["accepts_temperature"] = "false"
     with pytest.raises(ValueError, match="expected a boolean"):
+        parse_document(document)
+
+
+def test_prices_round_trip_through_inventory_and_generated_catalogue():
+    document = document_from_inventory(bundled_inventory())
+    models = document["providers"]["cerebras"]["models"]
+    assert models["gpt_oss_120b"]["input_price_per_million_tokens"] is None
+    models["gpt_oss_120b"]["input_price_per_million_tokens"] = 0.35
+    models["gpt_oss_120b"]["output_price_per_million_tokens"] = 0
+    inventory = parse_document(document)
+    assert document_from_inventory(inventory) == document
+    namespace = {}
+    exec(render_module(inventory), namespace)
+    prices = namespace["cerebras"].gpt_oss_120b.prices
+    assert prices.input_price_per_million_tokens == 0.35
+    assert prices.output_price_per_million_tokens == 0.0
+
+
+@pytest.mark.parametrize(
+    "prices,message",
+    [
+        ((-1, 1), "expected null or a finite non-negative number"),
+        (("1", 1), "expected null or a finite non-negative number"),
+        ((1, None), "must be set together"),
+    ],
+)
+def test_invalid_prices_are_rejected_with_their_model(prices, message):
+    document = document_from_inventory(bundled_inventory())
+    model = document["providers"]["cerebras"]["models"]["gpt_oss_120b"]
+    model["input_price_per_million_tokens"], model["output_price_per_million_tokens"] = prices
+    with pytest.raises(ValueError, match=f"providers.cerebras.models.gpt_oss_120b.*{message}"):
         parse_document(document)
 
 

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `ChatModelSpec` and project catalogue JSON take
+  `input_price_per_million_tokens` and `output_price_per_million_tokens`. A
+  catalogue endpoint then reports them in `prices`, so an application can show
+  what a model costs.
+
 ## 0.20.0 - 2026-11-22
 
 - A skill capability's `build()` may return tools beside its skill. They join

@@ -16,6 +16,7 @@ from roboz.endpoints.inventory import (
     groq,
     openrouter,
 )
+from roboz.llm import LLMPricing, with_openrouter_policy
 
 
 @pytest.mark.parametrize(
@@ -92,6 +93,26 @@ def test_catalogue_forwards_temperature_capability():
     assert catalog.reasoning.accepts_temperature is False
     assert catalog.configured().reasoning.accepts_temperature is False
     assert catalog.chat.accepts_temperature is True
+
+
+def test_catalogue_forwards_prices_through_openrouter_policy():
+    catalog = Catalog(
+        adapter=OpenAICompatibleAdapter(),
+        models={
+            "priced": ChatModelSpec(
+                "priced",
+                1000,
+                input_price_per_million_tokens=0.3,
+                output_price_per_million_tokens=1.2,
+            ),
+            "unpriced": ChatModelSpec("unpriced", 1000),
+        },
+    )
+    endpoint = with_openrouter_policy(catalog.priced, reasoning_effort="low")
+    assert endpoint.prices == LLMPricing(
+        input_price_per_million_tokens=0.3, output_price_per_million_tokens=1.2
+    )
+    assert catalog.unpriced.prices is None
 
 
 def test_glm_flash_declares_image_support():
@@ -206,6 +227,8 @@ def test_discovery_does_not_import_sdk_or_read_credentials():
     [
         (ChatModelSpec, (" ", 1)),
         (ChatModelSpec, ("model", 0)),
+        (ChatModelSpec, ("model", 1, False, True, 1.0, None)),
+        (ChatModelSpec, ("model", 1, False, True, -1.0, 1.0)),
         (TranscriptionModelSpec, ("",)),
     ],
 )

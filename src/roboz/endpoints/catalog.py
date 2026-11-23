@@ -10,7 +10,7 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Self
 
-from roboz.llm import LLMEndpoint, TranscriptionEndpoint
+from roboz.llm import LLMEndpoint, LLMPricing, TranscriptionEndpoint
 from roboz.endpoints.adapters.openai_compatible import OpenAICompatibleAdapter
 from roboz.endpoints.specs import ChatModelSpec, ModelSpec
 
@@ -71,11 +71,18 @@ class Catalog[Spec: ModelSpec]:
         with self._lock:
             if name not in self.__dict__:
                 if isinstance(model, ChatModelSpec):
+                    prices = None
+                    if model.input_price_per_million_tokens is not None:
+                        prices = LLMPricing(
+                            input_price_per_million_tokens=model.input_price_per_million_tokens,
+                            output_price_per_million_tokens=model.output_price_per_million_tokens,
+                        )
                     dependency = self._adapter.chat_endpoint(
                         model=model.model_id,
                         max_context_tokens=model.max_context_tokens,
                         accepts_images=model.accepts_images,
                         accepts_temperature=model.accepts_temperature,
+                        prices=prices,
                         stream=self._stream,
                     )
                 else:

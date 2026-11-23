@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from roboz.endpoints.env import _has_usable_key, load_secrets
 from roboz.llm import (
     LLMEndpoint,
+    LLMPricing,
     RequestOptions,
     TranscriptionEndpoint,
 )
@@ -164,6 +165,7 @@ class OpenAICompatibleAdapter:
         max_context_tokens: int,
         accepts_images: bool = False,
         accepts_temperature: bool = True,
+        prices: LLMPricing | None = None,
         stream: bool = True,
         extra_body: RequestOptions | None = None,
     ) -> LLMEndpoint:
@@ -184,6 +186,7 @@ class OpenAICompatibleAdapter:
             max_context_tokens=max_context_tokens,
             accepts_images=accepts_images,
             accepts_temperature=accepts_temperature,
+            prices=prices,
             stream=stream,
             extra_body=extra_body,
         )
@@ -214,6 +217,7 @@ def chat_endpoint(
     max_context_tokens: int,
     accepts_images: bool = False,
     accepts_temperature: bool = True,
+    prices: LLMPricing | None = None,
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
@@ -238,6 +242,7 @@ def chat_endpoint(
         max_context_tokens=max_context_tokens,
         accepts_images=accepts_images,
         accepts_temperature=accepts_temperature,
+        prices=prices,
         stream=stream,
         extra_body=extra_body,
     )
