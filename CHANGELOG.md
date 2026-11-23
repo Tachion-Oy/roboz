@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `get_completion` appends its repair messages to the given `messages` instead
+  of a private copy. An agent therefore keeps a format error in its
+  conversation after the retry succeeds, and the model sees it on later turns.
+  `ERROR_RETRY` removes it 100 messages later, up from 20.
+- A reply with no message text gets its own repair message, `EMPTY_FIX_PROMPT`,
+  instead of the unparsable-JSON one.
+
 ## 0.21.0 - 2026-11-23
 
 - `ChatModelSpec` and project catalogue JSON take

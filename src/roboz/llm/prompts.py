@@ -14,6 +14,9 @@ JSON_FIX_PROMPT: Final[
 
 The error trace:
 """
+EMPTY_FIX_PROMPT: Final[
+    str
+] = """Your previous reply arrived with no message text. Write your reply as a single JSON object in the message text. Do not use a native tool or function call."""
 PYDANTIC_FIX_PROMPT: Final[
     str
 ] = """Your previous output did not adhere to the designated Pydantic models. Review them from the instructions and try again
