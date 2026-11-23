@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.21.0 - 2026-11-23
+
 - `ChatModelSpec` and project catalogue JSON take
   `input_price_per_million_tokens` and `output_price_per_million_tokens`. A
   catalogue endpoint then reports them in `prices`, so an application can show
