@@ -128,4 +128,6 @@ QUOTES: Final[list[str]] = [
     "Shut up, brain, or I'll stab you with a Q-tip!",
     "My eyes! The goggles do nothing!",
     "I've been calling her Crandall!",
+    "Worst. Episode. Ever.",
+    "Hi, Super Nintendo Chicago!",
 ]

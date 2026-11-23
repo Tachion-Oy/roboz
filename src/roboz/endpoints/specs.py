@@ -14,13 +14,27 @@ class ChatModelSpec:
     accepts_images: bool = False
     # Some reasoning models reject a temperature; their requests then omit it.
     accepts_temperature: bool = True
+    # USD per 1M tokens; a model has both prices or neither.
+    input_price_per_million_tokens: float | None = None
+    output_price_per_million_tokens: float | None = None
 
     def __post_init__(self) -> None:
-        """Require a nonblank model ID and a positive context limit."""
+        """Require a nonblank model ID, a positive context limit and paired prices."""
         if not self.model_id.strip():
             raise ValueError("model_id must be non-empty")
         if self.max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")
+        input_price = self.input_price_per_million_tokens
+        output_price = self.output_price_per_million_tokens
+        if (input_price is None) != (output_price is None):
+            raise ValueError(
+                "input_price_per_million_tokens and output_price_per_million_tokens"
+                " must be set together"
+            )
+        if input_price is not None and input_price < 0:
+            raise ValueError("input_price_per_million_tokens must not be negative")
+        if output_price is not None and output_price < 0:
+            raise ValueError("output_price_per_million_tokens must not be negative")
 
 
 @dataclass(frozen=True, slots=True)

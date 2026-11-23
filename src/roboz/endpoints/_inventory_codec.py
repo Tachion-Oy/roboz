@@ -111,6 +111,18 @@ def _scalar(value: object, annotation: object, field: str) -> Any:
             if not valid:
                 raise ValueError(f"{field}: expected a finite positive number")
             return float(value)
+        case _ if annotation == float | None:
+            if value is None:
+                return None
+            if type(value) is not int and type(value) is not float:
+                raise ValueError(f"{field}: expected null or a finite non-negative number")
+            try:
+                valid = math.isfinite(value) and value >= 0
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError(f"{field}: expected null or a finite non-negative number")
+            return float(value)
         case _:
             raise TypeError(
                 f"{field}: unsupported inventory scalar type {annotation}"
@@ -147,7 +159,10 @@ def _parse_model(value: object, field: str) -> ModelSpec:
         raise ValueError(f"{field}.{MODEL_KIND_FIELD}: expected {choices}")
     spec = _MODEL_TYPES_BY_KIND[kind]
     values = _record_values(record, spec, field, metadata=frozenset({MODEL_KIND_FIELD}))
-    return spec(**values)
+    try:
+        return spec(**values)
+    except ValueError as error:
+        raise ValueError(f"{field}: {error}") from error
 
 
 def _parse_models(value: object, field: str) -> dict[str, ModelSpec]:
