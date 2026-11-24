@@ -23,6 +23,7 @@ from roboz.llm.calls import call_llm_api as _call_llm_api
 from roboz.llm.endpoints import EndpointLike
 from roboz.llm.prompts import (
     ACTION_FIX_PROMPT,
+    EMPTY_FIX_PROMPT,
     JSON_FIX_PROMPT,
     PYDANTIC_FIX_PROMPT,
 )
@@ -179,9 +180,12 @@ def get_completion(
     Even an empty tool list requests structured action selection.
 
     ``LlmOutputModel`` validates responses; callers supply the prompt instructions
-    describing the required JSON. ``error_pipe`` receives repair messages and is
-    not forwarded as the provider execution pipe. Provider retries are owned by
-    the transport; ``tries`` bounds completion attempts, including repairs.
+    describing the required JSON. Repair messages are appended to ``messages``,
+    so a caller that keeps the list shows them to the model on later calls until
+    their truncation rule removes them. ``error_pipe`` receives repair messages
+    and is not forwarded as the provider execution pipe. Provider retries are
+    owned by the transport; ``tries`` bounds completion attempts, including
+    repairs.
     """
     if not messages:
         raise ValueError("Messages cannot be empty.")
@@ -191,9 +195,8 @@ def get_completion(
         call_llm_api = partial(_call_llm_api, endpoint)
     assert call_llm_api is not None
 
-    updated_messages = messages.copy()
     if active_tools is None and LlmOutputModel is None and tries > 0:
-        messages_to_send = truncate_for_context(updated_messages)
+        messages_to_send = truncate_for_context(messages)
         if on_attempt_start is not None:
             on_attempt_start()
         raw_response, _ = call_llm_api(messages_to_send)
@@ -205,7 +208,7 @@ def get_completion(
     while tries - retry_count > 0:
         retry_count += 1
         try:
-            messages_to_send = truncate_for_context(updated_messages)
+            messages_to_send = truncate_for_context(messages)
             if on_attempt_start is not None:
                 on_attempt_start()
             raw_response, meta = call_llm_api(messages_to_send)
@@ -254,12 +257,13 @@ def get_completion(
                     ),
                     diagnostic_data,
                 )
-            updated_messages += _reprompt_on_error(
+            repair_messages = _reprompt_on_error(
                 raw_response=raw_response,
                 error=e,
                 pipe=error_pipe,
                 include_raw_response=include_raw_response_in_reprompt,
             )
+            messages.extend(repair_messages)
             continue
     logger.error("LLM response validation attempts exhausted (attempts=%d)", tries)
     raise LLMOutputFormatError
@@ -313,7 +317,9 @@ def _reprompt_on_error(
     if error_to_raise is not None:
         raise error_to_raise
     error_trace = f"{type(error).__name__}: {error!s}"
-    if fix_prompt:
+    if isinstance(error, JSONDecodeError) and not raw_response.strip():
+        content = EMPTY_FIX_PROMPT
+    elif fix_prompt:
         previous = (
             f"Previous message: '{raw_response}'\n" if include_raw_response else ""
         )

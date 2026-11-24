@@ -21,6 +21,7 @@ from roboz.exceptions import (
     StopAgent,
 )
 from roboz.llm.endpoints import MockLLMEndpoint, MockProviderError
+from roboz.llm.prompts import EMPTY_FIX_PROMPT
 from roboz.models import (
     BaseNames,
     Empty,
@@ -476,6 +477,26 @@ def test_content_filter_refusal_names_the_reason_without_format_repairs(bind_use
         "then send a message to continue."
     ]
     assert not any(message.role == Role.ERROR for message in messages)
+
+
+def test_format_repair_message_stays_in_the_conversation():
+    agent = Agent(
+        name="format_repair_run",
+        tools=[stop],
+        system_prompt="system",
+        agent_endpoint=MockLLMEndpoint(
+            ["", {"action": "stop", "rationale": "done", "value": "ok"}]
+        ),
+        initial_messages=None,
+    )
+
+    output, messages = agent.invoke()
+
+    assert output.value == "ok"
+    repair_contents = [
+        message.content for message in messages if message.role == Role.ERROR
+    ]
+    assert repair_contents == [EMPTY_FIX_PROMPT]
 
 
 @pytest.mark.parametrize("mode", [AgentMode.STEERABLE, AgentMode.AUTONOMOUS])

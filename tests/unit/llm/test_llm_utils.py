@@ -400,7 +400,7 @@ def test_get_completion_persists_error_message_to_given_pipe(tmp_path):
     sink = PersistenceSink.for_path(tmp_path)
     pipe = EventPipe(event_sinks=(sink,))
     pipe.initialize(dry_run=False, agent_name="llm_errors")
-    call_llm = Mock(return_value=("", {}))
+    call_llm = Mock(return_value=("invalid", {}))
 
     with pytest.raises(LLMOutputFormatError):
         get_completion(
@@ -415,7 +415,21 @@ def test_get_completion_persists_error_message_to_given_pipe(tmp_path):
     data = json.loads(sink.conversations_location.read_text(encoding="utf-8"))
     assert len(data["messages"]) == 1
     assert data["messages"][0]["role"] == "error"
-    assert "Previous message: ''" in data["messages"][0]["content"]
+    assert "Previous message: 'invalid'" in data["messages"][0]["content"]
+
+
+def test_get_completion_keeps_repair_message_in_given_messages():
+    messages = [Message(role=Role.USER, content="hi")]
+    call_llm = Mock(side_effect=[("invalid json", {}), ('{"arg": "val"}', {})])
+
+    get_completion(
+        messages=messages,
+        call_llm_api=call_llm,
+        LlmOutputModel=MockInput,
+        tries=3,
+    )
+
+    assert [message.role for message in messages] == [Role.USER, Role.ERROR]
 
 
 def test_get_tool_call_completion_with_output_model_success():
