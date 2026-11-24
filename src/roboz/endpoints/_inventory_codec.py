@@ -7,7 +7,7 @@ import json
 from keyword import iskeyword
 import math
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Literal, get_args, get_origin
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -123,6 +123,12 @@ def _scalar(value: object, annotation: object, field: str) -> Any:
             if not valid:
                 raise ValueError(f"{field}: expected null or a finite non-negative number")
             return float(value)
+        case _ if get_origin(annotation) is Literal:
+            choices = get_args(annotation)
+            if type(value) is not str or value not in choices:
+                expected = " or ".join(repr(choice) for choice in choices)
+                raise ValueError(f"{field}: expected {expected}")
+            return value
         case _:
             raise TypeError(
                 f"{field}: unsupported inventory scalar type {annotation}"

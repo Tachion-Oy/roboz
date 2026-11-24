@@ -4,7 +4,7 @@ import math
 import os
 from collections.abc import Callable
 from threading import Lock
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Literal, Self
 from urllib.parse import urlsplit
 
 from roboz.endpoints.env import _has_usable_key, load_secrets
@@ -166,6 +166,7 @@ class OpenAICompatibleAdapter:
         accepts_images: bool = False,
         accepts_temperature: bool = True,
         prices: LLMPricing | None = None,
+        output_format: Literal["text", "json"] = "text",
         stream: bool = True,
         extra_body: RequestOptions | None = None,
     ) -> LLMEndpoint:
@@ -187,6 +188,7 @@ class OpenAICompatibleAdapter:
             accepts_images=accepts_images,
             accepts_temperature=accepts_temperature,
             prices=prices,
+            output_format=output_format,
             stream=stream,
             extra_body=extra_body,
         )
@@ -218,6 +220,7 @@ def chat_endpoint(
     accepts_images: bool = False,
     accepts_temperature: bool = True,
     prices: LLMPricing | None = None,
+    output_format: Literal["text", "json"] = "text",
     api_name: str = "openai",
     base_url: str = "https://api.openai.com/v1",
     api_key: str | None = None,
@@ -243,6 +246,7 @@ def chat_endpoint(
         accepts_images=accepts_images,
         accepts_temperature=accepts_temperature,
         prices=prices,
+        output_format=output_format,
         stream=stream,
         extra_body=extra_body,
     )

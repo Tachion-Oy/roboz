@@ -483,6 +483,7 @@ def test_version_one_defaults_and_model_records_remain_compatible():
     expected["providers"]["example"]["models"]["chat"]["accepts_temperature"] = True
     expected["providers"]["example"]["models"]["chat"]["input_price_per_million_tokens"] = None
     expected["providers"]["example"]["models"]["chat"]["output_price_per_million_tokens"] = None
+    expected["providers"]["example"]["models"]["chat"]["output_format"] = "text"
     assert exported == expected
     assert parse_document(exported) == decoded
 
@@ -498,6 +499,21 @@ def test_image_capability_round_trips_through_inventory_and_generated_catalogue(
     assert namespace["cerebras"].gpt_oss_120b.accepts_images is True
     models["gpt_oss_120b"]["accepts_images"] = "true"
     with pytest.raises(ValueError, match="expected a boolean"):
+        parse_document(document)
+
+
+def test_output_format_round_trips_through_inventory_and_generated_catalogue():
+    document = document_from_inventory(bundled_inventory())
+    models = document["providers"]["cerebras"]["models"]
+    assert models["gpt_oss_120b"]["output_format"] == "text"
+    models["gpt_oss_120b"]["output_format"] = "json"
+    inventory = parse_document(document)
+    assert document_from_inventory(inventory) == document
+    namespace = {}
+    exec(render_module(inventory), namespace)
+    assert namespace["cerebras"].gpt_oss_120b.output_format == "json"
+    models["gpt_oss_120b"]["output_format"] = "xml"
+    with pytest.raises(ValueError, match="expected 'text' or 'json'"):
         parse_document(document)
 
 

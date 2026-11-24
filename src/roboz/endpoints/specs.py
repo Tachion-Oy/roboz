@@ -17,6 +17,8 @@ class ChatModelSpec:
     # USD per 1M tokens; a model has both prices or neither.
     input_price_per_million_tokens: float | None = None
     output_price_per_million_tokens: float | None = None
+    # "json" requests JSON mode, which not every model or provider supports.
+    output_format: Literal["text", "json"] = "text"
 
     def __post_init__(self) -> None:
         """Require a nonblank model ID, a positive context limit and paired prices."""
