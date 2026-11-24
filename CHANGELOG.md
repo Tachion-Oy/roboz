@@ -5,6 +5,8 @@
 - `ScriptOutputEvent` has `caller`, the name of the tool that printed the
   output, so a host can title the output. `EventPipe.running_tool` holds that
   name while a tool call runs.
+- `MessageKind` has `USER_PROMPT`, the label for a question a host records in
+  a run's history, beside `USER_NOTIFICATION` for a notification.
 
 ## 0.22.0 - 2026-11-24
 

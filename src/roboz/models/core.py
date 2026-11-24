@@ -64,6 +64,7 @@ class MessageKind(StrEnum):
     STARTUP_CONTEXT = "startup_context"
     SYSTEM_MESSAGE = "system_message"
     USER_NOTIFICATION = "user_notification"
+    USER_PROMPT = "user_prompt"
 
 
 BOOTSTRAP_MESSAGE_KINDS: Final[frozenset[MessageKind]] = frozenset(
