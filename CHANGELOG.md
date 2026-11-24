@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.22.0 - 2026-11-24
+
 - `get_completion` appends its repair messages to the given `messages` instead
   of a private copy. An agent therefore keeps a format error in its
   conversation after the retry succeeds, and the model sees it on later turns.
