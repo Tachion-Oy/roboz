@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ScriptOutputEvent` has `caller`, the name of the tool that printed the
+  output, so a host can title the output. `EventPipe.running_tool` holds that
+  name while a tool call runs.
+
 ## 0.22.0 - 2026-11-24
 
 - `get_completion` appends its repair messages to the given `messages` instead

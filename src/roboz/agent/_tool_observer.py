@@ -59,11 +59,14 @@ class ToolInvocationObserver:
             level=RuntimeEventLevel.INFO,
             message="Tool call started",
         )
+        self._pipe.running_tool = tool.name
         try:
             output = tool(input, messages)
         except (Exception, KeyboardInterrupt) as error:
             self._emit_failure(tool=tool, error=error, started=started)
             raise
+        finally:
+            self._pipe.running_tool = None
 
         output_chars = len(output.model_dump_json())
         self._emit(

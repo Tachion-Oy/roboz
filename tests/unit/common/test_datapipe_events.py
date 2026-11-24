@@ -60,6 +60,7 @@ def test_datapipe_emits_lifecycle_and_message_events_in_order() -> None:
     assert isinstance(events[2], ScriptOutputEvent)
     assert events[2].sequence == 3
     assert events[2].content == "script line"
+    assert events[2].caller is None
 
     assert isinstance(events[3], RunLifecycleEvent)
     assert events[3].sequence == 4
@@ -581,6 +582,38 @@ def test_datapipe_delivers_no_message_truncation_to_sinks() -> None:
     assert len(messages) == 1
     assert messages[0].message.content == "kept-in-log"
     assert messages[0].message.truncation == NO_MESSAGE
+
+
+def test_script_output_names_the_tool_that_printed_it() -> None:
+    collected: list[object] = []
+    pipe = EventPipe(event_sinks=(collected.append,))
+
+    @tool
+    def announce(input: Empty, messages: list[Message]) -> Str:
+        pipe.emit_script_output("working")
+        return Str(value="announced")
+
+    agent = Agent(
+        name="announcing_agent",
+        tools=[announce, stop],
+        system_prompt="Announce, then stop.",
+        event_pipe=pipe,
+        agent_endpoint=MockLLMEndpoint(
+            [
+                {"action": "announce", "rationale": "say so"},
+                {"action": "stop", "rationale": "done", "value": "ok"},
+            ]
+        ),
+    )
+
+    agent.invoke()
+    pipe.emit_script_output("afterwards")
+
+    printed = [event for event in collected if isinstance(event, ScriptOutputEvent)]
+    assert [(event.content, event.caller) for event in printed] == [
+        ("working", "announce"),
+        ("afterwards", None),
+    ]
 
 
 def test_persistence_records_no_message_tool_output_during_invoke(tmp_path) -> None:
