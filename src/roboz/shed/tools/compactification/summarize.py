@@ -30,8 +30,6 @@ SUMMARY_LENGTH_ATTEMPTS: Final[int] = 3
 _PERCENT_SCALE: Final[int] = 100
 _FIRST_ATTEMPT: Final[int] = 1
 _MIN_TOLERANCE_PERCENT: Final[float] = 0.0
-_OUTPUT_FORMAT_FIELD: Final[str] = "output_format"
-_JSON_OUTPUT_FORMAT: Final[str] = "json"
 _RESPONSE_CHARS_KEY: Final[str] = "response_chars"
 _REQUESTED_MAX_CHARS_KEY: Final[str] = "requested_max_chars"
 _ACCEPTED_MAX_CHARS_KEY: Final[str] = "accepted_max_chars"
@@ -102,15 +100,6 @@ def _initial_messages(
             truncation=NO_TRUNCATION,
         ),
     ]
-
-
-def _json_endpoint(endpoint: EndpointLike) -> LLMEndpoint | MockLLMEndpoint:
-    resolved = resolve_endpoint(endpoint)
-    if isinstance(resolved, LLMEndpoint):
-        return resolved.model_copy(
-            update={_OUTPUT_FORMAT_FIELD: _JSON_OUTPUT_FORMAT}
-        )
-    return resolved
 
 
 def _complete_summary(
@@ -284,7 +273,7 @@ def summarize_conversation_segment(
             pipe(message)
 
     return _complete_with_length_limit(
-        endpoint=_json_endpoint(endpoint),
+        endpoint=resolve_endpoint(endpoint),
         messages=llm_messages,
         pipe=pipe,
         max_chars=max_chars,

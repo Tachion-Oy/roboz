@@ -131,4 +131,5 @@ QUOTES: Final[list[str]] = [
     "Worst. Episode. Ever.",
     "Hi, Super Nintendo Chicago!",
     "I didn't do it.",
+    "Okily dokily!",
 ]

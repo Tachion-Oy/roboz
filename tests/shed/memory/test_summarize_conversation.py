@@ -181,7 +181,7 @@ def test_summarize_without_max_chars_never_retries() -> None:
     assert len(endpoint.mock_responses) == 1
 
 
-def test_summarize_uses_json_mode_for_real_endpoint(
+def test_summarize_uses_the_endpoint_as_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     endpoint = LLMEndpoint(
@@ -207,10 +207,8 @@ def test_summarize_uses_json_mode_for_real_endpoint(
     result = _summarize(MockLLMEndpoint([]), max_chars=None)
 
     assert result == "summary"
-    assert endpoint.output_format == "text"
     assert len(seen_endpoints) == 1
-    assert seen_endpoints[0].output_format == "json"
-    assert seen_endpoints[0].extra_body == {"reasoning": {"effort": "high"}}
+    assert seen_endpoints[0] is endpoint
 
 
 def test_summarize_forwards_runtime_pipe_and_rechecks_after_completion(

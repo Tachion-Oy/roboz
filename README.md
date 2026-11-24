@@ -837,6 +837,15 @@ copies them to the endpoint's `prices`, which is `None` for an unpriced model.
 Project catalogue JSON accepts the same optional numbers, which default to
 `null`.
 
+### JSON mode
+
+Set `output_format="json"` on an endpoint or its `ChatModelSpec` to request
+JSON mode, in which the provider returns a JSON object. Not every model or
+provider supports it, so the default is `"text"`. Project catalogue JSON
+accepts the same optional string. Agent and summary calls use the endpoint as
+configured. Some providers refuse a JSON-mode request whose messages never
+mention JSON; agent and summary prompts do.
+
 ### Image inputs
 
 Set `accepts_images=True` on an image-capable endpoint or its `ChatModelSpec`.

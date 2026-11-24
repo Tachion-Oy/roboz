@@ -83,6 +83,7 @@ class Catalog[Spec: ModelSpec]:
                         accepts_images=model.accepts_images,
                         accepts_temperature=model.accepts_temperature,
                         prices=prices,
+                        output_format=model.output_format,
                         stream=self._stream,
                     )
                 else:

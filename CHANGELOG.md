@@ -8,6 +8,10 @@
   `ERROR_RETRY` removes it 100 messages later, up from 20.
 - A reply with no message text gets its own repair message, `EMPTY_FIX_PROMPT`,
   instead of the unparsable-JSON one.
+- `ChatModelSpec` and project catalogue JSON take `output_format`, `"text"` or
+  `"json"`. A catalogue endpoint then requests JSON mode for that model.
+- Summaries no longer force JSON mode; they use the endpoint as configured. Set
+  `output_format="json"` on a model whose summaries should stay in JSON mode.
 
 ## 0.21.0 - 2026-11-23
 
