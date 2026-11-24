@@ -43,10 +43,11 @@ class RunLifecycleEvent:
 
 @dataclass(frozen=True)
 class ScriptOutputEvent:
-    """Raw output emitted by a script-oriented tool."""
+    """Raw output a tool printed while it ran; ``caller`` names that tool."""
 
     content: str
     sequence: int
+    caller: str | None = None
 
 
 @dataclass(frozen=True)

@@ -60,6 +60,9 @@ class EventPipe:
     Callers may pass ``event_sinks`` to attach explicit callbacks at construction
     time. The pipe does not infer terminal/API subscribers from output mode;
     callers compose those sinks before creating the pipe.
+
+    ``running_tool`` names the tool whose call is in progress. The agent sets it
+    around each tool call, and script output carries it as its ``caller``.
     """
 
     def __init__(
@@ -69,6 +72,7 @@ class EventPipe:
     ):
         """Initialize an idle pipe with explicit event sinks."""
         self.dry_run = False
+        self.running_tool: str | None = None
         self._sinks: list[EventSink] = []
         self._sinks_lock = Lock()
         self._current_agent_name = "unknown"
@@ -277,9 +281,13 @@ class EventPipe:
         )
 
     def emit_script_output(self, content: str) -> None:
-        """Emit raw script output in sequence order."""
+        """Emit raw script output in sequence order, naming the running tool."""
         self._sequence += 1
-        self._emit(ScriptOutputEvent(content=content, sequence=self._sequence))
+        self._emit(
+            ScriptOutputEvent(
+                content=content, sequence=self._sequence, caller=self.running_tool
+            )
+        )
 
     def emit_runtime_event(
         self,
