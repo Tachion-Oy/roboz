@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.23.0 - 2026-11-24
+
 - `ScriptOutputEvent` has `caller`, the name of the tool that printed the
   output, so a host can title the output. `EventPipe.running_tool` holds that
   name while a tool call runs.
