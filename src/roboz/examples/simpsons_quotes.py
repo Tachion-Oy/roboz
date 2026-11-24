@@ -134,4 +134,5 @@ QUOTES: Final[list[str]] = [
     "Okily dokily!",
     "Lousy Smarch weather.",
     "Stupid like a fox!",
+    "Can I borrow a feeling?",
 ]
